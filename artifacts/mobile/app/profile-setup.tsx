@@ -170,7 +170,7 @@ export default function ProfileSetupScreen() {
 
   function handleContinue() {
     if (!isValid) return;
-    router.replace("/(tabs)");
+    router.push("/document-upload");
   }
 
   return (

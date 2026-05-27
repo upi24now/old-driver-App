@@ -30,6 +30,7 @@ function RootLayoutNav() {
       <Stack.Screen name="otp" />
       <Stack.Screen name="vehicle-selection" />
       <Stack.Screen name="profile-setup" />
+      <Stack.Screen name="document-upload" />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="trip/[id]" />
     </Stack>
