@@ -449,7 +449,7 @@ export default function ActiveTripScreen() {
           <Feather name="arrow-right" size={18} color="#fff" />
         </TouchableOpacity>
 
-        {isInTrip && stage !== "completed" && (
+        {isInTrip && (
           <TouchableOpacity style={styles.cancelBtn} activeOpacity={0.6}>
             <Feather name="alert-triangle" size={12} color="#FF3B30" />
             <Text style={styles.cancelText}>Cancel trip · Report issue</Text>

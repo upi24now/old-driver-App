@@ -428,7 +428,14 @@ export default function SettingsScreen() {
                   <Feather name="chevron-right" size={15} color={colors.mutedForeground} />
                 </View>
               }
-              onPress={() => {}}
+              onPress={() =>
+                Alert.alert("Language", "Choose your preferred language", [
+                  { text: "English" },
+                  { text: "हिन्दी" },
+                  { text: "ಕನ್ನಡ" },
+                  { text: "Cancel", style: "cancel" },
+                ])
+              }
               divider
             />
             <Row
@@ -444,7 +451,12 @@ export default function SettingsScreen() {
                   <Feather name="chevron-right" size={15} color={colors.mutedForeground} />
                 </View>
               }
-              onPress={() => {}}
+              onPress={() =>
+                Alert.alert(
+                  "Service area",
+                  "You're currently operating in Bengaluru. Contact support to change your city.",
+                )
+              }
             />
           </SectionCard>
         </View>
@@ -458,7 +470,12 @@ export default function SettingsScreen() {
             <Row
               icon="help-circle"
               title="Help & support"
-              onPress={() => {}}
+              onPress={() =>
+                Alert.alert(
+                  "Help & support",
+                  "Our team is available 24×7 at support@driver.app or +91 80000 00000.",
+                )
+              }
               divider
             />
             <Row
@@ -467,16 +484,29 @@ export default function SettingsScreen() {
               iconColor="#FF3B30"
               title="Emergency SOS"
               sub="Quick contact for safety"
-              onPress={() => {}}
+              onPress={() =>
+                Alert.alert(
+                  "Emergency SOS",
+                  "This will alert police, your emergency contact, and our safety team.",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Send alert", style: "destructive" },
+                  ],
+                )
+              }
               divider
             />
             <Row
               icon="shield"
               title="Privacy policy"
-              onPress={() => {}}
+              onPress={() => Alert.alert("Privacy policy", "Opens the privacy policy in your browser.")}
               divider
             />
-            <Row icon="file-text" title="Terms of service" onPress={() => {}} />
+            <Row
+              icon="file-text"
+              title="Terms of service"
+              onPress={() => Alert.alert("Terms of service", "Opens the terms in your browser.")}
+            />
           </SectionCard>
         </View>
 

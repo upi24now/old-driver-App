@@ -3,6 +3,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
 import {
+  Alert,
   Animated,
   Easing,
   ScrollView,
@@ -201,6 +202,13 @@ export default function VerificationPendingScreen() {
         <TouchableOpacity
           style={[styles.headerBtn, { backgroundColor: "#f5f5f5" }]}
           activeOpacity={0.7}
+          onPress={() =>
+            Alert.alert("Application options", undefined, [
+              { text: "Refresh status" },
+              { text: "Contact support" },
+              { text: "Cancel", style: "cancel" },
+            ])
+          }
         >
           <Feather name="more-horizontal" size={18} color="#0a0a0a" />
         </TouchableOpacity>
@@ -341,6 +349,12 @@ export default function VerificationPendingScreen() {
         <TouchableOpacity
           style={[styles.supportRow, { borderColor: colors.border }]}
           activeOpacity={0.7}
+          onPress={() =>
+            Alert.alert(
+              "Contact support",
+              "Our team is available 24×7 at support@driver.app or +91 80000 00000.",
+            )
+          }
         >
           <View
             style={[styles.supportIcon, { backgroundColor: "#fff5e6" }]}
@@ -379,6 +393,12 @@ export default function VerificationPendingScreen() {
         <TouchableOpacity
           style={[styles.ghostBtn, { borderColor: colors.border }]}
           activeOpacity={0.7}
+          onPress={() =>
+            Alert.alert(
+              "Notifications enabled",
+              "We'll alert you the moment your verification is approved.",
+            )
+          }
         >
           <Feather name="bell" size={15} color={colors.foreground} />
           <Text style={[styles.ghostBtnText, { color: colors.foreground }]}>

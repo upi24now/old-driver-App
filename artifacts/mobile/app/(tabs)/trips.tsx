@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
-import { StyleSheet, Text, View, ScrollView } from "react-native";
+import { useRouter } from "expo-router";
+import { StyleSheet, Text, TouchableOpacity, View, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/useColors";
@@ -13,6 +14,7 @@ const PLACEHOLDER_TRIPS = [
 export default function TripsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -55,8 +57,10 @@ export default function TripsScreen() {
           Recent Trips (placeholder data)
         </Text>
         {PLACEHOLDER_TRIPS.map((trip) => (
-          <View
+          <TouchableOpacity
             key={trip.id}
+            activeOpacity={0.7}
+            onPress={() => router.push(`/trip/${trip.id}` as any)}
             style={[
               styles.tripCard,
               { backgroundColor: colors.card, borderColor: colors.border },
@@ -82,7 +86,7 @@ export default function TripsScreen() {
               <Text style={[styles.tripFare, { color: colors.foreground }]}>{trip.fare}</Text>
               <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
             </View>
-          </View>
+          </TouchableOpacity>
         ))}
 
         <Text style={[styles.placeholder, { color: colors.mutedForeground }]}>
