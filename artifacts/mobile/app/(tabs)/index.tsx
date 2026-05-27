@@ -390,43 +390,29 @@ export default function HomeScreen() {
 
           <LiveMap online={online} color={colors.primary} />
 
-          {online ? (
-            <View style={{ gap: 10, marginTop: 12 }}>
-              <Text style={[styles.requestActiveSub, { color: colors.mutedForeground, textAlign: "center" }]}>
-                You're live · we'll notify you instantly when a request comes in.
-              </Text>
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                <TouchableOpacity
-                  style={[styles.simulateBtn, { borderColor: colors.primary, flex: 1 }]}
-                  onPress={() => triggerIncomingRide("modal")}
-                  activeOpacity={0.7}
-                >
-                  <Feather name="bell" size={12} color={colors.primary} />
-                  <Text style={[styles.simulateText, { color: colors.primary }]}>
-                    Simulate request
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.simulateBtn, { borderColor: "#FF3B30", flex: 1 }]}
-                  onPress={() => triggerIncomingRide("lock")}
-                  activeOpacity={0.7}
-                >
-                  <Feather name="lock" size={12} color="#FF3B30" />
-                  <Text style={[styles.simulateText, { color: "#FF3B30" }]}>
-                    Lock screen alert
-                  </Text>
-                </TouchableOpacity>
-              </View>
+          {online && (
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+              <TouchableOpacity
+                style={[styles.simulateBtn, { borderColor: colors.primary, flex: 1 }]}
+                onPress={() => triggerIncomingRide("modal")}
+                activeOpacity={0.7}
+              >
+                <Feather name="bell" size={12} color={colors.primary} />
+                <Text style={[styles.simulateText, { color: colors.primary }]}>
+                  Simulate request
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.simulateBtn, { borderColor: "#FF3B30", flex: 1 }]}
+                onPress={() => triggerIncomingRide("lock")}
+                activeOpacity={0.7}
+              >
+                <Feather name="lock" size={12} color="#FF3B30" />
+                <Text style={[styles.simulateText, { color: "#FF3B30" }]}>
+                  Lock screen alert
+                </Text>
+              </TouchableOpacity>
             </View>
-          ) : (
-            <TouchableOpacity
-              style={[styles.goOnlineBtn, { backgroundColor: colors.primary, marginTop: 12 }]}
-              onPress={() => setOnline(true)}
-              activeOpacity={0.85}
-            >
-              <Feather name="power" size={14} color="#fff" />
-              <Text style={styles.goOnlineText}>Go Online</Text>
-            </TouchableOpacity>
           )}
         </View>
 
@@ -671,7 +657,7 @@ const styles = StyleSheet.create({
   requestActive: { alignItems: "center", gap: 8, paddingVertical: 14 },
   requestOffline: { alignItems: "center", gap: 4, paddingVertical: 6 },
   mapWrap: {
-    height: 180,
+    height: 260,
     borderRadius: 12,
     overflow: "hidden",
     backgroundColor: "#e8eef3",
