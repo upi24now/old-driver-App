@@ -193,19 +193,7 @@ export default function OtpScreen() {
         </View>
 
         <View style={styles.otpSection}>
-          <TextInput
-            ref={inputRef}
-            value={otp}
-            onChangeText={(t) => {
-              if (showSuccess) return;
-              setOtp(t.replace(/\D/g, "").slice(0, OTP_LENGTH));
-            }}
-            keyboardType="number-pad"
-            maxLength={OTP_LENGTH}
-            style={styles.hiddenInput}
-            caretHidden
-          />
-
+          <View style={styles.cellsWrap}>
           <TouchableOpacity
             activeOpacity={1}
             onPress={() => inputRef.current?.focus()}
@@ -253,6 +241,21 @@ export default function OtpScreen() {
               );
             })}
           </TouchableOpacity>
+          <TextInput
+            ref={inputRef}
+            value={otp}
+            onChangeText={(t) => {
+              if (showSuccess) return;
+              setOtp(t.replace(/\D/g, "").slice(0, OTP_LENGTH));
+            }}
+            keyboardType="number-pad"
+            maxLength={OTP_LENGTH}
+            style={styles.invisibleOverlayInput}
+            caretHidden
+            autoFocus
+            selectionColor="transparent"
+          />
+          </View>
 
           <View style={styles.resendSection}>
             {canResend ? (
@@ -400,6 +403,20 @@ const styles = StyleSheet.create({
     opacity: 0,
     width: 1,
     height: 1,
+  },
+  cellsWrap: {
+    position: "relative",
+  },
+  invisibleOverlayInput: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    color: "transparent",
+    backgroundColor: "transparent",
+    textAlign: "center",
+    fontSize: 1,
   },
   cellsRow: {
     flexDirection: "row",

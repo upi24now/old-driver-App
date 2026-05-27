@@ -89,6 +89,7 @@ export default function LoginScreen() {
               onBlur={() => setFocused(false)}
               returnKeyType="done"
               onSubmitEditing={handleContinue}
+              autoFocus
             />
 
             {phone.length > 0 && (
