@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Easing,
+  PanResponder,
   Pressable,
   StyleSheet,
   Text,
@@ -76,6 +77,113 @@ function UrgencyRing({
   );
 }
 
+const SLIDE_HEIGHT = 54;
+const SLIDE_THUMB = 46;
+const SLIDE_PAD = 4;
+
+function SlideToAccept({ onAccept }: { onAccept: () => void }) {
+  const [trackW, setTrackW] = useState(220);
+  const x = useRef(new Animated.Value(0)).current;
+  const xValue = useRef(0);
+  const done = useRef(false);
+  const maxX = Math.max(0, trackW - SLIDE_THUMB - SLIDE_PAD * 2);
+
+  useEffect(() => {
+    const id = x.addListener(({ value }) => {
+      xValue.current = value;
+    });
+    return () => x.removeListener(id);
+  }, [x]);
+
+  const pan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 2,
+      onPanResponderGrant: () => {
+        x.stopAnimation((v) => {
+          xValue.current = v;
+        });
+      },
+      onPanResponderMove: (_e, g) => {
+        if (done.current) return;
+        const next = Math.max(0, Math.min(maxX, xValue.current + g.dx));
+        x.setValue(next);
+      },
+      onPanResponderRelease: (_e, g) => {
+        if (done.current) return;
+        const final = Math.max(0, Math.min(maxX, xValue.current + g.dx));
+        if (final >= maxX * 0.85) {
+          done.current = true;
+          Animated.timing(x, {
+            toValue: maxX,
+            duration: 120,
+            useNativeDriver: true,
+          }).start(() => onAccept());
+        } else {
+          Animated.spring(x, {
+            toValue: 0,
+            friction: 6,
+            tension: 80,
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+      onPanResponderTerminate: () => {
+        if (done.current) return;
+        Animated.spring(x, {
+          toValue: 0,
+          friction: 6,
+          useNativeDriver: true,
+        }).start();
+      },
+    }),
+  ).current;
+
+  const labelOpacity = x.interpolate({
+    inputRange: [0, maxX || 1],
+    outputRange: [1, 0],
+    extrapolate: "clamp",
+  });
+  const fillWidth = x.interpolate({
+    inputRange: [0, maxX || 1],
+    outputRange: [SLIDE_THUMB + SLIDE_PAD * 2, trackW],
+    extrapolate: "clamp",
+  });
+
+  return (
+    <View
+      style={styles.slideTrack}
+      onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
+    >
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFillObject,
+          { borderRadius: 16, overflow: "hidden", width: fillWidth },
+        ]}
+      >
+        <LinearGradient
+          colors={["#00E060", "#00A847"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ flex: 1 }}
+        />
+      </Animated.View>
+      <Animated.Text style={[styles.slideLabel, { opacity: labelOpacity }]}>
+        Slide to Accept  →
+      </Animated.Text>
+      <Animated.View
+        {...pan.panHandlers}
+        style={[
+          styles.slideThumb,
+          { transform: [{ translateX: x }] },
+        ]}
+      >
+        <Feather name="chevrons-right" size={22} color="#00A847" />
+      </Animated.View>
+    </View>
+  );
+}
+
 export default function RideRequestScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -107,6 +215,9 @@ export default function RideRequestScreen() {
   const ring = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(0)).current;
   const acceptScale = useRef(new Animated.Value(1)).current;
+  const rejectScale = useRef(new Animated.Value(1)).current;
+  const rejectShake = useRef(new Animated.Value(0)).current;
+  const rejectFill = useRef(new Animated.Value(0)).current;
 
   const urgent = seconds <= 5;
 
@@ -178,6 +289,30 @@ export default function RideRequestScreen() {
       }, 600);
     }
   }, [seconds]);
+
+  function handleReject() {
+    Vibration.vibrate(40);
+    Animated.parallel([
+      Animated.sequence([
+        Animated.timing(rejectShake, { toValue: 1, duration: 50, useNativeDriver: true }),
+        Animated.timing(rejectShake, { toValue: -1, duration: 60, useNativeDriver: true }),
+        Animated.timing(rejectShake, { toValue: 0.6, duration: 50, useNativeDriver: true }),
+        Animated.timing(rejectShake, { toValue: 0, duration: 50, useNativeDriver: true }),
+      ]),
+      Animated.timing(rejectFill, {
+        toValue: 1,
+        duration: 220,
+        useNativeDriver: false,
+      }),
+      Animated.sequence([
+        Animated.spring(rejectScale, { toValue: 0.94, friction: 5, useNativeDriver: true }),
+        Animated.spring(rejectScale, { toValue: 1, friction: 4, useNativeDriver: true }),
+      ]),
+    ]).start(() => {
+      rejectRide();
+      dismiss();
+    });
+  }
 
   function dismiss(replaceRoute?: string) {
     Animated.parallel([
@@ -432,40 +567,60 @@ export default function RideRequestScreen() {
 
           {/* ACTIONS */}
           <View style={styles.actions}>
-            <TouchableOpacity
-              style={[styles.rejectBtn, { borderColor: colors.border }]}
-              onPress={() => {
-                rejectRide();
-                dismiss();
-              }}
-              activeOpacity={0.7}
-            >
-              <Feather name="x" size={18} color={colors.foreground} />
-              <Text style={[styles.rejectText, { color: colors.foreground }]}>
-                Reject
-              </Text>
-            </TouchableOpacity>
-
             <Animated.View
-              style={{ flex: 2, transform: [{ scale: acceptScale }] }}
+              style={{
+                flex: 1,
+                transform: [
+                  { scale: rejectScale },
+                  {
+                    translateX: rejectShake.interpolate({
+                      inputRange: [-1, 0, 1],
+                      outputRange: [-6, 0, 6],
+                    }),
+                  },
+                ],
+              }}
             >
               <TouchableOpacity
-                onPress={handleAccept}
-                activeOpacity={0.85}
-                style={{ overflow: "hidden", borderRadius: 16 }}
+                style={[styles.rejectBtn, { borderColor: colors.border }]}
+                onPress={handleReject}
+                activeOpacity={0.7}
               >
-                <LinearGradient
-                  colors={["#00E060", "#00A847"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.acceptBtn}
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    StyleSheet.absoluteFillObject,
+                    {
+                      backgroundColor: "#FF3B30",
+                      opacity: rejectFill.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, 0.14],
+                      }),
+                    },
+                  ]}
+                />
+                <Animated.View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
                 >
-                  <Feather name="check" size={20} color="#fff" />
-                  <Text style={styles.acceptText}>Accept Ride</Text>
-                  <Feather name="arrow-right" size={18} color="#fff" />
-                </LinearGradient>
+                  <Feather
+                    name="x"
+                    size={18}
+                    color={colors.foreground}
+                  />
+                  <Text style={[styles.rejectText, { color: colors.foreground }]}>
+                    Reject
+                  </Text>
+                </Animated.View>
               </TouchableOpacity>
             </Animated.View>
+
+            <View style={{ flex: 2 }}>
+              <SlideToAccept onAccept={handleAccept} />
+            </View>
           </View>
         </Animated.View>
       </Animated.View>
@@ -638,7 +793,6 @@ const styles = StyleSheet.create({
 
   actions: { flexDirection: "row", gap: 10 },
   rejectBtn: {
-    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -647,6 +801,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1.5,
     backgroundColor: "#fff",
+    overflow: "hidden",
   },
   rejectText: { fontSize: 14, fontWeight: "700" },
   acceptBtn: {
@@ -658,4 +813,37 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   acceptText: { color: "#fff", fontSize: 16, fontWeight: "800" },
+
+  slideTrack: {
+    height: SLIDE_HEIGHT,
+    borderRadius: 16,
+    backgroundColor: "#E8F5E9",
+    borderWidth: 1.5,
+    borderColor: "#00C853",
+    overflow: "hidden",
+    justifyContent: "center",
+  },
+  slideLabel: {
+    position: "absolute",
+    alignSelf: "center",
+    color: "#00A847",
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
+  slideThumb: {
+    position: "absolute",
+    left: SLIDE_PAD,
+    width: SLIDE_THUMB,
+    height: SLIDE_THUMB,
+    borderRadius: 12,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 3,
+  },
 });
