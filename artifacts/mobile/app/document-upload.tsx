@@ -242,7 +242,7 @@ export default function DocumentUploadScreen() {
 
   function handleSubmit() {
     if (!allUploaded) return;
-    router.replace("/(tabs)");
+    router.replace("/verification-pending");
   }
 
   return (
