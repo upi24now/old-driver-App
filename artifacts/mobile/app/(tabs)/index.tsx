@@ -238,6 +238,7 @@ export default function HomeScreen() {
             </View>
             <TouchableOpacity
               style={styles.cashoutBtn}
+              onPress={() => router.push("/wallet")}
               activeOpacity={0.8}
             >
               <Feather name="zap" size={12} color="#0a0a0a" />
@@ -436,9 +437,9 @@ export default function HomeScreen() {
         {/* QUICK ACTIONS */}
         <View style={styles.quickActions}>
           {[
+            { icon: "credit-card", label: "Wallet", path: "/wallet", color: "#00C853" },
             { icon: "map", label: "Heatmap", path: "/(tabs)/map", color: "#FF6F00" },
             { icon: "list", label: "History", path: "/(tabs)/trips", color: "#1976D2" },
-            { icon: "gift", label: "Bonuses", path: null, color: "#E91E63" },
             { icon: "user", label: "Profile", path: "/(tabs)/profile", color: "#673AB7" },
           ].map((a) => (
             <TouchableOpacity
