@@ -34,6 +34,14 @@ function RootLayoutNav() {
       <Stack.Screen name="verification-pending" />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="trip/[id]" />
+      <Stack.Screen
+        name="ride-request"
+        options={{
+          presentation: "transparentModal",
+          animation: "fade",
+          contentStyle: { backgroundColor: "transparent" },
+        }}
+      />
     </Stack>
   );
 }

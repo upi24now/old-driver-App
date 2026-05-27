@@ -358,6 +358,16 @@ export default function HomeScreen() {
                   </Text>
                 </View>
               </View>
+              <TouchableOpacity
+                style={[styles.simulateBtn, { borderColor: colors.primary }]}
+                onPress={() => router.push("/ride-request")}
+                activeOpacity={0.7}
+              >
+                <Feather name="bell" size={12} color={colors.primary} />
+                <Text style={[styles.simulateText, { color: colors.primary }]}>
+                  Simulate incoming request
+                </Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.requestOffline}>
@@ -680,6 +690,18 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   goOnlineText: { color: "#fff", fontSize: 13, fontWeight: "700" },
+  simulateBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    marginTop: 8,
+  },
+  simulateText: { fontSize: 11, fontWeight: "700" },
 
   goalCard: {
     backgroundColor: "#fff",
