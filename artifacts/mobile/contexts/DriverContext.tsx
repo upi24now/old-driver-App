@@ -1,4 +1,5 @@
 import { router } from "expo-router";
+import * as IntentLauncher from "expo-intent-launcher";
 import {
   createContext,
   type ReactNode,
@@ -7,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { Platform } from "react-native";
 
 export type SubPlan = "daily" | "weekly" | "monthly";
 export type RideStage = "to_pickup" | "arrived" | "in_trip" | "completed";
@@ -142,6 +144,10 @@ type DriverState = {
   endActiveRide: () => void;
 
   withdraw: (amount: number) => boolean;
+
+  overlayPermissionGranted: boolean;
+  requestOverlayPermission: () => Promise<{ ok: boolean; reason?: string }>;
+  setOverlayPermission: (v: boolean) => void;
 };
 
 const DriverContext = createContext<DriverState | null>(null);
@@ -172,6 +178,30 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const [todayEarnings, setTodayEarnings] = useState(1248);
   const [tripsToday, setTripsToday] = useState(14);
   const [transactions, setTxns] = useState<Txn[]>(SEED_TXNS);
+  const [overlayPermissionGranted, setOverlayPermissionGranted] = useState(false);
+
+  const requestOverlayPermission = async (): Promise<{ ok: boolean; reason?: string }> => {
+    if (Platform.OS !== "android") {
+      const ok = Platform.OS === "ios";
+      setOverlayPermissionGranted(ok);
+      return ok
+        ? { ok: true }
+        : { ok: false, reason: "Overlay permission is only required on Android." };
+    }
+    try {
+      await IntentLauncher.startActivityAsync(
+        "android.settings.action.MANAGE_OVERLAY_PERMISSION",
+      );
+      setOverlayPermissionGranted(true);
+      return { ok: true };
+    } catch (e) {
+      setOverlayPermissionGranted(false);
+      return {
+        ok: false,
+        reason: "Permission required for incoming ride alerts.",
+      };
+    }
+  };
 
   const subscriptionActive = !!(
     subscriptionExpiresAt && subscriptionExpiresAt > nowTick
@@ -365,6 +395,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         advanceStage,
         endActiveRide,
         withdraw,
+        overlayPermissionGranted,
+        requestOverlayPermission,
+        setOverlayPermission: setOverlayPermissionGranted,
       }}
     >
       {children}

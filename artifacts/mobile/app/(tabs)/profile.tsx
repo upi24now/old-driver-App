@@ -116,7 +116,7 @@ function Row({
 }
 
 export default function SettingsScreen() {
-  const { signOut } = useDriver();
+  const { signOut, overlayPermissionGranted, requestOverlayPermission, setOverlayPermission } = useDriver();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -388,6 +388,34 @@ export default function SettingsScreen() {
                 <Switch
                   value={darkMode}
                   onValueChange={setDarkMode}
+                  trackColor={{ true: colors.primary, false: "#e5e5e5" }}
+                  thumbColor="#fff"
+                />
+              }
+              divider
+            />
+            <Row
+              icon="layers"
+              iconBg="#e8f5e9"
+              iconColor="#00C853"
+              title="Allow Ride Overlay Popup"
+              sub="Show ride alerts over other apps & lock screen"
+              right={
+                <Switch
+                  value={overlayPermissionGranted}
+                  onValueChange={async (next) => {
+                    if (!next) {
+                      setOverlayPermission(false);
+                      return;
+                    }
+                    const res = await requestOverlayPermission();
+                    if (!res.ok) {
+                      Alert.alert(
+                        "Permission required",
+                        res.reason ?? "Permission required for incoming ride alerts",
+                      );
+                    }
+                  }}
                   trackColor={{ true: colors.primary, false: "#e5e5e5" }}
                   thumbColor="#fff"
                 />
