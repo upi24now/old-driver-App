@@ -592,7 +592,7 @@ const styles = StyleSheet.create({
   requestBadgeText: { fontSize: 10, fontWeight: "700", letterSpacing: 0.3 },
 
   requestActive: { alignItems: "center", gap: 8, paddingVertical: 14 },
-  requestOffline: { alignItems: "center", gap: 10, paddingVertical: 18 },
+  requestOffline: { alignItems: "center", gap: 4, paddingVertical: 6 },
   radarWrap: {
     width: 110,
     height: 110,
@@ -619,9 +619,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
   },
   offlineIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -645,10 +645,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 18,
-    paddingVertical: 11,
-    borderRadius: 12,
-    marginTop: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 10,
+    marginTop: 2,
   },
   goOnlineText: { color: "#fff", fontSize: 13, fontWeight: "700" },
   simulateBtn: {
