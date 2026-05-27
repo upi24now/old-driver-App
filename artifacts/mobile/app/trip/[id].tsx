@@ -212,6 +212,8 @@ export default function ActiveTripScreen() {
   const router = useRouter();
 
   const { activeRide, advanceStage, endActiveRide } = useDriver();
+  const [rating, setRating] = useState(0);
+  const [tipped, setTipped] = useState<number | null>(null);
 
   useEffect(() => {
     if (!activeRide) {
@@ -423,11 +425,18 @@ export default function ActiveTripScreen() {
 
           {/* FARE STRIP */}
           <View style={[styles.fareStrip, { borderColor: colors.border }]}>
-            {[
-              { label: "Fare", value: "₹186", icon: "credit-card" },
-              { label: "Distance", value: "9.6 km", icon: "map" },
-              { label: "Payment", value: "UPI", icon: "smartphone" },
-            ].map((item, i) => (
+            {(stage === "completed"
+              ? [
+                  { label: "Fare", value: "₹186", icon: "credit-card" },
+                  { label: "Distance", value: "9.6 km", icon: "map" },
+                  { label: "Duration", value: "24 min", icon: "clock" },
+                ]
+              : [
+                  { label: "Fare", value: "₹186", icon: "credit-card" },
+                  { label: "Distance", value: "9.6 km", icon: "map" },
+                  { label: "Payment", value: "UPI", icon: "smartphone" },
+                ]
+            ).map((item, i) => (
               <View key={item.label} style={styles.fareItem}>
                 <Feather name={item.icon as any} size={13} color={colors.mutedForeground} />
                 <Text style={[styles.fareValue, { color: colors.foreground }]}>
@@ -442,6 +451,76 @@ export default function ActiveTripScreen() {
               </View>
             ))}
           </View>
+
+          {stage === "completed" && (
+            <View style={[styles.ratingCard, { borderColor: colors.border }]}>
+              <Text style={[styles.ratingTitle, { color: colors.foreground }]}>
+                How was your passenger?
+              </Text>
+              <Text style={[styles.ratingSub, { color: colors.mutedForeground }]}>
+                Rate Priya S. to complete the trip
+              </Text>
+              <View style={styles.starsRow}>
+                {[1, 2, 3, 4, 5].map((n) => {
+                  const filled = n <= rating;
+                  return (
+                    <TouchableOpacity
+                      key={n}
+                      onPress={() => setRating(n)}
+                      activeOpacity={0.7}
+                      style={styles.starBtn}
+                    >
+                      <Feather
+                        name="star"
+                        size={32}
+                        color={filled ? "#FFB300" : "#E0E0E0"}
+                        style={filled ? { textShadowColor: "#FFB300", textShadowRadius: 6 } : undefined}
+                      />
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {rating > 0 && (
+                <Text style={[styles.ratingHint, { color: colors.primary }]}>
+                  {rating === 5 ? "Excellent!" : rating >= 3 ? "Thanks for rating" : "We'll review this trip"}
+                </Text>
+              )}
+
+              <View style={[styles.tipRow, { borderTopColor: colors.border }]}>
+                <Text style={[styles.tipLabel, { color: colors.mutedForeground }]}>
+                  Add a tip
+                </Text>
+                <View style={styles.tipChips}>
+                  {[20, 50, 100].map((amt) => {
+                    const active = tipped === amt;
+                    return (
+                      <TouchableOpacity
+                        key={amt}
+                        onPress={() => setTipped(active ? null : amt)}
+                        activeOpacity={0.8}
+                        style={[
+                          styles.tipChip,
+                          {
+                            borderColor: active ? colors.primary : colors.border,
+                            backgroundColor: active ? colors.primary : "#fff",
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.tipChipText,
+                            { color: active ? "#fff" : colors.foreground },
+                          ]}
+                        >
+                          ₹{amt}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            </View>
+          )}
         </ScrollView>
 
         {/* PRIMARY CTA */}
@@ -753,6 +832,43 @@ const styles = StyleSheet.create({
   },
   fareValue: { fontSize: 13, fontWeight: "800", marginTop: 2 },
   fareLabel: { fontSize: 9, fontWeight: "600", letterSpacing: 0.3 },
+
+  ratingCard: {
+    marginTop: 14,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+    backgroundColor: "#fff",
+    alignItems: "center",
+  },
+  ratingTitle: { fontSize: 16, fontWeight: "800", letterSpacing: -0.3 },
+  ratingSub: { fontSize: 12, marginTop: 4, fontWeight: "500" },
+  starsRow: {
+    flexDirection: "row",
+    gap: 6,
+    marginTop: 14,
+    marginBottom: 6,
+  },
+  starBtn: { padding: 4 },
+  ratingHint: { fontSize: 12, fontWeight: "700", marginTop: 4 },
+  tipRow: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    alignSelf: "stretch",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  tipLabel: { fontSize: 13, fontWeight: "700" },
+  tipChips: { flexDirection: "row", gap: 8 },
+  tipChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1.5,
+  },
+  tipChipText: { fontSize: 12, fontWeight: "700" },
 
   cta: {
     height: 54,
