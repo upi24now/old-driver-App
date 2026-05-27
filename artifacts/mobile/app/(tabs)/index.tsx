@@ -438,7 +438,7 @@ export default function HomeScreen() {
         <View style={styles.quickActions}>
           {[
             { icon: "credit-card", label: "Wallet", path: "/wallet", color: "#00C853" },
-            { icon: "map", label: "Heatmap", path: "/(tabs)/map", color: "#FF6F00" },
+            { icon: "zap", label: "Plans", path: "/subscription", color: "#FF6F00" },
             { icon: "list", label: "History", path: "/(tabs)/trips", color: "#1976D2" },
             { icon: "user", label: "Profile", path: "/(tabs)/profile", color: "#673AB7" },
           ].map((a) => (

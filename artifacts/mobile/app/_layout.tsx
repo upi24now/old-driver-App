@@ -35,6 +35,7 @@ function RootLayoutNav() {
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="trip/[id]" />
       <Stack.Screen name="wallet" />
+      <Stack.Screen name="subscription" />
       <Stack.Screen
         name="ride-request"
         options={{
