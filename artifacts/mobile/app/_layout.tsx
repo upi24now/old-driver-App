@@ -22,9 +22,14 @@ const queryClient = new QueryClient();
 
 function RootLayoutNav() {
   return (
-    <Stack screenOptions={{ headerBackTitle: "Back" }}>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="trip/[id]" options={{ headerShown: false }} />
+    <Stack
+      initialRouteName="login"
+      screenOptions={{ headerShown: false, animation: "slide_from_right" }}
+    >
+      <Stack.Screen name="login" />
+      <Stack.Screen name="otp" />
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="trip/[id]" />
     </Stack>
   );
 }
