@@ -145,6 +145,14 @@ export default function HomeScreen() {
             </View>
           </TouchableOpacity>
           <View style={styles.topActions}>
+            <Switch
+              value={online}
+              onValueChange={setOnline}
+              trackColor={{ false: "#E0E0E0", true: colors.primary }}
+              thumbColor="#fff"
+              ios_backgroundColor="#E0E0E0"
+              style={{ transform: [{ scaleX: 1.05 }, { scaleY: 1.05 }] }}
+            />
             <TouchableOpacity
               style={[styles.iconBtn, { backgroundColor: "#fff", borderColor: colors.border }]}
               activeOpacity={0.7}
@@ -156,60 +164,6 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
         </View>
-
-        {/* ONLINE/OFFLINE TOGGLE */}
-        <LinearGradient
-          colors={online ? ["#0d2818", "#0a0a0a"] : ["#fff", "#fff"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[
-            styles.statusCard,
-            {
-              borderColor: online ? "transparent" : colors.border,
-              borderWidth: online ? 0 : 1,
-            },
-          ]}
-        >
-          <View style={styles.statusLeft}>
-            <StatusPulseDot color={online ? colors.primary : "#9E9E9E"} />
-            <View>
-              <Text
-                style={[
-                  styles.statusLabel,
-                  { color: online ? "rgba(255,255,255,0.6)" : colors.mutedForeground },
-                ]}
-              >
-                YOU ARE
-              </Text>
-              <Text
-                style={[
-                  styles.statusValue,
-                  { color: online ? colors.primary : "#0a0a0a" },
-                ]}
-              >
-                {online ? "Online" : "Offline"}
-              </Text>
-              <Text
-                style={[
-                  styles.statusSub,
-                  { color: online ? "rgba(255,255,255,0.55)" : colors.mutedForeground },
-                ]}
-              >
-                {online
-                  ? "Accepting ride requests nearby"
-                  : "Tap to start receiving requests"}
-              </Text>
-            </View>
-          </View>
-          <Switch
-            value={online}
-            onValueChange={setOnline}
-            trackColor={{ false: "#E0E0E0", true: colors.primary }}
-            thumbColor="#fff"
-            ios_backgroundColor="#E0E0E0"
-            style={{ transform: [{ scaleX: 1.15 }, { scaleY: 1.15 }] }}
-          />
-        </LinearGradient>
 
         {/* EARNINGS HERO */}
         <LinearGradient
