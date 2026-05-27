@@ -64,7 +64,7 @@ function SuccessOverlay({ visible, onDone }: { visible: boolean; onDone: () => v
       Animated.spring(scale, { toValue: 1, friction: 5, tension: 100, useNativeDriver: true }),
       Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
     ]).start(() => {
-      setTimeout(onDone, 600);
+      setTimeout(onDone, 650);
     });
   }, [visible]);
   if (!visible) return null;
@@ -330,7 +330,7 @@ export default function OtpScreen() {
 
       <SuccessOverlay
         visible={showSuccess}
-        onDone={() => router.replace("/(tabs)")}
+        onDone={() => router.replace("/profile-setup")}
       />
     </KeyboardAvoidingView>
   );
