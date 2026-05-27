@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle } from "react-native-svg";
 
+import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 
 const TIMER_SECONDS = 15;
@@ -79,6 +80,26 @@ export default function RideRequestScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { incomingRide, acceptRide, rejectRide } = useDriver();
+
+  const ride = incomingRide ?? {
+    pickup: "Indiranagar Metro Station",
+    pickupSub: "100 Ft Rd, Bangalore",
+    drop: "Phoenix Marketcity",
+    dropSub: "Whitefield Main Rd",
+    distanceKm: 9.6,
+    pickupDistanceKm: 1.2,
+    fareEstimate: 186,
+    passengerName: "Priya S.",
+    passengerRating: 4.9,
+    paymentMode: "UPI" as const,
+  };
+  const riderInitials = ride.passengerName
+    .split(" ")
+    .map((s) => s[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   const [seconds, setSeconds] = useState(TIMER_SECONDS);
   const slide = useRef(new Animated.Value(0)).current;
@@ -147,11 +168,14 @@ export default function RideRequestScreen() {
     return () => loop.stop();
   }, [urgent]);
 
-  // auto-dismiss when timer hits zero
+  // auto-dismiss when timer hits zero (auto-reject)
   useEffect(() => {
     if (seconds === 0) {
       Vibration.vibrate(80);
-      setTimeout(() => dismiss(), 600);
+      setTimeout(() => {
+        rejectRide();
+        dismiss();
+      }, 600);
     }
   }, [seconds]);
 
@@ -193,6 +217,7 @@ export default function RideRequestScreen() {
         useNativeDriver: true,
       }),
     ]).start();
+    acceptRide();
     setTimeout(() => dismiss("/trip/active"), 220);
   }
 
@@ -286,16 +311,16 @@ export default function RideRequestScreen() {
           {/* RIDER */}
           <View style={[styles.riderRow, { borderColor: colors.border }]}>
             <View style={[styles.riderAvatar, { backgroundColor: "#fff5e6" }]}>
-              <Text style={[styles.riderAvatarText, { color: "#b75d00" }]}>PS</Text>
+              <Text style={[styles.riderAvatarText, { color: "#b75d00" }]}>{riderInitials}</Text>
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.riderName, { color: colors.foreground }]}>
-                Priya S.
+                {ride.passengerName}
               </Text>
               <View style={styles.riderMeta}>
                 <Feather name="star" size={11} color="#FFB300" />
                 <Text style={[styles.riderMetaText, { color: colors.mutedForeground }]}>
-                  4.87
+                  {ride.passengerRating.toFixed(2)}
                 </Text>
                 <View style={[styles.metaDot, { backgroundColor: colors.border }]} />
                 <Text style={[styles.riderMetaText, { color: colors.mutedForeground }]}>
@@ -305,7 +330,7 @@ export default function RideRequestScreen() {
                 <View style={styles.payChip}>
                   <Feather name="credit-card" size={9} color={colors.primary} />
                   <Text style={[styles.payChipText, { color: colors.primary }]}>
-                    UPI
+                    {ride.paymentMode}
                   </Text>
                 </View>
               </View>
@@ -335,36 +360,36 @@ export default function RideRequestScreen() {
             <View style={styles.routePoints}>
               <View style={styles.routePoint}>
                 <Text style={[styles.routeLabel, { color: colors.mutedForeground }]}>
-                  PICKUP · 1.2 km away
+                  PICKUP · {ride.pickupDistanceKm} km away
                 </Text>
                 <Text
                   style={[styles.routeAddr, { color: colors.foreground }]}
                   numberOfLines={1}
                 >
-                  Indiranagar Metro Station
+                  {ride.pickup}
                 </Text>
                 <Text
                   style={[styles.routeSub, { color: colors.mutedForeground }]}
                   numberOfLines={1}
                 >
-                  100 Ft Rd, Bangalore
+                  {ride.pickupSub}
                 </Text>
               </View>
               <View style={styles.routePoint}>
                 <Text style={[styles.routeLabel, { color: colors.mutedForeground }]}>
-                  DROP · 8.4 km · ~22 min
+                  DROP · {ride.distanceKm} km · ~{Math.round(ride.distanceKm * 2.5)} min
                 </Text>
                 <Text
                   style={[styles.routeAddr, { color: colors.foreground }]}
                   numberOfLines={1}
                 >
-                  Phoenix Marketcity
+                  {ride.drop}
                 </Text>
                 <Text
                   style={[styles.routeSub, { color: colors.mutedForeground }]}
                   numberOfLines={1}
                 >
-                  Whitefield Main Rd
+                  {ride.dropSub}
                 </Text>
               </View>
             </View>
@@ -384,7 +409,7 @@ export default function RideRequestScreen() {
               <View style={styles.fareAmountRow}>
                 <Text style={[styles.fareCurrency, { color: colors.foreground }]}>₹</Text>
                 <Text style={[styles.fareAmount, { color: colors.foreground }]}>
-                  186
+                  {ride.fareEstimate}
                 </Text>
                 <View style={styles.surgeBadge}>
                   <Feather name="zap" size={10} color="#fff" />
@@ -397,7 +422,7 @@ export default function RideRequestScreen() {
             </View>
             <View style={[styles.fareDistanceBox, { borderColor: colors.primary }]}>
               <Text style={[styles.fareDistanceNum, { color: colors.primary }]}>
-                9.6
+                {ride.distanceKm}
               </Text>
               <Text style={[styles.fareDistanceUnit, { color: colors.primary }]}>
                 km total
@@ -409,7 +434,10 @@ export default function RideRequestScreen() {
           <View style={styles.actions}>
             <TouchableOpacity
               style={[styles.rejectBtn, { borderColor: colors.border }]}
-              onPress={() => dismiss()}
+              onPress={() => {
+                rejectRide();
+                dismiss();
+              }}
               activeOpacity={0.7}
             >
               <Feather name="x" size={18} color={colors.foreground} />

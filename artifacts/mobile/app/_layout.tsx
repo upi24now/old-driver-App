@@ -15,6 +15,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { AnimatedSplash } from "@/components/AnimatedSplash";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { DriverProvider } from "@/contexts/DriverContext";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -78,13 +79,15 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <GestureHandlerRootView style={{ flex: 1 }}>
             <KeyboardProvider>
-              <RootLayoutNav />
-              {splashVisible && (
-                <AnimatedSplash
-                  isReady={isReady}
-                  onAnimationComplete={() => setSplashVisible(false)}
-                />
-              )}
+              <DriverProvider>
+                <RootLayoutNav />
+                {splashVisible && (
+                  <AnimatedSplash
+                    isReady={isReady}
+                    onAnimationComplete={() => setSplashVisible(false)}
+                  />
+                )}
+              </DriverProvider>
             </KeyboardProvider>
           </GestureHandlerRootView>
         </QueryClientProvider>

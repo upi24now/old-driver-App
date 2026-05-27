@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 
 const COUNTRY_CODE = "+91";
@@ -22,12 +23,14 @@ export default function LoginScreen() {
   const router = useRouter();
   const inputRef = useRef<TextInput>(null);
   const [phone, setPhone] = useState("");
+  const { setPhone: setDriverPhone } = useDriver();
   const [focused, setFocused] = useState(false);
 
   const isValid = phone.replace(/\D/g, "").length === 10;
 
   function handleContinue() {
     if (!isValid) return;
+    setDriverPhone(phone);
     router.push({ pathname: "/otp", params: { phone } });
   }
 

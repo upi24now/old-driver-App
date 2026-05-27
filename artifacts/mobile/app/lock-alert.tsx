@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import Svg, { Path, Rect } from "react-native-svg";
 
+import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 
 const RING_DURATION = 15;
@@ -169,7 +170,20 @@ function CitySkyline() {
 export default function LockAlertScreen() {
   const colors = useColors();
   const router = useRouter();
+  const { incomingRide, acceptRide, rejectRide } = useDriver();
   const [now] = useState(new Date());
+
+  const ride = incomingRide;
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (incomingRide) {
+        rejectRide();
+        router.back();
+      }
+    }, (RING_DURATION + 1) * 1000);
+    return () => clearTimeout(t);
+  }, []);
 
   const hh = now.getHours().toString().padStart(2, "0");
   const mm = now.getMinutes().toString().padStart(2, "0");
@@ -180,9 +194,11 @@ export default function LockAlertScreen() {
   });
 
   function onAccept() {
+    acceptRide();
     router.replace("/trip/active");
   }
   function onReject() {
+    rejectRide();
     router.back();
   }
 
@@ -256,7 +272,7 @@ export default function LockAlertScreen() {
             {/* title */}
             <Text style={styles.alertTitle}>New ride request</Text>
             <Text style={styles.alertSub}>
-              ₹186 · 1.2 km away · 4 min to pickup
+              ₹{ride?.fareEstimate ?? 186} · {ride?.pickupDistanceKm ?? 1.2} km away · {Math.max(1, Math.round((ride?.pickupDistanceKm ?? 1.2) * 3))} min to pickup
             </Text>
 
             {/* countdown bar */}
@@ -268,29 +284,29 @@ export default function LockAlertScreen() {
             {/* rider mini card */}
             <View style={styles.riderCard}>
               <View style={styles.riderAvatar}>
-                <Text style={styles.riderAvatarText}>P</Text>
+                <Text style={styles.riderAvatarText}>{(ride?.passengerName ?? "P")[0]}</Text>
               </View>
               <View style={{ flex: 1 }}>
                 <View style={styles.riderNameRow}>
-                  <Text style={styles.riderName}>Priya S.</Text>
+                  <Text style={styles.riderName}>{ride?.passengerName ?? "Priya S."}</Text>
                   <Feather name="star" size={10} color="#FFB300" />
-                  <Text style={styles.riderRating}>4.87</Text>
+                  <Text style={styles.riderRating}>{(ride?.passengerRating ?? 4.87).toFixed(2)}</Text>
                 </View>
                 <View style={styles.routeRow}>
                   <View style={[styles.routeDot, { backgroundColor: "#00C853" }]} />
                   <Text style={styles.routeText} numberOfLines={1}>
-                    Indiranagar Metro
+                    {ride?.pickup ?? "Indiranagar Metro"}
                   </Text>
                 </View>
                 <View style={styles.routeRow}>
                   <View style={[styles.routeDot, { backgroundColor: "#FF3B30" }]} />
                   <Text style={styles.routeText} numberOfLines={1}>
-                    Phoenix Marketcity · 8.4 km
+                    {ride?.drop ?? "Phoenix Marketcity"} · {ride?.distanceKm ?? 8.4} km
                   </Text>
                 </View>
               </View>
               <View style={styles.fareBlock}>
-                <Text style={styles.fareValue}>₹186</Text>
+                <Text style={styles.fareValue}>₹{ride?.fareEstimate ?? 186}</Text>
                 <Text style={styles.fareLabel}>fare</Text>
               </View>
             </View>

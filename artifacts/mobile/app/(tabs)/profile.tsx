@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 
 type DocStatus = "verified" | "pending" | "expiring" | "rejected";
@@ -115,6 +116,7 @@ function Row({
 }
 
 export default function SettingsScreen() {
+  const { signOut } = useDriver();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -135,7 +137,10 @@ export default function SettingsScreen() {
       {
         text: "Sign out",
         style: "destructive",
-        onPress: () => router.replace("/login"),
+        onPress: () => {
+          signOut();
+          router.replace("/login");
+        },
       },
     ]);
   }

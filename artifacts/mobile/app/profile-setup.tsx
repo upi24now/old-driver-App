@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 
 const VEHICLE_TYPES = [
@@ -134,6 +135,7 @@ export default function ProfileSetupScreen() {
   const scrollRef = useRef<ScrollView>(null);
 
   const [photo, setPhoto] = useState<string | null>(null);
+  const { setProfile } = useDriver();
   const [fields, setFields] = useState<Field>({
     name: "",
     city: "",
@@ -170,6 +172,7 @@ export default function ProfileSetupScreen() {
 
   function handleContinue() {
     if (!isValid) return;
+    setProfile({ name: fields.name.trim(), city: fields.city, gender: fields.gender });
     router.push("/document-upload");
   }
 

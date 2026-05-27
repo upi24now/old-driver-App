@@ -3,6 +3,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Animated,
   Easing,
   ScrollView,
@@ -14,6 +15,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 
 function RadarPulse({ color }: { color: string }) {
@@ -111,7 +113,24 @@ export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [online, setOnline] = useState(false);
+  const {
+    isOnline: online,
+    setOnline: setDriverOnline,
+    subscriptionActive,
+    todayEarnings,
+    tripsToday,
+    triggerIncomingRide,
+  } = useDriver();
+
+  function setOnline(v: boolean) {
+    const r = setDriverOnline(v);
+    if (!r.ok && r.reason) {
+      Alert.alert("Can't go online", r.reason, [
+        { text: "Not now", style: "cancel" },
+        { text: "View plans", onPress: () => router.push("/subscription") },
+      ]);
+    }
+  }
 
   const weeklyEarned = 4280;
   const weeklyGoal = 7000;
@@ -177,7 +196,7 @@ export default function HomeScreen() {
               <Text style={styles.earningsLabel}>TODAY'S EARNINGS</Text>
               <View style={styles.earningsAmountRow}>
                 <Text style={styles.earningsCurrency}>₹</Text>
-                <Text style={styles.earningsAmount}>1,248</Text>
+                <Text style={styles.earningsAmount}>{todayEarnings.toLocaleString()}</Text>
                 <View style={styles.earningsDelta}>
                   <Feather name="trending-up" size={11} color="#fff" />
                   <Text style={styles.earningsDeltaText}>+18%</Text>
@@ -197,7 +216,7 @@ export default function HomeScreen() {
           <View style={styles.earningsBreakdown}>
             <View style={styles.breakdownItem}>
               <Feather name="navigation" size={13} color="rgba(255,255,255,0.85)" />
-              <Text style={styles.breakdownValue}>14</Text>
+              <Text style={styles.breakdownValue}>{tripsToday}</Text>
               <Text style={styles.breakdownLabel}>Trips</Text>
             </View>
             <View style={styles.breakdownDivider} />
@@ -310,7 +329,7 @@ export default function HomeScreen() {
               <View style={{ flexDirection: "row", gap: 8 }}>
                 <TouchableOpacity
                   style={[styles.simulateBtn, { borderColor: colors.primary, flex: 1 }]}
-                  onPress={() => router.push("/ride-request")}
+                  onPress={() => triggerIncomingRide("modal")}
                   activeOpacity={0.7}
                 >
                   <Feather name="bell" size={12} color={colors.primary} />
@@ -320,7 +339,7 @@ export default function HomeScreen() {
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.simulateBtn, { borderColor: "#FF3B30", flex: 1 }]}
-                  onPress={() => router.push("/lock-alert")}
+                  onPress={() => triggerIncomingRide("lock")}
                   activeOpacity={0.7}
                 >
                   <Feather name="lock" size={12} color="#FF3B30" />

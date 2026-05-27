@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 
 type TxnType = "earning" | "withdraw" | "bonus" | "tip";
@@ -94,9 +95,11 @@ export default function WalletScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { walletBalance, transactions } = useDriver();
   const [filter, setFilter] = useState<Filter>("all");
 
-  const filtered = TRANSACTIONS.filter((t) => {
+  const allTxns: Transaction[] = [...(transactions as Transaction[]), ...TRANSACTIONS.filter(t => t.date === "Yesterday")];
+  const filtered = allTxns.filter((t) => {
     if (filter === "all") return true;
     if (filter === "earning") return t.type === "earning" || t.type === "tip";
     return t.type === filter;
@@ -147,8 +150,12 @@ export default function WalletScreen() {
               <Text style={styles.balanceLabel}>AVAILABLE BALANCE</Text>
               <View style={styles.balanceAmountRow}>
                 <Text style={styles.balanceCurrency}>₹</Text>
-                <Text style={styles.balanceAmount}>8,420</Text>
-                <Text style={styles.balanceDecimal}>.50</Text>
+                <Text style={styles.balanceAmount}>
+                  {Math.floor(walletBalance).toLocaleString()}
+                </Text>
+                <Text style={styles.balanceDecimal}>
+                  .{(walletBalance % 1).toFixed(2).slice(2)}
+                </Text>
               </View>
               <View style={styles.balanceMetaRow}>
                 <View style={[styles.dotGreen, { backgroundColor: colors.primary }]} />

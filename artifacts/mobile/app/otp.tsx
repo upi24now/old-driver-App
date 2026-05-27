@@ -15,6 +15,7 @@ import {
 import Svg, { Circle } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 
 const OTP_LENGTH = 6;
@@ -116,6 +117,7 @@ function ResendRing({ timer, total }: { timer: number; total: number }) {
 }
 
 export default function OtpScreen() {
+  const { verifyOtp } = useDriver();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -330,7 +332,10 @@ export default function OtpScreen() {
 
       <SuccessOverlay
         visible={showSuccess}
-        onDone={() => router.replace("/vehicle-selection")}
+        onDone={() => {
+          verifyOtp();
+          router.replace("/vehicle-selection");
+        }}
       />
     </KeyboardAvoidingView>
   );

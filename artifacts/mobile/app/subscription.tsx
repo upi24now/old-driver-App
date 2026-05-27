@@ -3,6 +3,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,6 +12,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 
 type PlanId = "daily" | "weekly" | "monthly";
@@ -181,9 +183,23 @@ export default function SubscriptionScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { activatePlan } = useDriver();
   const [selected, setSelected] = useState<PlanId>("monthly");
 
   const selectedPlan = PLANS.find((p) => p.id === selected)!;
+
+  function handleActivate() {
+    const r = activatePlan(selected);
+    if (!r.ok) {
+      Alert.alert("Could not activate", r.reason ?? "Try a different plan.");
+      return;
+    }
+    Alert.alert(
+      "Plan activated",
+      `${selectedPlan.name} plan is now active. You can go online and accept rides.`,
+      [{ text: "Done", onPress: () => router.back() }],
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: "#fafafa" }}>
@@ -365,6 +381,7 @@ export default function SubscriptionScreen() {
         <TouchableOpacity
           style={[styles.cta, { backgroundColor: colors.primary }]}
           activeOpacity={0.85}
+          onPress={handleActivate}
         >
           <Text style={styles.ctaText}>Activate Plan</Text>
           <Feather name="arrow-right" size={16} color="#fff" />

@@ -14,6 +14,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
 
+import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 
 type TripStage = "to_pickup" | "arrived" | "in_trip" | "completed";
@@ -210,15 +211,25 @@ export default function ActiveTripScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  const [stage, setStage] = useState<TripStage>("to_pickup");
+  const { activeRide, advanceStage, endActiveRide } = useDriver();
+
+  useEffect(() => {
+    if (!activeRide) {
+      router.replace("/(tabs)");
+    }
+  }, [activeRide]);
+
+  const stage: TripStage = activeRide?.stage ?? "to_pickup";
   const stageInfo = STAGES.find((s) => s.id === stage)!;
   const isInTrip = stage === "in_trip" || stage === "arrived";
 
   function advance() {
-    if (stage === "to_pickup") setStage("arrived");
-    else if (stage === "arrived") setStage("in_trip");
-    else if (stage === "in_trip") setStage("completed");
-    else router.replace("/(tabs)");
+    if (stage === "completed") {
+      endActiveRide();
+      router.replace("/(tabs)");
+      return;
+    }
+    advanceStage();
   }
 
   const ctaConfig = {

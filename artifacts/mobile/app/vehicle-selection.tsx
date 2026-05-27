@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 
 type VehicleOption = {
@@ -207,12 +208,14 @@ export default function VehicleSelectionScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { setVehicle } = useDriver();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const selectedVehicle = VEHICLES.find((v) => v.id === selectedId);
 
   function handleContinue() {
-    if (!selectedId) return;
+    if (!selectedId || !selectedVehicle) return;
+    setVehicle({ id: selectedVehicle.id, name: selectedVehicle.name });
     router.push({
       pathname: "/profile-setup",
       params: { vehicle: selectedId },
