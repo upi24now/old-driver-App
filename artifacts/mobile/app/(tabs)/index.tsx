@@ -141,7 +141,7 @@ export default function HomeScreen() {
       <ScrollView
         contentContainerStyle={{
           paddingTop: insets.top + 12,
-          paddingBottom: 32,
+          paddingBottom: insets.bottom + 100,
           paddingHorizontal: 16,
           gap: 14,
         }}
