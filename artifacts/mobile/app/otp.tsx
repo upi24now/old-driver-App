@@ -330,7 +330,7 @@ export default function OtpScreen() {
 
       <SuccessOverlay
         visible={showSuccess}
-        onDone={() => router.replace("/profile-setup")}
+        onDone={() => router.replace("/vehicle-selection")}
       />
     </KeyboardAvoidingView>
   );
