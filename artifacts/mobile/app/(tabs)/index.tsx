@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Circle, Path, Rect } from "react-native-svg";
 
 import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
@@ -71,6 +72,95 @@ function RadarPulse({ color }: { color: string }) {
       {ring(a3)}
       <View style={[styles.radarCore, { backgroundColor: color }]}>
         <Feather name="navigation" size={22} color="#fff" />
+      </View>
+    </View>
+  );
+}
+
+function LiveMap({ online, color }: { online: boolean; color: string }) {
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!online) return;
+    const loop = Animated.loop(
+      Animated.timing(pulse, {
+        toValue: 1,
+        duration: 1800,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [online]);
+
+  const pinColor = online ? color : "#9E9E9E";
+
+  return (
+    <View style={styles.mapWrap}>
+      <Svg width="100%" height="100%" viewBox="0 0 400 220" preserveAspectRatio="xMidYMid slice">
+        <Rect x="0" y="0" width="400" height="220" fill="#e8eef3" />
+        {/* parks */}
+        <Rect x="20" y="20" width="80" height="50" rx="6" fill="#d4ead4" />
+        <Rect x="300" y="140" width="90" height="60" rx="6" fill="#d4ead4" />
+        {/* water */}
+        <Path d="M0,180 Q80,160 160,180 T320,180 L400,180 L400,220 L0,220 Z" fill="#cfe3f3" />
+        {/* blocks */}
+        <Rect x="120" y="30" width="60" height="40" rx="3" fill="#f7f4ee" />
+        <Rect x="200" y="20" width="80" height="50" rx="3" fill="#f7f4ee" />
+        <Rect x="120" y="90" width="60" height="40" rx="3" fill="#f7f4ee" />
+        <Rect x="200" y="90" width="80" height="40" rx="3" fill="#f7f4ee" />
+        <Rect x="20" y="90" width="80" height="40" rx="3" fill="#f7f4ee" />
+        <Rect x="300" y="30" width="80" height="90" rx="3" fill="#f7f4ee" />
+        {/* roads */}
+        <Rect x="0" y="75" width="400" height="8" fill="#ffffff" />
+        <Rect x="0" y="135" width="400" height="8" fill="#ffffff" />
+        <Rect x="105" y="0" width="8" height="180" fill="#ffffff" />
+        <Rect x="185" y="0" width="8" height="180" fill="#ffffff" />
+        <Rect x="285" y="0" width="8" height="180" fill="#ffffff" />
+        {/* highlighted road (driver's street) */}
+        <Rect x="0" y="78" width="400" height="2" fill="#FFC107" opacity={online ? 0.9 : 0.4} />
+      </Svg>
+
+      {/* driver pin in center */}
+      <View style={styles.mapPinWrap} pointerEvents="none">
+        {online && (
+          <Animated.View
+            style={[
+              styles.mapPulse,
+              {
+                borderColor: pinColor,
+                opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0] }),
+                transform: [
+                  { scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.6, 2.4] }) },
+                ],
+              },
+            ]}
+          />
+        )}
+        <View style={[styles.mapPin, { backgroundColor: pinColor }]}>
+          <View style={styles.mapPinInner} />
+        </View>
+      </View>
+
+      {/* zoom controls (decorative) */}
+      <View style={styles.mapZoom}>
+        <View style={styles.mapZoomBtn}>
+          <Feather name="plus" size={14} color="#444" />
+        </View>
+        <View style={[styles.mapZoomBtn, { borderTopWidth: 1, borderTopColor: "#eee" }]}>
+          <Feather name="minus" size={14} color="#444" />
+        </View>
+      </View>
+
+      {/* locate button */}
+      <View style={styles.mapLocate}>
+        <Feather name="navigation" size={14} color={pinColor} />
+      </View>
+
+      {/* location chip */}
+      <View style={styles.mapLocChip}>
+        <Feather name="map-pin" size={11} color={pinColor} />
+        <Text style={styles.mapLocText}>Indiranagar, Bengaluru</Text>
       </View>
     </View>
   );
@@ -298,34 +388,13 @@ export default function HomeScreen() {
             </View>
           </View>
 
+          <LiveMap online={online} color={colors.primary} />
+
           {online ? (
-            <View style={styles.requestActive}>
-              <RadarPulse color={colors.primary} />
-              <Text style={[styles.requestActiveTitle, { color: colors.foreground }]}>
-                Looking for ride requests
+            <View style={{ gap: 10, marginTop: 12 }}>
+              <Text style={[styles.requestActiveSub, { color: colors.mutedForeground, textAlign: "center" }]}>
+                You're live · we'll notify you instantly when a request comes in.
               </Text>
-              <Text style={[styles.requestActiveSub, { color: colors.mutedForeground }]}>
-                We'll notify you instantly when a request comes in your area.
-              </Text>
-              <View style={styles.requestStatsRow}>
-                <View style={styles.requestStat}>
-                  <Text style={[styles.requestStatNum, { color: colors.foreground }]}>
-                    12
-                  </Text>
-                  <Text style={[styles.requestStatLbl, { color: colors.mutedForeground }]}>
-                    Drivers near you
-                  </Text>
-                </View>
-                <View style={[styles.requestVDivider, { backgroundColor: colors.border }]} />
-                <View style={styles.requestStat}>
-                  <Text style={[styles.requestStatNum, { color: colors.foreground }]}>
-                    High
-                  </Text>
-                  <Text style={[styles.requestStatLbl, { color: colors.mutedForeground }]}>
-                    Demand
-                  </Text>
-                </View>
-              </View>
               <View style={{ flexDirection: "row", gap: 8 }}>
                 <TouchableOpacity
                   style={[styles.simulateBtn, { borderColor: colors.primary, flex: 1 }]}
@@ -350,25 +419,14 @@ export default function HomeScreen() {
               </View>
             </View>
           ) : (
-            <View style={styles.requestOffline}>
-              <View style={[styles.offlineIcon, { backgroundColor: "#f5f5f5" }]}>
-                <Feather name="power" size={22} color="#9E9E9E" />
-              </View>
-              <Text style={[styles.requestActiveTitle, { color: colors.foreground }]}>
-                You're offline
-              </Text>
-              <Text style={[styles.requestActiveSub, { color: colors.mutedForeground }]}>
-                Go online to start receiving ride requests from passengers near you.
-              </Text>
-              <TouchableOpacity
-                style={[styles.goOnlineBtn, { backgroundColor: colors.primary }]}
-                onPress={() => setOnline(true)}
-                activeOpacity={0.85}
-              >
-                <Feather name="power" size={14} color="#fff" />
-                <Text style={styles.goOnlineText}>Go Online</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              style={[styles.goOnlineBtn, { backgroundColor: colors.primary, marginTop: 12 }]}
+              onPress={() => setOnline(true)}
+              activeOpacity={0.85}
+            >
+              <Feather name="power" size={14} color="#fff" />
+              <Text style={styles.goOnlineText}>Go Online</Text>
+            </TouchableOpacity>
           )}
         </View>
 
@@ -612,6 +670,90 @@ const styles = StyleSheet.create({
 
   requestActive: { alignItems: "center", gap: 8, paddingVertical: 14 },
   requestOffline: { alignItems: "center", gap: 4, paddingVertical: 6 },
+  mapWrap: {
+    height: 180,
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "#e8eef3",
+    position: "relative",
+    marginTop: 4,
+  },
+  mapPinWrap: {
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    marginLeft: -11,
+    marginTop: -11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mapPulse: {
+    position: "absolute",
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+  },
+  mapPin: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 3,
+    borderColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+  },
+  mapPinInner: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#fff",
+  },
+  mapZoom: {
+    position: "absolute",
+    right: 10,
+    top: 10,
+    backgroundColor: "#fff",
+    borderRadius: 6,
+    overflow: "hidden",
+    boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
+  },
+  mapZoomBtn: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mapLocate: {
+    position: "absolute",
+    right: 10,
+    bottom: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
+  },
+  mapLocChip: {
+    position: "absolute",
+    left: 10,
+    bottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 14,
+  },
+  mapLocText: {
+    fontSize: 11,
+    color: "#333",
+    fontWeight: "600" as const,
+  },
   radarWrap: {
     width: 110,
     height: 110,
