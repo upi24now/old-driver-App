@@ -359,16 +359,28 @@ export default function HomeScreen() {
                   </Text>
                 </View>
               </View>
-              <TouchableOpacity
-                style={[styles.simulateBtn, { borderColor: colors.primary }]}
-                onPress={() => router.push("/ride-request")}
-                activeOpacity={0.7}
-              >
-                <Feather name="bell" size={12} color={colors.primary} />
-                <Text style={[styles.simulateText, { color: colors.primary }]}>
-                  Simulate incoming request
-                </Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <TouchableOpacity
+                  style={[styles.simulateBtn, { borderColor: colors.primary, flex: 1 }]}
+                  onPress={() => router.push("/ride-request")}
+                  activeOpacity={0.7}
+                >
+                  <Feather name="bell" size={12} color={colors.primary} />
+                  <Text style={[styles.simulateText, { color: colors.primary }]}>
+                    Simulate request
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.simulateBtn, { borderColor: "#FF3B30", flex: 1 }]}
+                  onPress={() => router.push("/lock-alert")}
+                  activeOpacity={0.7}
+                >
+                  <Feather name="lock" size={12} color="#FF3B30" />
+                  <Text style={[styles.simulateText, { color: "#FF3B30" }]}>
+                    Lock screen alert
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ) : (
             <View style={styles.requestOffline}>

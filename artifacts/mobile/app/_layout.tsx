@@ -37,6 +37,13 @@ function RootLayoutNav() {
       <Stack.Screen name="wallet" />
       <Stack.Screen name="subscription" />
       <Stack.Screen
+        name="lock-alert"
+        options={{
+          presentation: "fullScreenModal",
+          animation: "fade",
+        }}
+      />
+      <Stack.Screen
         name="ride-request"
         options={{
           presentation: "transparentModal",
