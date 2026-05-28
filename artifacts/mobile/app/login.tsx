@@ -403,10 +403,10 @@ const styles = StyleSheet.create({
   ctaWrap: {
     borderRadius: 20,
     shadowColor: GRADIENT_FROM,
-    shadowOpacity: 0.22,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 6,
+    shadowOpacity: 0.13,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 4,
   },
   ctaWrapDisabled: {
     shadowOpacity: 0,
