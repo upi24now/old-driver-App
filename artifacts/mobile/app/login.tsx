@@ -100,6 +100,45 @@ export default function LoginScreen() {
     router.push({ pathname: "/otp", params: { phone } });
   }
 
+  const inputInner = (
+    <>
+      <TouchableOpacity
+        activeOpacity={0.6}
+        onPress={() => setShowCountryPicker(true)}
+        style={styles.countrySelector}
+        hitSlop={{ top: 12, bottom: 12, left: 8, right: 4 }}
+      >
+        <View style={styles.flagWrap}>
+          <View style={[styles.flagBand, { backgroundColor: "#FF9933" }]} />
+          <View style={[styles.flagBand, { backgroundColor: "#FFFFFF" }]}>
+            <View style={styles.flagChakra} />
+          </View>
+          <View style={[styles.flagBand, { backgroundColor: "#138808" }]} />
+        </View>
+        <Text style={styles.codeText}>{COUNTRY_CODE}</Text>
+        <Feather name="chevron-down" size={15} color={TEXT_MUTED} />
+      </TouchableOpacity>
+
+      <View style={styles.codeDivider} />
+
+      <TextInput
+        ref={inputRef}
+        style={styles.phoneInput}
+        value={phone}
+        onChangeText={(t) => setPhone(t.replace(/\D/g, "").slice(0, 10))}
+        keyboardType="phone-pad"
+        placeholder="Enter mobile number"
+        placeholderTextColor="#9CA3AF"
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        returnKeyType="done"
+        onSubmitEditing={handleContinue}
+        underlineColorAndroid="transparent"
+        selectionColor={GRADIENT_FROM}
+      />
+    </>
+  );
+
   return (
     <KeyboardAvoidingView
       style={[styles.root, { backgroundColor: PAGE_BG }]}
@@ -138,48 +177,30 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.formSection}>
-          <Pressable
-            onPress={() => inputRef.current?.focus()}
-            style={[
-              styles.inputCard,
-              focused && styles.inputCardFocused,
-            ]}
-          >
-            <TouchableOpacity
-              activeOpacity={0.6}
-              onPress={() => setShowCountryPicker(true)}
-              style={styles.countrySelector}
-              hitSlop={{ top: 12, bottom: 12, left: 8, right: 4 }}
+          {focused ? (
+            <LinearGradient
+              colors={[GRADIENT_FROM, GRADIENT_TO]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={styles.inputShell}
             >
-              <View style={styles.flagWrap}>
-                <View style={[styles.flagBand, { backgroundColor: "#FF9933" }]} />
-                <View style={[styles.flagBand, { backgroundColor: "#FFFFFF" }]}>
-                  <View style={styles.flagChakra} />
-                </View>
-                <View style={[styles.flagBand, { backgroundColor: "#138808" }]} />
-              </View>
-              <Text style={styles.codeText}>{COUNTRY_CODE}</Text>
-              <Feather name="chevron-down" size={15} color={TEXT_MUTED} />
-            </TouchableOpacity>
-
-            <View style={styles.codeDivider} />
-
-            <TextInput
-              ref={inputRef}
-              style={styles.phoneInput}
-              value={phone}
-              onChangeText={(t) => setPhone(t.replace(/\D/g, "").slice(0, 10))}
-              keyboardType="phone-pad"
-              placeholder="Enter mobile number"
-              placeholderTextColor="#9CA3AF"
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
-              returnKeyType="done"
-              onSubmitEditing={handleContinue}
-              underlineColorAndroid="transparent"
-              selectionColor={GRADIENT_FROM}
-            />
-          </Pressable>
+              <Pressable
+                onPress={() => inputRef.current?.focus()}
+                style={styles.inputCard}
+              >
+                {inputInner}
+              </Pressable>
+            </LinearGradient>
+          ) : (
+            <View style={styles.inputShellIdle}>
+              <Pressable
+                onPress={() => inputRef.current?.focus()}
+                style={styles.inputCard}
+              >
+                {inputInner}
+              </Pressable>
+            </View>
+          )}
 
           <ContinueButton enabled={isValid} onPress={handleContinue} />
         </View>
@@ -293,26 +314,32 @@ const styles = StyleSheet.create({
     marginTop: 36,
     gap: 16,
   },
-  inputCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    height: 64,
-    borderRadius: 22,
-    backgroundColor: "#FFFFFF",
+  inputShellIdle: {
+    borderRadius: 23,
     borderWidth: 1,
-    borderColor: BORDER,
-    paddingHorizontal: 6,
+    borderColor: "#EBEBF0",
     shadowColor: "#0F172A",
     shadowOpacity: 0.04,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 3 },
     elevation: 2,
   },
-  inputCardFocused: {
-    borderColor: GRADIENT_FROM,
+  inputShell: {
+    borderRadius: 23,
+    padding: 1.5,
     shadowColor: GRADIENT_FROM,
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
+    shadowOpacity: 0.14,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 4,
+  },
+  inputCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 64,
+    borderRadius: 21.5,
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 6,
   },
   countrySelector: {
     flexDirection: "row",
