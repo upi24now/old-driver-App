@@ -252,6 +252,7 @@ export default function HomeScreen() {
       pathname: "/active-delivery",
       params: {
         customer:    order.customer,
+        phone:       order.phone,
         parcelType:  order.parcelType,
         parcelEmoji: order.parcelEmoji,
         pickup:      order.pickup,

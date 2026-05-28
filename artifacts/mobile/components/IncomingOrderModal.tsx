@@ -57,6 +57,7 @@ const VIB_PATTERN = [0, 700, 200, 700, 200, 700, 1000];
 export type TestOrder = {
   id: number;
   customer: string;
+  phone: string;       // 10-digit Indian mobile, no country code
   parcelType: string;
   parcelEmoji: string;
   pickup: string;
@@ -72,43 +73,43 @@ export type TestOrder = {
 };
 
 export const TEST_ORDERS: TestOrder[] = [
-  { id: 1, customer: "Rahul Sharma",   parcelType: "Electronics", parcelEmoji: "📱",
+  { id: 1, customer: "Rahul Sharma",   phone: "9876543210", parcelType: "Electronics", parcelEmoji: "📱",
     pickup: "Koramangala 5th Block",    pickupCity: "Bangalore",
     drop: "Indiranagar 100ft Road",     dropCity: "Bangalore",
     distanceKm: 3.2, durationMin: 12, earning: 185, surge: false, weight: "1.2 kg" },
-  { id: 2, customer: "Priya Mehta",    parcelType: "Food",        parcelEmoji: "🍱",
+  { id: 2, customer: "Priya Mehta",    phone: "9845012345", parcelType: "Food",        parcelEmoji: "🍱",
     pickup: "HSR Layout Sector 6",      pickupCity: "Bangalore",
     drop: "Electronic City Phase 1",    dropCity: "Bangalore",
     distanceKm: 8.5, durationMin: 22, earning: 290, surge: true, surgeMultiplier: 1.4, weight: "2.5 kg" },
-  { id: 3, customer: "Arjun Nair",     parcelType: "Documents",   parcelEmoji: "📄",
+  { id: 3, customer: "Arjun Nair",     phone: "9920111222", parcelType: "Documents",   parcelEmoji: "📄",
     pickup: "Andheri West, SV Road",    pickupCity: "Mumbai",
     drop: "Bandra Kurla Complex",       dropCity: "Mumbai",
     distanceKm: 5.1, durationMin: 18, earning: 220, surge: false, weight: "0.5 kg" },
-  { id: 4, customer: "Sunita Reddy",   parcelType: "Grocery",     parcelEmoji: "🛒",
+  { id: 4, customer: "Sunita Reddy",   phone: "9440033044", parcelType: "Grocery",     parcelEmoji: "🛒",
     pickup: "Jubilee Hills Road 36",    pickupCity: "Hyderabad",
     drop: "Gachibowli Financial Dist",  dropCity: "Hyderabad",
     distanceKm: 11.3, durationMin: 28, earning: 340, surge: true, surgeMultiplier: 1.6, weight: "6.0 kg" },
-  { id: 5, customer: "Vikram Patel",   parcelType: "Medicine",    parcelEmoji: "💊",
+  { id: 5, customer: "Vikram Patel",   phone: "9867055678", parcelType: "Medicine",    parcelEmoji: "💊",
     pickup: "Borivali West Station",    pickupCity: "Mumbai",
     drop: "Goregaon East SEEPZ",        dropCity: "Mumbai",
     distanceKm: 4.7, durationMin: 15, earning: 165, surge: false, weight: "0.3 kg" },
-  { id: 6, customer: "Ananya Singh",   parcelType: "Clothing",    parcelEmoji: "👗",
+  { id: 6, customer: "Ananya Singh",   phone: "9810234567", parcelType: "Clothing",    parcelEmoji: "👗",
     pickup: "Lajpat Nagar Market",      pickupCity: "Delhi",
     drop: "Saket Select City Walk",     dropCity: "Delhi",
     distanceKm: 6.8, durationMin: 20, earning: 245, surge: false, weight: "1.8 kg" },
-  { id: 7, customer: "Karthik Rajan",  parcelType: "Electronics", parcelEmoji: "💻",
+  { id: 7, customer: "Karthik Rajan",  phone: "9444456789", parcelType: "Electronics", parcelEmoji: "💻",
     pickup: "Anna Nagar 2nd Avenue",    pickupCity: "Chennai",
     drop: "OMR Perungudi Roundabout",   dropCity: "Chennai",
     distanceKm: 14.2, durationMin: 35, earning: 410, surge: true, surgeMultiplier: 1.3, weight: "3.2 kg" },
-  { id: 8, customer: "Meera Iyer",     parcelType: "Gift",        parcelEmoji: "🎁",
+  { id: 8, customer: "Meera Iyer",     phone: "9822098220", parcelType: "Gift",        parcelEmoji: "🎁",
     pickup: "Viman Nagar Clover Ctr",   pickupCity: "Pune",
     drop: "Hinjewadi Phase 3",          dropCity: "Pune",
     distanceKm: 9.6, durationMin: 25, earning: 305, surge: false, weight: "2.1 kg" },
-  { id: 9, customer: "Rohit Gupta",    parcelType: "Books",       parcelEmoji: "📚",
+  { id: 9, customer: "Rohit Gupta",    phone: "9830099300", parcelType: "Books",       parcelEmoji: "📚",
     pickup: "Salt Lake Sector V",       pickupCity: "Kolkata",
     drop: "Park Street AJC Bose Rd",    dropCity: "Kolkata",
     distanceKm: 7.4, durationMin: 22, earning: 215, surge: false, weight: "4.0 kg" },
-  { id: 10, customer: "Deepa Krishnan",parcelType: "Fragile",     parcelEmoji: "🏺",
+  { id: 10, customer: "Deepa Krishnan",phone: "9886700001", parcelType: "Fragile",     parcelEmoji: "🏺",
     pickup: "MG Road Brigade Road",     pickupCity: "Bangalore",
     drop: "Whitefield Prestige Park",   dropCity: "Bangalore",
     distanceKm: 17.8, durationMin: 42, earning: 520, surge: true, surgeMultiplier: 2.0, weight: "3.5 kg" },
