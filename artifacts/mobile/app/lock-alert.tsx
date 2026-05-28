@@ -184,6 +184,10 @@ export default function LockAlertScreen() {
     require("../assets/ringtone.wav") as Parameters<typeof useAudioPlayer>[0]
   );
 
+  // ─── Button pulse animation (runs while ringtone is active) ─────────────
+  const btnPulse = useRef(new Animated.Value(0)).current;
+  const btnGlow  = useRef(new Animated.Value(0)).current;
+
   // ─── Start ringtone + continuous vibration on mount ──────────────────────
   useEffect(() => {
     // Loop the ringtone for the full 15-second countdown
@@ -193,8 +197,26 @@ export default function LockAlertScreen() {
     // Continuous vibration: 800 ms on, 400 ms off, repeat = true
     Vibration.vibrate([0, 800, 400], true);
 
+    // Pulse animation synced to ~the vibration cadence (1.2 s cycle)
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(btnPulse, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(btnPulse, { toValue: 0, duration: 600, useNativeDriver: true }),
+      ])
+    );
+    const glowLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(btnGlow, { toValue: 1, duration: 700, useNativeDriver: false }),
+        Animated.timing(btnGlow, { toValue: 0, duration: 700, useNativeDriver: false }),
+      ])
+    );
+    pulseLoop.start();
+    glowLoop.start();
+
     return () => {
-      // Stop both when the screen unmounts (accept / reject / timeout)
+      pulseLoop.stop();
+      glowLoop.stop();
+      // Stop ringtone + vibration when screen unmounts (accept / reject / timeout)
       try { player.pause(); } catch {}
       Vibration.cancel();
     };
@@ -358,14 +380,40 @@ export default function LockAlertScreen() {
                 <Feather name="x" size={20} color="#fff" />
                 <Text style={styles.actionText}>Reject</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.actionBtn, styles.acceptBtn]}
-                onPress={onAccept}
-                activeOpacity={0.85}
+
+              {/* Accept — pulsing red gradient, glow synced to ringtone */}
+              <Animated.View
+                style={[
+                  styles.acceptOuter,
+                  {
+                    transform: [{
+                      scale: btnPulse.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [1, 1.035],
+                      }),
+                    }],
+                    shadowOpacity: btnGlow.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.55, 0.95],
+                    }),
+                  },
+                ]}
               >
-                <Feather name="check" size={20} color="#fff" />
-                <Text style={styles.actionText}>Accept</Text>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.acceptInner}
+                  onPress={onAccept}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={["#FF3B30", "#B80016"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={[StyleSheet.absoluteFill, { borderRadius: 14 }]}
+                  />
+                  <Feather name="check" size={20} color="#fff" />
+                  <Text style={styles.actionText}>Accept</Text>
+                </TouchableOpacity>
+              </Animated.View>
             </View>
 
             {/* slide hint */}
@@ -596,13 +644,26 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   rejectBtn: { backgroundColor: "#FF3B30" },
-  acceptBtn: {
-    backgroundColor: "#00C853",
-    shadowColor: "#00C853",
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
+
+  // Accept button — red gradient with pulsing glow
+  acceptOuter: {
+    flex: 1,
+    borderRadius: 14,
+    shadowColor: "#FF3B30",
+    shadowRadius: 16,
     shadowOffset: { width: 0, height: 0 },
+    elevation: 10,
   },
+  acceptInner: {
+    height: 52,
+    borderRadius: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    overflow: "hidden",
+  },
+
   actionText: { color: "#fff", fontSize: 15, fontWeight: "800" },
 
   slideHint: {
