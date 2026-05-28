@@ -98,8 +98,8 @@ export default function LoginScreen() {
                   <View style={[styles.flagBand, { backgroundColor: "#138808" }]} />
                 </View>
                 <Text style={styles.codeText}>{COUNTRY_CODE}</Text>
-                <View style={styles.codeDivider} />
               </View>
+              <View style={styles.codeDivider} />
 
               <TextInput
                 ref={inputRef}
@@ -230,41 +230,45 @@ const styles = StyleSheet.create({
   countryCode: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
     paddingLeft: 16,
-    paddingRight: 12,
+    paddingRight: 10,
     height: "100%",
+    flexShrink: 0,
   },
   flagWrap: {
-    width: 22,
-    height: 16,
-    borderRadius: 2,
+    width: 26,
+    height: 18,
+    borderRadius: 3,
     overflow: "hidden",
     borderWidth: 0.5,
-    borderColor: "#E0E0E0",
+    borderColor: "#D1D5DB",
+    flexDirection: "column",
+    marginRight: 8,
   },
   flagBand: {
     flex: 1,
+    width: "100%",
     alignItems: "center",
     justifyContent: "center",
   },
   flagChakra: {
-    width: 5,
-    height: 5,
+    width: 6,
+    height: 6,
     borderRadius: 3,
-    borderWidth: 0.8,
+    borderWidth: 1,
     borderColor: "#1A237E",
   },
   codeText: {
     fontSize: 17,
-    fontWeight: "700",
+    fontWeight: "800",
     color: TEXT_DARK,
   },
   codeDivider: {
     width: 1,
-    height: 22,
+    height: 28,
     backgroundColor: "#E5E7EB",
-    marginLeft: 8,
+    marginHorizontal: 4,
+    flexShrink: 0,
   },
   phoneInput: {
     flex: 1,
