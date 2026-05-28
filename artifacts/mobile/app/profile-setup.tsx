@@ -1,12 +1,14 @@
 import { Feather } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
 import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -19,21 +21,91 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const CITIES = [
   "Mumbai", "Delhi", "Bangalore", "Hyderabad", "Chennai",
   "Pune", "Kolkata", "Ahmedabad", "Jaipur", "Surat",
 ];
 
-type Field = {
-  name: string;
-  city: string;
-  dob: string;
-  gender: string;
-  vehicleNumber: string;
-  licenseNumber: string;
-};
-
 const GENDERS = ["Male", "Female", "Other"];
+
+// ─── DOB masking ─────────────────────────────────────────────────────────────
+// Formats raw digit input into "DD / MM / YYYY" as the user types.
+// allowsEditing:false means we never hit the Android UCrop bug.
+
+function formatDob(raw: string): string {
+  // Keep only digits, cap at 8 (DDMMYYYY)
+  const d = raw.replace(/\D/g, "").slice(0, 8);
+  if (d.length <= 2) return d;
+  if (d.length <= 4) return `${d.slice(0, 2)} / ${d.slice(2)}`;
+  return `${d.slice(0, 2)} / ${d.slice(2, 4)} / ${d.slice(4)}`;
+}
+
+// ─── Image picker helpers (Expo Go-compatible) ────────────────────────────────
+// allowsEditing: false — prevents Android UCrop activity from silently
+// dropping the result in Expo Go (the #1 cause of "image not returned").
+
+async function requestCamera(): Promise<boolean> {
+  const { status, canAskAgain } = await ImagePicker.requestCameraPermissionsAsync();
+  if (status === "granted") return true;
+  Alert.alert(
+    "Camera permission required",
+    canAskAgain
+      ? "Please allow camera access to take a photo."
+      : "Camera access is blocked. Open Settings → App → Permissions → Camera.",
+    [{ text: "OK" }],
+  );
+  return false;
+}
+
+async function requestGallery(): Promise<boolean> {
+  const { status, canAskAgain } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (status === "granted") return true;
+  Alert.alert(
+    "Photos permission required",
+    canAskAgain
+      ? "Please allow photo library access."
+      : "Photo access is blocked. Open Settings → App → Permissions → Photos.",
+    [{ text: "OK" }],
+  );
+  return false;
+}
+
+async function fromCamera(): Promise<string | null> {
+  if (!(await requestCamera())) return null;
+  try {
+    const r = await ImagePicker.launchCameraAsync({
+      cameraType: ImagePicker.CameraType.front,
+      mediaTypes: ["images"],
+      allowsEditing: false, // ← critical: avoids Android UCrop result-drop bug
+      quality: 0.85,
+    });
+    if (r.canceled || !r.assets?.length) return null;
+    return r.assets[0].uri;
+  } catch {
+    Alert.alert("Camera error", "Could not open camera. Please try again.");
+    return null;
+  }
+}
+
+async function fromGallery(): Promise<string | null> {
+  if (!(await requestGallery())) return null;
+  try {
+    const r = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: false, // ← critical: avoids Android UCrop result-drop bug
+      quality: 0.85,
+    });
+    if (r.canceled || !r.assets?.length) return null;
+    return r.assets[0].uri;
+  } catch {
+    Alert.alert("Gallery error", "Could not open gallery. Please try again.");
+    return null;
+  }
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function StepBar({ step, total }: { step: number; total: number }) {
   const colors = useColors();
@@ -44,10 +116,7 @@ function StepBar({ step, total }: { step: number; total: number }) {
           key={i}
           style={[
             styles.stepSegment,
-            {
-              backgroundColor: i < step ? colors.primary : colors.border,
-              flex: 1,
-            },
+            { backgroundColor: i < step ? colors.primary : colors.border, flex: 1 },
           ]}
         />
       ))}
@@ -121,21 +190,30 @@ function TextFieldInput({
   );
 }
 
-export default function ProfileSetupScreen() {
-  const colors = useColors();
-  const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const scrollRef = useRef<ScrollView>(null);
+// ─── Main screen ──────────────────────────────────────────────────────────────
 
-  const [photo, setPhoto] = useState<string | null>(null);
+type Field = {
+  name: string;
+  city: string;
+  dob: string;
+  gender: string;
+  vehicleNumber: string;
+  licenseNumber: string;
+};
+
+export default function ProfileSetupScreen() {
+  const colors  = useColors();
+  const insets  = useSafeAreaInsets();
+  const router  = useRouter();
+  const scrollRef = useRef<ScrollView>(null);
   const { setProfile } = useDriver();
+
+  const [photo, setPhoto]             = useState<string | null>(null);
+  const [photoLoading, setPhotoLoading] = useState(false);
+
   const [fields, setFields] = useState<Field>({
-    name: "",
-    city: "",
-    dob: "",
-    gender: "",
-    vehicleNumber: "",
-    licenseNumber: "",
+    name: "", city: "", dob: "", gender: "",
+    vehicleNumber: "", licenseNumber: "",
   });
   const [cityOpen, setCityOpen] = useState(false);
 
@@ -143,23 +221,42 @@ export default function ProfileSetupScreen() {
     return (val: string) => setFields((f) => ({ ...f, [key]: val }));
   }
 
-  async function pickPhoto() {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") return;
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-    if (!result.canceled) {
-      setPhoto(result.assets[0].uri);
-    }
+  // DOB: strip non-digits then reformat on every keystroke
+  function handleDobChange(raw: string) {
+    setFields((f) => ({ ...f, dob: formatDob(raw) }));
   }
 
-  const isValid =
-    fields.name.trim().length >= 2 &&
-    fields.city.length > 0;
+  // ── Photo picker ──
+  function handlePickPhoto() {
+    Alert.alert(
+      "Profile Photo",
+      "Choose how to add your photo",
+      [
+        {
+          text: "Take Selfie (Front Camera)",
+          onPress: async () => {
+            setPhotoLoading(true);
+            const uri = await fromCamera();
+            setPhotoLoading(false);
+            if (uri) setPhoto(uri);
+          },
+        },
+        {
+          text: "Choose from Gallery",
+          onPress: async () => {
+            setPhotoLoading(true);
+            const uri = await fromGallery();
+            setPhotoLoading(false);
+            if (uri) setPhoto(uri);
+          },
+        },
+        { text: "Cancel", style: "cancel" },
+      ],
+      { cancelable: true },
+    );
+  }
+
+  const isValid = fields.name.trim().length >= 2 && fields.city.length > 0;
 
   function handleContinue() {
     if (!isValid) return;
@@ -167,12 +264,14 @@ export default function ProfileSetupScreen() {
     router.push("/document-upload");
   }
 
+  // ── Render ──
   return (
     <KeyboardAvoidingView
       style={[styles.root, { backgroundColor: "#fff" }]}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={0}
     >
+      {/* ── Header ── */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <View style={styles.headerTop}>
           <TouchableOpacity
@@ -192,16 +291,27 @@ export default function ProfileSetupScreen() {
         <StepBar step={3} total={3} />
       </View>
 
+      {/* ── Scroll ── */}
       <ScrollView
         ref={scrollRef}
         contentContainerStyle={[styles.scroll, { paddingBottom: 24 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        {/* Profile photo */}
         <View style={styles.photoSection}>
-          <TouchableOpacity onPress={pickPhoto} activeOpacity={0.8} style={styles.photoWrap}>
-            {photo ? (
-              <Image source={{ uri: photo }} style={styles.photoImg} contentFit="cover" />
+          <TouchableOpacity
+            onPress={handlePickPhoto}
+            activeOpacity={0.8}
+            style={styles.photoWrap}
+            disabled={photoLoading}
+          >
+            {photoLoading ? (
+              <View style={[styles.photoPlaceholder, { backgroundColor: colors.muted }]}>
+                <ActivityIndicator size="small" color={colors.primary} />
+              </View>
+            ) : photo ? (
+              <Image source={{ uri: photo }} style={styles.photoImg} contentFit="cover" transition={200} />
             ) : (
               <View style={[styles.photoPlaceholder, { backgroundColor: colors.muted }]}>
                 <Feather name="user" size={36} color={colors.mutedForeground} />
@@ -211,11 +321,26 @@ export default function ProfileSetupScreen() {
               <Feather name="camera" size={14} color="#fff" />
             </View>
           </TouchableOpacity>
+
           <Text style={[styles.photoHint, { color: colors.mutedForeground }]}>
-            Tap to add profile photo
+            {photo ? "Tap to change photo" : "Tap to add profile photo"}
           </Text>
+
+          {/* Source tags */}
+          <View style={styles.photoTags}>
+            <View style={styles.photoTag}>
+              <Feather name="camera" size={9} color="#9CA3AF" />
+              <Text style={styles.photoTagText}>Camera</Text>
+            </View>
+            <View style={styles.photoTagDot} />
+            <View style={styles.photoTag}>
+              <Feather name="image" size={9} color="#9CA3AF" />
+              <Text style={styles.photoTagText}>Gallery</Text>
+            </View>
+          </View>
         </View>
 
+        {/* Form */}
         <View style={styles.form}>
           <FormField label="Full Name" icon="user" required>
             <TextFieldInput
@@ -241,9 +366,7 @@ export default function ProfileSetupScreen() {
               <Text
                 style={[
                   styles.selectText,
-                  {
-                    color: fields.city ? colors.foreground : colors.mutedForeground,
-                  },
+                  { color: fields.city ? colors.foreground : colors.mutedForeground },
                 ]}
               >
                 {fields.city || "Select your city"}
@@ -257,10 +380,7 @@ export default function ProfileSetupScreen() {
 
             {cityOpen && (
               <View
-                style={[
-                  styles.dropdown,
-                  { borderColor: colors.border, backgroundColor: "#fff" },
-                ]}
+                style={[styles.dropdown, { borderColor: colors.border, backgroundColor: "#fff" }]}
               >
                 {CITIES.map((c) => (
                   <TouchableOpacity
@@ -268,22 +388,17 @@ export default function ProfileSetupScreen() {
                     style={[
                       styles.dropdownItem,
                       {
-                        backgroundColor:
-                          fields.city === c ? "#f0fdf4" : "transparent",
+                        backgroundColor: fields.city === c ? "#f0fdf4" : "transparent",
                         borderBottomColor: colors.border,
                       },
                     ]}
-                    onPress={() => {
-                      set("city")(c);
-                      setCityOpen(false);
-                    }}
+                    onPress={() => { set("city")(c); setCityOpen(false); }}
                   >
                     <Text
                       style={[
                         styles.dropdownText,
                         {
-                          color:
-                            fields.city === c ? colors.primary : colors.foreground,
+                          color: fields.city === c ? colors.primary : colors.foreground,
                           fontWeight: fields.city === c ? "700" : "400",
                         },
                       ]}
@@ -299,16 +414,14 @@ export default function ProfileSetupScreen() {
             )}
           </FormField>
 
+          {/* DOB + Gender row */}
           <View style={styles.row}>
             <View style={{ flex: 1 }}>
               <FormField label="Date of Birth" icon="calendar">
-                <TextFieldInput
+                {/* Dedicated DOB input — numeric keyboard, auto-formatted */}
+                <DobInput
                   value={fields.dob}
-                  onChangeText={set("dob")}
-                  placeholder="DD / MM / YYYY"
-                  keyboardType="numeric"
-                  autoCapitalize="none"
-                  maxLength={10}
+                  onChangeText={handleDobChange}
                 />
               </FormField>
             </View>
@@ -321,10 +434,8 @@ export default function ProfileSetupScreen() {
                       style={[
                         styles.genderChip,
                         {
-                          borderColor:
-                            fields.gender === g ? colors.primary : colors.border,
-                          backgroundColor:
-                            fields.gender === g ? "#f0fdf4" : "#fafafa",
+                          borderColor: fields.gender === g ? colors.primary : colors.border,
+                          backgroundColor: fields.gender === g ? "#f0fdf4" : "#fafafa",
                         },
                       ]}
                       onPress={() => set("gender")(g)}
@@ -332,12 +443,7 @@ export default function ProfileSetupScreen() {
                       <Text
                         style={[
                           styles.genderText,
-                          {
-                            color:
-                              fields.gender === g
-                                ? colors.primary
-                                : colors.mutedForeground,
-                          },
+                          { color: fields.gender === g ? colors.primary : colors.mutedForeground },
                         ]}
                       >
                         {g}
@@ -370,7 +476,10 @@ export default function ProfileSetupScreen() {
           </FormField>
 
           <View
-            style={[styles.infoBox, { backgroundColor: "#f0fdf4", borderColor: colors.primary }]}
+            style={[
+              styles.infoBox,
+              { backgroundColor: "#f0fdf4", borderColor: colors.primary },
+            ]}
           >
             <Feather name="info" size={14} color={colors.primary} />
             <Text style={[styles.infoText, { color: colors.foreground }]}>
@@ -380,6 +489,7 @@ export default function ProfileSetupScreen() {
         </View>
       </ScrollView>
 
+      {/* ── Footer ── */}
       <View
         style={[
           styles.footer,
@@ -403,35 +513,70 @@ export default function ProfileSetupScreen() {
           </Text>
         </View>
         <TouchableOpacity
-          style={[
-            styles.continueBtn,
-            { backgroundColor: isValid ? colors.primary : colors.muted },
-          ]}
+          style={[styles.continueBtn, { opacity: isValid ? 1 : 0.45 }]}
           onPress={handleContinue}
           activeOpacity={0.85}
           disabled={!isValid}
         >
-          <Text
-            style={[
-              styles.continueBtnText,
-              { color: isValid ? "#fff" : colors.mutedForeground },
-            ]}
+          <LinearGradient
+            colors={[colors.primary, "#FF6FA8"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.continueGrad}
           >
-            Continue to Dashboard
-          </Text>
-          <Feather
-            name="arrow-right"
-            size={18}
-            color={isValid ? "#fff" : colors.mutedForeground}
-          />
+            <Text style={styles.continueBtnText}>Continue to Dashboard</Text>
+            <Feather name="arrow-right" size={18} color="#fff" />
+          </LinearGradient>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );
 }
 
+// ─── DOB input component ──────────────────────────────────────────────────────
+// Separate component so it can manage its own focus state cleanly.
+// maxLength = 14 → "DD / MM / YYYY"
+
+function DobInput({
+  value,
+  onChangeText,
+}: {
+  value: string;
+  onChangeText: (raw: string) => void;
+}) {
+  const colors = useColors();
+  const [focused, setFocused] = useState(false);
+
+  return (
+    <TextInput
+      style={[
+        styles.textInput,
+        {
+          borderColor: focused ? colors.primary : colors.border,
+          backgroundColor: focused ? "#f8fff8" : "#fafafa",
+          color: colors.foreground,
+          letterSpacing: 0.5,
+        },
+      ]}
+      value={value}
+      onChangeText={onChangeText}
+      placeholder="DD / MM / YYYY"
+      placeholderTextColor={colors.mutedForeground}
+      keyboardType="numeric"
+      autoCapitalize="none"
+      maxLength={14}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+    />
+  );
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
+
+  // Header
   header: {
     paddingHorizontal: 20,
     paddingBottom: 12,
@@ -455,7 +600,8 @@ const styles = StyleSheet.create({
   },
   headerTitle: { alignItems: "center" },
   headerLabel: { fontSize: 16, fontWeight: "700", color: "#0a0a0a" },
-  headerSub: { fontSize: 12 },
+  headerSub:   { fontSize: 12 },
+
   stepBar: {
     flexDirection: "row",
     gap: 5,
@@ -464,14 +610,14 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   stepSegment: { height: 4, borderRadius: 2 },
+
+  // Scroll
   scroll: { paddingHorizontal: 20, paddingTop: 24, gap: 22 },
-  photoSection: { alignItems: "center", gap: 10 },
+
+  // Photo section
+  photoSection: { alignItems: "center", gap: 8 },
   photoWrap: { width: 100, height: 100, position: "relative" },
-  photoImg: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-  },
+  photoImg: { width: 100, height: 100, borderRadius: 50 },
   photoPlaceholder: {
     width: 100,
     height: 100,
@@ -492,10 +638,17 @@ const styles = StyleSheet.create({
     borderColor: "#fff",
   },
   photoHint: { fontSize: 13 },
+  photoTags: { flexDirection: "row", alignItems: "center", gap: 6 },
+  photoTag:  { flexDirection: "row", alignItems: "center", gap: 3 },
+  photoTagText: { fontSize: 10, fontWeight: "500", color: "#9CA3AF" },
+  photoTagDot:  { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "#D1D5DB" },
+
+  // Form
   form: { gap: 18 },
   fieldGroup: { gap: 7 },
   fieldLabelRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   fieldLabel: { fontSize: 12, fontWeight: "600", letterSpacing: 0.2 },
+
   textInput: {
     height: 52,
     borderWidth: 1.5,
@@ -504,6 +657,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "500",
   },
+
+  // City select
   selectInput: {
     height: 52,
     borderWidth: 1.5,
@@ -535,6 +690,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   dropdownText: { fontSize: 14 },
+
+  // Row (DOB + Gender)
   row: { flexDirection: "row", gap: 12 },
   genderRow: { flexDirection: "column", gap: 6 },
   genderChip: {
@@ -546,6 +703,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   genderText: { fontSize: 12, fontWeight: "600" },
+
+  // Info box
   infoBox: {
     flexDirection: "row",
     gap: 10,
@@ -555,25 +714,24 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   infoText: { fontSize: 13, flex: 1, lineHeight: 19 },
+
+  // Footer
   footer: {
     paddingHorizontal: 20,
     paddingTop: 14,
     borderTopWidth: 1,
     gap: 10,
   },
-  footerMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
+  footerMeta: { flexDirection: "row", alignItems: "center", gap: 6 },
   footerMetaText: { fontSize: 12 },
-  continueBtn: {
+  continueBtn: { borderRadius: 15, overflow: "hidden" },
+  continueGrad: {
     height: 56,
-    borderRadius: 15,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
+    borderRadius: 15,
   },
-  continueBtnText: { fontSize: 17, fontWeight: "700" },
+  continueBtnText: { fontSize: 17, fontWeight: "700", color: "#fff" },
 });
