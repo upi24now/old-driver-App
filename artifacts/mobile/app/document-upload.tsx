@@ -1,10 +1,13 @@
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,64 +18,202 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/useColors";
 
-type DocId = "aadhaar" | "license" | "rc";
+// ─── Document spec ──────────────────────────────────────────────
+type DocId = "aadhaar" | "pan" | "license" | "rc" | "selfie";
 
 type DocSpec = {
   id: DocId;
   title: string;
   description: string;
-  icon: string;
+  featherIcon: string;
   hint: string;
+  emoji: string;
+  selfie?: boolean; // opens front camera directly
 };
 
 const DOCS: DocSpec[] = [
   {
+    id: "selfie",
+    title: "Driver Selfie",
+    description: "Clear selfie for identity verification",
+    featherIcon: "camera",
+    hint: "Face clearly visible, neutral background",
+    emoji: "🤳",
+    selfie: true,
+  },
+  {
     id: "aadhaar",
     title: "Aadhaar Card",
-    description: "Government ID for identity verification",
-    icon: "user-check",
-    hint: "Upload clear photo of front side",
+    description: "Government ID — front side",
+    featherIcon: "user-check",
+    hint: "All 12 digits and name must be visible",
+    emoji: "🪪",
+  },
+  {
+    id: "pan",
+    title: "PAN Card",
+    description: "10-digit PAN for earnings & tax",
+    featherIcon: "credit-card",
+    hint: "PAN number and name must be clearly readable",
+    emoji: "💳",
   },
   {
     id: "license",
     title: "Driving License",
-    description: "Valid driving license issued in India",
-    icon: "credit-card",
-    hint: "Both sides preferred, valid expiry",
+    description: "Valid Indian driving license",
+    featherIcon: "award",
+    hint: "Both sides preferred, expiry must be valid",
+    emoji: "🪪",
   },
   {
     id: "rc",
     title: "Vehicle RC",
     description: "Registration Certificate of your vehicle",
-    icon: "file-text",
-    hint: "Clear photo of RC book or card",
+    featherIcon: "file-text",
+    hint: "RC book / smart card — all details visible",
+    emoji: "📄",
   },
 ];
 
 type DocState = {
   uri: string | null;
   uploadedAt: number | null;
+  loading: boolean;
 };
 
-function StatusBadge({ status }: { status: "required" | "uploaded" | "verified" }) {
-  const colors = useColors();
-  const config = {
-    required: { bg: "#fff5e6", color: "#b75d00", label: "Required" },
-    uploaded: { bg: "#e3f2fd", color: "#1565c0", label: "Uploaded" },
-    verified: { bg: "#e8f5e9", color: colors.primary, label: "Verified" },
-  }[status];
+const initialDoc = (): DocState => ({ uri: null, uploadedAt: null, loading: false });
+
+// ─── Permission helpers ─────────────────────────────────────────
+async function ensureCameraPermission(): Promise<boolean> {
+  const { status, canAskAgain } =
+    await ImagePicker.requestCameraPermissionsAsync();
+  if (status === "granted") return true;
+  if (!canAskAgain) {
+    Alert.alert(
+      "Camera access required",
+      "Go to Settings → App → Permissions and enable Camera.",
+      [{ text: "OK" }]
+    );
+    return false;
+  }
+  Alert.alert("Camera permission denied", "Please allow camera access to take a photo.", [
+    { text: "OK" },
+  ]);
+  return false;
+}
+
+async function ensureGalleryPermission(): Promise<boolean> {
+  const { status, canAskAgain } =
+    await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (status === "granted") return true;
+  if (!canAskAgain) {
+    Alert.alert(
+      "Photo library access required",
+      "Go to Settings → App → Permissions and enable Photos.",
+      [{ text: "OK" }]
+    );
+    return false;
+  }
+  Alert.alert("Permission denied", "Please allow photo library access.", [{ text: "OK" }]);
+  return false;
+}
+
+// ─── Image picker helpers ───────────────────────────────────────
+async function captureFromCamera(front = false): Promise<string | null> {
+  const ok = await ensureCameraPermission();
+  if (!ok) return null;
+  try {
+    const result = await ImagePicker.launchCameraAsync({
+      cameraType: front
+        ? ImagePicker.CameraType.front
+        : ImagePicker.CameraType.back,
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: front ? [1, 1] : [4, 3],
+      quality: 0.85,
+    });
+    if (result.canceled || !result.assets?.length) return null;
+    return result.assets[0].uri;
+  } catch {
+    Alert.alert("Camera error", "Could not open camera. Try again.");
+    return null;
+  }
+}
+
+async function pickFromGallery(): Promise<string | null> {
+  const ok = await ensureGalleryPermission();
+  if (!ok) return null;
+  try {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.85,
+    });
+    if (result.canceled || !result.assets?.length) return null;
+    return result.assets[0].uri;
+  } catch {
+    Alert.alert("Gallery error", "Could not open gallery. Try again.");
+    return null;
+  }
+}
+
+// ─── Picker sheet ───────────────────────────────────────────────
+function showPickerSheet(
+  isSelfie: boolean,
+  onCamera: () => void,
+  onGallery: () => void
+) {
+  const cameraLabel = isSelfie ? "Take Selfie" : "Take Photo";
+  if (Platform.OS === "ios") {
+    // On iOS use ActionSheetIOS for native feel
+    const { ActionSheetIOS } = require("react-native");
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        options: [cameraLabel, "Choose from Gallery", "Cancel"],
+        cancelButtonIndex: 2,
+      },
+      (i: number) => {
+        if (i === 0) onCamera();
+        if (i === 1) onGallery();
+      }
+    );
+  } else {
+    Alert.alert(
+      isSelfie ? "Take Selfie" : "Upload Document",
+      "Choose how to add your photo",
+      [
+        { text: cameraLabel, onPress: onCamera },
+        { text: "Choose from Gallery", onPress: onGallery },
+        { text: "Cancel", style: "cancel" },
+      ]
+    );
+  }
+}
+
+// ─── Status badge ───────────────────────────────────────────────
+function StatusBadge({ uploaded }: { uploaded: boolean }) {
   return (
-    <View style={[styles.badge, { backgroundColor: config.bg }]}>
-      {status === "verified" && (
-        <Feather name="check-circle" size={10} color={config.color} />
-      )}
-      <Text style={[styles.badgeText, { color: config.color }]}>
-        {config.label}
+    <View
+      style={[
+        styles.badge,
+        { backgroundColor: uploaded ? "#e8f5e9" : "#fff5e6" },
+      ]}
+    >
+      {uploaded && <Feather name="check-circle" size={10} color="#00C853" />}
+      <Text
+        style={[
+          styles.badgeText,
+          { color: uploaded ? "#00C853" : "#b75d00" },
+        ]}
+      >
+        {uploaded ? "Uploaded" : "Required"}
       </Text>
     </View>
   );
 }
 
+// ─── Document card ──────────────────────────────────────────────
 function DocumentCard({
   doc,
   state,
@@ -92,25 +233,20 @@ function DocumentCard({
       style={[
         styles.card,
         {
-          borderColor: uploaded ? colors.primary : colors.border,
+          borderColor: uploaded ? "#00C853" : colors.border,
           backgroundColor: "#fff",
         },
       ]}
     >
+      {/* Card header */}
       <View style={styles.cardHeader}>
         <View
           style={[
-            styles.docIcon,
-            {
-              backgroundColor: uploaded ? "#f0fdf4" : "#f5f5f5",
-            },
+            styles.docIconWrap,
+            { backgroundColor: uploaded ? "#f0fdf4" : "#f5f5f5" },
           ]}
         >
-          <Feather
-            name={doc.icon as any}
-            size={20}
-            color={uploaded ? colors.primary : "#666"}
-          />
+          <Text style={styles.docEmoji}>{doc.emoji}</Text>
         </View>
         <View style={styles.cardHeaderText}>
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>
@@ -120,125 +256,166 @@ function DocumentCard({
             {doc.description}
           </Text>
         </View>
-        <StatusBadge status={uploaded ? "uploaded" : "required"} />
+        <StatusBadge uploaded={uploaded} />
       </View>
 
-      {uploaded ? (
-        <View style={styles.previewWrap}>
+      {/* Preview or upload zone */}
+      {state.loading ? (
+        <View style={styles.loadingZone}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
+            Processing image…
+          </Text>
+        </View>
+      ) : uploaded ? (
+        <View style={[styles.previewWrap, doc.selfie && styles.previewWrapSelfie]}>
           <Image
             source={{ uri: state.uri! }}
             style={styles.previewImage}
-            contentFit="cover"
+            contentFit={doc.selfie ? "cover" : "cover"}
+            transition={200}
           />
-          <View style={styles.previewOverlay}>
-            <View style={styles.previewMeta}>
-              <Feather name="check-circle" size={14} color={colors.primary} />
-              <Text style={styles.previewMetaText}>
-                Uploaded just now
-              </Text>
-            </View>
-            <View style={styles.previewActions}>
-              <TouchableOpacity
-                style={[styles.smallBtn, { backgroundColor: "#fff" }]}
-                onPress={onUpload}
-                activeOpacity={0.8}
-              >
-                <Feather name="refresh-cw" size={12} color="#0a0a0a" />
-                <Text style={styles.smallBtnText}>Replace</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.smallBtn, { backgroundColor: "#fff" }]}
-                onPress={onRemove}
-                activeOpacity={0.8}
-              >
-                <Feather name="trash-2" size={12} color={colors.destructive} />
-                <Text style={[styles.smallBtnText, { color: colors.destructive }]}>
-                  Remove
-                </Text>
-              </TouchableOpacity>
-            </View>
+          {/* Green success banner */}
+          <View style={styles.previewBanner}>
+            <Feather name="check-circle" size={13} color="#fff" />
+            <Text style={styles.previewBannerText}>
+              {doc.selfie ? "Selfie captured" : "Document uploaded"}
+            </Text>
+            <View style={{ flex: 1 }} />
+            <TouchableOpacity
+              style={styles.previewActionBtn}
+              onPress={onUpload}
+              activeOpacity={0.8}
+            >
+              <Feather name="refresh-cw" size={11} color="#fff" />
+              <Text style={styles.previewActionText}>Retake</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.previewActionBtn, styles.previewActionDanger]}
+              onPress={onRemove}
+              activeOpacity={0.8}
+            >
+              <Feather name="trash-2" size={11} color="#FF3B30" />
+            </TouchableOpacity>
           </View>
         </View>
       ) : (
-        <TouchableOpacity
-          style={[
-            styles.uploadZone,
-            { borderColor: colors.border },
-          ]}
-          onPress={onUpload}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.uploadIconCircle, { backgroundColor: "#f0fdf4" }]}>
-            <Feather name="upload-cloud" size={22} color={colors.primary} />
-          </View>
-          <Text style={[styles.uploadTitle, { color: colors.foreground }]}>
-            Tap to upload
-          </Text>
+        /* Upload zone */
+        <View style={styles.uploadZoneWrap}>
+          {/* Camera button — primary */}
+          <TouchableOpacity
+            style={[styles.uploadPrimaryBtn, { borderColor: colors.primary }]}
+            onPress={onUpload}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={["#00C853", "#00E676"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.uploadPrimaryGrad}
+            >
+              <Feather
+                name={doc.selfie ? "camera" : "camera"}
+                size={18}
+                color="#fff"
+              />
+              <Text style={styles.uploadPrimaryText}>
+                {doc.selfie ? "Take Selfie" : "Take Photo / Upload"}
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
           <Text style={[styles.uploadHint, { color: colors.mutedForeground }]}>
             {doc.hint}
           </Text>
-          <View style={styles.uploadMethodRow}>
-            <View style={styles.uploadMethod}>
-              <Feather name="camera" size={11} color={colors.mutedForeground} />
-              <Text style={[styles.uploadMethodText, { color: colors.mutedForeground }]}>
-                Camera
-              </Text>
+
+          <View style={styles.uploadTagRow}>
+            <View style={styles.uploadTag}>
+              <Feather name="camera" size={9} color="#6B7280" />
+              <Text style={styles.uploadTagText}>Camera</Text>
             </View>
-            <View style={[styles.uploadDot, { backgroundColor: colors.border }]} />
-            <View style={styles.uploadMethod}>
-              <Feather name="image" size={11} color={colors.mutedForeground} />
-              <Text style={[styles.uploadMethodText, { color: colors.mutedForeground }]}>
-                Gallery
-              </Text>
+            {!doc.selfie && (
+              <>
+                <View style={styles.uploadTagDot} />
+                <View style={styles.uploadTag}>
+                  <Feather name="image" size={9} color="#6B7280" />
+                  <Text style={styles.uploadTagText}>Gallery</Text>
+                </View>
+              </>
+            )}
+            <View style={styles.uploadTagDot} />
+            <View style={styles.uploadTag}>
+              <Feather name="lock" size={9} color="#6B7280" />
+              <Text style={styles.uploadTagText}>Encrypted</Text>
             </View>
-            <View style={[styles.uploadDot, { backgroundColor: colors.border }]} />
-            <Text style={[styles.uploadMethodText, { color: colors.mutedForeground }]}>
-              JPG, PNG • 5MB
-            </Text>
           </View>
-        </TouchableOpacity>
+        </View>
       )}
     </View>
   );
 }
 
+// ─── Main screen ────────────────────────────────────────────────
 export default function DocumentUploadScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
   const [docs, setDocs] = useState<Record<DocId, DocState>>({
-    aadhaar: { uri: null, uploadedAt: null },
-    license: { uri: null, uploadedAt: null },
-    rc: { uri: null, uploadedAt: null },
+    selfie:  initialDoc(),
+    aadhaar: initialDoc(),
+    pan:     initialDoc(),
+    license: initialDoc(),
+    rc:      initialDoc(),
   });
 
-  async function pickFor(id: DocId) {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Please allow photo access to upload.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      quality: 0.8,
-    });
-    if (!result.canceled) {
-      setDocs((d) => ({
-        ...d,
-        [id]: { uri: result.assets[0].uri, uploadedAt: Date.now() },
-      }));
-    }
+  function setLoading(id: DocId, loading: boolean) {
+    setDocs((d) => ({ ...d, [id]: { ...d[id], loading } }));
+  }
+
+  function setUri(id: DocId, uri: string) {
+    setDocs((d) => ({
+      ...d,
+      [id]: { uri, uploadedAt: Date.now(), loading: false },
+    }));
   }
 
   function removeDoc(id: DocId) {
-    setDocs((d) => ({ ...d, [id]: { uri: null, uploadedAt: null } }));
+    setDocs((d) => ({ ...d, [id]: initialDoc() }));
+  }
+
+  async function handleUpload(doc: DocSpec) {
+    if (doc.selfie) {
+      // Selfie → go straight to front camera, no sheet
+      setLoading(doc.id, true);
+      const uri = await captureFromCamera(true);
+      if (uri) setUri(doc.id, uri);
+      else setLoading(doc.id, false);
+      return;
+    }
+
+    // Other docs → offer camera or gallery
+    showPickerSheet(
+      false,
+      async () => {
+        setLoading(doc.id, true);
+        const uri = await captureFromCamera(false);
+        if (uri) setUri(doc.id, uri);
+        else setLoading(doc.id, false);
+      },
+      async () => {
+        setLoading(doc.id, true);
+        const uri = await pickFromGallery();
+        if (uri) setUri(doc.id, uri);
+        else setLoading(doc.id, false);
+      }
+    );
   }
 
   const uploadedCount = Object.values(docs).filter((d) => d.uri).length;
-  const progress = uploadedCount / DOCS.length;
-  const allUploaded = uploadedCount === DOCS.length;
+  const totalDocs     = DOCS.length;
+  const progress      = uploadedCount / totalDocs;
+  const allUploaded   = uploadedCount === totalDocs;
 
   function handleSubmit() {
     if (!allUploaded) return;
@@ -247,6 +424,7 @@ export default function DocumentUploadScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
+      {/* ── Header ── */}
       <View
         style={[
           styles.header,
@@ -263,91 +441,83 @@ export default function DocumentUploadScreen() {
           <View style={styles.headerTitle}>
             <Text style={styles.headerLabel}>Upload Documents</Text>
             <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
-              Verification required to go online
+              Step 4 · Verification
             </Text>
           </View>
           <View style={{ width: 38 }} />
         </View>
 
+        {/* Progress */}
         <View style={styles.progressRow}>
-          <View
-            style={[styles.progressTrack, { backgroundColor: colors.border }]}
-          >
+          <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
             <View
               style={[
                 styles.progressFill,
                 {
-                  backgroundColor: colors.primary,
-                  width: `${Math.max(progress * 100, 4)}%`,
+                  backgroundColor: "#00C853",
+                  width: `${Math.max(progress * 100, 3)}%`,
                 },
               ]}
             />
           </View>
           <Text style={[styles.progressLabel, { color: colors.foreground }]}>
-            {uploadedCount}/{DOCS.length}
+            {uploadedCount}/{totalDocs}
           </Text>
         </View>
       </View>
 
+      {/* ── Scrollable content ── */}
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: 24 }]}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: insets.bottom + 110 },
+        ]}
         showsVerticalScrollIndicator={false}
       >
-        <View
-          style={[
-            styles.infoBanner,
-            { backgroundColor: "#f0fdf4", borderColor: colors.primary },
-          ]}
-        >
-          <View
-            style={[
-              styles.infoIconWrap,
-              { backgroundColor: "rgba(0, 200, 83, 0.15)" },
-            ]}
-          >
-            <Feather name="shield" size={16} color={colors.primary} />
+        {/* Security banner */}
+        <View style={styles.banner}>
+          <View style={styles.bannerIconWrap}>
+            <Feather name="shield" size={16} color="#00C853" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.infoTitle, { color: colors.foreground }]}>
+            <Text style={[styles.bannerTitle, { color: colors.foreground }]}>
               Your documents are safe
             </Text>
-            <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
-              Encrypted end-to-end. Only used for driver verification.
+            <Text style={[styles.bannerSub, { color: colors.mutedForeground }]}>
+              End-to-end encrypted · Used only for driver verification
             </Text>
           </View>
         </View>
 
+        {/* Document cards */}
         <View style={styles.docsList}>
           {DOCS.map((doc) => (
             <DocumentCard
               key={doc.id}
               doc={doc}
               state={docs[doc.id]}
-              onUpload={() => pickFor(doc.id)}
+              onUpload={() => handleUpload(doc)}
               onRemove={() => removeDoc(doc.id)}
             />
           ))}
         </View>
 
-        <View
-          style={[
-            styles.tipBox,
-            { backgroundColor: "#fff", borderColor: colors.border },
-          ]}
-        >
-          <Text style={[styles.tipTitle, { color: colors.foreground }]}>
-            Tips for a clear photo
-          </Text>
+        {/* Tips */}
+        <View style={[styles.tipBox, { backgroundColor: "#fff", borderColor: colors.border }]}>
+          <View style={styles.tipHeader}>
+            <Feather name="info" size={14} color={colors.mutedForeground} />
+            <Text style={[styles.tipTitle, { color: colors.foreground }]}>
+              Tips for a clear photo
+            </Text>
+          </View>
           {[
-            "Place document on a flat, dark surface",
-            "Make sure all corners are visible",
-            "Avoid glare and shadows",
-            "Text should be readable",
+            "Place document on flat, dark surface",
+            "All 4 corners must be visible",
+            "Avoid glare, shadows, and blur",
+            "All text must be clearly readable",
           ].map((tip) => (
             <View key={tip} style={styles.tipRow}>
-              <View
-                style={[styles.tipDot, { backgroundColor: colors.primary }]}
-              />
+              <View style={[styles.tipDot, { backgroundColor: "#00C853" }]} />
               <Text style={[styles.tipText, { color: colors.mutedForeground }]}>
                 {tip}
               </Text>
@@ -356,6 +526,7 @@ export default function DocumentUploadScreen() {
         </View>
       </ScrollView>
 
+      {/* ── Sticky footer ── */}
       <View
         style={[
           styles.footer,
@@ -370,44 +541,43 @@ export default function DocumentUploadScreen() {
           <Feather
             name={allUploaded ? "check-circle" : "info"}
             size={13}
-            color={allUploaded ? colors.primary : colors.mutedForeground}
+            color={allUploaded ? "#00C853" : colors.mutedForeground}
           />
           <Text style={[styles.footerHintText, { color: colors.mutedForeground }]}>
             {allUploaded
               ? "All documents uploaded. Ready to submit."
-              : `Upload ${DOCS.length - uploadedCount} more document${DOCS.length - uploadedCount > 1 ? "s" : ""} to continue.`}
+              : `${totalDocs - uploadedCount} more document${totalDocs - uploadedCount > 1 ? "s" : ""} needed.`}
           </Text>
         </View>
+
         <TouchableOpacity
           style={[
             styles.submitBtn,
-            { backgroundColor: allUploaded ? colors.primary : colors.muted },
+            { opacity: allUploaded ? 1 : 0.5 },
           ]}
           onPress={handleSubmit}
           activeOpacity={0.85}
           disabled={!allUploaded}
         >
-          <Text
-            style={[
-              styles.submitBtnText,
-              { color: allUploaded ? "#fff" : colors.mutedForeground },
-            ]}
+          <LinearGradient
+            colors={["#00C853", "#00E676"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.submitGrad}
           >
-            Submit for Verification
-          </Text>
-          <Feather
-            name="arrow-right"
-            size={18}
-            color={allUploaded ? "#fff" : colors.mutedForeground}
-          />
+            <Text style={styles.submitBtnText}>Submit for Verification</Text>
+            <Feather name="arrow-right" size={18} color="#fff" />
+          </LinearGradient>
         </TouchableOpacity>
       </View>
     </View>
   );
 }
 
+// ─── Styles ─────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   root: { flex: 1 },
+
   header: {
     paddingHorizontal: 20,
     paddingBottom: 14,
@@ -430,68 +600,55 @@ const styles = StyleSheet.create({
   },
   headerTitle: { alignItems: "center" },
   headerLabel: { fontSize: 16, fontWeight: "700", color: "#0a0a0a" },
-  headerSub: { fontSize: 12 },
+  headerSub: { fontSize: 12, marginTop: 1 },
 
-  progressRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  progressTrack: {
-    flex: 1,
-    height: 6,
-    borderRadius: 3,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    borderRadius: 3,
-  },
-  progressLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-  },
+  progressRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  progressTrack: { flex: 1, height: 6, borderRadius: 3, overflow: "hidden" },
+  progressFill: { height: "100%", borderRadius: 3 },
+  progressLabel: { fontSize: 12, fontWeight: "700" },
 
-  scroll: { paddingHorizontal: 16, paddingTop: 16, gap: 14 },
+  scroll: { paddingHorizontal: 16, paddingTop: 14, gap: 14 },
 
-  infoBanner: {
+  banner: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
+    borderColor: "#b9f6ca",
+    backgroundColor: "#f0fdf4",
   },
-  infoIconWrap: {
+  bannerIconWrap: {
     width: 36,
     height: 36,
     borderRadius: 18,
+    backgroundColor: "rgba(0,200,83,0.15)",
     alignItems: "center",
     justifyContent: "center",
   },
-  infoTitle: { fontSize: 13, fontWeight: "700" },
-  infoText: { fontSize: 12, marginTop: 2 },
+  bannerTitle: { fontSize: 13, fontWeight: "700" },
+  bannerSub: { fontSize: 11, marginTop: 2 },
 
   docsList: { gap: 12 },
 
+  // Card
   card: {
     borderRadius: 16,
     borderWidth: 1.5,
     padding: 14,
-    gap: 14,
-  },
-  cardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
     gap: 12,
+    backgroundColor: "#fff",
   },
-  docIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
+  cardHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
+  docIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
+  docEmoji: { fontSize: 22 },
   cardHeaderText: { flex: 1, gap: 2 },
   cardTitle: { fontSize: 15, fontWeight: "700" },
   cardDesc: { fontSize: 12 },
@@ -504,87 +661,97 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 8,
   },
-  badgeText: { fontSize: 10, fontWeight: "700", letterSpacing: 0.3 },
+  badgeText: { fontSize: 10, fontWeight: "700", letterSpacing: 0.2 },
 
-  uploadZone: {
+  // Upload zone
+  uploadZoneWrap: {
     borderWidth: 1.5,
     borderStyle: "dashed",
-    borderRadius: 12,
-    paddingVertical: 22,
+    borderRadius: 14,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#fafafa",
+    paddingVertical: 16,
     paddingHorizontal: 14,
     alignItems: "center",
-    gap: 6,
-    backgroundColor: "#fafafa",
+    gap: 10,
   },
-  uploadIconCircle: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
+  uploadPrimaryBtn: {
+    width: "100%",
+    borderRadius: 12,
+    overflow: "hidden",
+    borderWidth: 0,
   },
-  uploadTitle: { fontSize: 14, fontWeight: "700" },
-  uploadHint: { fontSize: 12, textAlign: "center" },
-  uploadMethodRow: {
+  uploadPrimaryGrad: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 8,
-    marginTop: 4,
+    paddingVertical: 14,
+    borderRadius: 12,
   },
-  uploadMethod: { flexDirection: "row", alignItems: "center", gap: 4 },
-  uploadMethodText: { fontSize: 11, fontWeight: "500" },
-  uploadDot: { width: 3, height: 3, borderRadius: 1.5 },
+  uploadPrimaryText: { fontSize: 15, fontWeight: "700", color: "#fff" },
+  uploadHint: { fontSize: 12, textAlign: "center" },
+  uploadTagRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  uploadTag: { flexDirection: "row", alignItems: "center", gap: 3 },
+  uploadTagText: { fontSize: 10, fontWeight: "500", color: "#6B7280" },
+  uploadTagDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "#D1D5DB" },
 
+  // Loading
+  loadingZone: {
+    height: 100,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    borderRadius: 12,
+    backgroundColor: "#f9fafb",
+    borderWidth: 1,
+    borderColor: "#F0F0F0",
+  },
+  loadingText: { fontSize: 13, fontWeight: "600" },
+
+  // Preview
   previewWrap: {
     borderRadius: 12,
     overflow: "hidden",
-    position: "relative",
-    aspectRatio: 16 / 10,
+    aspectRatio: 16 / 9,
     backgroundColor: "#f5f5f5",
   },
+  previewWrapSelfie: { aspectRatio: 1 },
   previewImage: { width: "100%", height: "100%" },
-  previewOverlay: {
+  previewBanner: {
     position: "absolute",
+    bottom: 0,
     left: 0,
     right: 0,
-    bottom: 0,
-    padding: 10,
-    backgroundColor: "rgba(0, 0, 0, 0.55)",
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    backgroundColor: "rgba(0,0,0,0.6)",
   },
-  previewMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    flex: 1,
-  },
-  previewMetaText: { fontSize: 12, fontWeight: "600", color: "#fff" },
-  previewActions: { flexDirection: "row", gap: 6 },
-  smallBtn: {
+  previewBannerText: { fontSize: 12, fontWeight: "600", color: "#fff" },
+  previewActionBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     borderRadius: 7,
   },
-  smallBtnText: { fontSize: 11, fontWeight: "700", color: "#0a0a0a" },
+  previewActionDanger: { backgroundColor: "rgba(255,59,48,0.18)" },
+  previewActionText: { fontSize: 11, fontWeight: "700", color: "#fff" },
 
-  tipBox: {
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 14,
-    gap: 8,
-  },
-  tipTitle: { fontSize: 13, fontWeight: "700", marginBottom: 2 },
+  // Tips
+  tipBox: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 8 },
+  tipHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 2 },
+  tipTitle: { fontSize: 13, fontWeight: "700" },
   tipRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   tipDot: { width: 4, height: 4, borderRadius: 2 },
   tipText: { fontSize: 12 },
 
+  // Footer
   footer: {
     paddingHorizontal: 20,
     paddingTop: 14,
@@ -593,13 +760,14 @@ const styles = StyleSheet.create({
   },
   footerHint: { flexDirection: "row", alignItems: "center", gap: 6 },
   footerHintText: { fontSize: 12 },
-  submitBtn: {
+  submitBtn: { borderRadius: 15, overflow: "hidden" },
+  submitGrad: {
     height: 56,
-    borderRadius: 15,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
+    borderRadius: 15,
   },
-  submitBtnText: { fontSize: 17, fontWeight: "700" },
+  submitBtnText: { fontSize: 17, fontWeight: "700", color: "#fff" },
 });
