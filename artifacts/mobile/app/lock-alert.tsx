@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import { useAudioPlayer } from "expo-audio";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -8,6 +9,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  Vibration,
   View,
 } from "react-native";
 import Svg, { Path, Rect } from "react-native-svg";
@@ -175,6 +177,32 @@ export default function LockAlertScreen() {
 
   const ride = incomingRide;
 
+  // ─── Ringtone ───────────────────────────────────────────────────────────────
+  // useAudioPlayer creates a stable player instance for the bundled ringtone.
+  const player = useAudioPlayer(
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("../assets/ringtone.wav") as Parameters<typeof useAudioPlayer>[0]
+  );
+
+  // ─── Start ringtone + continuous vibration on mount ──────────────────────
+  useEffect(() => {
+    // Loop the ringtone for the full 15-second countdown
+    player.loop = true;
+    try { player.play(); } catch { /* silently ignore if audio unavailable */ }
+
+    // Continuous vibration: 800 ms on, 400 ms off, repeat = true
+    Vibration.vibrate([0, 800, 400], true);
+
+    return () => {
+      // Stop both when the screen unmounts (accept / reject / timeout)
+      try { player.pause(); } catch {}
+      Vibration.cancel();
+    };
+  // player ref is stable — no deps needed
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ─── Auto-reject after countdown ─────────────────────────────────────────
   useEffect(() => {
     const t = setTimeout(() => {
       if (incomingRide) {
@@ -193,11 +221,20 @@ export default function LockAlertScreen() {
     day: "numeric",
   });
 
+  // Stop ringtone + vibration immediately on user action (don't wait for
+  // the unmount cleanup — router.replace/back is async)
+  function stopAlert() {
+    try { player.pause(); } catch {}
+    Vibration.cancel();
+  }
+
   function onAccept() {
+    stopAlert();
     acceptRide();
     router.replace("/trip/active");
   }
   function onReject() {
+    stopAlert();
     rejectRide();
     router.back();
   }
