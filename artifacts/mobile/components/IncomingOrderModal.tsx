@@ -1,56 +1,57 @@
 /**
- * IncomingOrderModal — Multi-order swipeable slider
+ * IncomingOrderModal — Premium 3D Multi-Order Slider
  *
- * Shows 3 nearby delivery requests in a compact horizontal carousel.
- * Driver can compare orders, swipe between them, and accept the best one.
+ * Fast, live, urgent, 3D — Uber Driver × Porter × fintech energy.
  *
- *  • Animated.ScrollView with snap-to-card + center-card scale-up
- *  • Shared 15-second countdown on each card
- *  • Per-card decline (removes card from pool)
- *  • Accept navigates to active-delivery
- *  • expo-audio looping ringtone + Vibration repeating pattern
- *  • "Tap card to expand" reveals extra details
+ * SPEED:   Sheet snaps in with spring(friction:5, tension:160).
+ *          Backdrop fades in 120ms. Cards are rendered instantly.
+ *
+ * 3D:      Active card scale 0.86→1.0→0.86 + rotateY tilt.
+ *          Layered neon shadow driven by scroll position.
+ *          Floating glass card header with inner highlight stripe.
+ *
+ * URGENCY: Burst ring expands + fades on every new order.
+ *          Breathing neon glow at sheet top edge.
+ *          Pulsing accept button with outer glow ring.
+ *          Animated countdown ring with color-coded urgency.
  */
 
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import {
   Animated,
   Dimensions,
+  Easing,
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   Vibration,
   View,
 } from "react-native";
-import Svg, { Circle } from "react-native-svg";
+import Svg, { Circle, Defs, RadialGradient, Stop } from "react-native-svg";
 
 // ─── Brand ────────────────────────────────────────────────────────────────────
 const PINK   = "#FF4D8D";
 const ORANGE = "#FF7A3D";
 const GREEN  = "#00C853";
-const RED    = "#FF3B30";
-const NAVY   = "#111827";
+const RED    = "#EF4444";
+const NAVY   = "#0F172A";
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 const { width: SCREEN_W } = Dimensions.get("window");
-const CARD_W      = Math.round(SCREEN_W * 0.75);
-const CARD_GAP    = 12;
-const SNAP        = CARD_W + CARD_GAP;
-const SIDE_PAD    = (SCREEN_W - CARD_W) / 2;
+const CARD_W   = Math.round(SCREEN_W * 0.76);
+const CARD_GAP = 10;
+const SNAP     = CARD_W + CARD_GAP;
+const SIDE_PAD = (SCREEN_W - CARD_W) / 2;
 
-// ─── Countdown ────────────────────────────────────────────────────────────────
 const COUNTDOWN   = 15;
-
-// ─── Vibration pattern (repeating) ───────────────────────────────────────────
-const VIB_PATTERN = [0, 600, 220, 600, 220, 600, 900];
+const VIB_PATTERN = [0, 700, 200, 700, 200, 700, 1000];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type TestOrder = {
@@ -71,100 +72,193 @@ export type TestOrder = {
 };
 
 export const TEST_ORDERS: TestOrder[] = [
-  { id:  1, customer: "Rahul Sharma",   parcelType: "Electronics", parcelEmoji: "📱",
-    pickup: "Koramangala 5th Block",  pickupCity: "Bangalore",
-    drop: "Indiranagar 100ft Road",   dropCity: "Bangalore",
+  { id: 1, customer: "Rahul Sharma",   parcelType: "Electronics", parcelEmoji: "📱",
+    pickup: "Koramangala 5th Block",    pickupCity: "Bangalore",
+    drop: "Indiranagar 100ft Road",     dropCity: "Bangalore",
     distanceKm: 3.2, durationMin: 12, earning: 185, surge: false, weight: "1.2 kg" },
-  { id:  2, customer: "Priya Mehta",    parcelType: "Food",        parcelEmoji: "🍱",
-    pickup: "HSR Layout Sector 6",    pickupCity: "Bangalore",
-    drop: "Electronic City Phase 1",  dropCity: "Bangalore",
+  { id: 2, customer: "Priya Mehta",    parcelType: "Food",        parcelEmoji: "🍱",
+    pickup: "HSR Layout Sector 6",      pickupCity: "Bangalore",
+    drop: "Electronic City Phase 1",    dropCity: "Bangalore",
     distanceKm: 8.5, durationMin: 22, earning: 290, surge: true, surgeMultiplier: 1.4, weight: "2.5 kg" },
-  { id:  3, customer: "Arjun Nair",     parcelType: "Documents",   parcelEmoji: "📄",
-    pickup: "Andheri West, SV Road",  pickupCity: "Mumbai",
-    drop: "Bandra Kurla Complex",     dropCity: "Mumbai",
+  { id: 3, customer: "Arjun Nair",     parcelType: "Documents",   parcelEmoji: "📄",
+    pickup: "Andheri West, SV Road",    pickupCity: "Mumbai",
+    drop: "Bandra Kurla Complex",       dropCity: "Mumbai",
     distanceKm: 5.1, durationMin: 18, earning: 220, surge: false, weight: "0.5 kg" },
-  { id:  4, customer: "Sunita Reddy",   parcelType: "Grocery",     parcelEmoji: "🛒",
-    pickup: "Jubilee Hills Road 36",  pickupCity: "Hyderabad",
-    drop: "Gachibowli Financial Dist",dropCity: "Hyderabad",
+  { id: 4, customer: "Sunita Reddy",   parcelType: "Grocery",     parcelEmoji: "🛒",
+    pickup: "Jubilee Hills Road 36",    pickupCity: "Hyderabad",
+    drop: "Gachibowli Financial Dist",  dropCity: "Hyderabad",
     distanceKm: 11.3, durationMin: 28, earning: 340, surge: true, surgeMultiplier: 1.6, weight: "6.0 kg" },
-  { id:  5, customer: "Vikram Patel",   parcelType: "Medicine",    parcelEmoji: "💊",
-    pickup: "Borivali West Station",  pickupCity: "Mumbai",
-    drop: "Goregaon East SEEPZ",      dropCity: "Mumbai",
+  { id: 5, customer: "Vikram Patel",   parcelType: "Medicine",    parcelEmoji: "💊",
+    pickup: "Borivali West Station",    pickupCity: "Mumbai",
+    drop: "Goregaon East SEEPZ",        dropCity: "Mumbai",
     distanceKm: 4.7, durationMin: 15, earning: 165, surge: false, weight: "0.3 kg" },
-  { id:  6, customer: "Ananya Singh",   parcelType: "Clothing",    parcelEmoji: "👗",
-    pickup: "Lajpat Nagar Market",    pickupCity: "Delhi",
-    drop: "Saket Select City Walk",   dropCity: "Delhi",
+  { id: 6, customer: "Ananya Singh",   parcelType: "Clothing",    parcelEmoji: "👗",
+    pickup: "Lajpat Nagar Market",      pickupCity: "Delhi",
+    drop: "Saket Select City Walk",     dropCity: "Delhi",
     distanceKm: 6.8, durationMin: 20, earning: 245, surge: false, weight: "1.8 kg" },
-  { id:  7, customer: "Karthik Rajan",  parcelType: "Electronics", parcelEmoji: "💻",
-    pickup: "Anna Nagar 2nd Avenue",  pickupCity: "Chennai",
-    drop: "OMR Perungudi Roundabout", dropCity: "Chennai",
+  { id: 7, customer: "Karthik Rajan",  parcelType: "Electronics", parcelEmoji: "💻",
+    pickup: "Anna Nagar 2nd Avenue",    pickupCity: "Chennai",
+    drop: "OMR Perungudi Roundabout",   dropCity: "Chennai",
     distanceKm: 14.2, durationMin: 35, earning: 410, surge: true, surgeMultiplier: 1.3, weight: "3.2 kg" },
-  { id:  8, customer: "Meera Iyer",     parcelType: "Gift",        parcelEmoji: "🎁",
-    pickup: "Viman Nagar Clover Ctr", pickupCity: "Pune",
-    drop: "Hinjewadi Phase 3",        dropCity: "Pune",
+  { id: 8, customer: "Meera Iyer",     parcelType: "Gift",        parcelEmoji: "🎁",
+    pickup: "Viman Nagar Clover Ctr",   pickupCity: "Pune",
+    drop: "Hinjewadi Phase 3",          dropCity: "Pune",
     distanceKm: 9.6, durationMin: 25, earning: 305, surge: false, weight: "2.1 kg" },
-  { id:  9, customer: "Rohit Gupta",    parcelType: "Books",       parcelEmoji: "📚",
-    pickup: "Salt Lake Sector V",     pickupCity: "Kolkata",
-    drop: "Park Street AJC Bose Rd",  dropCity: "Kolkata",
+  { id: 9, customer: "Rohit Gupta",    parcelType: "Books",       parcelEmoji: "📚",
+    pickup: "Salt Lake Sector V",       pickupCity: "Kolkata",
+    drop: "Park Street AJC Bose Rd",    dropCity: "Kolkata",
     distanceKm: 7.4, durationMin: 22, earning: 215, surge: false, weight: "4.0 kg" },
-  { id: 10, customer: "Deepa Krishnan", parcelType: "Fragile",     parcelEmoji: "🏺",
-    pickup: "MG Road Brigade Road",   pickupCity: "Bangalore",
-    drop: "Whitefield Prestige Park", dropCity: "Bangalore",
+  { id: 10, customer: "Deepa Krishnan",parcelType: "Fragile",     parcelEmoji: "🏺",
+    pickup: "MG Road Brigade Road",     pickupCity: "Bangalore",
+    drop: "Whitefield Prestige Park",   dropCity: "Bangalore",
     distanceKm: 17.8, durationMin: 42, earning: 520, surge: true, surgeMultiplier: 2.0, weight: "3.5 kg" },
 ];
 
-// ─── Mini countdown ring ───────────────────────────────────────────────────────
-const RING = 18;
-const RING_R = 7;
-const RING_CIRC = 2 * Math.PI * RING_R;
+// ─── Burst ring (urgency flash on new order) ──────────────────────────────────
+function BurstRing({ trigger }: { trigger: number }) {
+  const scale = useRef(new Animated.Value(0.2)).current;
+  const opac  = useRef(new Animated.Value(1)).current;
 
-function MiniTimer({ seconds, total }: { seconds: number; total: number }) {
-  const pct  = seconds / total;
-  const off  = RING_CIRC * (1 - pct);
-  const col  = seconds <= 5 ? RED : seconds <= 9 ? ORANGE : GREEN;
+  useEffect(() => {
+    if (!trigger) return;
+    scale.setValue(0.2);
+    opac.setValue(0.9);
+    Animated.parallel([
+      Animated.timing(scale, { toValue: 2.4, duration: 700, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+      Animated.timing(opac,  { toValue: 0,   duration: 650, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+    ]).start();
+  }, [trigger]);
+
   return (
-    <View style={s.miniTimer}>
-      <Svg width={RING} height={RING}>
-        <Circle cx={RING/2} cy={RING/2} r={RING_R} stroke="#E5E7EB" strokeWidth={2.5} fill="none" />
-        <Circle cx={RING/2} cy={RING/2} r={RING_R}
-          stroke={col} strokeWidth={2.5} fill="none"
-          strokeDasharray={`${RING_CIRC} ${RING_CIRC}`}
-          strokeDashoffset={off}
-          strokeLinecap="round"
-          rotation={-90} originX={RING/2} originY={RING/2} />
-      </Svg>
-      <View style={StyleSheet.absoluteFill}>
-        <View style={s.miniTimerCenter}>
-          <Text style={[s.miniTimerNum, { color: col }]}>{seconds}</Text>
-        </View>
-      </View>
-    </View>
+    <Animated.View
+      pointerEvents="none"
+      style={[s.burstRing, { transform: [{ scale }], opacity: opac }]}
+    />
   );
 }
 
 // ─── Pulsing live dot ─────────────────────────────────────────────────────────
-function LiveDot() {
+function LiveDot({ color = GREEN }: { color?: string }) {
   const anim = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(anim, { toValue: 1.7, duration: 600, useNativeDriver: true }),
-        Animated.timing(anim, { toValue: 1,   duration: 600, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 1.8, duration: 550, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 1,   duration: 550, useNativeDriver: true }),
       ])
     ).start();
   }, []);
   return (
     <View style={{ width: 9, height: 9, alignItems: "center", justifyContent: "center" }}>
-      <Animated.View style={{
-        position: "absolute", width: 9, height: 9, borderRadius: 4.5,
-        backgroundColor: GREEN + "50", transform: [{ scale: anim }],
-      }} />
-      <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: GREEN }} />
+      <Animated.View style={{ position: "absolute", width: 9, height: 9, borderRadius: 4.5, backgroundColor: color + "44", transform: [{ scale: anim }] }} />
+      <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color }} />
     </View>
   );
 }
 
-// ─── Compact Order Card ────────────────────────────────────────────────────────
+// ─── Animated SVG countdown timer ────────────────────────────────────────────
+const TR = 13; // ring radius
+const TC = 32; // container size
+const TCIRC = 2 * Math.PI * TR;
+
+function NeonTimer({ seconds, total }: { seconds: number; total: number }) {
+  const pct  = seconds / total;
+  const off  = TCIRC * (1 - pct);
+  const col  = seconds <= 4 ? RED : seconds <= 8 ? ORANGE : GREEN;
+
+  // Pulse on urgency
+  const pulse = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (seconds > 8) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1.15, duration: 300, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1,    duration: 300, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [seconds <= 8]);
+
+  return (
+    <Animated.View style={[s.timerWrap, { transform: [{ scale: pulse }] }]}>
+      <Svg width={TC} height={TC}>
+        {/* Glow base circle */}
+        <Circle cx={TC / 2} cy={TC / 2} r={TR} stroke={col + "25"} strokeWidth={6} fill="none" />
+        {/* Track */}
+        <Circle cx={TC / 2} cy={TC / 2} r={TR} stroke="rgba(255,255,255,0.12)" strokeWidth={3} fill="none" />
+        {/* Progress arc */}
+        <Circle cx={TC / 2} cy={TC / 2} r={TR}
+          stroke={col} strokeWidth={3} fill="none"
+          strokeDasharray={`${TCIRC} ${TCIRC}`}
+          strokeDashoffset={off}
+          strokeLinecap="round"
+          rotation={-90} originX={TC / 2} originY={TC / 2}
+        />
+      </Svg>
+      <View style={StyleSheet.absoluteFill}>
+        <View style={s.timerCenter}>
+          <Text style={[s.timerNum, { color: col }]}>{seconds}</Text>
+        </View>
+      </View>
+    </Animated.View>
+  );
+}
+
+// ─── Accept button with outer glow ring ──────────────────────────────────────
+function AcceptGlowButton({ onPress, label }: { onPress: () => void; label: string }) {
+  const scale     = useRef(new Animated.Value(1)).current;
+  const ringScale = useRef(new Animated.Value(1)).current;
+  const ringOpac  = useRef(new Animated.Value(0.7)).current;
+
+  useEffect(() => {
+    // Rhythmic button breathe
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(scale, { toValue: 1.03, duration: 700, useNativeDriver: true }),
+        Animated.timing(scale, { toValue: 1,    duration: 700, useNativeDriver: true }),
+      ])
+    ).start();
+    // Outer glow ring expanding pulse
+    Animated.loop(
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(ringScale, { toValue: 1.12, duration: 900, useNativeDriver: true }),
+          Animated.timing(ringOpac,  { toValue: 0,    duration: 900, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(ringScale, { toValue: 1,    duration: 0, useNativeDriver: true }),
+          Animated.timing(ringOpac,  { toValue: 0.7,  duration: 0, useNativeDriver: true }),
+        ]),
+        Animated.delay(200),
+      ])
+    ).start();
+  }, []);
+
+  return (
+    <View style={s.acceptOuter}>
+      {/* Expanding glow ring */}
+      <Animated.View style={[s.acceptGlowRing, { transform: [{ scale: ringScale }], opacity: ringOpac }]} />
+      {/* Button */}
+      <Animated.View style={[s.acceptWrap, { transform: [{ scale }] }]}>
+        <TouchableOpacity onPress={onPress} activeOpacity={0.82} style={{ flex: 1 }}>
+          <LinearGradient
+            colors={["#00C853", "#00E676", "#00C853"]}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+            style={s.acceptBtn}
+          >
+            <View style={s.acceptCheckCircle}>
+              <Feather name="check" size={13} color={GREEN} />
+            </View>
+            <Text style={s.acceptText}>{label}</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </Animated.View>
+    </View>
+  );
+}
+
+// ─── Compact 3D Order Card ────────────────────────────────────────────────────
 type CardProps = {
   order: TestOrder;
   seconds: number;
@@ -174,50 +268,59 @@ type CardProps = {
   onDecline: () => void;
 };
 
-function OrderCard({ order, seconds, expanded, onToggleExpand, onAccept, onDecline }: CardProps) {
+const OrderCard = memo(function OrderCard({
+  order, seconds, expanded, onToggleExpand, onAccept, onDecline,
+}: CardProps) {
   const earning = order.surge
     ? Math.round(order.earning * (order.surgeMultiplier ?? 1))
     : order.earning;
-
-  // Accept button pulse
-  const pulse = useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1.04, duration: 700, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 1,    duration: 700, useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, []);
+  const glowColor = order.surge ? ORANGE : GREEN;
 
   return (
     <Pressable onPress={onToggleExpand} style={s.card}>
-      {/* ── Card top strip ── */}
+      {/* ── Glass dark header ── */}
       <LinearGradient
-        colors={[NAVY, "#1F2937"]}
-        style={s.cardTop}
-        start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+        colors={[NAVY, "#1E293B", "#0F172A"]}
+        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+        style={s.cardHeader}
       >
-        <View style={s.cardTopLeft}>
-          <Text style={s.parcelEmoji}>{order.parcelEmoji}</Text>
+        {/* Shimmer highlight strip */}
+        <View style={s.shimmerStrip} />
+
+        <View style={s.cardHeaderLeft}>
+          {/* Parcel icon glow */}
+          <View style={[s.emojiWrap, { shadowColor: glowColor }]}>
+            <Text style={s.parcelEmoji}>{order.parcelEmoji}</Text>
+          </View>
           <View>
             <Text style={s.parcelType}>{order.parcelType}</Text>
             <View style={s.livePill}>
-              <LiveDot />
+              <LiveDot color={glowColor} />
               <Text style={s.liveText}>Live nearby</Text>
             </View>
           </View>
         </View>
-        <View style={s.cardTopRight}>
+
+        <View style={s.cardHeaderRight}>
           {order.surge && (
-            <View style={s.surgeBadge}>
-              <Text style={s.surgeText}>⚡{order.surgeMultiplier}x</Text>
-            </View>
+            <LinearGradient
+              colors={[ORANGE, "#FF9F45"]}
+              style={s.surgeBadge}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+            >
+              <Text style={s.surgeText}>⚡ {order.surgeMultiplier}×</Text>
+            </LinearGradient>
           )}
-          <MiniTimer seconds={seconds} total={COUNTDOWN} />
+          <NeonTimer seconds={seconds} total={COUNTDOWN} />
         </View>
+
+        {/* Bottom inner-shadow edge */}
+        <LinearGradient
+          colors={["transparent", "rgba(0,0,0,0.18)"]}
+          style={s.headerBottomGrad}
+          start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}
+          pointerEvents="none"
+        />
       </LinearGradient>
 
       {/* ── Card body ── */}
@@ -243,20 +346,20 @@ function OrderCard({ order, seconds, expanded, onToggleExpand, onAccept, onDecli
           </View>
         </View>
 
-        {/* Stats row */}
+        {/* Stats */}
         <View style={s.statsRow}>
           <View style={s.statItem}>
             <Feather name="navigation" size={11} color={PINK} />
-            <Text style={s.statVal}>{order.distanceKm}km</Text>
+            <Text style={s.statVal}>{order.distanceKm} km</Text>
           </View>
-          <View style={s.statDot} />
+          <View style={s.statSep} />
           <View style={s.statItem}>
             <Feather name="clock" size={11} color={ORANGE} />
-            <Text style={s.statVal}>{order.durationMin}min</Text>
+            <Text style={s.statVal}>{order.durationMin} min</Text>
           </View>
           {expanded && (
             <>
-              <View style={s.statDot} />
+              <View style={s.statSep} />
               <View style={s.statItem}>
                 <Feather name="package" size={11} color="#6B7280" />
                 <Text style={s.statVal}>{order.weight}</Text>
@@ -264,8 +367,9 @@ function OrderCard({ order, seconds, expanded, onToggleExpand, onAccept, onDecli
             </>
           )}
           <View style={{ flex: 1 }} />
+          {/* Earning badge */}
           <LinearGradient
-            colors={[PINK + "22", ORANGE + "14"]}
+            colors={[PINK + "28", ORANGE + "18"]}
             style={s.earningBadge}
             start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
           >
@@ -273,67 +377,52 @@ function OrderCard({ order, seconds, expanded, onToggleExpand, onAccept, onDecli
           </LinearGradient>
         </View>
 
-        {/* Customer row */}
+        {/* Customer */}
         <View style={s.customerRow}>
-          <View style={s.avatar}>
+          <LinearGradient colors={[PINK + "30", PINK + "15"]} style={s.avatar}>
             <Text style={s.avatarText}>{order.customer.charAt(0)}</Text>
-          </View>
+          </LinearGradient>
           <View style={{ flex: 1 }}>
             <Text style={s.customerName} numberOfLines={1}>{order.customer}</Text>
             <Text style={s.customerSub}>✓ Verified</Text>
           </View>
-          {expanded && (
-            <View style={s.expandHint}>
-              <Feather name="chevron-up" size={13} color="#9CA3AF" />
-            </View>
-          )}
-          {!expanded && (
-            <View style={s.expandHint}>
-              <Feather name="chevron-down" size={13} color="#9CA3AF" />
-              <Text style={s.expandHintText}>Details</Text>
-            </View>
-          )}
+          <View style={s.expandToggle}>
+            <Feather name={expanded ? "chevron-up" : "chevron-down"} size={12} color="#9CA3AF" />
+            {!expanded && <Text style={s.expandText}>More</Text>}
+          </View>
         </View>
 
-        {/* ── Action buttons ── */}
+        {/* Actions */}
         <View style={s.actionRow}>
-          <TouchableOpacity style={s.declineBtn} onPress={onDecline} activeOpacity={0.8}>
-            <Feather name="x" size={16} color={RED} />
-            <Text style={s.declineText}>Skip</Text>
+          {/* Glass decline button */}
+          <TouchableOpacity style={s.declineBtn} onPress={onDecline} activeOpacity={0.75}>
+            <View style={s.declineBtnInner}>
+              <Feather name="x" size={15} color={RED} />
+              <Text style={s.declineText}>Skip</Text>
+            </View>
           </TouchableOpacity>
 
-          <Animated.View style={[s.acceptWrap, { transform: [{ scale: pulse }] }]}>
-            <TouchableOpacity onPress={onAccept} activeOpacity={0.85} style={{ flex: 1 }}>
-              <LinearGradient
-                colors={[GREEN, "#00E676"]}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                style={s.acceptBtn}
-              >
-                <Feather name="check" size={16} color="#fff" />
-                <Text style={s.acceptText}>Accept ₹{earning}</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </Animated.View>
+          <AcceptGlowButton
+            onPress={onAccept}
+            label={`Accept  ₹${earning}`}
+          />
         </View>
       </View>
     </Pressable>
   );
-}
+});
 
-// ─── Pagination dots ──────────────────────────────────────────────────────────
+// ─── Dots ─────────────────────────────────────────────────────────────────────
 function Dots({ count, active }: { count: number; active: number }) {
   return (
     <View style={s.dotsRow}>
       {Array.from({ length: count }).map((_, i) => (
-        <View
-          key={i}
-          style={[
-            s.dot,
-            i === active
-              ? { width: 18, backgroundColor: GREEN }
-              : { width: 6, backgroundColor: "#D1D5DB" },
-          ]}
-        />
+        <View key={i} style={[
+          s.dot,
+          i === active
+            ? { width: 20, backgroundColor: GREEN }
+            : { width: 6,  backgroundColor: "#D1D5DB" },
+        ]} />
       ))}
     </View>
   );
@@ -347,29 +436,41 @@ type Props = {
 };
 
 export default function IncomingOrderModal({ order, onClose, onAccept }: Props) {
-  // ── Sheet animation ────────────────────────────────────────────────────────
-  const slideY = useRef(new Animated.Value(600)).current;
-  const bgOpac = useRef(new Animated.Value(0)).current;
+  // ── Sheet animations (native driver) ──────────────────────────────────────
+  const slideY     = useRef(new Animated.Value(580)).current;
+  const sheetScale = useRef(new Animated.Value(0.92)).current;
+  const bgOpac     = useRef(new Animated.Value(0)).current;
 
-  // ── Audio (hook must be unconditional) ─────────────────────────────────────
-  const player = useAudioPlayer(null);
+  // Breathing top glow
+  const glowOpac = useRef(new Animated.Value(0.3)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowOpac, { toValue: 1,   duration: 900, useNativeDriver: true }),
+        Animated.timing(glowOpac, { toValue: 0.3, duration: 900, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
 
-  // ── Slider scroll tracking ─────────────────────────────────────────────────
-  const scrollX  = useRef(new Animated.Value(0)).current;
-  const scrollRef = useRef<ScrollView>(null);
+  // ── Scroll (JS driver — needed for shadow + rotateY interpolation) ─────────
+  const scrollX   = useRef(new Animated.Value(0)).current;
+  const scrollRef = useRef<any>(null);
   const [activeIdx, setActiveIdx] = useState(0);
 
-  // ── Order pool ─────────────────────────────────────────────────────────────
-  const [pool, setPool]         = useState<TestOrder[]>([]);
+  // ── Audio ─────────────────────────────────────────────────────────────────
+  const player = useAudioPlayer(null);
+
+  // ── Order pool ────────────────────────────────────────────────────────────
+  const [pool,     setPool]     = useState<TestOrder[]>([]);
   const [declined, setDeclined] = useState<Set<number>>(new Set());
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
-  const [seconds, setSeconds]   = useState(COUNTDOWN);
+  const [seconds,  setSeconds]  = useState(COUNTDOWN);
+  const [burstKey, setBurstKey] = useState(0);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const visible  = pool.filter((o) => !declined.has(o.id));
 
-  const visibleOrders = pool.filter((o) => !declined.has(o.id));
-
-  // ── Audio helpers ──────────────────────────────────────────────────────────
+  // ── Audio helpers ─────────────────────────────────────────────────────────
   async function startRingtone() {
     try {
       await setAudioModeAsync({
@@ -387,33 +488,44 @@ export default function IncomingOrderModal({ order, onClose, onAccept }: Props) 
       player.play();
     } catch {}
   }
+  function stopRingtone() { try { player.pause(); } catch {} }
 
-  function stopRingtone() {
-    try { player.pause(); } catch {}
-  }
-
-  // ── Lifecycle: new order triggers slider ───────────────────────────────────
+  // ── New order arrives ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!order) return;
 
-    // Build a pool of 3 orders: the triggered one + 2 random others
     const others = TEST_ORDERS
       .filter((o) => o.id !== order.id)
       .sort(() => Math.random() - 0.5)
       .slice(0, 2);
-    const newPool = [order, ...others];
 
-    setPool(newPool);
+    setPool([order, ...others]);
     setDeclined(new Set());
     setExpanded(new Set());
     setSeconds(COUNTDOWN);
     setActiveIdx(0);
+    setBurstKey((k) => k + 1);
     scrollRef.current?.scrollTo({ x: 0, animated: false });
+    scrollX.setValue(0);
 
-    // Animate sheet in
+    // ── Fast snap-in animation ────────────────────────────────────────────
+    slideY.setValue(580);
+    sheetScale.setValue(0.92);
+    bgOpac.setValue(0);
+
     Animated.parallel([
-      Animated.spring(slideY, { toValue: 0, friction: 9, tension: 80, useNativeDriver: true }),
-      Animated.timing(bgOpac, { toValue: 1, duration: 260, useNativeDriver: true }),
+      // Backdrop — 120ms
+      Animated.timing(bgOpac, {
+        toValue: 1, duration: 120, useNativeDriver: true,
+      }),
+      // Sheet slides up with tight spring — instant feel
+      Animated.spring(slideY, {
+        toValue: 0, friction: 5, tension: 160, useNativeDriver: true,
+      }),
+      // Sheet pops from 0.92→1.0
+      Animated.spring(sheetScale, {
+        toValue: 1, friction: 5, tension: 160, useNativeDriver: true,
+      }),
     ]).start();
 
     startRingtone();
@@ -425,11 +537,7 @@ export default function IncomingOrderModal({ order, onClose, onAccept }: Props) 
 
     timerRef.current = setInterval(() => {
       setSeconds((s) => {
-        if (s <= 1) {
-          clearInterval(timerRef.current!);
-          slideOut(onClose);
-          return 0;
-        }
+        if (s <= 1) { clearInterval(timerRef.current!); slideOut(onClose); return 0; }
         return s - 1;
       });
     }, 1000);
@@ -442,140 +550,154 @@ export default function IncomingOrderModal({ order, onClose, onAccept }: Props) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order?.id]);
 
-  // ── Auto-close when all cards declined ────────────────────────────────────
+  // ── Auto-close when all skipped ───────────────────────────────────────────
   useEffect(() => {
-    if (pool.length > 0 && visibleOrders.length === 0) {
-      slideOut(onClose);
-    }
+    if (pool.length > 0 && visible.length === 0) slideOut(onClose);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [declined, pool]);
 
-  // ── Slide-out helper ──────────────────────────────────────────────────────
+  // ── Slide-out ─────────────────────────────────────────────────────────────
   function slideOut(cb: () => void) {
     clearInterval(timerRef.current!);
     Vibration.cancel();
     stopRingtone();
     Animated.parallel([
-      Animated.timing(slideY, { toValue: 600, duration: 280, useNativeDriver: true }),
-      Animated.timing(bgOpac, { toValue: 0,   duration: 200, useNativeDriver: true }),
+      Animated.timing(slideY, { toValue: 580, duration: 240, useNativeDriver: true }),
+      Animated.timing(sheetScale, { toValue: 0.94, duration: 200, useNativeDriver: true }),
+      Animated.timing(bgOpac,  { toValue: 0,   duration: 180, useNativeDriver: true }),
     ]).start(() => {
-      slideY.setValue(600);
-      bgOpac.setValue(0);
+      slideY.setValue(580); sheetScale.setValue(0.92); bgOpac.setValue(0);
       cb();
     });
   }
 
   function handleDecline(id: number) {
-    if (Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    }
-    setDeclined((prev) => new Set([...prev, id]));
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setDeclined((p) => new Set([...p, id]));
   }
 
   function handleAccept(o: TestOrder) {
-    if (Platform.OS !== "web") {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    }
+    if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     slideOut(() => onAccept(o));
   }
 
   function toggleExpand(id: number) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
+    setExpanded((p) => {
+      const n = new Set(p);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
     });
   }
 
-  // ── Scroll → active index ─────────────────────────────────────────────────
   function handleScrollEnd(e: { nativeEvent: { contentOffset: { x: number } } }) {
     const idx = Math.round(e.nativeEvent.contentOffset.x / SNAP);
-    setActiveIdx(Math.max(0, Math.min(idx, visibleOrders.length - 1)));
+    setActiveIdx(Math.max(0, Math.min(idx, visible.length - 1)));
   }
 
   if (!order || pool.length === 0) return null;
 
   return (
     <Modal transparent visible animationType="none" statusBarTranslucent>
-      {/* Backdrop */}
+      {/* ── Backdrop ── */}
       <Animated.View style={[s.backdrop, { opacity: bgOpac }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={() => slideOut(onClose)} />
       </Animated.View>
 
-      {/* Sheet */}
-      <Animated.View style={[s.sheet, { transform: [{ translateY: slideY }] }]}>
+      {/* ── Sheet ── */}
+      <Animated.View style={[
+        s.sheet,
+        { transform: [{ translateY: slideY }, { scale: sheetScale }] },
+      ]}>
+        {/* Breathing neon glow at top edge */}
+        <Animated.View style={[s.topGlow, { opacity: glowOpac }]} />
+
+        {/* Burst ring on new order */}
+        <View style={s.burstContainer} pointerEvents="none">
+          <BurstRing trigger={burstKey} />
+        </View>
+
         {/* Handle */}
         <View style={s.handle} />
 
         {/* ── Header ── */}
         <View style={s.header}>
           <View style={s.headerLeft}>
-            <LinearGradient colors={[PINK, ORANGE]} style={s.headerIcon}>
-              <Feather name="bell" size={15} color="#fff" />
+            <LinearGradient colors={[PINK, ORANGE, "#FF6B35"]} style={s.bellIcon} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+              <Feather name="bell" size={14} color="#fff" />
             </LinearGradient>
             <View>
               <Text style={s.headerTitle}>New Orders Nearby</Text>
               <View style={s.headerSub}>
                 <LiveDot />
-                <Text style={s.headerSubText}>
-                  {visibleOrders.length} request{visibleOrders.length !== 1 ? "s" : ""} · {seconds}s remaining
-                </Text>
+                <Text style={s.headerSubText}>{visible.length} request{visible.length !== 1 ? "s" : ""} · {seconds}s left</Text>
               </View>
             </View>
           </View>
 
-          {/* Progress bar */}
-          <View style={s.timerBar}>
-            <View
-              style={[
-                s.timerFill,
-                {
-                  width: `${(seconds / COUNTDOWN) * 100}%` as any,
-                  backgroundColor: seconds <= 5 ? RED : seconds <= 9 ? ORANGE : GREEN,
-                },
-              ]}
-            />
+          {/* Countdown progress bar */}
+          <View style={s.timerBarTrack}>
+            <View style={[
+              s.timerBarFill,
+              {
+                width: `${(seconds / COUNTDOWN) * 100}%` as any,
+                backgroundColor: seconds <= 4 ? RED : seconds <= 8 ? ORANGE : GREEN,
+              },
+            ]} />
           </View>
         </View>
 
-        {/* ── Swipeable cards ── */}
+        {/* ── Card slider ── */}
         <Animated.ScrollView
-          ref={scrollRef as any}
+          ref={scrollRef}
           horizontal
           showsHorizontalScrollIndicator={false}
           snapToInterval={SNAP}
           decelerationRate="fast"
           scrollEventThrottle={16}
-          contentContainerStyle={{
-            paddingHorizontal: SIDE_PAD,
-            paddingVertical: 4,
-            gap: CARD_GAP,
-          }}
+          contentContainerStyle={{ paddingHorizontal: SIDE_PAD, paddingVertical: 6, gap: CARD_GAP }}
           onScroll={Animated.event(
             [{ nativeEvent: { contentOffset: { x: scrollX } } }],
             { useNativeDriver: false }
           )}
           onMomentumScrollEnd={handleScrollEnd}
         >
-          {visibleOrders.map((o, i) => {
-            // Scale: centered card = 1.0, adjacent = 0.93
+          {visible.map((o, i) => {
             const inputRange = [(i - 1) * SNAP, i * SNAP, (i + 1) * SNAP];
-            const scale = scrollX.interpolate({
-              inputRange,
-              outputRange: [0.93, 1.0, 0.93],
-              extrapolate: "clamp",
+
+            // 3D card transforms (JS driver — driven by scrollX)
+            const cardScale = scrollX.interpolate({
+              inputRange, outputRange: [0.86, 1.0, 0.86], extrapolate: "clamp",
             });
-            const shadowOpacity = scrollX.interpolate({
-              inputRange,
-              outputRange: [0.06, 0.18, 0.06],
-              extrapolate: "clamp",
+            const cardRotY = scrollX.interpolate({
+              inputRange, outputRange: ["5deg", "0deg", "-5deg"], extrapolate: "clamp",
+            });
+            const cardOpacity = scrollX.interpolate({
+              inputRange, outputRange: [0.72, 1, 0.72], extrapolate: "clamp",
+            });
+            // Neon shadow driven by distance from center
+            const shadowGlow = scrollX.interpolate({
+              inputRange, outputRange: [0.0, 0.55, 0.0], extrapolate: "clamp",
             });
 
             return (
               <Animated.View
                 key={o.id}
                 style={[
-                  { width: CARD_W, transform: [{ scale }] },
-                  Platform.OS !== "web" && { shadowOpacity } as any,
+                  s.cardWrapper,
+                  {
+                    width: CARD_W,
+                    opacity: cardOpacity,
+                    transform: [
+                      { perspective: 900 },
+                      { scale: cardScale },
+                      { rotateY: cardRotY },
+                    ],
+                    shadowOpacity: shadowGlow as any,
+                    shadowColor: o.surge ? ORANGE : GREEN,
+                    shadowRadius: 22,
+                    shadowOffset: { width: 0, height: 0 },
+                    elevation: 18,
+                  },
                 ]}
               >
                 <OrderCard
@@ -591,13 +713,10 @@ export default function IncomingOrderModal({ order, onClose, onAccept }: Props) 
           })}
         </Animated.ScrollView>
 
-        {/* ── Pagination dots ── */}
-        <Dots count={visibleOrders.length} active={activeIdx} />
+        {/* ── Dots ── */}
+        <Dots count={visible.length} active={activeIdx} />
 
-        {/* ── Bottom hint ── */}
-        <Text style={s.swipeHint}>
-          Swipe to compare · Tap card for more details
-        </Text>
+        <Text style={s.swipeHint}>Swipe to compare · Tap for details</Text>
       </Animated.View>
     </Modal>
   );
@@ -607,154 +726,214 @@ export default function IncomingOrderModal({ order, onClose, onAccept }: Props) 
 const s = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: "rgba(5,7,15,0.72)",
   },
+
+  // ── Sheet ──────────────────────────────────────────────────────────────────
   sheet: {
     position: "absolute",
     bottom: 0, left: 0, right: 0,
-    backgroundColor: "#F8FAFC",
-    borderTopLeftRadius: 26, borderTopRightRadius: 26,
-    paddingTop: 10,
-    paddingBottom: 28,
+    backgroundColor: "#F0F4F8",
+    borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    paddingTop: 10, paddingBottom: 30,
     shadowColor: "#000",
-    shadowOpacity: 0.2,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: -8 },
-    elevation: 20,
-  },
-  handle: {
-    width: 36, height: 4, borderRadius: 2,
-    backgroundColor: "#D1D5DB", alignSelf: "center", marginBottom: 14,
+    shadowOpacity: 0.45,
+    shadowRadius: 40,
+    shadowOffset: { width: 0, height: -12 },
+    elevation: 28,
+    overflow: "hidden",
   },
 
-  // Header
-  header: {
-    paddingHorizontal: 18,
-    marginBottom: 12,
-    gap: 8,
+  // Breathing neon top edge glow
+  topGlow: {
+    position: "absolute",
+    top: 0, left: 0, right: 0,
+    height: 2.5,
+    backgroundColor: GREEN,
+    shadowColor: GREEN,
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 0 },
   },
+
+  // Burst ring anchor
+  burstContainer: {
+    position: "absolute",
+    top: 0, left: 0, right: 0,
+    alignItems: "center",
+    overflow: "visible",
+    zIndex: 10,
+  },
+  burstRing: {
+    width: 80, height: 80,
+    borderRadius: 40,
+    borderWidth: 2.5,
+    borderColor: GREEN + "CC",
+    marginTop: -20,
+  },
+
+  handle: {
+    width: 36, height: 4, borderRadius: 2,
+    backgroundColor: "#CBD5E1", alignSelf: "center", marginBottom: 14,
+  },
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  header: { paddingHorizontal: 18, marginBottom: 10, gap: 8 },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
-  headerIcon: {
-    width: 36, height: 36, borderRadius: 11,
+  bellIcon: {
+    width: 34, height: 34, borderRadius: 10,
     alignItems: "center", justifyContent: "center",
+    shadowColor: PINK, shadowOpacity: 0.5, shadowRadius: 8, shadowOffset: { width: 0, height: 2 },
   },
-  headerTitle: { fontSize: 15, fontWeight: "800", color: NAVY, letterSpacing: -0.2 },
-  headerSub:   { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
-  headerSubText: { fontSize: 11, color: "#6B7280", fontWeight: "500" },
-  timerBar: {
-    height: 3, backgroundColor: "#E5E7EB",
-    borderRadius: 2, overflow: "hidden",
-  },
-  timerFill: {
-    height: "100%", borderRadius: 2,
+  headerTitle:   { fontSize: 15, fontWeight: "800", color: NAVY, letterSpacing: -0.3 },
+  headerSub:     { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
+  headerSubText: { fontSize: 11, color: "#64748B", fontWeight: "500" },
+
+  timerBarTrack: { height: 3, backgroundColor: "#E2E8F0", borderRadius: 2, overflow: "hidden" },
+  timerBarFill:  { height: "100%", borderRadius: 2 },
+
+  // ── Card wrapper (holds 3D transforms + shadow) ────────────────────────────
+  cardWrapper: {
+    shadowColor: GREEN,
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 12,
   },
 
   // ── Card ──────────────────────────────────────────────────────────────────
   card: {
     backgroundColor: "#fff",
-    borderRadius: 20,
+    borderRadius: 22,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "#F0F0F0",
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    borderColor: "rgba(255,255,255,0.6)",
   },
 
-  // Card top strip (dark)
-  cardTop: {
+  // Glass dark header
+  cardHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 14,
-    paddingVertical: 11,
+    paddingTop: 13,
+    paddingBottom: 14,
+    position: "relative",
   },
-  cardTopLeft:  { flexDirection: "row", alignItems: "center", gap: 9 },
-  cardTopRight: { flexDirection: "row", alignItems: "center", gap: 8 },
-  parcelEmoji: { fontSize: 22 },
-  parcelType:  { fontSize: 13, fontWeight: "700", color: "#fff" },
+  shimmerStrip: {
+    position: "absolute",
+    top: 0, left: 0, right: 0,
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+  headerBottomGrad: {
+    position: "absolute",
+    bottom: 0, left: 0, right: 0,
+    height: 6,
+  },
+  cardHeaderLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
+  cardHeaderRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+
+  emojiWrap: {
+    width: 38, height: 38, borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    alignItems: "center", justifyContent: "center",
+    shadowOpacity: 0.6, shadowRadius: 10, shadowOffset: { width: 0, height: 0 },
+  },
+  parcelEmoji: { fontSize: 20 },
+  parcelType:  { fontSize: 13, fontWeight: "700", color: "#fff", letterSpacing: -0.2 },
   livePill:    { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
-  liveText:    { fontSize: 10, color: "rgba(255,255,255,0.65)", fontWeight: "500" },
+  liveText:    { fontSize: 9,  color: "rgba(255,255,255,0.6)", fontWeight: "600" },
+
   surgeBadge: {
-    backgroundColor: ORANGE + "E0",
-    paddingHorizontal: 7, paddingVertical: 3, borderRadius: 7,
+    paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8,
+    shadowColor: ORANGE, shadowOpacity: 0.5, shadowRadius: 6, shadowOffset: { width: 0, height: 0 },
   },
-  surgeText: { fontSize: 10, fontWeight: "800", color: "#fff" },
+  surgeText: { fontSize: 10, fontWeight: "900", color: "#fff" },
 
-  // Mini timer
-  miniTimer:       { width: RING, height: RING },
-  miniTimerCenter: { flex: 1, alignItems: "center", justifyContent: "center" },
-  miniTimerNum:    { fontSize: 8, fontWeight: "800", lineHeight: 9 },
+  // Timer
+  timerWrap:   { width: TC, height: TC },
+  timerCenter: { flex: 1, alignItems: "center", justifyContent: "center" },
+  timerNum:    { fontSize: 9, fontWeight: "900", lineHeight: 10 },
 
-  // Card body
-  cardBody: { padding: 13, gap: 11 },
+  // ── Body ──────────────────────────────────────────────────────────────────
+  cardBody: { padding: 13, gap: 10 },
 
-  // Route
-  routeBlock: { gap: 0 },
+  routeBlock: {},
   routeRow:   { flexDirection: "row", alignItems: "flex-start", gap: 10 },
-  dotGreen:   { width: 10, height: 10, borderRadius: 5, backgroundColor: GREEN, marginTop: 3 },
-  dotRed:     { width: 10, height: 10, borderRadius: 5, backgroundColor: RED,   marginTop: 3 },
-  routeLabel: { fontSize: 8, fontWeight: "800", color: "#9CA3AF", letterSpacing: 0.7 },
-  routeAddr:  { fontSize: 12, fontWeight: "700", color: "#111", marginTop: 1 },
+  dotGreen:   { width: 9, height: 9, borderRadius: 4.5, backgroundColor: GREEN, marginTop: 3 },
+  dotRed:     { width: 9, height: 9, borderRadius: 4.5, backgroundColor: RED,   marginTop: 3 },
+  routeLabel: { fontSize: 8, fontWeight: "800", color: "#94A3B8", letterSpacing: 0.8 },
+  routeAddr:  { fontSize: 12, fontWeight: "700", color: "#0F172A", marginTop: 1 },
   routeCity:  { fontSize: 10, color: "#6B7280", marginTop: 1 },
   routeConn:  { paddingLeft: 4, paddingVertical: 2 },
-  connLine:   { width: 2, height: 14, backgroundColor: "#E5E7EB", marginLeft: 4, borderRadius: 1 },
+  connLine:   { width: 2, height: 12, backgroundColor: "#E2E8F0", marginLeft: 3.5, borderRadius: 1 },
 
-  // Stats
-  statsRow:     { flexDirection: "row", alignItems: "center", gap: 6 },
-  statItem:     { flexDirection: "row", alignItems: "center", gap: 3 },
-  statVal:      { fontSize: 11, fontWeight: "700", color: "#374151" },
-  statDot:      { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "#D1D5DB" },
+  statsRow:  { flexDirection: "row", alignItems: "center", gap: 5 },
+  statItem:  { flexDirection: "row", alignItems: "center", gap: 3 },
+  statVal:   { fontSize: 11, fontWeight: "700", color: "#334155" },
+  statSep:   { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "#CBD5E1" },
   earningBadge: {
-    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 9,
-    borderWidth: 1, borderColor: PINK + "25",
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8,
+    borderWidth: 1, borderColor: PINK + "30",
   },
-  earningAmt:   { fontSize: 14, fontWeight: "900", color: PINK },
+  earningAmt: { fontSize: 14, fontWeight: "900", color: PINK },
 
-  // Customer
   customerRow: { flexDirection: "row", alignItems: "center", gap: 9 },
   avatar: {
-    width: 30, height: 30, borderRadius: 15,
-    backgroundColor: PINK + "20", alignItems: "center", justifyContent: "center",
+    width: 28, height: 28, borderRadius: 14,
+    alignItems: "center", justifyContent: "center",
   },
-  avatarText:   { fontSize: 13, fontWeight: "800", color: PINK },
-  customerName: { fontSize: 12, fontWeight: "700", color: "#111" },
-  customerSub:  { fontSize: 10, color: "#10B981", fontWeight: "600" },
-  expandHint: {
-    flexDirection: "row", alignItems: "center", gap: 2,
-    paddingHorizontal: 6, paddingVertical: 3,
-    backgroundColor: "#F3F4F6", borderRadius: 6,
-  },
-  expandHintText: { fontSize: 9, fontWeight: "600", color: "#9CA3AF" },
+  avatarText:   { fontSize: 12, fontWeight: "800", color: PINK },
+  customerName: { fontSize: 12, fontWeight: "700", color: "#0F172A" },
+  customerSub:  { fontSize: 9,  color: "#10B981", fontWeight: "700", marginTop: 1 },
+  expandToggle: { flexDirection: "row", alignItems: "center", gap: 2, backgroundColor: "#F1F5F9", paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6 },
+  expandText:   { fontSize: 9, fontWeight: "600", color: "#94A3B8" },
 
-  // Buttons
-  actionRow: { flexDirection: "row", gap: 9 },
+  // ── Buttons ───────────────────────────────────────────────────────────────
+  actionRow: { flexDirection: "row", gap: 8 },
+
   declineBtn: {
-    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5,
-    borderWidth: 1.5, borderColor: RED + "40", borderRadius: 13,
-    paddingVertical: 11, paddingHorizontal: 14, backgroundColor: RED + "07",
+    borderRadius: 13,
+    overflow: "hidden",
+    borderWidth: 1.5,
+    borderColor: RED + "35",
+    backgroundColor: RED + "08",
+  },
+  declineBtnInner: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 5, paddingVertical: 11, paddingHorizontal: 16,
   },
   declineText: { fontSize: 13, fontWeight: "700", color: RED },
+
+  // Accept with outer glow
+  acceptOuter: { flex: 1, alignItems: "stretch" },
+  acceptGlowRing: {
+    position: "absolute",
+    top: -3, bottom: -3, left: -3, right: -3,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: GREEN + "80",
+    backgroundColor: "transparent",
+  },
   acceptWrap: {
     flex: 1, borderRadius: 13, overflow: "hidden",
-    shadowColor: GREEN, shadowOpacity: 0.4,
-    shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6,
+    shadowColor: GREEN, shadowOpacity: 0.6,
+    shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 8,
   },
   acceptBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 6, paddingVertical: 11, borderRadius: 13,
+    gap: 7, paddingVertical: 11, borderRadius: 13,
+  },
+  acceptCheckCircle: {
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: "#fff", alignItems: "center", justifyContent: "center",
   },
   acceptText: { fontSize: 13, fontWeight: "800", color: "#fff" },
 
-  // Pagination
-  dotsRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 12 },
-  dot:     { height: 6, borderRadius: 3 },
+  // ── Pagination ────────────────────────────────────────────────────────────
+  dotsRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 10 },
+  dot:     { height: 5, borderRadius: 3 },
 
-  // Swipe hint
-  swipeHint: {
-    textAlign: "center", fontSize: 11, color: "#9CA3AF",
-    fontWeight: "500", marginTop: 8,
-  },
+  swipeHint: { textAlign: "center", fontSize: 10, color: "#94A3B8", fontWeight: "500", marginTop: 6 },
 });
