@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -31,6 +32,7 @@ export default function LoginScreen() {
   const [phone, setPhone] = useState("");
   const { setPhone: setDriverPhone } = useDriver();
   const [focused, setFocused] = useState(false);
+  const [showCountryHint, setShowCountryHint] = useState(false);
 
   const isValid = phone.replace(/\D/g, "").length === 10;
 
@@ -89,7 +91,11 @@ export default function LoginScreen() {
                 focused && { borderColor: GRADIENT_FROM },
               ]}
             >
-              <View style={styles.countryCode}>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => setShowCountryHint(true)}
+                style={styles.countryPill}
+              >
                 <View style={styles.flagWrap}>
                   <View style={[styles.flagBand, { backgroundColor: "#FF9933" }]} />
                   <View style={[styles.flagBand, { backgroundColor: "#FFFFFF" }]}>
@@ -98,7 +104,8 @@ export default function LoginScreen() {
                   <View style={[styles.flagBand, { backgroundColor: "#138808" }]} />
                 </View>
                 <Text style={styles.codeText}>{COUNTRY_CODE}</Text>
-              </View>
+                <Feather name="chevron-down" size={16} color={TEXT_MUTED} />
+              </TouchableOpacity>
               <View style={styles.codeDivider} />
 
               <TextInput
@@ -159,6 +166,43 @@ export default function LoginScreen() {
 
         <View />
       </View>
+
+      <Modal
+        visible={showCountryHint}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCountryHint(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setShowCountryHint(false)}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select country</Text>
+              <TouchableOpacity onPress={() => setShowCountryHint(false)}>
+                <Feather name="x" size={20} color={TEXT_DARK} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.countryItemActive}>
+              <View style={styles.flagWrap}>
+                <View style={[styles.flagBand, { backgroundColor: "#FF9933" }]} />
+                <View style={[styles.flagBand, { backgroundColor: "#FFFFFF" }]}>
+                  <View style={styles.flagChakra} />
+                </View>
+                <View style={[styles.flagBand, { backgroundColor: "#138808" }]} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.countryItemName}>India</Text>
+                <Text style={styles.countryItemCode}>+91</Text>
+              </View>
+              <Feather name="check-circle" size={20} color={GRADIENT_FROM} />
+            </View>
+
+            <Text style={styles.modalHint}>
+              More countries coming soon.
+            </Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -227,12 +271,14 @@ const styles = StyleSheet.create({
     height: 62,
     backgroundColor: "#fff",
   },
-  countryCode: {
+  countryPill: {
     flexDirection: "row",
     alignItems: "center",
-    paddingLeft: 16,
+    gap: 6,
+    paddingLeft: 14,
     paddingRight: 10,
     height: "100%",
+    backgroundColor: "#FFF6F2",
     flexShrink: 0,
   },
   flagWrap: {
@@ -341,5 +387,52 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "800",
     color: GRADIENT_FROM,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(14,14,16,0.5)",
+    justifyContent: "center",
+    paddingHorizontal: 28,
+  },
+  modalCard: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 22,
+    gap: 16,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: TEXT_DARK,
+  },
+  countryItemActive: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: "#FFF6F2",
+    borderWidth: 1.5,
+    borderColor: GRADIENT_FROM,
+  },
+  countryItemName: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: TEXT_DARK,
+  },
+  countryItemCode: {
+    fontSize: 13,
+    color: TEXT_MUTED,
+    marginTop: 2,
+  },
+  modalHint: {
+    fontSize: 13,
+    color: TEXT_MUTED,
+    textAlign: "center",
   },
 });
