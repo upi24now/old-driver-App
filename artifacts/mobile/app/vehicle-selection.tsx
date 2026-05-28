@@ -19,8 +19,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDriver } from "@/contexts/DriverContext";
 
 // ─── Brand tokens ──────────────────────────────────────────────
-const PINK   = "#FF4D8D";
-const ORANGE = "#FF7A3D";
+const PINK         = "#FF4D8D";
+const ORANGE       = "#FF7A3D";
 const TEXT_PRIMARY = "#111111";
 const TEXT_MUTED   = "#6B7280";
 const BORDER       = "#F0E6EC";
@@ -39,9 +39,10 @@ const IMAGES: Record<string, ImageSourcePropType> = {
 type VehicleOption = {
   id: string;
   name: string;
+  tagline: string;
   cardBg: [string, string];
-  capacity: string;
-  capacityIcon: "user" | "users" | "package";
+  seatLabel: string;
+  seatIcon: "user" | "users" | "package";
   price: string;
   badge?: { text: string; bg: string; fg: string };
   imageKey?: string;
@@ -53,66 +54,83 @@ const VEHICLES: VehicleOption[] = [
   {
     id: "bike",
     name: "Bike",
+    tagline: "Quick, agile rides",
     cardBg: ["#F5F3FF", "#FAF5FF"],
-    capacity: "1 Seat",
-    capacityIcon: "user",
+    seatLabel: "1 Seat",
+    seatIcon: "user",
     price: "₹6/km",
     badge: { text: "⭐ Popular", bg: "#A855F7", fg: "#fff" },
     imageKey: "bike",
   },
   {
-    id: "scooter",
-    name: "Scooter",
-    cardBg: ["#FFF1F2", "#FFF5F6"],
-    capacity: "1 Seat",
-    capacityIcon: "user",
-    price: "₹7/km",
-    emoji: "🛵",
-    emojiBg: "#FFE4E6",
-  },
-  {
-    id: "ev",
-    name: "EV",
-    cardBg: ["#ECFDF5", "#F0FFF8"],
-    capacity: "4 Seats",
-    capacityIcon: "users",
-    price: "₹12/km",
-    badge: { text: "⚡ New", bg: "#10B981", fg: "#fff" },
-    imageKey: "ev",
-  },
-  {
     id: "auto",
     name: "Auto",
+    tagline: "3-seater, in-city",
     cardBg: ["#FFFBEB", "#FEFCE8"],
-    capacity: "3 Seats",
-    capacityIcon: "users",
+    seatLabel: "3 Seats",
+    seatIcon: "users",
     price: "₹10/km",
     imageKey: "auto",
   },
   {
     id: "mini",
     name: "Mini Car",
+    tagline: "Compact, economy",
     cardBg: ["#EFF6FF", "#F0F9FF"],
-    capacity: "4 Seats",
-    capacityIcon: "users",
+    seatLabel: "4 Seats",
+    seatIcon: "users",
     price: "₹14/km",
     imageKey: "mini",
   },
   {
     id: "sedan",
     name: "Sedan",
+    tagline: "Premium comfort",
     cardBg: ["#FDF2F8", "#FFF0F6"],
-    capacity: "4 Seats",
-    capacityIcon: "users",
+    seatLabel: "4 Seats",
+    seatIcon: "users",
     price: "₹18/km",
     imageKey: "sedan",
   },
   {
+    id: "ev",
+    name: "EV",
+    tagline: "Electric, eco-friendly",
+    cardBg: ["#ECFDF5", "#F0FFF8"],
+    seatLabel: "4 Seats",
+    seatIcon: "users",
+    price: "₹12/km",
+    badge: { text: "⚡ New", bg: "#10B981", fg: "#fff" },
+    imageKey: "ev",
+  },
+  {
+    id: "truck",
+    name: "Truck",
+    tagline: "Goods delivery",
+    cardBg: ["#F1F5F9", "#F8FAFC"],
+    seatLabel: "Up to 8 Ton",
+    seatIcon: "package",
+    price: "₹22/km",
+    imageKey: "truck",
+  },
+  {
+    id: "scooter",
+    name: "Scooter",
+    tagline: "Zippy city rides",
+    cardBg: ["#FFF1F2", "#FFF5F6"],
+    seatLabel: "1 Seat",
+    seatIcon: "user",
+    price: "₹7/km",
+    emoji: "🛵",
+    emojiBg: "#FFE4E6",
+  },
+  {
     id: "suv",
     name: "SUV",
+    tagline: "Spacious, comfortable",
     cardBg: ["#FFF7ED", "#FFFBF5"],
-    capacity: "6 Seats",
-    capacityIcon: "users",
+    seatLabel: "6 Seats",
+    seatIcon: "users",
     price: "₹22/km",
     emoji: "🚙",
     emojiBg: "#FFEDD5",
@@ -120,45 +138,36 @@ const VEHICLES: VehicleOption[] = [
   {
     id: "pickup",
     name: "Pickup",
+    tagline: "Light freight",
     cardBg: ["#F0FDF4", "#F0FFF4"],
-    capacity: "500 kg",
-    capacityIcon: "package",
+    seatLabel: "500 kg",
+    seatIcon: "package",
     price: "₹20/km",
     emoji: "🛻",
     emojiBg: "#DCFCE7",
   },
   {
-    id: "truck",
-    name: "Truck",
-    cardBg: ["#F1F5F9", "#F8FAFC"],
-    capacity: "2 Ton",
-    capacityIcon: "package",
-    price: "₹35/km",
-    imageKey: "truck",
-  },
-  {
     id: "mini-truck",
     name: "Mini Truck",
+    tagline: "Urban freight",
     cardBg: ["#FFF8F0", "#FFFAF5"],
-    capacity: "1 Ton",
-    capacityIcon: "package",
+    seatLabel: "1 Ton",
+    seatIcon: "package",
     price: "₹25/km",
     emoji: "🚚",
     emojiBg: "#FEF3C7",
   },
 ];
 
-// ─── Vehicle Card (3-column compact) ───────────────────────────
+// ─── Vehicle Card ───────────────────────────────────────────────
 function VehicleCard({
   vehicle,
   selected,
   onPress,
-  cardWidth,
 }: {
   vehicle: VehicleOption;
   selected: boolean;
   onPress: () => void;
-  cardWidth: number;
 }) {
   const scale = useRef(new Animated.Value(1)).current;
   const glow  = useRef(new Animated.Value(0)).current;
@@ -168,22 +177,20 @@ function VehicleCard({
     if (selected && !prev.current) {
       Animated.parallel([
         Animated.sequence([
-          Animated.spring(scale, { toValue: 1.04, friction: 4, tension: 280, useNativeDriver: true }),
+          Animated.spring(scale, { toValue: 1.04, friction: 4, tension: 260, useNativeDriver: true }),
           Animated.spring(scale, { toValue: 1,    friction: 5, tension: 200, useNativeDriver: true }),
         ]),
-        Animated.timing(glow, { toValue: 1, duration: 200, useNativeDriver: true }),
+        Animated.timing(glow, { toValue: 1, duration: 220, useNativeDriver: true }),
       ]).start();
     }
     if (!selected && prev.current) {
-      Animated.timing(glow, { toValue: 0, duration: 150, useNativeDriver: true }).start();
+      Animated.timing(glow, { toValue: 0, duration: 160, useNativeDriver: true }).start();
     }
     prev.current = selected;
   }, [selected]);
 
-  const imgZoneH = Math.round(cardWidth * 0.74); // ~74% of card width for image zone
-
   return (
-    <Animated.View style={[styles.cardWrap, { width: cardWidth, transform: [{ scale }] }]}>
+    <Animated.View style={[styles.cardWrap, { transform: [{ scale }] }]}>
       <Animated.View style={[styles.cardGlow, { opacity: glow }]} pointerEvents="none" />
 
       <TouchableOpacity activeOpacity={0.88} onPress={onPress} style={styles.cardTouchable}>
@@ -191,70 +198,98 @@ function VehicleCard({
           colors={selected ? ["#FFF0F6", "#FDF2F8"] : vehicle.cardBg}
           style={[styles.card, selected && styles.cardSelected]}
         >
-          {/* IMAGE ZONE */}
-          <View style={[styles.imageZone, { height: imgZoneH }]}>
-            {vehicle.imageKey ? (
-              <Image
-                source={IMAGES[vehicle.imageKey]}
-                style={styles.vehicleImage}
-                resizeMode="contain"
-              />
-            ) : (
-              <View style={[styles.emojiWrap, { backgroundColor: vehicle.emojiBg ?? "#F3F4F6" }]}>
-                <Text style={styles.emojiText}>{vehicle.emoji}</Text>
-              </View>
-            )}
-
-            {vehicle.badge && (
-              <View style={[styles.badge, { backgroundColor: vehicle.badge.bg }]}>
-                <Text style={[styles.badgeText, { color: vehicle.badge.fg }]}>
-                  {vehicle.badge.text}
-                </Text>
-              </View>
-            )}
-
-            {selected && (
-              <LinearGradient
-                colors={[PINK, ORANGE]}
-                style={styles.checkCircle}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <Feather name="check" size={9} color="#fff" />
-              </LinearGradient>
-            )}
-          </View>
-
-          {/* TEXT ZONE */}
-          <View style={styles.textZone}>
-            <Text style={[styles.cardName, selected && { color: PINK }]} numberOfLines={1}>
-              {vehicle.name}
-            </Text>
-            <View style={[styles.metaRow, selected && styles.metaRowSelected]}>
-              <Feather
-                name={vehicle.capacityIcon}
-                size={9}
-                color={selected ? PINK : TEXT_MUTED}
-              />
-              <Text style={[styles.metaCapacity, selected && { color: PINK }]} numberOfLines={1}>
-                {vehicle.capacity}
-              </Text>
-              <View style={styles.metaDot} />
-              <Text style={[styles.metaPrice, selected && { color: PINK }]}>
-                {vehicle.price}
-              </Text>
-            </View>
-          </View>
+          <CardContent vehicle={vehicle} selected={selected} />
         </LinearGradient>
       </TouchableOpacity>
     </Animated.View>
   );
 }
 
+function CardContent({
+  vehicle,
+  selected,
+}: {
+  vehicle: VehicleOption;
+  selected: boolean;
+}) {
+  return (
+    <View style={styles.cardInner}>
+      {/* ── IMAGE ZONE ── */}
+      <View style={styles.imageZone}>
+        {vehicle.imageKey ? (
+          <Image
+            source={IMAGES[vehicle.imageKey]}
+            style={styles.vehicleImage}
+            resizeMode="contain"
+          />
+        ) : (
+          <View style={[styles.emojiCircle, { backgroundColor: vehicle.emojiBg ?? "#F3F4F6" }]}>
+            <Text style={styles.emojiText}>{vehicle.emoji}</Text>
+          </View>
+        )}
+
+        {vehicle.badge && (
+          <View style={[styles.badge, { backgroundColor: vehicle.badge.bg }]}>
+            <Text style={[styles.badgeText, { color: vehicle.badge.fg }]}>
+              {vehicle.badge.text}
+            </Text>
+          </View>
+        )}
+
+        {selected && (
+          <LinearGradient
+            colors={[PINK, ORANGE]}
+            style={styles.checkCircle}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <Feather name="check" size={11} color="#fff" />
+          </LinearGradient>
+        )}
+      </View>
+
+      {/* ── TEXT ZONE ── */}
+      <View style={styles.textZone}>
+        <Text style={[styles.cardName, selected && { color: PINK }]} numberOfLines={1}>
+          {vehicle.name}
+        </Text>
+        <Text style={styles.cardTagline} numberOfLines={1}>
+          {vehicle.tagline}
+        </Text>
+
+        <View style={[
+          styles.infoRow,
+          {
+            backgroundColor: selected ? "rgba(255,77,141,0.08)" : "rgba(255,255,255,0.8)",
+            borderColor:      selected ? "rgba(255,77,141,0.22)" : "rgba(0,0,0,0.07)",
+          },
+        ]}>
+          <Feather name={vehicle.seatIcon} size={11} color={selected ? PINK : TEXT_MUTED} />
+          <Text
+            style={[styles.infoText, { color: selected ? PINK : TEXT_MUTED }]}
+            numberOfLines={1}
+          >
+            {vehicle.seatLabel}
+          </Text>
+          <View style={styles.infoDivider} />
+          <Text style={[styles.priceText, { color: selected ? PINK : ORANGE }]}>
+            {vehicle.price}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 // ─── Progress Step Dot ──────────────────────────────────────────
 function StepDot({ filled }: { filled: boolean }) {
   return (
-    <View style={[styles.stepDot, filled ? { backgroundColor: PINK } : { backgroundColor: "#E5E7EB", borderWidth: 2, borderColor: "#D1D5DB" }]}>
+    <View style={[
+      styles.stepDot,
+      filled
+        ? { backgroundColor: PINK }
+        : { backgroundColor: "#E5E7EB", borderWidth: 2, borderColor: "#D1D5DB" },
+    ]}>
       {filled && <Feather name="check" size={9} color="#fff" />}
     </View>
   );
@@ -270,17 +305,14 @@ export default function VehicleSelectionScreen() {
 
   const selectedVehicle = VEHICLES.find((v) => v.id === selectedId) ?? null;
 
-  // Responsive 3-column sizing
-  const COLS        = 3;
-  const H_PAD       = 14;
-  const COL_GAP     = 10;
-  const totalGap    = COL_GAP * (COLS - 1);
-  const cardWidth   = Math.floor((screenW - H_PAD * 2 - totalGap) / COLS);
+  // 2-column responsive card width
+  const H_PAD    = 14;
+  const COL_GAP  = 12;
+  const cardWidth = Math.floor((screenW - H_PAD * 2 - COL_GAP) / 2);
 
-  // Build rows of 3
   const rows: VehicleOption[][] = [];
-  for (let i = 0; i < VEHICLES.length; i += COLS) {
-    rows.push(VEHICLES.slice(i, i + COLS));
+  for (let i = 0; i < VEHICLES.length; i += 2) {
+    rows.push(VEHICLES.slice(i, i + 2));
   }
 
   function handleContinue() {
@@ -299,53 +331,46 @@ export default function VehicleSelectionScreen() {
 
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Choose Vehicle 🚗</Text>
-          <Text style={styles.headerSub}>Step 2 of 3 · Pick your vehicle type</Text>
+          <Text style={styles.headerSub}>Step 2 of 3</Text>
         </View>
 
         <TouchableOpacity style={styles.helpBtn} activeOpacity={0.7}>
-          <Feather name="help-circle" size={14} color={PINK} />
+          <Feather name="help-circle" size={15} color={PINK} />
           <Text style={styles.helpText}>Help</Text>
         </TouchableOpacity>
       </View>
 
-      {/* ── Progress ── */}
+      {/* ── Progress bar ── */}
       <View style={styles.progressRow}>
         <StepDot filled />
-        <LinearGradient colors={[PINK, ORANGE]} style={styles.progressLine} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} />
+        <LinearGradient
+          colors={[PINK, ORANGE]}
+          style={styles.progressLine}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+        />
         <StepDot filled />
         <View style={styles.progressLineEmpty} />
         <StepDot filled={false} />
       </View>
 
-      {/* ── Vehicle count label ── */}
-      <View style={styles.countRow}>
-        <Text style={styles.countText}>{VEHICLES.length} vehicle types available</Text>
-        <View style={styles.countPill}>
-          <Text style={styles.countPillText}>All India</Text>
-        </View>
-      </View>
-
-      {/* ── Scrollable 3-col grid ── */}
+      {/* ── Scrollable 2-col grid ── */}
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 170 }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 178 }]}
         showsVerticalScrollIndicator={false}
       >
         {rows.map((row, ri) => (
-          <View key={ri} style={[styles.row, { gap: COL_GAP }]}>
+          <View key={ri} style={styles.row}>
             {row.map((v) => (
               <VehicleCard
                 key={v.id}
                 vehicle={v}
                 selected={selectedId === v.id}
                 onPress={() => setSelectedId(v.id)}
-                cardWidth={cardWidth}
               />
             ))}
-            {/* Fill remaining columns in last row with invisible spacers */}
-            {row.length < COLS &&
-              Array.from({ length: COLS - row.length }).map((_, i) => (
-                <View key={`spacer-${i}`} style={{ width: cardWidth }} />
-              ))}
+            {/* spacer so an odd last card stays left-aligned at correct width */}
+            {row.length === 1 && <View style={{ width: cardWidth }} />}
           </View>
         ))}
       </ScrollView>
@@ -356,13 +381,20 @@ export default function VehicleSelectionScreen() {
         <View style={styles.summaryCard}>
           <View style={styles.summaryThumbWrap}>
             {selectedVehicle?.imageKey ? (
-              <Image source={IMAGES[selectedVehicle.imageKey]} style={styles.summaryThumb} resizeMode="contain" />
+              <Image
+                source={IMAGES[selectedVehicle.imageKey]}
+                style={styles.summaryThumb}
+                resizeMode="contain"
+              />
             ) : selectedVehicle?.emoji ? (
               <View style={[styles.summaryEmojiWrap, { backgroundColor: selectedVehicle.emojiBg ?? "#F3F4F6" }]}>
                 <Text style={styles.summaryEmoji}>{selectedVehicle.emoji}</Text>
               </View>
             ) : (
-              <LinearGradient colors={[PINK + "30", ORANGE + "18"]} style={styles.summaryThumbPlaceholder}>
+              <LinearGradient
+                colors={[PINK + "30", ORANGE + "18"]}
+                style={styles.summaryThumbPlaceholder}
+              >
                 <Feather name="truck" size={20} color={PINK} />
               </LinearGradient>
             )}
@@ -370,7 +402,7 @@ export default function VehicleSelectionScreen() {
 
           <View style={{ flex: 1 }}>
             <Text style={styles.summaryLabel}>
-              {selectedVehicle ? "Selected vehicle" : "No vehicle selected"}
+              {selectedVehicle ? "You have selected" : "No vehicle selected"}
             </Text>
             {selectedVehicle && (
               <Text style={styles.summaryName}>{selectedVehicle.name}</Text>
@@ -378,14 +410,11 @@ export default function VehicleSelectionScreen() {
           </View>
 
           {selectedVehicle && (
-            <View style={styles.summaryPriceWrap}>
-              <Text style={styles.summaryPrice}>{selectedVehicle.price}</Text>
-              <Text style={styles.summaryCapacity}>{selectedVehicle.capacity}</Text>
-            </View>
+            <Text style={styles.summaryPrice}>{selectedVehicle.price}</Text>
           )}
         </View>
 
-        {/* CTA */}
+        {/* Continue button */}
         <TouchableOpacity
           activeOpacity={selectedId ? 0.82 : 1}
           onPress={handleContinue}
@@ -417,31 +446,31 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
-    paddingBottom: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 10,
   },
   backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 11,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
     shadowOpacity: 0.07,
-    shadowRadius: 7,
+    shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
   headerCenter: { flex: 1, alignItems: "center" },
   headerTitle: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: "800",
     color: TEXT_PRIMARY,
     letterSpacing: -0.3,
   },
   headerSub: {
-    fontSize: 11,
+    fontSize: 12,
     color: TEXT_MUTED,
     fontWeight: "500",
     marginTop: 1,
@@ -449,31 +478,31 @@ const styles = StyleSheet.create({
   helpBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 3,
+    gap: 4,
     backgroundColor: "#fff",
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 11,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 12,
     shadowColor: "#000",
     shadowOpacity: 0.06,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  helpText: { fontSize: 11, fontWeight: "700", color: PINK },
+  helpText: { fontSize: 12, fontWeight: "700", color: PINK },
 
   // Progress
   progressRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 28,
-    paddingBottom: 10,
+    paddingHorizontal: 32,
+    paddingBottom: 12,
     paddingTop: 2,
   },
   stepDot: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -491,53 +520,40 @@ const styles = StyleSheet.create({
     marginHorizontal: -2,
   },
 
-  // Count label
-  countRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    paddingBottom: 8,
-    gap: 8,
-  },
-  countText: { fontSize: 11, color: TEXT_MUTED, fontWeight: "600", flex: 1 },
-  countPill: {
-    backgroundColor: PINK + "18",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 20,
-  },
-  countPillText: { fontSize: 10, color: PINK, fontWeight: "700" },
+  // Grid — 2 columns
+  scroll: { paddingHorizontal: 14, paddingTop: 4, gap: 12 },
+  row:    { flexDirection: "row", gap: 12 },
 
-  // Grid
-  scroll:  { paddingHorizontal: 14, paddingTop: 2, gap: 10 },
-  row:     { flexDirection: "row" },
-
-  // Card outer
+  // Card outer — flex:1 so both columns are equal width
   cardWrap: {
-    borderRadius: 16,
+    flex: 1,
+    borderRadius: 20,
     shadowColor: "#000",
-    shadowOpacity: 0.07,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   cardGlow: {
     position: "absolute",
     inset: -3,
-    borderRadius: 19,
+    borderRadius: 23,
     shadowColor: PINK,
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.38,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
     elevation: 0,
   },
   cardTouchable: {
-    borderRadius: 16,
+    borderRadius: 20,
     overflow: "hidden",
+    flex: 1,
+    alignSelf: "stretch",
   },
   card: {
-    borderRadius: 16,
+    borderRadius: 20,
     overflow: "hidden",
+    flex: 1,
     borderWidth: 1.5,
     borderColor: "rgba(255,255,255,0.9)",
   },
@@ -545,10 +561,16 @@ const styles = StyleSheet.create({
     borderColor: PINK,
     borderWidth: 2,
   },
+  cardInner: {
+    flexDirection: "column",
+    alignSelf: "stretch",
+    flex: 1,
+  },
 
-  // Image zone — white bg, responsive height
+  // ── IMAGE ZONE — white bg, fixed 120px, badges float inside ──
   imageZone: {
     width: "100%",
+    height: 120,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -561,90 +583,76 @@ const styles = StyleSheet.create({
     height: "100%",
   },
 
-  // Emoji fallback — centered in imageZone
-  emojiWrap: {
-    width: "72%",
+  // Emoji fallback — large centered circle
+  emojiCircle: {
+    width: "62%",
     aspectRatio: 1,
     borderRadius: 100,
     alignItems: "center",
     justifyContent: "center",
   },
-  emojiText: { fontSize: 36 },
+  emojiText: { fontSize: 44 },
 
-  // Badge
+  // Badge — top-left inside imageZone
   badge: {
     position: "absolute",
-    top: 6,
-    left: 6,
+    top: 8,
+    left: 8,
     zIndex: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
-  badgeText: { fontSize: 8, fontWeight: "800", letterSpacing: 0.2 },
+  badgeText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.2 },
 
-  // Check circle
+  // Check circle — top-right inside imageZone
   checkCircle: {
     position: "absolute",
-    top: 6,
-    right: 6,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    top: 8,
+    right: 8,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 4,
     shadowColor: PINK,
-    shadowOpacity: 0.4,
-    shadowRadius: 5,
+    shadowOpacity: 0.45,
+    shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
   },
 
-  // Text zone
+  // ── TEXT ZONE — always below image, never overlaps ──
   textZone: {
-    paddingHorizontal: 8,
-    paddingTop: 7,
-    paddingBottom: 8,
+    paddingHorizontal: 11,
+    paddingTop: 9,
+    paddingBottom: 11,
     gap: 4,
   },
   cardName: {
-    fontSize: 12,
+    fontSize: 15,
     fontWeight: "800",
     color: TEXT_PRIMARY,
-    letterSpacing: -0.1,
+    letterSpacing: -0.2,
   },
-  metaRow: {
+  cardTagline: {
+    fontSize: 11,
+    color: TEXT_MUTED,
+    fontWeight: "500",
+  },
+  infoRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 3,
-    backgroundColor: "rgba(255,255,255,0.75)",
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.07)",
-    borderRadius: 6,
-    paddingHorizontal: 5,
-    paddingVertical: 3,
+    marginTop: 2,
   },
-  metaRowSelected: {
-    backgroundColor: "rgba(255,77,141,0.09)",
-    borderColor: "rgba(255,77,141,0.22)",
-  },
-  metaCapacity: {
-    fontSize: 9,
-    fontWeight: "600",
-    color: TEXT_MUTED,
-    flex: 1,
-  },
-  metaDot: {
-    width: 2,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: "#D1D5DB",
-  },
-  metaPrice: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: ORANGE,
-  },
+  infoText:    { fontSize: 10, fontWeight: "600", flex: 1 },
+  infoDivider: { width: 1, height: 10, backgroundColor: "#E5E7EB" },
+  priceText:   { fontSize: 11, fontWeight: "800" },
 
   // Footer
   footer: {
@@ -653,7 +661,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 14,
     gap: 10,
     backgroundColor: "rgba(255,248,252,0.97)",
     borderTopLeftRadius: 24,
@@ -674,9 +682,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     backgroundColor: "#fff",
-    borderRadius: 14,
+    borderRadius: 16,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 9,
     borderWidth: 1,
     borderColor: BORDER,
     shadowColor: "#000",
@@ -686,49 +694,37 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   summaryThumbWrap: {
-    width: 54,
-    height: 40,
+    width: 58,
+    height: 44,
     borderRadius: 10,
     overflow: "hidden",
     backgroundColor: "#FFF0F6",
   },
-  summaryThumb: { width: "100%", height: "100%" },
-  summaryEmojiWrap: {
-    width: "100%",
-    height: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  summaryEmoji: { fontSize: 22 },
-  summaryThumbPlaceholder: {
-    width: "100%",
-    height: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  summaryLabel: { fontSize: 10, color: TEXT_MUTED, fontWeight: "500" },
-  summaryName:  { fontSize: 15, fontWeight: "800", color: TEXT_PRIMARY, marginTop: 1 },
-  summaryPriceWrap: { alignItems: "flex-end" },
-  summaryPrice: { fontSize: 16, fontWeight: "800", color: PINK },
-  summaryCapacity: { fontSize: 10, color: TEXT_MUTED, fontWeight: "500" },
+  summaryThumb:            { width: "100%", height: "100%" },
+  summaryEmojiWrap:        { width: "100%", height: "100%", alignItems: "center", justifyContent: "center" },
+  summaryEmoji:            { fontSize: 24 },
+  summaryThumbPlaceholder: { width: "100%", height: "100%", alignItems: "center", justifyContent: "center" },
+  summaryLabel: { fontSize: 11, color: TEXT_MUTED, fontWeight: "500" },
+  summaryName:  { fontSize: 16, fontWeight: "800", color: TEXT_PRIMARY, marginTop: 1 },
+  summaryPrice: { fontSize: 18, fontWeight: "800", color: PINK },
 
   // CTA
   ctaTouchable: {
-    borderRadius: 14,
+    borderRadius: 16,
     overflow: "hidden",
     shadowColor: PINK,
-    shadowOpacity: 0.32,
+    shadowOpacity: 0.35,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 5 },
     elevation: 7,
   },
   ctaBtn: {
-    height: 52,
+    height: 56,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    borderRadius: 14,
+    borderRadius: 16,
   },
-  ctaText: { fontSize: 17, fontWeight: "800", letterSpacing: 0.2 },
+  ctaText: { fontSize: 18, fontWeight: "800", letterSpacing: 0.2 },
 });
