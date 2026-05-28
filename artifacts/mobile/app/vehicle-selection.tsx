@@ -1,8 +1,10 @@
 import { Feather } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   Animated,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,15 +14,25 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
-import { useColors } from "@/hooks/useColors";
+
+// ─── Brand tokens ──────────────────────────────────────────────
+const PINK = "#FF4D8D";
+const ORANGE = "#FF7A3D";
+const TEXT_PRIMARY = "#111111";
+const TEXT_MUTED = "#6B7280";
+const BORDER = "#F0E6EC";
 
 type VehicleOption = {
   id: string;
   name: string;
   tagline: string;
-  icon: string;
-  pillLabel: string;
-  badge?: string;
+  emoji: string;
+  platformColor: string;
+  cardBg: [string, string];
+  seatLabel: string;
+  seatIcon: "user" | "users" | "package";
+  price: string;
+  badge?: { text: string; bg: string; fg: string };
 };
 
 const VEHICLES: VehicleOption[] = [
@@ -28,48 +40,73 @@ const VEHICLES: VehicleOption[] = [
     id: "bike",
     name: "Bike",
     tagline: "Quick, agile rides",
-    icon: "wind",
-    pillLabel: "₹6/km",
-    badge: "Popular",
+    emoji: "🛵",
+    platformColor: "#C084FC",
+    cardBg: ["#F5F3FF", "#FAF5FF"],
+    seatLabel: "1 Seat",
+    seatIcon: "user",
+    price: "₹6/km",
+    badge: { text: "⭐ Popular", bg: "#A855F7", fg: "#fff" },
   },
   {
     id: "auto",
     name: "Auto",
     tagline: "3-seater, in-city",
-    icon: "truck",
-    pillLabel: "₹10/km",
+    emoji: "🚐",
+    platformColor: "#FBBF24",
+    cardBg: ["#FFFBEB", "#FEFCE8"],
+    seatLabel: "3 Seats",
+    seatIcon: "users",
+    price: "₹10/km",
   },
   {
     id: "mini",
     name: "Mini Car",
     tagline: "Compact, economy",
-    icon: "navigation",
-    pillLabel: "₹14/km",
+    emoji: "🚗",
+    platformColor: "#60A5FA",
+    cardBg: ["#EFF6FF", "#F0F9FF"],
+    seatLabel: "4 Seats",
+    seatIcon: "users",
+    price: "₹14/km",
   },
   {
     id: "sedan",
     name: "Sedan",
     tagline: "Premium comfort",
-    icon: "star",
-    pillLabel: "₹18/km",
+    emoji: "🚙",
+    platformColor: "#F472B6",
+    cardBg: ["#FDF2F8", "#FFF0F6"],
+    seatLabel: "4 Seats",
+    seatIcon: "users",
+    price: "₹18/km",
   },
   {
     id: "ev",
     name: "EV",
-    tagline: "Electric, eco",
-    icon: "zap",
-    pillLabel: "₹12/km",
-    badge: "New",
+    tagline: "Electric, eco-friendly",
+    emoji: "🔋",
+    platformColor: "#34D399",
+    cardBg: ["#ECFDF5", "#F0FFF8"],
+    seatLabel: "4 Seats",
+    seatIcon: "users",
+    price: "₹12/km",
+    badge: { text: "⚡ New", bg: "#10B981", fg: "#fff" },
   },
   {
     id: "truck",
     name: "Truck",
     tagline: "Goods delivery",
-    icon: "package",
-    pillLabel: "₹22/km",
+    emoji: "🚛",
+    platformColor: "#64748B",
+    cardBg: ["#F1F5F9", "#F8FAFC"],
+    seatLabel: "Up to 8 Ton",
+    seatIcon: "package",
+    price: "₹22/km",
   },
 ];
 
+// ─── Vehicle Card ───────────────────────────────────────────────
 function VehicleCard({
   vehicle,
   selected,
@@ -79,139 +116,179 @@ function VehicleCard({
   selected: boolean;
   onPress: () => void;
 }) {
-  const colors = useColors();
   const scale = useRef(new Animated.Value(1)).current;
+  const glow = useRef(new Animated.Value(0)).current;
   const prev = useRef(selected);
 
   useEffect(() => {
     if (selected && !prev.current) {
-      Animated.sequence([
-        Animated.spring(scale, {
-          toValue: 1.04,
-          friction: 4,
-          tension: 220,
-          useNativeDriver: true,
-        }),
-        Animated.spring(scale, {
+      Animated.parallel([
+        Animated.sequence([
+          Animated.spring(scale, {
+            toValue: 1.05,
+            friction: 4,
+            tension: 260,
+            useNativeDriver: true,
+          }),
+          Animated.spring(scale, {
+            toValue: 1,
+            friction: 5,
+            tension: 200,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.timing(glow, {
           toValue: 1,
-          friction: 5,
-          tension: 180,
+          duration: 250,
           useNativeDriver: true,
         }),
       ]).start();
+    }
+    if (!selected && prev.current) {
+      Animated.timing(glow, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: true,
+      }).start();
     }
     prev.current = selected;
   }, [selected]);
 
   return (
-    <Animated.View style={{ flex: 1, transform: [{ scale }] }}>
-      <TouchableOpacity activeOpacity={0.85} onPress={onPress}>
-        <View
-          style={[
-            styles.card,
-            {
-              borderColor: selected ? colors.primary : colors.border,
-              backgroundColor: selected ? "#f0fdf4" : "#fff",
-              borderWidth: selected ? 2 : 1.5,
-              shadowOpacity: selected ? 0.18 : 0.05,
-              shadowColor: selected ? colors.primary : "#000",
-              shadowRadius: selected ? 14 : 6,
-              shadowOffset: { width: 0, height: selected ? 6 : 2 },
-            },
-          ]}
-        >
-          {vehicle.badge && (
-            <View
-              style={[
-                styles.badge,
-                {
-                  backgroundColor: selected ? colors.primary : "#ffe082",
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.badgeText,
-                  { color: selected ? "#fff" : "#7a5c00" },
-                ]}
-              >
-                {vehicle.badge}
-              </Text>
-            </View>
-          )}
+    <Animated.View style={[styles.cardWrap, { transform: [{ scale }] }]}>
+      {/* Glow layer when selected */}
+      <Animated.View
+        style={[
+          styles.cardGlow,
+          {
+            opacity: glow,
+            shadowColor: PINK,
+          },
+        ]}
+        pointerEvents="none"
+      />
 
-          {selected && (
-            <View style={[styles.checkBadge, { backgroundColor: colors.primary }]}>
-              <Feather name="check" size={12} color="#fff" />
-            </View>
-          )}
-
-          <View
-            style={[
-              styles.iconCircle,
-              {
-                backgroundColor: selected
-                  ? "rgba(0, 200, 83, 0.15)"
-                  : colors.muted,
-                borderColor: selected ? colors.primary : "transparent",
-              },
-            ]}
+      <TouchableOpacity
+        activeOpacity={0.88}
+        onPress={onPress}
+        style={styles.cardTouchable}
+      >
+        {/* Card shell — gradient bg when selected */}
+        {selected ? (
+          <LinearGradient
+            colors={["#FFF0F6", "#FDF2F8"]}
+            style={[styles.card, styles.cardSelected]}
           >
-            <Feather
-              name={vehicle.icon as any}
-              size={28}
-              color={selected ? colors.primary : "#555"}
-            />
-          </View>
-
-          <Text
-            style={[
-              styles.cardName,
-              { color: selected ? colors.primary : "#0a0a0a" },
-            ]}
-          >
-            {vehicle.name}
-          </Text>
-          <Text
-            style={[
-              styles.cardTagline,
-              { color: colors.mutedForeground },
-            ]}
-          >
-            {vehicle.tagline}
-          </Text>
-
-          <View
-            style={[
-              styles.pricePill,
-              {
-                backgroundColor: selected ? colors.primary : "#f5f5f5",
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.pricePillText,
-                { color: selected ? "#fff" : "#333" },
-              ]}
-            >
-              {vehicle.pillLabel}
-            </Text>
-          </View>
-        </View>
+            <CardContent vehicle={vehicle} selected={selected} />
+          </LinearGradient>
+        ) : (
+          <LinearGradient colors={vehicle.cardBg} style={styles.card}>
+            <CardContent vehicle={vehicle} selected={selected} />
+          </LinearGradient>
+        )}
       </TouchableOpacity>
     </Animated.View>
   );
 }
 
+function CardContent({
+  vehicle,
+  selected,
+}: {
+  vehicle: VehicleOption;
+  selected: boolean;
+}) {
+  return (
+    <>
+      {/* Badge */}
+      {vehicle.badge && (
+        <View style={[styles.badge, { backgroundColor: vehicle.badge.bg }]}>
+          <Text style={[styles.badgeText, { color: vehicle.badge.fg }]}>
+            {vehicle.badge.text}
+          </Text>
+        </View>
+      )}
+
+      {/* Check mark */}
+      {selected && (
+        <LinearGradient
+          colors={[PINK, ORANGE]}
+          style={styles.checkCircle}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <Feather name="check" size={11} color="#fff" />
+        </LinearGradient>
+      )}
+
+      {/* Vehicle emoji on platform */}
+      <View style={styles.vehicleStage}>
+        <Text style={styles.vehicleEmoji}>{vehicle.emoji}</Text>
+        <View
+          style={[
+            styles.platform,
+            { backgroundColor: vehicle.platformColor + "40" },
+          ]}
+        />
+      </View>
+
+      {/* Name + tagline */}
+      <Text style={styles.cardName}>{vehicle.name}</Text>
+      <Text style={styles.cardTagline}>{vehicle.tagline}</Text>
+
+      {/* Info row */}
+      <View
+        style={[
+          styles.infoRow,
+          {
+            backgroundColor: selected
+              ? "rgba(255,77,141,0.08)"
+              : "rgba(255,255,255,0.7)",
+            borderColor: selected ? "rgba(255,77,141,0.2)" : "rgba(0,0,0,0.06)",
+          },
+        ]}
+      >
+        <Feather
+          name={vehicle.seatIcon}
+          size={11}
+          color={selected ? PINK : TEXT_MUTED}
+        />
+        <Text style={[styles.infoText, { color: selected ? PINK : TEXT_MUTED }]}>
+          {vehicle.seatLabel}
+        </Text>
+        <View style={styles.infoDivider} />
+        <Text style={[styles.priceText, { color: selected ? PINK : ORANGE }]}>
+          {vehicle.price}
+        </Text>
+      </View>
+    </>
+  );
+}
+
+// ─── Progress Step Dot ──────────────────────────────────────────
+function StepDot({ filled, active }: { filled: boolean; active?: boolean }) {
+  return (
+    <View
+      style={[
+        styles.stepDot,
+        filled
+          ? { backgroundColor: PINK }
+          : { backgroundColor: "#E5E7EB", borderWidth: 2, borderColor: "#D1D5DB" },
+      ]}
+    >
+      {filled && <Feather name="check" size={9} color="#fff" />}
+    </View>
+  );
+}
+
+// ─── Main Screen ────────────────────────────────────────────────
 export default function VehicleSelectionScreen() {
-  const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { setVehicle } = useDriver();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const selectedVehicle = VEHICLES.find((v) => v.id === selectedId);
+  const selectedVehicle = VEHICLES.find((v) => v.id === selectedId) ?? null;
 
   function handleContinue() {
     if (!selectedId || !selectedVehicle) return;
@@ -228,298 +305,410 @@ export default function VehicleSelectionScreen() {
   }
 
   return (
-    <View style={[styles.root, { backgroundColor: "#fff" }]}>
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <View style={styles.headerTop}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={[styles.backBtn, { backgroundColor: "#f5f5f5" }]}
-          >
-            <Feather name="arrow-left" size={19} color="#0a0a0a" />
-          </TouchableOpacity>
-          <View style={styles.headerTitle}>
-            <Text style={styles.headerLabel}>Choose Vehicle</Text>
-            <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
-              Step 2 of 3
-            </Text>
-          </View>
-          <View style={{ width: 38 }} />
+    <LinearGradient
+      colors={["#FFF5F8", "#FFFAF5", "#FFF8FC"]}
+      style={styles.root}
+    >
+      {/* ── Header ── */}
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          activeOpacity={0.7}
+        >
+          <Feather name="arrow-left" size={18} color={TEXT_PRIMARY} />
+        </TouchableOpacity>
+
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>Choose Vehicle 🚗</Text>
+          <Text style={styles.headerSub}>Step 2 of 3</Text>
         </View>
-        <View style={styles.stepBar}>
-          <View style={[styles.stepSegment, { backgroundColor: colors.primary }]} />
-          <View style={[styles.stepSegment, { backgroundColor: colors.primary }]} />
-          <View style={[styles.stepSegment, { backgroundColor: colors.border }]} />
-        </View>
+
+        <TouchableOpacity style={styles.helpBtn} activeOpacity={0.7}>
+          <Feather name="help-circle" size={15} color={PINK} />
+          <Text style={styles.helpText}>Help</Text>
+        </TouchableOpacity>
       </View>
 
+      {/* ── Progress bar ── */}
+      <View style={styles.progressRow}>
+        <StepDot filled />
+        <LinearGradient
+          colors={[PINK, ORANGE]}
+          style={styles.progressLine}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+        />
+        <StepDot filled />
+        <View style={styles.progressLineEmpty} />
+        <StepDot filled={false} />
+      </View>
+
+      {/* ── Scrollable grid ── */}
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: 24 }]}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: insets.bottom + 180 },
+        ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.heroSection}>
-          <Text style={styles.heroTitle}>What do you drive?</Text>
-          <Text style={[styles.heroSub, { color: colors.mutedForeground }]}>
-            Pick your vehicle category to start receiving matching ride requests.
-          </Text>
-        </View>
-
-        <View style={styles.grid}>
-          {rows.map((row, ri) => (
-            <View key={ri} style={styles.row}>
-              {row.map((v) => (
-                <VehicleCard
-                  key={v.id}
-                  vehicle={v}
-                  selected={selectedId === v.id}
-                  onPress={() => setSelectedId(v.id)}
-                />
-              ))}
-              {row.length === 1 && <View style={{ flex: 1 }} />}
-            </View>
-          ))}
-        </View>
-
-        <View
-          style={[
-            styles.helpBox,
-            { backgroundColor: "#f8fafc", borderColor: colors.border },
-          ]}
-        >
-          <Feather name="help-circle" size={15} color={colors.mutedForeground} />
-          <Text style={[styles.helpText, { color: colors.mutedForeground }]}>
-            You can add more vehicles later from your profile settings.
-          </Text>
-        </View>
+        {rows.map((row, ri) => (
+          <View key={ri} style={styles.row}>
+            {row.map((v) => (
+              <VehicleCard
+                key={v.id}
+                vehicle={v}
+                selected={selectedId === v.id}
+                onPress={() => setSelectedId(v.id)}
+              />
+            ))}
+            {row.length === 1 && <View style={{ flex: 1 }} />}
+          </View>
+        ))}
       </ScrollView>
 
+      {/* ── Sticky footer ── */}
       <View
         style={[
           styles.footer,
-          {
-            paddingBottom: insets.bottom + 16,
-            borderTopColor: colors.border,
-          },
+          { paddingBottom: insets.bottom + 16 },
         ]}
       >
-        {selectedVehicle ? (
-          <View style={styles.selectionRow}>
-            <View
+        {/* Selection summary pill */}
+        <View style={styles.summaryCard}>
+          <LinearGradient
+            colors={[PINK + "22", ORANGE + "11"]}
+            style={styles.summaryIconWrap}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <Text style={{ fontSize: 20 }}>
+              {selectedVehicle ? selectedVehicle.emoji : "🚗"}
+            </Text>
+          </LinearGradient>
+
+          <View style={{ flex: 1 }}>
+            <Text style={styles.summaryLabel}>
+              {selectedVehicle ? "You have selected" : "No vehicle selected"}
+            </Text>
+            {selectedVehicle && (
+              <Text style={styles.summaryName}>{selectedVehicle.name}</Text>
+            )}
+          </View>
+
+          {selectedVehicle && (
+            <Text style={styles.summaryPrice}>{selectedVehicle.price}</Text>
+          )}
+        </View>
+
+        {/* Continue button */}
+        <TouchableOpacity
+          activeOpacity={selectedId ? 0.82 : 1}
+          onPress={handleContinue}
+          disabled={!selectedId}
+          style={styles.ctaTouchable}
+        >
+          <LinearGradient
+            colors={selectedId ? [PINK, ORANGE] : ["#E5E7EB", "#E5E7EB"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.ctaBtn}
+          >
+            <Text
               style={[
-                styles.selectionIcon,
-                { backgroundColor: "rgba(0, 200, 83, 0.12)" },
+                styles.ctaText,
+                { color: selectedId ? "#fff" : TEXT_MUTED },
               ]}
             >
-              <Feather
-                name={selectedVehicle.icon as any}
-                size={16}
-                color={colors.primary}
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.selectionLabel, { color: colors.mutedForeground }]}>
-                Selected
-              </Text>
-              <Text style={[styles.selectionName, { color: colors.foreground }]}>
-                {selectedVehicle.name}
-              </Text>
-            </View>
-            <Text style={[styles.selectionPrice, { color: colors.primary }]}>
-              {selectedVehicle.pillLabel}
+              Continue
             </Text>
-          </View>
-        ) : (
-          <View style={styles.hintRow}>
-            <Feather name="info" size={13} color={colors.mutedForeground} />
-            <Text style={[styles.hintText, { color: colors.mutedForeground }]}>
-              Tap a vehicle to continue
-            </Text>
-          </View>
-        )}
-
-        <TouchableOpacity
-          style={[
-            styles.continueBtn,
-            { backgroundColor: selectedId ? colors.primary : colors.muted },
-          ]}
-          onPress={handleContinue}
-          activeOpacity={0.85}
-          disabled={!selectedId}
-        >
-          <Text
-            style={[
-              styles.continueBtnText,
-              { color: selectedId ? "#fff" : colors.mutedForeground },
-            ]}
-          >
-            Continue
-          </Text>
-          <Feather
-            name="arrow-right"
-            size={18}
-            color={selectedId ? "#fff" : colors.mutedForeground}
-          />
+            <Feather
+              name="arrow-right"
+              size={20}
+              color={selectedId ? "#fff" : TEXT_MUTED}
+            />
+          </LinearGradient>
         </TouchableOpacity>
       </View>
-    </View>
+    </LinearGradient>
   );
 }
 
+// ─── Styles ─────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   root: { flex: 1 },
+
+  // Header
   header: {
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-  },
-  headerTop: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    gap: 0,
   },
   backBtn: {
     width: 38,
     height: 38,
-    borderRadius: 11,
+    borderRadius: 12,
+    backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
-  headerTitle: { alignItems: "center" },
-  headerLabel: { fontSize: 16, fontWeight: "700", color: "#0a0a0a" },
-  headerSub: { fontSize: 12 },
-  stepBar: {
-    flexDirection: "row",
-    gap: 5,
-    height: 4,
-  },
-  stepSegment: { flex: 1, height: 4, borderRadius: 2 },
-
-  scroll: { paddingHorizontal: 16, paddingTop: 20, gap: 18 },
-  heroSection: { paddingHorizontal: 4, gap: 6 },
-  heroTitle: {
-    fontSize: 26,
+  headerCenter: { flex: 1, alignItems: "center" },
+  headerTitle: {
+    fontSize: 18,
     fontWeight: "800",
-    color: "#0a0a0a",
+    color: TEXT_PRIMARY,
     letterSpacing: -0.3,
   },
-  heroSub: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-
-  grid: { gap: 12 },
-  row: { flexDirection: "row", gap: 12 },
-
-  card: {
-    borderRadius: 18,
-    padding: 16,
-    gap: 8,
-    alignItems: "flex-start",
-    position: "relative",
+  headerSub: { fontSize: 12, color: TEXT_MUTED, fontWeight: "500", marginTop: 1 },
+  helpBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#fff",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
     elevation: 2,
-    minHeight: 168,
   },
-  badge: {
-    position: "absolute",
-    top: 10,
-    left: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    zIndex: 1,
+  helpText: { fontSize: 12, fontWeight: "700", color: PINK },
+
+  // Progress
+  progressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 32,
+    paddingBottom: 14,
+    paddingTop: 4,
   },
-  badgeText: { fontSize: 10, fontWeight: "700", letterSpacing: 0.3 },
-  checkBadge: {
-    position: "absolute",
-    top: 10,
-    right: 10,
+  stepDot: {
     width: 22,
     height: 22,
     borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 1,
   },
-  iconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  progressLine: {
+    flex: 1,
+    height: 3,
+    borderRadius: 2,
+    marginHorizontal: -2,
+  },
+  progressLineEmpty: {
+    flex: 1,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: "#E5E7EB",
+    marginHorizontal: -2,
+  },
+
+  // Grid
+  scroll: { paddingHorizontal: 14, paddingTop: 4, gap: 12 },
+  row: { flexDirection: "row", gap: 12 },
+
+  // Card
+  cardWrap: {
+    flex: 1,
+    borderRadius: 20,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  cardGlow: {
+    position: "absolute",
+    inset: -3,
+    borderRadius: 23,
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 0,
+  },
+  cardTouchable: {
+    borderRadius: 20,
+    overflow: "hidden",
+  },
+  card: {
+    borderRadius: 20,
+    padding: 14,
+    paddingTop: 12,
+    gap: 6,
+    minHeight: 195,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.9)",
+  },
+  cardSelected: {
+    borderColor: PINK,
+    borderWidth: 2,
+  },
+
+  // Badge
+  badge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    marginBottom: 2,
+  },
+  badgeText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.2 },
+
+  // Check circle
+  checkCircle: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 14,
-    marginBottom: 2,
-    borderWidth: 1.5,
+    zIndex: 2,
+    shadowColor: PINK,
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
   },
+
+  // Vehicle stage
+  vehicleStage: {
+    alignItems: "center",
+    justifyContent: "flex-end",
+    height: 72,
+    marginTop: 0,
+    marginBottom: 4,
+  },
+  vehicleEmoji: {
+    fontSize: 46,
+    lineHeight: 54,
+    zIndex: 2,
+  },
+  platform: {
+    position: "absolute",
+    bottom: 0,
+    width: 70,
+    height: 14,
+    borderRadius: 35,
+    opacity: 0.8,
+  },
+
+  // Card text
   cardName: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "800",
+    color: TEXT_PRIMARY,
     letterSpacing: -0.2,
   },
   cardTagline: {
-    fontSize: 12,
+    fontSize: 11,
+    color: TEXT_MUTED,
     fontWeight: "500",
+    marginTop: -2,
   },
-  pricePill: {
-    marginTop: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 7,
-  },
-  pricePillText: { fontSize: 12, fontWeight: "700" },
 
-  helpBox: {
+  // Info row
+  infoRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    padding: 12,
-    borderRadius: 12,
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
     borderWidth: 1,
     marginTop: 4,
   },
-  helpText: { fontSize: 12, flex: 1 },
+  infoText: { fontSize: 11, fontWeight: "600", flex: 1 },
+  infoDivider: { width: 1, height: 10, backgroundColor: "#E5E7EB" },
+  priceText: { fontSize: 12, fontWeight: "800" },
 
+  // Footer
   footer: {
-    paddingHorizontal: 20,
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 16,
     paddingTop: 14,
+    gap: 10,
+    backgroundColor: "rgba(255,248,252,0.96)",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     borderTopWidth: 1,
+    borderColor: BORDER,
+    shadowColor: PINK,
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: -6 },
+    elevation: 12,
+    ...Platform.select({
+      web: { backdropFilter: "blur(12px)" },
+    }),
+  },
+
+  // Summary card
+  summaryCard: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
     backgroundColor: "#fff",
-  },
-  selectionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: "#f0fdf4",
-    borderRadius: 12,
-  },
-  selectionIcon: {
-    width: 32,
-    height: 32,
     borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: BORDER,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  summaryIconWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
-  selectionLabel: { fontSize: 10, fontWeight: "600", letterSpacing: 0.4 },
-  selectionName: { fontSize: 15, fontWeight: "700" },
-  selectionPrice: { fontSize: 15, fontWeight: "800" },
-  hintRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 6,
+  summaryLabel: { fontSize: 11, color: TEXT_MUTED, fontWeight: "500" },
+  summaryName: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: TEXT_PRIMARY,
+    marginTop: 1,
   },
-  hintText: { fontSize: 13 },
-  continueBtn: {
+  summaryPrice: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: PINK,
+  },
+
+  // CTA button
+  ctaTouchable: {
+    borderRadius: 16,
+    overflow: "hidden",
+    shadowColor: PINK,
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 7,
+  },
+  ctaBtn: {
     height: 56,
-    borderRadius: 15,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
+    borderRadius: 16,
   },
-  continueBtnText: { fontSize: 17, fontWeight: "700" },
+  ctaText: { fontSize: 18, fontWeight: "800", letterSpacing: 0.2 },
 });
