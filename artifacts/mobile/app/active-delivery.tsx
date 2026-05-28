@@ -75,24 +75,17 @@ function maskPhone(raw: string): string {
   return `+91 ${d.slice(0, 2)}XXXX${d.slice(-3)}`;
 }
 
-/** Open Android dialer with pre-filled number. Falls back to alert on failure. */
-async function callNumber(raw: string) {
+/** Open Android dialer with pre-filled number — no confirmation popup. */
+function callNumber(raw: string) {
   const d = raw.replace(/\D/g, "");
   if (!d) {
     Alert.alert("No number", "Customer phone number is unavailable for this order.");
     return;
   }
-  const uri = `tel:+91${d}`;
-  try {
-    const ok = await Linking.canOpenURL(uri);
-    if (ok) {
-      await Linking.openURL(uri);
-    } else {
-      Alert.alert("Cannot open dialer", `Customer number: +91 ${d}\nPlease call manually.`);
-    }
-  } catch {
-    Alert.alert("Dialer error", `Could not open phone app. Number: +91 ${d}`);
-  }
+  // tel: URIs open the native dialer directly on Android/iOS — no canOpenURL check needed.
+  Linking.openURL(`tel:+91${d}`).catch(() => {
+    Alert.alert("Dialer unavailable", "Unable to open phone app on this device.");
+  });
 }
 
 function openGoogleMaps(address: string, city: string) {
