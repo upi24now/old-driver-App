@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   Alert,
+  Platform,
   ScrollView,
   StyleSheet,
   Switch,
@@ -15,6 +16,37 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
+
+function confirmAction(
+  title: string,
+  message: string,
+  confirmLabel: string,
+  onConfirm: () => void,
+  destructive = false,
+) {
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined" && window.confirm(`${title}\n\n${message}`)) {
+      onConfirm();
+    }
+    return;
+  }
+  Alert.alert(title, message, [
+    { text: "Cancel", style: "cancel" },
+    {
+      text: confirmLabel,
+      style: destructive ? "destructive" : "default",
+      onPress: onConfirm,
+    },
+  ]);
+}
+
+function infoAlert(title: string, message: string) {
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined") window.alert(`${title}\n\n${message}`);
+    return;
+  }
+  Alert.alert(title, message);
+}
 
 type DocStatus = "verified" | "pending" | "expiring" | "rejected";
 
@@ -132,17 +164,16 @@ export default function SettingsScreen() {
   const needsAttention = DOCS.length - verifiedCount;
 
   function confirmLogout() {
-    Alert.alert("Sign out?", "You'll need to log in again to receive ride requests.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Sign out",
-        style: "destructive",
-        onPress: () => {
-          signOut();
-          router.replace("/login");
-        },
+    confirmAction(
+      "Sign out?",
+      "You'll need to log in again to receive ride requests.",
+      "Sign out",
+      () => {
+        signOut();
+        router.replace("/login");
       },
-    ]);
+      true,
+    );
   }
 
   return (
@@ -485,7 +516,7 @@ export default function SettingsScreen() {
                 </View>
               }
               onPress={() =>
-                Alert.alert(
+                infoAlert(
                   "Service area",
                   "You're currently operating in Bengaluru. Contact support to change your city.",
                 )
@@ -504,7 +535,7 @@ export default function SettingsScreen() {
               icon="help-circle"
               title="Help & support"
               onPress={() =>
-                Alert.alert(
+                infoAlert(
                   "Help & support",
                   "Our team is available 24×7 at support@driver.app or +91 80000 00000.",
                 )
@@ -518,13 +549,12 @@ export default function SettingsScreen() {
               title="Emergency SOS"
               sub="Quick contact for safety"
               onPress={() =>
-                Alert.alert(
+                confirmAction(
                   "Emergency SOS",
                   "This will alert police, your emergency contact, and our safety team.",
-                  [
-                    { text: "Cancel", style: "cancel" },
-                    { text: "Send alert", style: "destructive" },
-                  ],
+                  "Send alert",
+                  () => infoAlert("Alert sent", "Help is on the way."),
+                  true,
                 )
               }
               divider
@@ -532,13 +562,13 @@ export default function SettingsScreen() {
             <Row
               icon="shield"
               title="Privacy policy"
-              onPress={() => Alert.alert("Privacy policy", "Opens the privacy policy in your browser.")}
+              onPress={() => infoAlert("Privacy policy", "Opens the privacy policy in your browser.")}
               divider
             />
             <Row
               icon="file-text"
               title="Terms of service"
-              onPress={() => Alert.alert("Terms of service", "Opens the terms in your browser.")}
+              onPress={() => infoAlert("Terms of service", "Opens the terms in your browser.")}
             />
           </SectionCard>
         </View>
