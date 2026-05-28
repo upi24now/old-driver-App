@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import {
   Animated,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -17,8 +18,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { DeliveryRiderIllustration } from "@/components/DeliveryRiderIllustration";
 import { useDriver } from "@/contexts/DriverContext";
+
+const LOGO = require("@/assets/images/logo.png");
 
 const COUNTRY_CODE = "+91";
 
@@ -166,7 +168,11 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.heroSection}>
-          <DeliveryRiderIllustration size={190} />
+          <Image
+            source={LOGO}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
         </View>
 
         <View style={styles.headingSection}>
@@ -288,7 +294,11 @@ const styles = StyleSheet.create({
   heroSection: {
     alignItems: "center",
     justifyContent: "center",
-    paddingTop: 8,
+    paddingTop: 4,
+  },
+  logoImage: {
+    width: 220,
+    height: 220,
   },
   headingSection: {
     marginTop: 28,

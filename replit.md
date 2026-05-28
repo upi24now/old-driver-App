@@ -1,6 +1,6 @@
-# [Project name]
+# Bike Courier
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A driver-facing mobile app for bike, auto, and truck courier delivery partners in India.
 
 ## Run & Operate
 
