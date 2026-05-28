@@ -19,13 +19,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 
-const VEHICLE_TYPES = [
-  { id: "bike", label: "Bike", icon: "wind" },
-  { id: "auto", label: "Auto", icon: "truck" },
-  { id: "car", label: "Car", icon: "navigation" },
-  { id: "ev", label: "EV", icon: "zap" },
-] as const;
-
 const CITIES = [
   "Mumbai", "Delhi", "Bangalore", "Hyderabad", "Chennai",
   "Pune", "Kolkata", "Ahmedabad", "Jaipur", "Surat",
@@ -144,7 +137,6 @@ export default function ProfileSetupScreen() {
     vehicleNumber: "",
     licenseNumber: "",
   });
-  const [vehicleType, setVehicleType] = useState<string>("");
   const [cityOpen, setCityOpen] = useState(false);
 
   function set(key: keyof Field) {
@@ -167,8 +159,7 @@ export default function ProfileSetupScreen() {
 
   const isValid =
     fields.name.trim().length >= 2 &&
-    fields.city.length > 0 &&
-    vehicleType.length > 0;
+    fields.city.length > 0;
 
   function handleContinue() {
     if (!isValid) return;
@@ -358,55 +349,6 @@ export default function ProfileSetupScreen() {
             </View>
           </View>
 
-          <FormField label="Vehicle Type" icon="truck" required>
-            <View style={styles.vehicleRow}>
-              {VEHICLE_TYPES.map((v) => {
-                const active = vehicleType === v.id;
-                return (
-                  <TouchableOpacity
-                    key={v.id}
-                    style={[
-                      styles.vehicleChip,
-                      {
-                        borderColor: active ? colors.primary : colors.border,
-                        backgroundColor: active ? "#f0fdf4" : "#fafafa",
-                      },
-                    ]}
-                    onPress={() => setVehicleType(v.id)}
-                    activeOpacity={0.75}
-                  >
-                    <Feather
-                      name={v.icon as any}
-                      size={18}
-                      color={active ? colors.primary : colors.mutedForeground}
-                    />
-                    <Text
-                      style={[
-                        styles.vehicleLabel,
-                        {
-                          color: active ? colors.primary : colors.foreground,
-                          fontWeight: active ? "700" : "500",
-                        },
-                      ]}
-                    >
-                      {v.label}
-                    </Text>
-                    {active && (
-                      <View
-                        style={[
-                          styles.vehicleCheck,
-                          { backgroundColor: colors.primary },
-                        ]}
-                      >
-                        <Feather name="check" size={9} color="#fff" />
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </FormField>
-
           <FormField label="Vehicle Number" icon="hash">
             <TextFieldInput
               value={fields.vehicleNumber}
@@ -457,7 +399,7 @@ export default function ProfileSetupScreen() {
           <Text style={[styles.footerMetaText, { color: colors.mutedForeground }]}>
             {isValid
               ? "Looks good! You can continue."
-              : "Fill in name, city and vehicle type to continue."}
+              : "Fill in your name and city to continue."}
           </Text>
         </View>
         <TouchableOpacity
@@ -604,34 +546,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   genderText: { fontSize: 12, fontWeight: "600" },
-  vehicleRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  vehicleChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    borderWidth: 1.5,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    position: "relative",
-  },
-  vehicleLabel: { fontSize: 14 },
-  vehicleCheck: {
-    position: "absolute",
-    top: -5,
-    right: -5,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1.5,
-    borderColor: "#fff",
-  },
   infoBox: {
     flexDirection: "row",
     gap: 10,
