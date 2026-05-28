@@ -4,6 +4,8 @@ import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   Animated,
+  Image,
+  ImageSourcePropType,
   Platform,
   ScrollView,
   StyleSheet,
@@ -22,12 +24,20 @@ const TEXT_PRIMARY = "#111111";
 const TEXT_MUTED = "#6B7280";
 const BORDER = "#F0E6EC";
 
+// ─── Vehicle image sources (cropped from reference) ─────────────
+const IMAGES: Record<string, ImageSourcePropType> = {
+  bike:  require("../assets/vehicles/bike.png"),
+  auto:  require("../assets/vehicles/auto.png"),
+  mini:  require("../assets/vehicles/mini.png"),
+  sedan: require("../assets/vehicles/sedan.png"),
+  ev:    require("../assets/vehicles/ev.png"),
+  truck: require("../assets/vehicles/truck.png"),
+};
+
 type VehicleOption = {
   id: string;
   name: string;
   tagline: string;
-  emoji: string;
-  platformColor: string;
   cardBg: [string, string];
   seatLabel: string;
   seatIcon: "user" | "users" | "package";
@@ -40,8 +50,6 @@ const VEHICLES: VehicleOption[] = [
     id: "bike",
     name: "Bike",
     tagline: "Quick, agile rides",
-    emoji: "🛵",
-    platformColor: "#C084FC",
     cardBg: ["#F5F3FF", "#FAF5FF"],
     seatLabel: "1 Seat",
     seatIcon: "user",
@@ -52,8 +60,6 @@ const VEHICLES: VehicleOption[] = [
     id: "auto",
     name: "Auto",
     tagline: "3-seater, in-city",
-    emoji: "🚐",
-    platformColor: "#FBBF24",
     cardBg: ["#FFFBEB", "#FEFCE8"],
     seatLabel: "3 Seats",
     seatIcon: "users",
@@ -63,8 +69,6 @@ const VEHICLES: VehicleOption[] = [
     id: "mini",
     name: "Mini Car",
     tagline: "Compact, economy",
-    emoji: "🚗",
-    platformColor: "#60A5FA",
     cardBg: ["#EFF6FF", "#F0F9FF"],
     seatLabel: "4 Seats",
     seatIcon: "users",
@@ -74,8 +78,6 @@ const VEHICLES: VehicleOption[] = [
     id: "sedan",
     name: "Sedan",
     tagline: "Premium comfort",
-    emoji: "🚙",
-    platformColor: "#F472B6",
     cardBg: ["#FDF2F8", "#FFF0F6"],
     seatLabel: "4 Seats",
     seatIcon: "users",
@@ -85,8 +87,6 @@ const VEHICLES: VehicleOption[] = [
     id: "ev",
     name: "EV",
     tagline: "Electric, eco-friendly",
-    emoji: "🔋",
-    platformColor: "#34D399",
     cardBg: ["#ECFDF5", "#F0FFF8"],
     seatLabel: "4 Seats",
     seatIcon: "users",
@@ -97,8 +97,6 @@ const VEHICLES: VehicleOption[] = [
     id: "truck",
     name: "Truck",
     tagline: "Goods delivery",
-    emoji: "🚛",
-    platformColor: "#64748B",
     cardBg: ["#F1F5F9", "#F8FAFC"],
     seatLabel: "Up to 8 Ton",
     seatIcon: "package",
@@ -117,8 +115,8 @@ function VehicleCard({
   onPress: () => void;
 }) {
   const scale = useRef(new Animated.Value(1)).current;
-  const glow = useRef(new Animated.Value(0)).current;
-  const prev = useRef(selected);
+  const glow  = useRef(new Animated.Value(0)).current;
+  const prev  = useRef(selected);
 
   useEffect(() => {
     if (selected && !prev.current) {
@@ -139,7 +137,7 @@ function VehicleCard({
         ]),
         Animated.timing(glow, {
           toValue: 1,
-          duration: 250,
+          duration: 220,
           useNativeDriver: true,
         }),
       ]).start();
@@ -147,7 +145,7 @@ function VehicleCard({
     if (!selected && prev.current) {
       Animated.timing(glow, {
         toValue: 0,
-        duration: 180,
+        duration: 160,
         useNativeDriver: true,
       }).start();
     }
@@ -156,15 +154,9 @@ function VehicleCard({
 
   return (
     <Animated.View style={[styles.cardWrap, { transform: [{ scale }] }]}>
-      {/* Glow layer when selected */}
+      {/* Pink glow bloom behind selected card */}
       <Animated.View
-        style={[
-          styles.cardGlow,
-          {
-            opacity: glow,
-            shadowColor: PINK,
-          },
-        ]}
+        style={[styles.cardGlow, { opacity: glow }]}
         pointerEvents="none"
       />
 
@@ -173,7 +165,6 @@ function VehicleCard({
         onPress={onPress}
         style={styles.cardTouchable}
       >
-        {/* Card shell — gradient bg when selected */}
         {selected ? (
           <LinearGradient
             colors={["#FFF0F6", "#FDF2F8"]}
@@ -200,7 +191,7 @@ function CardContent({
 }) {
   return (
     <>
-      {/* Badge */}
+      {/* Badge top-left */}
       {vehicle.badge && (
         <View style={[styles.badge, { backgroundColor: vehicle.badge.bg }]}>
           <Text style={[styles.badgeText, { color: vehicle.badge.fg }]}>
@@ -209,7 +200,7 @@ function CardContent({
         </View>
       )}
 
-      {/* Check mark */}
+      {/* Check circle top-right */}
       {selected && (
         <LinearGradient
           colors={[PINK, ORANGE]}
@@ -221,14 +212,12 @@ function CardContent({
         </LinearGradient>
       )}
 
-      {/* Vehicle emoji on platform */}
-      <View style={styles.vehicleStage}>
-        <Text style={styles.vehicleEmoji}>{vehicle.emoji}</Text>
-        <View
-          style={[
-            styles.platform,
-            { backgroundColor: vehicle.platformColor + "40" },
-          ]}
+      {/* Reference vehicle image */}
+      <View style={styles.imageWrap}>
+        <Image
+          source={IMAGES[vehicle.id]}
+          style={styles.vehicleImage}
+          resizeMode="cover"
         />
       </View>
 
@@ -244,7 +233,9 @@ function CardContent({
             backgroundColor: selected
               ? "rgba(255,77,141,0.08)"
               : "rgba(255,255,255,0.7)",
-            borderColor: selected ? "rgba(255,77,141,0.2)" : "rgba(0,0,0,0.06)",
+            borderColor: selected
+              ? "rgba(255,77,141,0.2)"
+              : "rgba(0,0,0,0.06)",
           },
         ]}
       >
@@ -253,7 +244,9 @@ function CardContent({
           size={11}
           color={selected ? PINK : TEXT_MUTED}
         />
-        <Text style={[styles.infoText, { color: selected ? PINK : TEXT_MUTED }]}>
+        <Text
+          style={[styles.infoText, { color: selected ? PINK : TEXT_MUTED }]}
+        >
           {vehicle.seatLabel}
         </Text>
         <View style={styles.infoDivider} />
@@ -266,7 +259,7 @@ function CardContent({
 }
 
 // ─── Progress Step Dot ──────────────────────────────────────────
-function StepDot({ filled, active }: { filled: boolean; active?: boolean }) {
+function StepDot({ filled }: { filled: boolean }) {
   return (
     <View
       style={[
@@ -348,7 +341,7 @@ export default function VehicleSelectionScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
-          { paddingBottom: insets.bottom + 180 },
+          { paddingBottom: insets.bottom + 184 },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -368,24 +361,26 @@ export default function VehicleSelectionScreen() {
       </ScrollView>
 
       {/* ── Sticky footer ── */}
-      <View
-        style={[
-          styles.footer,
-          { paddingBottom: insets.bottom + 16 },
-        ]}
-      >
-        {/* Selection summary pill */}
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+        {/* Selection summary */}
         <View style={styles.summaryCard}>
-          <LinearGradient
-            colors={[PINK + "22", ORANGE + "11"]}
-            style={styles.summaryIconWrap}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <Text style={{ fontSize: 20 }}>
-              {selectedVehicle ? selectedVehicle.emoji : "🚗"}
-            </Text>
-          </LinearGradient>
+          {/* Thumbnail of selected vehicle */}
+          <View style={styles.summaryThumbWrap}>
+            {selectedVehicle ? (
+              <Image
+                source={IMAGES[selectedVehicle.id]}
+                style={styles.summaryThumb}
+                resizeMode="cover"
+              />
+            ) : (
+              <LinearGradient
+                colors={[PINK + "30", ORANGE + "18"]}
+                style={styles.summaryThumbPlaceholder}
+              >
+                <Feather name="truck" size={20} color={PINK} />
+              </LinearGradient>
+            )}
+          </View>
 
           <View style={{ flex: 1 }}>
             <Text style={styles.summaryLabel}>
@@ -444,7 +439,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 16,
     paddingBottom: 10,
-    gap: 0,
   },
   backBtn: {
     width: 38,
@@ -466,7 +460,12 @@ const styles = StyleSheet.create({
     color: TEXT_PRIMARY,
     letterSpacing: -0.3,
   },
-  headerSub: { fontSize: 12, color: TEXT_MUTED, fontWeight: "500", marginTop: 1 },
+  headerSub: {
+    fontSize: 12,
+    color: TEXT_MUTED,
+    fontWeight: "500",
+    marginTop: 1,
+  },
   helpBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -514,9 +513,9 @@ const styles = StyleSheet.create({
 
   // Grid
   scroll: { paddingHorizontal: 14, paddingTop: 4, gap: 12 },
-  row: { flexDirection: "row", gap: 12 },
+  row:    { flexDirection: "row", gap: 12 },
 
-  // Card
+  // Card outer
   cardWrap: {
     flex: 1,
     borderRadius: 20,
@@ -530,7 +529,8 @@ const styles = StyleSheet.create({
     position: "absolute",
     inset: -3,
     borderRadius: 23,
-    shadowOpacity: 0.35,
+    shadowColor: PINK,
+    shadowOpacity: 0.38,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 6 },
     elevation: 0,
@@ -541,10 +541,10 @@ const styles = StyleSheet.create({
   },
   card: {
     borderRadius: 20,
-    padding: 14,
-    paddingTop: 12,
-    gap: 6,
-    minHeight: 195,
+    paddingHorizontal: 10,
+    paddingTop: 10,
+    paddingBottom: 12,
+    gap: 5,
     borderWidth: 1.5,
     borderColor: "rgba(255,255,255,0.9)",
   },
@@ -559,15 +559,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,
-    marginBottom: 2,
   },
   badgeText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.2 },
 
   // Check circle
   checkCircle: {
     position: "absolute",
-    top: 12,
-    right: 12,
+    top: 10,
+    right: 10,
     width: 22,
     height: 22,
     borderRadius: 11,
@@ -575,39 +574,31 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     zIndex: 2,
     shadowColor: PINK,
-    shadowOpacity: 0.4,
+    shadowOpacity: 0.45,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
   },
 
-  // Vehicle stage
-  vehicleStage: {
-    alignItems: "center",
-    justifyContent: "flex-end",
-    height: 72,
-    marginTop: 0,
-    marginBottom: 4,
+  // Vehicle image area
+  imageWrap: {
+    width: "100%",
+    height: 100,
+    borderRadius: 12,
+    overflow: "hidden",
+    marginTop: 4,
   },
-  vehicleEmoji: {
-    fontSize: 46,
-    lineHeight: 54,
-    zIndex: 2,
-  },
-  platform: {
-    position: "absolute",
-    bottom: 0,
-    width: 70,
-    height: 14,
-    borderRadius: 35,
-    opacity: 0.8,
+  vehicleImage: {
+    width: "100%",
+    height: "100%",
   },
 
   // Card text
   cardName: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: "800",
     color: TEXT_PRIMARY,
     letterSpacing: -0.2,
+    marginTop: 2,
   },
   cardTagline: {
     fontSize: 11,
@@ -625,11 +616,11 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 8,
     borderWidth: 1,
-    marginTop: 4,
+    marginTop: 2,
   },
-  infoText: { fontSize: 11, fontWeight: "600", flex: 1 },
+  infoText:    { fontSize: 11, fontWeight: "600", flex: 1 },
   infoDivider: { width: 1, height: 10, backgroundColor: "#E5E7EB" },
-  priceText: { fontSize: 12, fontWeight: "800" },
+  priceText:   { fontSize: 12, fontWeight: "800" },
 
   // Footer
   footer: {
@@ -640,7 +631,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 14,
     gap: 10,
-    backgroundColor: "rgba(255,248,252,0.96)",
+    backgroundColor: "rgba(255,248,252,0.97)",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderTopWidth: 1,
@@ -662,8 +653,8 @@ const styles = StyleSheet.create({
     gap: 12,
     backgroundColor: "#fff",
     borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderWidth: 1,
     borderColor: BORDER,
     shadowColor: "#000",
@@ -672,16 +663,26 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  summaryIconWrap: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
+  summaryThumbWrap: {
+    width: 58,
+    height: 44,
+    borderRadius: 10,
+    overflow: "hidden",
+    backgroundColor: "#FFF0F6",
+  },
+  summaryThumb: {
+    width: "100%",
+    height: "100%",
+  },
+  summaryThumbPlaceholder: {
+    width: "100%",
+    height: "100%",
     alignItems: "center",
     justifyContent: "center",
   },
   summaryLabel: { fontSize: 11, color: TEXT_MUTED, fontWeight: "500" },
   summaryName: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: "800",
     color: TEXT_PRIMARY,
     marginTop: 1,
@@ -692,7 +693,7 @@ const styles = StyleSheet.create({
     color: PINK,
   },
 
-  // CTA button
+  // CTA
   ctaTouchable: {
     borderRadius: 16,
     overflow: "hidden",
