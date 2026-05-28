@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -6,39 +7,25 @@ import {
   Easing,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import Svg, { Circle } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
-import { useColors } from "@/hooks/useColors";
 
 const OTP_LENGTH = 6;
 const RESEND_SECONDS = 30;
-const RING_SIZE = 56;
-const RING_STROKE = 3;
-const RING_RADIUS = (RING_SIZE - RING_STROKE * 2) / 2;
-const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
-function useBlinkAnim() {
-  const blink = useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(blink, { toValue: 0, duration: 500, easing: Easing.step0, useNativeDriver: true }),
-        Animated.timing(blink, { toValue: 1, duration: 500, easing: Easing.step0, useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, []);
-  return blink;
-}
+const GRADIENT_FROM = "#FF3D7F";
+const GRADIENT_TO = "#FF7A3D";
+const PAGE_BG = "#FFF1EE";
+const TEXT_DARK = "#0E0E10";
+const TEXT_MUTED = "#7E8390";
 
 function CellPop({ children, trigger }: { children: React.ReactNode; trigger: boolean }) {
   const scale = useRef(new Animated.Value(1)).current;
@@ -55,70 +42,35 @@ function CellPop({ children, trigger }: { children: React.ReactNode; trigger: bo
   return <Animated.View style={{ transform: [{ scale }] }}>{children}</Animated.View>;
 }
 
-function SuccessOverlay({ visible, onDone }: { visible: boolean; onDone: () => void }) {
-  const scale = useRef(new Animated.Value(0)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
-  const colors = useColors();
+function VerifyingDots() {
+  const v1 = useRef(new Animated.Value(0.3)).current;
+  const v2 = useRef(new Animated.Value(0.3)).current;
+  const v3 = useRef(new Animated.Value(0.3)).current;
   useEffect(() => {
-    if (!visible) return;
-    Animated.parallel([
-      Animated.spring(scale, { toValue: 1, friction: 5, tension: 100, useNativeDriver: true }),
-      Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-    ]).start(() => {
-      setTimeout(onDone, 650);
-    });
-  }, [visible]);
-  if (!visible) return null;
+    const make = (val: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(val, { toValue: 1, duration: 400, delay, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
+          Animated.timing(val, { toValue: 0.3, duration: 400, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
+        ]),
+      );
+    const a = make(v1, 0);
+    const b = make(v2, 150);
+    const c = make(v3, 300);
+    a.start(); b.start(); c.start();
+    return () => { a.stop(); b.stop(); c.stop(); };
+  }, []);
   return (
-    <Animated.View style={[styles.successOverlay, { opacity }]}>
-      <Animated.View style={[styles.successCircle, { backgroundColor: colors.primary, transform: [{ scale }] }]}>
-        <Feather name="check" size={44} color="#fff" />
-      </Animated.View>
-      <Text style={styles.successText}>Verified!</Text>
-    </Animated.View>
-  );
-}
-
-function ResendRing({ timer, total }: { timer: number; total: number }) {
-  const colors = useColors();
-  const progress = timer / total;
-  const dashOffset = RING_CIRCUMFERENCE * (1 - progress);
-  return (
-    <View style={styles.ringWrap}>
-      <Svg width={RING_SIZE} height={RING_SIZE}>
-        <Circle
-          cx={RING_SIZE / 2}
-          cy={RING_SIZE / 2}
-          r={RING_RADIUS}
-          stroke={colors.border}
-          strokeWidth={RING_STROKE}
-          fill="none"
-        />
-        <Circle
-          cx={RING_SIZE / 2}
-          cy={RING_SIZE / 2}
-          r={RING_RADIUS}
-          stroke={colors.primary}
-          strokeWidth={RING_STROKE}
-          fill="none"
-          strokeDasharray={RING_CIRCUMFERENCE}
-          strokeDashoffset={dashOffset}
-          strokeLinecap="round"
-          rotation="-90"
-          origin={`${RING_SIZE / 2}, ${RING_SIZE / 2}`}
-        />
-      </Svg>
-      <View style={styles.ringInner}>
-        <Text style={styles.ringSeconds}>{timer}</Text>
-        <Text style={styles.ringLabel}>sec</Text>
-      </View>
+    <View style={styles.dotsRow}>
+      <Animated.View style={[styles.loadDot, { opacity: v1 }]} />
+      <Animated.View style={[styles.loadDot, { opacity: v2 }]} />
+      <Animated.View style={[styles.loadDot, { opacity: v3 }]} />
     </View>
   );
 }
 
 export default function OtpScreen() {
   const { verifyOtp } = useDriver();
-  const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { phone } = useLocalSearchParams<{ phone: string }>();
@@ -126,13 +78,12 @@ export default function OtpScreen() {
   const [otp, setOtp] = useState("");
   const [timer, setTimer] = useState(RESEND_SECONDS);
   const [canResend, setCanResend] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const inputRef = useRef<TextInput>(null);
-  const cursorBlink = useBlinkAnim();
 
-  const maskedPhone = phone
-    ? `+91 ${phone.slice(0, 2)}•••• ${phone.slice(-4)}`
-    : "+91 ••••••••••";
+  const formattedPhone = phone
+    ? `+91 ${phone.slice(0, 5)} ${phone.slice(5)}`
+    : "+91 12345 67890";
 
   useEffect(() => {
     const t = setTimeout(() => inputRef.current?.focus(), 300);
@@ -147,7 +98,11 @@ export default function OtpScreen() {
 
   useEffect(() => {
     if (otp.length === OTP_LENGTH) {
-      const t = setTimeout(() => setShowSuccess(true), 120);
+      setVerifying(true);
+      const t = setTimeout(() => {
+        verifyOtp();
+        router.replace("/vehicle-selection");
+      }, 1200);
       return () => clearTimeout(t);
     }
   }, [otp]);
@@ -164,182 +119,143 @@ export default function OtpScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.root, { backgroundColor: "#fff" }]}
+      style={[styles.root, { backgroundColor: PAGE_BG }]}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <View style={[styles.container, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 28 }]}>
-
+      <View
+        style={[
+          styles.container,
+          { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 28 },
+        ]}
+      >
         <TouchableOpacity
           onPress={() => router.back()}
-          style={[styles.backBtn, { backgroundColor: "#f5f5f5" }]}
+          style={styles.backBtn}
+          activeOpacity={0.8}
         >
-          <Feather name="arrow-left" size={20} color="#0a0a0a" />
+          <Feather name="arrow-left" size={20} color={TEXT_DARK} />
         </TouchableOpacity>
 
         <View style={styles.headerSection}>
-          <View style={[styles.shieldWrap, { backgroundColor: "#e8f5e9" }]}>
-            <Feather name="shield" size={30} color={colors.primary} />
+          <LinearGradient
+            colors={[GRADIENT_FROM, GRADIENT_TO]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.phoneTile}
+          >
+            <Feather name="phone" size={26} color="#fff" />
+          </LinearGradient>
+
+          <Text style={styles.headline}>Verify your number</Text>
+          <View style={styles.codeSentRow}>
+            <Text style={styles.codeSentText}>Code sent to </Text>
+            <Text style={styles.codeSentPhone}>{formattedPhone}</Text>
           </View>
-          <Text style={styles.headline}>Enter OTP</Text>
-          <Text style={[styles.subheadline, { color: colors.mutedForeground }]}>
-            {OTP_LENGTH}-digit code sent to
-          </Text>
-          <View style={styles.phoneRow}>
-            <Text style={styles.phoneDisplay}>{maskedPhone}</Text>
-            <TouchableOpacity onPress={() => router.back()}>
-              <Text style={[styles.changeLink, { color: colors.primary }]}>Change</Text>
-            </TouchableOpacity>
-          </View>
+
+          <LinearGradient
+            colors={[GRADIENT_FROM, GRADIENT_TO]}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={styles.headerUnderline}
+          />
         </View>
 
         <View style={styles.otpSection}>
           <View style={styles.cellsWrap}>
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={() => inputRef.current?.focus()}
-            style={styles.cellsRow}
-          >
-            {digits.map((d, i) => {
-              const isCurrent = i === otp.length && !showSuccess;
-              const isFilled = i < otp.length;
-              const isComplete = showSuccess;
-
-              return (
-                <CellPop key={i} trigger={isFilled}>
-                  <View
-                    style={[
-                      styles.cell,
-                      {
-                        borderColor: isComplete
-                          ? colors.primary
-                          : isFilled
-                          ? colors.primary
-                          : isCurrent
-                          ? colors.primary
-                          : colors.border,
-                        backgroundColor: isComplete
-                          ? "#f0fdf4"
-                          : isFilled
-                          ? "#f0fdf4"
-                          : "#fafafa",
-                      },
-                    ]}
-                  >
-                    {isCurrent && (
-                      <Animated.View
-                        style={[
-                          styles.cursor,
-                          { backgroundColor: colors.primary, opacity: cursorBlink },
-                        ]}
-                      />
-                    )}
-                    {isFilled && (
-                      <Text style={[styles.cellText, { color: colors.foreground }]}>{d}</Text>
-                    )}
-                  </View>
-                </CellPop>
-              );
-            })}
-          </TouchableOpacity>
-          <TextInput
-            ref={inputRef}
-            value={otp}
-            onChangeText={(t) => {
-              if (showSuccess) return;
-              setOtp(t.replace(/\D/g, "").slice(0, OTP_LENGTH));
-            }}
-            keyboardType="number-pad"
-            maxLength={OTP_LENGTH}
-            style={styles.invisibleOverlayInput}
-            caretHidden
-            autoFocus
-            selectionColor="transparent"
-          />
-          </View>
-
-          <View style={styles.resendSection}>
-            {canResend ? (
-              <TouchableOpacity
-                onPress={handleResend}
-                style={[styles.resendBtn, { borderColor: colors.primary }]}
-              >
-                <Feather name="refresh-cw" size={14} color={colors.primary} />
-                <Text style={[styles.resendBtnText, { color: colors.primary }]}>
-                  Resend OTP
-                </Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.resendTimerRow}>
-                <ResendRing timer={timer} total={RESEND_SECONDS} />
-                <View>
-                  <Text style={[styles.resendHint, { color: colors.mutedForeground }]}>
-                    Resend code in
-                  </Text>
-                  <Text style={[styles.resendCountdown, { color: colors.foreground }]}>
-                    {timer} seconds
-                  </Text>
-                </View>
-              </View>
-            )}
-          </View>
-        </View>
-
-        <View style={styles.bottomSection}>
-          <View style={styles.progressDots}>
-            {Array.from({ length: OTP_LENGTH }).map((_, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.progressDot,
-                  {
-                    backgroundColor: i < otp.length ? colors.primary : colors.border,
-                    width: i < otp.length ? 20 : 8,
-                  },
-                ]}
-              />
-            ))}
-          </View>
-
-          <TouchableOpacity
-            style={[
-              styles.verifyBtn,
-              {
-                backgroundColor: otp.length === OTP_LENGTH ? colors.primary : colors.muted,
-              },
-            ]}
-            onPress={() => setShowSuccess(true)}
-            activeOpacity={0.85}
-            disabled={otp.length !== OTP_LENGTH || showSuccess}
-          >
-            <Text
-              style={[
-                styles.verifyText,
-                { color: otp.length === OTP_LENGTH ? "#fff" : colors.mutedForeground },
-              ]}
+            <Pressable
+              onPress={() => inputRef.current?.focus()}
+              style={styles.cellsRow}
             >
-              Verify & Continue
-            </Text>
-            {otp.length === OTP_LENGTH && (
-              <Feather name="arrow-right" size={18} color="#fff" />
-            )}
-          </TouchableOpacity>
+              {digits.map((d, i) => {
+                const isFilled = i < otp.length;
+                return (
+                  <CellPop key={i} trigger={isFilled}>
+                    {isFilled ? (
+                      <LinearGradient
+                        colors={[GRADIENT_FROM, GRADIENT_TO]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.cellFilled}
+                      >
+                        <Text style={styles.cellTextFilled}>{d}</Text>
+                      </LinearGradient>
+                    ) : (
+                      <View style={styles.cellEmpty}>
+                        <Text style={styles.cellTextEmpty}>•</Text>
+                      </View>
+                    )}
+                  </CellPop>
+                );
+              })}
+            </Pressable>
+            <TextInput
+              ref={inputRef}
+              value={otp}
+              onChangeText={(t) => {
+                if (verifying) return;
+                setOtp(t.replace(/\D/g, "").slice(0, OTP_LENGTH));
+              }}
+              keyboardType="number-pad"
+              maxLength={OTP_LENGTH}
+              style={styles.invisibleOverlayInput}
+              caretHidden
+              autoFocus
+              selectionColor="transparent"
+            />
+          </View>
 
-          <Text style={[styles.helpText, { color: colors.mutedForeground }]}>
-            Didn't receive it?{" "}
-            <Text style={{ color: colors.primary, fontWeight: "600" }}>
-              Call support
-            </Text>
-          </Text>
+          <Text style={styles.hintText}>Try: 123456 to verify</Text>
         </View>
-      </View>
 
-      <SuccessOverlay
-        visible={showSuccess}
-        onDone={() => {
-          verifyOtp();
-          router.replace("/vehicle-selection");
-        }}
-      />
+        <TouchableOpacity
+          activeOpacity={0.9}
+          disabled={!verifying}
+          style={styles.ctaWrap}
+        >
+          <LinearGradient
+            colors={
+              verifying
+                ? [GRADIENT_FROM, GRADIENT_TO]
+                : ["#F0C5C2", "#F0C5C2"]
+            }
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={styles.ctaButton}
+          >
+            {verifying ? (
+              <>
+                <VerifyingDots />
+                <Text style={styles.ctaText}>Verifying...</Text>
+                <View style={{ width: 28 }} />
+              </>
+            ) : (
+              <>
+                <View style={{ width: 28 }} />
+                <Text style={styles.ctaText}>
+                  Enter code ({otp.length}/{OTP_LENGTH})
+                </Text>
+                <View style={{ width: 28 }} />
+              </>
+            )}
+          </LinearGradient>
+        </TouchableOpacity>
+
+        <View style={styles.resendRow}>
+          {canResend ? (
+            <TouchableOpacity onPress={handleResend} activeOpacity={0.7}>
+              <Text style={styles.resendActive}>
+                Didn't get it? <Text style={styles.resendActiveStrong}>Resend code</Text>
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.resendText}>
+              Resend in <Text style={styles.resendSeconds}>{timer}s</Text>
+            </Text>
+          )}
+        </View>
+
+        <View style={{ flex: 1 }} />
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -348,8 +264,7 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   container: {
     flex: 1,
-    paddingHorizontal: 24,
-    gap: 32,
+    paddingHorizontal: 28,
   },
   backBtn: {
     width: 42,
@@ -358,51 +273,60 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     alignSelf: "flex-start",
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
   headerSection: {
-    alignItems: "center",
-    gap: 8,
+    gap: 10,
+    marginTop: 28,
   },
-  shieldWrap: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+  phoneTile: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 6,
+    shadowColor: GRADIENT_FROM,
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
+    marginBottom: 18,
   },
   headline: {
     fontSize: 30,
-    fontWeight: "800",
-    color: "#0a0a0a",
+    fontWeight: "900",
+    color: TEXT_DARK,
+    letterSpacing: -0.5,
   },
-  subheadline: {
-    fontSize: 15,
-  },
-  phoneRow: {
+  codeSentRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    flexWrap: "wrap",
   },
-  phoneDisplay: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#0a0a0a",
-    letterSpacing: 0.5,
+  codeSentText: {
+    fontSize: 15,
+    color: TEXT_MUTED,
   },
-  changeLink: {
-    fontSize: 14,
-    fontWeight: "600",
+  codeSentPhone: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: GRADIENT_FROM,
+  },
+  headerUnderline: {
+    height: 2.5,
+    borderRadius: 2,
+    marginTop: 18,
+    width: "92%",
   },
   otpSection: {
-    gap: 28,
     alignItems: "center",
-  },
-  hiddenInput: {
-    position: "absolute",
-    opacity: 0,
-    width: 1,
-    height: 1,
+    marginTop: 28,
+    gap: 10,
   },
   cellsWrap: {
     position: "relative",
@@ -422,129 +346,96 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 10,
   },
-  cell: {
-    width: 50,
-    height: 62,
+  cellFilled: {
+    width: 48,
+    height: 56,
     borderRadius: 14,
-    borderWidth: 1.5,
     alignItems: "center",
     justifyContent: "center",
-  },
-  cellText: {
-    fontSize: 24,
-    fontWeight: "700",
-  },
-  cursor: {
-    width: 2,
-    height: 26,
-    borderRadius: 1,
-  },
-  resendSection: {
-    alignItems: "center",
-    minHeight: 56,
-    justifyContent: "center",
-  },
-  resendTimerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-  },
-  ringWrap: {
-    width: RING_SIZE,
-    height: RING_SIZE,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  ringInner: {
-    position: "absolute",
-    alignItems: "center",
-  },
-  ringSeconds: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#0a0a0a",
-    lineHeight: 17,
-  },
-  ringLabel: {
-    fontSize: 9,
-    color: "#888",
-    fontWeight: "500",
-  },
-  resendHint: {
-    fontSize: 13,
-  },
-  resendCountdown: {
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  resendBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderWidth: 1.5,
-    borderRadius: 10,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-  },
-  resendBtnText: {
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  bottomSection: {
-    gap: 14,
-    marginTop: "auto",
-  },
-  progressDots: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    marginBottom: 4,
-  },
-  progressDot: {
-    height: 8,
-    borderRadius: 4,
-    transition: "width 0.2s",
-  } as any,
-  verifyBtn: {
-    height: 58,
-    borderRadius: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  verifyText: {
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  helpText: {
-    fontSize: 13,
-    textAlign: "center",
-  },
-  successOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(255,255,255,0.96)",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 20,
-  },
-  successCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#00C853",
-    shadowOffset: { width: 0, height: 8 },
+    shadowColor: GRADIENT_FROM,
     shadowOpacity: 0.35,
-    shadowRadius: 20,
-    elevation: 10,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
   },
-  successText: {
-    fontSize: 26,
+  cellEmpty: {
+    width: 48,
+    height: 56,
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#FFD8CF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cellTextFilled: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#fff",
+  },
+  cellTextEmpty: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#FFB5A8",
+    marginTop: -4,
+  },
+  hintText: {
+    fontSize: 12,
+    color: TEXT_MUTED,
+    marginTop: 6,
+  },
+  ctaWrap: {
+    borderRadius: 18,
+    marginTop: 28,
+    shadowColor: GRADIENT_FROM,
+    shadowOpacity: 0.45,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 12,
+  },
+  ctaButton: {
+    height: 60,
+    borderRadius: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 18,
+  },
+  ctaText: {
+    fontSize: 17,
     fontWeight: "800",
-    color: "#0a0a0a",
-    letterSpacing: 0.5,
+    color: "#fff",
+  },
+  dotsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    width: 28,
+  },
+  loadDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#fff",
+  },
+  resendRow: {
+    alignItems: "center",
+    marginTop: 18,
+  },
+  resendText: {
+    fontSize: 14,
+    color: TEXT_MUTED,
+  },
+  resendSeconds: {
+    color: GRADIENT_TO,
+    fontWeight: "800",
+  },
+  resendActive: {
+    fontSize: 14,
+    color: TEXT_MUTED,
+  },
+  resendActiveStrong: {
+    color: GRADIENT_FROM,
+    fontWeight: "800",
   },
 });
