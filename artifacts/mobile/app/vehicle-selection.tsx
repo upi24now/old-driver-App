@@ -191,7 +191,16 @@ function CardContent({
 }) {
   return (
     <>
-      {/* Badge top-left */}
+      {/* ── Fixed-height image zone ── */}
+      <View style={styles.imageZone}>
+        <Image
+          source={IMAGES[vehicle.id]}
+          style={styles.vehicleImage}
+          resizeMode="contain"
+        />
+      </View>
+
+      {/* Badge — absolute over image zone */}
       {vehicle.badge && (
         <View style={[styles.badge, { backgroundColor: vehicle.badge.bg }]}>
           <Text style={[styles.badgeText, { color: vehicle.badge.fg }]}>
@@ -200,7 +209,7 @@ function CardContent({
         </View>
       )}
 
-      {/* Check circle top-right */}
+      {/* Check circle — absolute over image zone */}
       {selected && (
         <LinearGradient
           colors={[PINK, ORANGE]}
@@ -212,47 +221,39 @@ function CardContent({
         </LinearGradient>
       )}
 
-      {/* Reference vehicle image */}
-      <View style={styles.imageWrap}>
-        <Image
-          source={IMAGES[vehicle.id]}
-          style={styles.vehicleImage}
-          resizeMode="cover"
-        />
-      </View>
+      {/* ── Text section ── */}
+      <View style={styles.textSection}>
+        <Text style={styles.cardName}>{vehicle.name}</Text>
+        <Text style={styles.cardTagline}>{vehicle.tagline}</Text>
 
-      {/* Name + tagline */}
-      <Text style={styles.cardName}>{vehicle.name}</Text>
-      <Text style={styles.cardTagline}>{vehicle.tagline}</Text>
-
-      {/* Info row */}
-      <View
-        style={[
-          styles.infoRow,
-          {
-            backgroundColor: selected
-              ? "rgba(255,77,141,0.08)"
-              : "rgba(255,255,255,0.7)",
-            borderColor: selected
-              ? "rgba(255,77,141,0.2)"
-              : "rgba(0,0,0,0.06)",
-          },
-        ]}
-      >
-        <Feather
-          name={vehicle.seatIcon}
-          size={11}
-          color={selected ? PINK : TEXT_MUTED}
-        />
-        <Text
-          style={[styles.infoText, { color: selected ? PINK : TEXT_MUTED }]}
+        <View
+          style={[
+            styles.infoRow,
+            {
+              backgroundColor: selected
+                ? "rgba(255,77,141,0.08)"
+                : "rgba(255,255,255,0.72)",
+              borderColor: selected
+                ? "rgba(255,77,141,0.22)"
+                : "rgba(0,0,0,0.06)",
+            },
+          ]}
         >
-          {vehicle.seatLabel}
-        </Text>
-        <View style={styles.infoDivider} />
-        <Text style={[styles.priceText, { color: selected ? PINK : ORANGE }]}>
-          {vehicle.price}
-        </Text>
+          <Feather
+            name={vehicle.seatIcon}
+            size={11}
+            color={selected ? PINK : TEXT_MUTED}
+          />
+          <Text
+            style={[styles.infoText, { color: selected ? PINK : TEXT_MUTED }]}
+          >
+            {vehicle.seatLabel}
+          </Text>
+          <View style={styles.infoDivider} />
+          <Text style={[styles.priceText, { color: selected ? PINK : ORANGE }]}>
+            {vehicle.price}
+          </Text>
+        </View>
       </View>
     </>
   );
@@ -541,28 +542,29 @@ const styles = StyleSheet.create({
   },
   card: {
     borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingTop: 10,
-    paddingBottom: 12,
-    gap: 5,
+    overflow: "hidden",
     borderWidth: 1.5,
     borderColor: "rgba(255,255,255,0.9)",
+    // no gap — sections control their own spacing
   },
   cardSelected: {
     borderColor: PINK,
     borderWidth: 2,
   },
 
-  // Badge
+  // Badge — absolute, floats over the image zone
   badge: {
-    alignSelf: "flex-start",
+    position: "absolute",
+    top: 10,
+    left: 10,
+    zIndex: 3,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,
   },
   badgeText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.2 },
 
-  // Check circle
+  // Check circle — absolute top-right
   checkCircle: {
     position: "absolute",
     top: 10,
@@ -572,39 +574,43 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 2,
+    zIndex: 3,
     shadowColor: PINK,
     shadowOpacity: 0.45,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
   },
 
-  // Vehicle image area
-  imageWrap: {
+  // Fixed-height image zone — contain keeps full vehicle visible
+  imageZone: {
     width: "100%",
-    height: 100,
-    borderRadius: 12,
+    height: 96,
+    alignItems: "center",
+    justifyContent: "center",
     overflow: "hidden",
-    marginTop: 4,
   },
   vehicleImage: {
     width: "100%",
     height: "100%",
   },
 
-  // Card text
+  // Text section below image
+  textSection: {
+    paddingHorizontal: 10,
+    paddingBottom: 10,
+    paddingTop: 6,
+    gap: 4,
+  },
   cardName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "800",
     color: TEXT_PRIMARY,
     letterSpacing: -0.2,
-    marginTop: 2,
   },
   cardTagline: {
     fontSize: 11,
     color: TEXT_MUTED,
     fontWeight: "500",
-    marginTop: -2,
   },
 
   // Info row
@@ -618,9 +624,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginTop: 2,
   },
-  infoText:    { fontSize: 11, fontWeight: "600", flex: 1 },
+  infoText:    { fontSize: 10, fontWeight: "600", flex: 1 },
   infoDivider: { width: 1, height: 10, backgroundColor: "#E5E7EB" },
-  priceText:   { fontSize: 12, fontWeight: "800" },
+  priceText:   { fontSize: 11, fontWeight: "800" },
 
   // Footer
   footer: {
