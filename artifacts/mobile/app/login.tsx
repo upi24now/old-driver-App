@@ -1,9 +1,10 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Animated,
+  Easing,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -30,6 +31,74 @@ const PAGE_BG = "#F7F3F2";
 const TEXT_PRIMARY = "#111111";
 const TEXT_MUTED = "#6B7280";
 const BORDER = "#E5E7EB";
+
+// ─── 3D Phone Input Card ─────────────────────────────────────────────────────
+function PhoneInputCard({
+  focused,
+  onPress,
+  children,
+}: {
+  focused: boolean;
+  onPress: () => void;
+  children: React.ReactNode;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const glow  = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(scale, {
+        toValue: focused ? 1.025 : 1,
+        useNativeDriver: true,
+        speed: 28,
+        bounciness: 9,
+      }),
+      Animated.timing(glow, {
+        toValue: focused ? 1 : 0,
+        duration: 260,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.ease),
+      }),
+    ]).start();
+  }, [focused]);
+
+  const cardSurface = (
+    <LinearGradient
+      colors={["#FFFFFF", "#F6F4FF"]}
+      start={{ x: 0.5, y: 0 }}
+      end={{ x: 0.5, y: 1 }}
+      style={styles.card3dSurface}
+    >
+      {/* Top-edge sheen — light catching the raised surface */}
+      <View style={styles.card3dSheen} />
+      <Pressable onPress={onPress} style={styles.card3dRow}>
+        {children}
+      </Pressable>
+    </LinearGradient>
+  );
+
+  return (
+    <Animated.View style={[styles.card3dOuter, { transform: [{ scale }] }]}>
+      {/* Glow bloom — fades in on focus */}
+      <Animated.View style={[styles.card3dGlow, { opacity: glow }]} />
+
+      {focused ? (
+        <LinearGradient
+          colors={[GRADIENT_FROM, GRADIENT_TO]}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={styles.card3dShellFocused}
+        >
+          {cardSurface}
+        </LinearGradient>
+      ) : (
+        <View style={styles.card3dShellIdle}>
+          {cardSurface}
+        </View>
+      )}
+    </Animated.View>
+  );
+}
 
 function ContinueButton({
   enabled,
@@ -183,30 +252,12 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.formSection}>
-          {focused ? (
-            <LinearGradient
-              colors={[GRADIENT_FROM, GRADIENT_TO]}
-              start={{ x: 0, y: 0.5 }}
-              end={{ x: 1, y: 0.5 }}
-              style={styles.inputShell}
-            >
-              <Pressable
-                onPress={() => inputRef.current?.focus()}
-                style={styles.inputCard}
-              >
-                {inputInner}
-              </Pressable>
-            </LinearGradient>
-          ) : (
-            <View style={styles.inputShellIdle}>
-              <Pressable
-                onPress={() => inputRef.current?.focus()}
-                style={styles.inputCard}
-              >
-                {inputInner}
-              </Pressable>
-            </View>
-          )}
+          <PhoneInputCard
+            focused={focused}
+            onPress={() => inputRef.current?.focus()}
+          >
+            {inputInner}
+          </PhoneInputCard>
 
           <ContinueButton enabled={isValid} onPress={handleContinue} />
         </View>
@@ -324,31 +375,63 @@ const styles = StyleSheet.create({
     marginTop: 36,
     gap: 16,
   },
-  inputShellIdle: {
-    borderRadius: 23,
-    borderWidth: 1,
-    borderColor: "#EBEBF0",
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
+  // ─── 3D Phone Input Card ──────────────────────────────────────────────────
+  card3dOuter: {
+    position: "relative",
   },
-  inputShell: {
-    borderRadius: 23,
+  card3dGlow: {
+    position: "absolute",
+    top: -10,
+    left: -10,
+    right: -10,
+    bottom: -10,
+    borderRadius: 34,
+    backgroundColor: GRADIENT_FROM,
+    shadowColor: GRADIENT_FROM,
+    shadowOpacity: 0.45,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 0,
+  },
+  card3dShellIdle: {
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.06)",
+    shadowColor: "#1E1035",
+    shadowOpacity: 0.13,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
+    backgroundColor: "#FFFFFF",
+  },
+  card3dShellFocused: {
+    borderRadius: 24,
     padding: 1.5,
     shadowColor: GRADIENT_FROM,
-    shadowOpacity: 0.14,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 4,
+    shadowOpacity: 0.3,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
   },
-  inputCard: {
+  card3dSurface: {
+    borderRadius: 22.5,
+    height: 66,
+    overflow: "hidden",
+    position: "relative",
+  },
+  card3dSheen: {
+    position: "absolute",
+    top: 0,
+    left: 18,
+    right: 18,
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    zIndex: 2,
+  },
+  card3dRow: {
     flexDirection: "row",
     alignItems: "center",
-    height: 64,
-    borderRadius: 21.5,
-    backgroundColor: "#FFFFFF",
+    height: "100%",
     paddingHorizontal: 6,
   },
   countrySelector: {
