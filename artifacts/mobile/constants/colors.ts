@@ -3,7 +3,7 @@ const colors = {
     text: "#111111",
     tint: "#FF4D8D",
 
-    background: "#F5F5F7",
+    background: "#F7F3F2",
     foreground: "#111111",
 
     card: "#FFFFFF",
