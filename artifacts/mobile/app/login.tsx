@@ -1,9 +1,11 @@
 import { Feather } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -13,12 +15,16 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
-import { useColors } from "@/hooks/useColors";
 
 const COUNTRY_CODE = "+91";
 
+const GRADIENT_FROM = "#FF3D7F";
+const GRADIENT_TO = "#FF7A3D";
+const PAGE_BG = "#FFF1EE";
+const TEXT_DARK = "#0E0E10";
+const TEXT_MUTED = "#7E8390";
+
 export default function LoginScreen() {
-  const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const inputRef = useRef<TextInput>(null);
@@ -28,6 +34,12 @@ export default function LoginScreen() {
 
   const isValid = phone.replace(/\D/g, "").length === 10;
 
+  function formatNumber(raw: string) {
+    const digits = raw.replace(/\D/g, "").slice(0, 10);
+    if (digits.length <= 5) return digits;
+    return `${digits.slice(0, 5)} ${digits.slice(5)}`;
+  }
+
   function handleContinue() {
     if (!isValid) return;
     setDriverPhone(phone);
@@ -36,122 +48,116 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.root, { backgroundColor: "#fff" }]}
+      style={[styles.root, { backgroundColor: PAGE_BG }]}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <View style={[styles.container, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
-        <View style={styles.topSection}>
-          <View style={styles.logoRow}>
-            <View style={[styles.logoIconWrap, { backgroundColor: colors.primary }]}>
-              <Feather name="navigation" size={22} color="#fff" />
-            </View>
-            <Text style={styles.logoText}>DRIVER</Text>
-          </View>
+      <View
+        style={[
+          styles.container,
+          { paddingTop: insets.top + 28, paddingBottom: insets.bottom + 20 },
+        ]}
+      >
+        <View style={styles.topBlock}>
+          <LinearGradient
+            colors={[GRADIENT_FROM, GRADIENT_TO]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.logoTile}
+          >
+            <Feather name="box" size={26} color="#fff" />
+          </LinearGradient>
 
-          <View style={styles.heroSection}>
-            <Text style={styles.headline}>Let's get{"\n"}you moving</Text>
-            <Text style={[styles.subheadline, { color: colors.mutedForeground }]}>
-              Enter your mobile number to continue
-            </Text>
+          <View style={styles.heroBlock}>
+            <Text style={styles.headline}>Welcome back</Text>
+            <Text style={styles.subheadline}>Enter your number to continue.</Text>
           </View>
         </View>
 
-        <View style={styles.formSection}>
-          <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>
-            Mobile Number
-          </Text>
+        <View style={styles.formBlock}>
+          <Text style={styles.inputLabel}>MOBILE NUMBER</Text>
 
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={() => inputRef.current?.focus()}
+          <View
             style={[
-              styles.inputRow,
-              {
-                borderColor: focused ? colors.primary : colors.border,
-                backgroundColor: focused ? "#f8fff8" : "#fafafa",
-              },
+              styles.inputShadow,
+              focused && styles.inputShadowFocused,
             ]}
           >
-            <View style={[styles.countryCode, { borderRightColor: colors.border }]}>
-              <Text style={styles.flag}>🇮🇳</Text>
-              <Text style={styles.codeText}>{COUNTRY_CODE}</Text>
-            </View>
-
-            <TextInput
-              ref={inputRef}
-              style={styles.phoneInput}
-              value={phone}
-              onChangeText={(t) => setPhone(t.replace(/\D/g, "").slice(0, 10))}
-              keyboardType="phone-pad"
-              placeholder="00000 00000"
-              placeholderTextColor="#ccc"
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
-              returnKeyType="done"
-              onSubmitEditing={handleContinue}
-              autoFocus
-            />
-
-            {phone.length > 0 && (
-              <TouchableOpacity onPress={() => setPhone("")} style={styles.clearBtn}>
-                <Feather name="x-circle" size={18} color={colors.mutedForeground} />
-              </TouchableOpacity>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.ctaButton,
-              {
-                backgroundColor: isValid ? colors.primary : colors.muted,
-              },
-            ]}
-            onPress={handleContinue}
-            activeOpacity={0.85}
-            disabled={!isValid}
-          >
-            <Text
+            <Pressable
+              onPress={() => inputRef.current?.focus()}
               style={[
-                styles.ctaText,
-                { color: isValid ? "#fff" : colors.mutedForeground },
+                styles.inputRow,
+                focused && { borderColor: GRADIENT_FROM },
               ]}
             >
-              Get OTP
-            </Text>
-            <Feather
-              name="arrow-right"
-              size={18}
-              color={isValid ? "#fff" : colors.mutedForeground}
-            />
-          </TouchableOpacity>
+              <View style={styles.countryCode}>
+                <View style={styles.flagWrap}>
+                  <View style={[styles.flagBand, { backgroundColor: "#FF9933" }]} />
+                  <View style={[styles.flagBand, { backgroundColor: "#FFFFFF" }]}>
+                    <View style={styles.flagChakra} />
+                  </View>
+                  <View style={[styles.flagBand, { backgroundColor: "#138808" }]} />
+                </View>
+                <Text style={styles.codeText}>{COUNTRY_CODE}</Text>
+                <View style={styles.codeDivider} />
+              </View>
 
-          <View style={styles.dividerRow}>
-            <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
-            <Text style={[styles.dividerText, { color: colors.mutedForeground }]}>or</Text>
-            <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+              <TextInput
+                ref={inputRef}
+                style={styles.phoneInput}
+                value={formatNumber(phone)}
+                onChangeText={(t) => setPhone(t.replace(/\D/g, "").slice(0, 10))}
+                keyboardType="phone-pad"
+                placeholder="12345 67890"
+                placeholderTextColor="#C9CDD4"
+                onFocus={() => setFocused(true)}
+                onBlur={() => setFocused(false)}
+                returnKeyType="done"
+                onSubmitEditing={handleContinue}
+                autoFocus
+              />
+
+              {isValid && (
+                <View style={styles.checkBadge}>
+                  <Feather name="check" size={14} color="#fff" />
+                </View>
+              )}
+            </Pressable>
+            {focused && <View style={styles.inputUnderline} />}
           </View>
 
           <TouchableOpacity
-            style={[styles.altButton, { borderColor: colors.border }]}
-            activeOpacity={0.75}
+            onPress={handleContinue}
+            activeOpacity={0.9}
+            disabled={!isValid}
+            style={styles.ctaWrap}
           >
-            <Feather name="mail" size={17} color={colors.foreground} />
-            <Text style={[styles.altText, { color: colors.foreground }]}>
-              Continue with Email
-            </Text>
+            <LinearGradient
+              colors={
+                isValid
+                  ? [GRADIENT_FROM, GRADIENT_TO]
+                  : ["#F0C5C2", "#F0C5C2"]
+              }
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={styles.ctaButton}
+            >
+              <View style={styles.ctaSpacer} />
+              <Text style={styles.ctaText}>Continue</Text>
+              <View style={styles.ctaArrowCircle}>
+                <Feather name="arrow-right" size={16} color="#fff" />
+              </View>
+            </LinearGradient>
           </TouchableOpacity>
+
+          <View style={styles.signupRow}>
+            <Text style={styles.signupText}>Don't have an account? </Text>
+            <TouchableOpacity activeOpacity={0.7}>
+              <Text style={styles.signupLink}>Sign up</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <Text style={[styles.terms, { color: colors.mutedForeground }]}>
-          By continuing, you agree to our{" "}
-          <Text style={{ color: colors.primary, fontWeight: "600" }}>
-            Terms of Service
-          </Text>{" "}
-          and{" "}
-          <Text style={{ color: colors.primary, fontWeight: "600" }}>
-            Privacy Policy
-          </Text>
-        </Text>
+        <View />
       </View>
     </KeyboardAvoidingView>
   );
@@ -161,118 +167,175 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   container: {
     flex: 1,
-    paddingHorizontal: 24,
+    paddingHorizontal: 28,
     justifyContent: "space-between",
   },
-  topSection: { gap: 40 },
-  logoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  logoIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+  topBlock: { gap: 36 },
+  logoTile: {
+    width: 64,
+    height: 64,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: GRADIENT_FROM,
+    shadowOpacity: 0.45,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
   },
-  logoText: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#0a0a0a",
-    letterSpacing: 5,
-  },
-  heroSection: { gap: 8 },
+  heroBlock: { gap: 10, marginTop: 12 },
   headline: {
-    fontSize: 38,
-    fontWeight: "800",
-    color: "#0a0a0a",
-    lineHeight: 46,
+    fontSize: 36,
+    fontWeight: "900",
+    color: TEXT_DARK,
+    letterSpacing: -0.5,
   },
   subheadline: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "400",
-    lineHeight: 22,
+    color: TEXT_MUTED,
   },
-  formSection: { gap: 14 },
+  formBlock: { gap: 16 },
   inputLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    letterSpacing: 0.3,
-    marginBottom: -2,
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+    color: GRADIENT_FROM,
+    marginBottom: 2,
+  },
+  inputShadow: {
+    borderRadius: 16,
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  inputShadowFocused: {
+    shadowColor: GRADIENT_FROM,
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
   },
   inputRow: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1.5,
-    borderRadius: 14,
+    borderColor: "transparent",
+    borderRadius: 16,
     overflow: "hidden",
-    height: 58,
+    height: 62,
+    backgroundColor: "#fff",
   },
   countryCode: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 14,
-    borderRightWidth: 1,
+    gap: 8,
+    paddingLeft: 16,
+    paddingRight: 12,
     height: "100%",
   },
-  flag: { fontSize: 20 },
+  flagWrap: {
+    width: 22,
+    height: 16,
+    borderRadius: 2,
+    overflow: "hidden",
+    borderWidth: 0.5,
+    borderColor: "#E0E0E0",
+  },
+  flagBand: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  flagChakra: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    borderWidth: 0.8,
+    borderColor: "#1A237E",
+  },
   codeText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#0a0a0a",
+    fontSize: 17,
+    fontWeight: "700",
+    color: TEXT_DARK,
+  },
+  codeDivider: {
+    width: 1,
+    height: 22,
+    backgroundColor: "#E5E7EB",
+    marginLeft: 8,
   },
   phoneInput: {
     flex: 1,
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#0a0a0a",
+    fontSize: 20,
+    fontWeight: "800",
+    color: TEXT_DARK,
     paddingHorizontal: 14,
     height: "100%",
     letterSpacing: 1,
   },
-  clearBtn: {
-    paddingRight: 14,
+  checkBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "#22C55E",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 14,
+  },
+  inputUnderline: {
+    height: 2.5,
+    backgroundColor: GRADIENT_TO,
+    marginHorizontal: 14,
+    borderRadius: 2,
+    marginTop: -1,
+  },
+  ctaWrap: {
+    borderRadius: 18,
+    marginTop: 14,
+    shadowColor: GRADIENT_FROM,
+    shadowOpacity: 0.45,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 12,
   },
   ctaButton: {
-    height: 56,
-    borderRadius: 14,
+    height: 60,
+    borderRadius: 18,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    marginTop: 4,
+    justifyContent: "space-between",
+    paddingHorizontal: 18,
   },
+  ctaSpacer: { width: 28 },
   ctaText: {
-    fontSize: 17,
-    fontWeight: "700",
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#fff",
+    letterSpacing: 0.2,
   },
-  dividerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginVertical: 2,
-  },
-  dividerLine: { flex: 1, height: 1 },
-  dividerText: { fontSize: 13 },
-  altButton: {
-    height: 52,
+  ctaArrowCircle: {
+    width: 28,
+    height: 28,
     borderRadius: 14,
-    borderWidth: 1.5,
-    flexDirection: "row",
+    backgroundColor: "rgba(255,255,255,0.25)",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
   },
-  altText: {
-    fontSize: 15,
-    fontWeight: "600",
+  signupRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 20,
   },
-  terms: {
-    fontSize: 12,
-    textAlign: "center",
-    lineHeight: 18,
+  signupText: {
+    fontSize: 14,
+    color: TEXT_MUTED,
+  },
+  signupLink: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: GRADIENT_FROM,
   },
 });
