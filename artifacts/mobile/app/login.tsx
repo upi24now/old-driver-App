@@ -373,7 +373,7 @@ const styles = StyleSheet.create({
   },
   formSection: {
     marginTop: 20,
-    gap: 20,
+    gap: 0,
   },
   // ─── 3D Phone Input Card ──────────────────────────────────────────────────
   card3dOuter: {
@@ -494,9 +494,10 @@ const styles = StyleSheet.create({
     }),
   },
   ctaWrap: {
-    borderRadius: 18,
-    width: "92%",
+    borderRadius: 16,
+    width: "88%",
     alignSelf: "center",
+    marginTop: 40,
     shadowColor: GRADIENT_FROM,
     shadowOpacity: 0.16,
     shadowRadius: 18,
@@ -508,12 +509,12 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   ctaPressable: {
-    borderRadius: 18,
+    borderRadius: 16,
     overflow: "hidden",
   },
   ctaButton: {
-    height: 52,
-    borderRadius: 18,
+    height: 50,
+    borderRadius: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
