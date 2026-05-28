@@ -1,3 +1,19 @@
+/**
+ * document-upload.tsx
+ *
+ * Expo Go-compatible document + selfie upload screen.
+ *
+ * Key Expo Go fixes applied:
+ *  - allowsEditing: false  → avoids Android UCrop activity that silently drops
+ *    the result back to Expo Go (the #1 cause of "image not returned").
+ *  - No ActionSheetIOS dynamic require — Alert.alert only for cross-platform
+ *    reliability.
+ *  - All five doc types (including selfie) always show both Camera & Gallery.
+ *  - Selfie "Take Photo" uses front camera; all others use back camera.
+ *  - Permissions requested individually per source (camera vs media library).
+ *  - Per-doc loading state shown while picker is active.
+ */
+
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
@@ -18,109 +34,103 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/useColors";
 
-// ─── Document spec ──────────────────────────────────────────────
-type DocId = "aadhaar" | "pan" | "license" | "rc" | "selfie";
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+type DocId = "selfie" | "aadhaar" | "pan" | "license" | "rc";
 
 type DocSpec = {
   id: DocId;
   title: string;
   description: string;
-  featherIcon: string;
-  hint: string;
   emoji: string;
-  selfie?: boolean; // opens front camera directly
+  hint: string;
+  /** selfie = use front-facing camera for "Take Photo" */
+  isSelfie?: boolean;
 };
 
 const DOCS: DocSpec[] = [
   {
     id: "selfie",
     title: "Driver Selfie",
-    description: "Clear selfie for identity verification",
-    featherIcon: "camera",
-    hint: "Face clearly visible, neutral background",
+    description: "Clear photo of your face — no glasses or hat",
     emoji: "🤳",
-    selfie: true,
+    hint: "Look straight at camera, neutral background",
+    isSelfie: true,
   },
   {
     id: "aadhaar",
     title: "Aadhaar Card",
-    description: "Government ID — front side",
-    featherIcon: "user-check",
-    hint: "All 12 digits and name must be visible",
+    description: "Government-issued identity card (front side)",
     emoji: "🪪",
+    hint: "All 12 digits and full name must be visible",
   },
   {
     id: "pan",
     title: "PAN Card",
-    description: "10-digit PAN for earnings & tax",
-    featherIcon: "credit-card",
-    hint: "PAN number and name must be clearly readable",
+    description: "10-digit PAN required for earnings & tax",
     emoji: "💳",
+    hint: "PAN number and name must be clearly readable",
   },
   {
     id: "license",
     title: "Driving License",
     description: "Valid Indian driving license",
-    featherIcon: "award",
-    hint: "Both sides preferred, expiry must be valid",
     emoji: "🪪",
+    hint: "Both sides preferred — expiry must be valid",
   },
   {
     id: "rc",
     title: "Vehicle RC",
     description: "Registration Certificate of your vehicle",
-    featherIcon: "file-text",
-    hint: "RC book / smart card — all details visible",
     emoji: "📄",
+    hint: "RC book / smart card — all details clearly visible",
   },
 ];
+
+// ─── Per-doc state ────────────────────────────────────────────────────────────
 
 type DocState = {
   uri: string | null;
   uploadedAt: number | null;
+  /** true while permission request or picker is open */
   loading: boolean;
 };
 
-const initialDoc = (): DocState => ({ uri: null, uploadedAt: null, loading: false });
+const blankDoc = (): DocState => ({ uri: null, uploadedAt: null, loading: false });
 
-// ─── Permission helpers ─────────────────────────────────────────
-async function ensureCameraPermission(): Promise<boolean> {
+// ─── Permission helpers ───────────────────────────────────────────────────────
+
+async function requestCamera(): Promise<boolean> {
   const { status, canAskAgain } =
     await ImagePicker.requestCameraPermissionsAsync();
   if (status === "granted") return true;
-  if (!canAskAgain) {
-    Alert.alert(
-      "Camera access required",
-      "Go to Settings → App → Permissions and enable Camera.",
-      [{ text: "OK" }]
-    );
-    return false;
-  }
-  Alert.alert("Camera permission denied", "Please allow camera access to take a photo.", [
-    { text: "OK" },
-  ]);
+  const msg = canAskAgain
+    ? "Camera permission is needed to take a photo. Please allow it."
+    : "Camera access is blocked. Open Settings → App → Permissions → Camera.";
+  Alert.alert("Camera permission required", msg, [{ text: "OK" }]);
   return false;
 }
 
-async function ensureGalleryPermission(): Promise<boolean> {
+async function requestGallery(): Promise<boolean> {
   const { status, canAskAgain } =
     await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (status === "granted") return true;
-  if (!canAskAgain) {
-    Alert.alert(
-      "Photo library access required",
-      "Go to Settings → App → Permissions and enable Photos.",
-      [{ text: "OK" }]
-    );
-    return false;
-  }
-  Alert.alert("Permission denied", "Please allow photo library access.", [{ text: "OK" }]);
+  const msg = canAskAgain
+    ? "Photo library permission is needed to choose an image."
+    : "Photo access is blocked. Open Settings → App → Permissions → Photos.";
+  Alert.alert("Photos permission required", msg, [{ text: "OK" }]);
   return false;
 }
 
-// ─── Image picker helpers ───────────────────────────────────────
-async function captureFromCamera(front = false): Promise<string | null> {
-  const ok = await ensureCameraPermission();
+// ─── Picker helpers ───────────────────────────────────────────────────────────
+//
+// IMPORTANT — allowsEditing: false
+//   On Android, allowsEditing:true opens the UCrop activity. In Expo Go that
+//   activity often returns without data, making the whole pick silently fail.
+//   Keeping it false is the only reliable cross-device fix.
+
+async function openCamera(front: boolean): Promise<string | null> {
+  const ok = await requestCamera();
   if (!ok) return null;
   try {
     const result = await ImagePicker.launchCameraAsync({
@@ -128,84 +138,68 @@ async function captureFromCamera(front = false): Promise<string | null> {
         ? ImagePicker.CameraType.front
         : ImagePicker.CameraType.back,
       mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: front ? [1, 1] : [4, 3],
+      allowsEditing: false, // ← critical for Expo Go / Android
       quality: 0.85,
     });
     if (result.canceled || !result.assets?.length) return null;
     return result.assets[0].uri;
-  } catch {
-    Alert.alert("Camera error", "Could not open camera. Try again.");
+  } catch (e) {
+    console.warn("openCamera error", e);
+    Alert.alert("Camera error", "Could not open camera. Please try again.");
     return null;
   }
 }
 
-async function pickFromGallery(): Promise<string | null> {
-  const ok = await ensureGalleryPermission();
+async function openGallery(): Promise<string | null> {
+  const ok = await requestGallery();
   if (!ok) return null;
   try {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [4, 3],
+      allowsEditing: false, // ← critical for Expo Go / Android
       quality: 0.85,
     });
     if (result.canceled || !result.assets?.length) return null;
     return result.assets[0].uri;
-  } catch {
-    Alert.alert("Gallery error", "Could not open gallery. Try again.");
+  } catch (e) {
+    console.warn("openGallery error", e);
+    Alert.alert("Gallery error", "Could not open gallery. Please try again.");
     return null;
   }
 }
 
-// ─── Picker sheet ───────────────────────────────────────────────
-function showPickerSheet(
+// ─── Action sheet (cross-platform, no dynamic require) ────────────────────────
+
+function showSourceSheet(
   isSelfie: boolean,
   onCamera: () => void,
-  onGallery: () => void
+  onGallery: () => void,
 ) {
-  const cameraLabel = isSelfie ? "Take Selfie" : "Take Photo";
-  if (Platform.OS === "ios") {
-    // On iOS use ActionSheetIOS for native feel
-    const { ActionSheetIOS } = require("react-native");
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        options: [cameraLabel, "Choose from Gallery", "Cancel"],
-        cancelButtonIndex: 2,
-      },
-      (i: number) => {
-        if (i === 0) onCamera();
-        if (i === 1) onGallery();
-      }
-    );
-  } else {
-    Alert.alert(
-      isSelfie ? "Take Selfie" : "Upload Document",
-      "Choose how to add your photo",
-      [
-        { text: cameraLabel, onPress: onCamera },
-        { text: "Choose from Gallery", onPress: onGallery },
-        { text: "Cancel", style: "cancel" },
-      ]
-    );
-  }
+  const cameraLabel = isSelfie ? "Take Selfie (Front Camera)" : "Take Photo (Camera)";
+  // Alert.alert works on iOS and Android — no ActionSheetIOS dynamic require
+  // that can break Expo Go bundling.
+  Alert.alert(
+    isSelfie ? "Upload Selfie" : "Upload Document",
+    "Choose how to add your photo",
+    [
+      { text: cameraLabel, onPress: onCamera },
+      { text: "Choose from Gallery", onPress: onGallery },
+      { text: "Cancel", style: "cancel" },
+    ],
+    { cancelable: true },
+  );
 }
 
-// ─── Status badge ───────────────────────────────────────────────
+// ─── Status badge ─────────────────────────────────────────────────────────────
+
 function StatusBadge({ uploaded }: { uploaded: boolean }) {
   return (
     <View
-      style={[
-        styles.badge,
-        { backgroundColor: uploaded ? "#e8f5e9" : "#fff5e6" },
-      ]}
+      style={[styles.badge, { backgroundColor: uploaded ? "#e8f5e9" : "#fff5e6" }]}
     >
       {uploaded && <Feather name="check-circle" size={10} color="#00C853" />}
       <Text
-        style={[
-          styles.badgeText,
-          { color: uploaded ? "#00C853" : "#b75d00" },
-        ]}
+        style={[styles.badgeText, { color: uploaded ? "#00C853" : "#b75d00" }]}
       >
         {uploaded ? "Uploaded" : "Required"}
       </Text>
@@ -213,7 +207,8 @@ function StatusBadge({ uploaded }: { uploaded: boolean }) {
   );
 }
 
-// ─── Document card ──────────────────────────────────────────────
+// ─── DocumentCard ─────────────────────────────────────────────────────────────
+
 function DocumentCard({
   doc,
   state,
@@ -232,13 +227,10 @@ function DocumentCard({
     <View
       style={[
         styles.card,
-        {
-          borderColor: uploaded ? "#00C853" : colors.border,
-          backgroundColor: "#fff",
-        },
+        { borderColor: uploaded ? "#00C853" : colors.border },
       ]}
     >
-      {/* Card header */}
+      {/* ── Header row ── */}
       <View style={styles.cardHeader}>
         <View
           style={[
@@ -259,39 +251,45 @@ function DocumentCard({
         <StatusBadge uploaded={uploaded} />
       </View>
 
-      {/* Preview or upload zone */}
+      {/* ── Body ── */}
       {state.loading ? (
-        <View style={styles.loadingZone}>
-          <ActivityIndicator size="large" color={colors.primary} />
+        /* Processing… spinner */
+        <View style={styles.loadingBox}>
+          <ActivityIndicator size="small" color="#00C853" />
           <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
-            Processing image…
+            Opening picker…
           </Text>
         </View>
       ) : uploaded ? (
-        <View style={[styles.previewWrap, doc.selfie && styles.previewWrapSelfie]}>
+        /* Preview */
+        <View
+          style={[
+            styles.previewWrap,
+            doc.isSelfie && styles.previewWrapSquare,
+          ]}
+        >
           <Image
             source={{ uri: state.uri! }}
-            style={styles.previewImage}
-            contentFit={doc.selfie ? "cover" : "cover"}
-            transition={200}
+            style={styles.previewImg}
+            contentFit="cover"
+            transition={250}
           />
-          {/* Green success banner */}
-          <View style={styles.previewBanner}>
+          <View style={styles.previewBar}>
             <Feather name="check-circle" size={13} color="#fff" />
-            <Text style={styles.previewBannerText}>
-              {doc.selfie ? "Selfie captured" : "Document uploaded"}
+            <Text style={styles.previewBarText}>
+              {doc.isSelfie ? "Selfie saved" : "Document saved"}
             </Text>
             <View style={{ flex: 1 }} />
             <TouchableOpacity
-              style={styles.previewActionBtn}
+              style={styles.barBtn}
               onPress={onUpload}
               activeOpacity={0.8}
             >
               <Feather name="refresh-cw" size={11} color="#fff" />
-              <Text style={styles.previewActionText}>Retake</Text>
+              <Text style={styles.barBtnText}>Retake</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.previewActionBtn, styles.previewActionDanger]}
+              style={[styles.barBtn, styles.barBtnDanger]}
               onPress={onRemove}
               activeOpacity={0.8}
             >
@@ -301,52 +299,46 @@ function DocumentCard({
         </View>
       ) : (
         /* Upload zone */
-        <View style={styles.uploadZoneWrap}>
-          {/* Camera button — primary */}
+        <View style={styles.uploadZone}>
+          {/* Primary action button */}
           <TouchableOpacity
-            style={[styles.uploadPrimaryBtn, { borderColor: colors.primary }]}
+            style={styles.uploadBtn}
             onPress={onUpload}
-            activeOpacity={0.8}
+            activeOpacity={0.82}
           >
             <LinearGradient
               colors={["#00C853", "#00E676"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={styles.uploadPrimaryGrad}
+              style={styles.uploadBtnGrad}
             >
-              <Feather
-                name={doc.selfie ? "camera" : "camera"}
-                size={18}
-                color="#fff"
-              />
-              <Text style={styles.uploadPrimaryText}>
-                {doc.selfie ? "Take Selfie" : "Take Photo / Upload"}
+              <Feather name="camera" size={17} color="#fff" />
+              <Text style={styles.uploadBtnText}>
+                {doc.isSelfie ? "Take Selfie" : "Take Photo / Upload"}
               </Text>
             </LinearGradient>
           </TouchableOpacity>
 
+          {/* Hint */}
           <Text style={[styles.uploadHint, { color: colors.mutedForeground }]}>
             {doc.hint}
           </Text>
 
-          <View style={styles.uploadTagRow}>
-            <View style={styles.uploadTag}>
-              <Feather name="camera" size={9} color="#6B7280" />
-              <Text style={styles.uploadTagText}>Camera</Text>
+          {/* Tags row */}
+          <View style={styles.tagsRow}>
+            <View style={styles.tag}>
+              <Feather name="camera" size={9} color="#9CA3AF" />
+              <Text style={styles.tagText}>Camera</Text>
             </View>
-            {!doc.selfie && (
-              <>
-                <View style={styles.uploadTagDot} />
-                <View style={styles.uploadTag}>
-                  <Feather name="image" size={9} color="#6B7280" />
-                  <Text style={styles.uploadTagText}>Gallery</Text>
-                </View>
-              </>
-            )}
-            <View style={styles.uploadTagDot} />
-            <View style={styles.uploadTag}>
-              <Feather name="lock" size={9} color="#6B7280" />
-              <Text style={styles.uploadTagText}>Encrypted</Text>
+            <View style={styles.tagDot} />
+            <View style={styles.tag}>
+              <Feather name="image" size={9} color="#9CA3AF" />
+              <Text style={styles.tagText}>Gallery</Text>
+            </View>
+            <View style={styles.tagDot} />
+            <View style={styles.tag}>
+              <Feather name="lock" size={9} color="#9CA3AF" />
+              <Text style={styles.tagText}>Encrypted</Text>
             </View>
           </View>
         </View>
@@ -355,91 +347,93 @@ function DocumentCard({
   );
 }
 
-// ─── Main screen ────────────────────────────────────────────────
+// ─── Main screen ──────────────────────────────────────────────────────────────
+
 export default function DocumentUploadScreen() {
-  const colors = useColors();
-  const insets = useSafeAreaInsets();
-  const router = useRouter();
+  const colors  = useColors();
+  const insets  = useSafeAreaInsets();
+  const router  = useRouter();
 
-  const [docs, setDocs] = useState<Record<DocId, DocState>>({
-    selfie:  initialDoc(),
-    aadhaar: initialDoc(),
-    pan:     initialDoc(),
-    license: initialDoc(),
-    rc:      initialDoc(),
-  });
+  const [docs, setDocs] = useState<Record<DocId, DocState>>(() => ({
+    selfie:  blankDoc(),
+    aadhaar: blankDoc(),
+    pan:     blankDoc(),
+    license: blankDoc(),
+    rc:      blankDoc(),
+  }));
 
-  function setLoading(id: DocId, loading: boolean) {
-    setDocs((d) => ({ ...d, [id]: { ...d[id], loading } }));
-  }
+  // ── Helpers ──
 
-  function setUri(id: DocId, uri: string) {
-    setDocs((d) => ({
-      ...d,
-      [id]: { uri, uploadedAt: Date.now(), loading: false },
-    }));
+  function patch(id: DocId, partial: Partial<DocState>) {
+    setDocs((prev) => ({ ...prev, [id]: { ...prev[id], ...partial } }));
   }
 
   function removeDoc(id: DocId) {
-    setDocs((d) => ({ ...d, [id]: initialDoc() }));
+    setDocs((prev) => ({ ...prev, [id]: blankDoc() }));
   }
 
-  async function handleUpload(doc: DocSpec) {
-    if (doc.selfie) {
-      // Selfie → go straight to front camera, no sheet
-      setLoading(doc.id, true);
-      const uri = await captureFromCamera(true);
-      if (uri) setUri(doc.id, uri);
-      else setLoading(doc.id, false);
-      return;
-    }
-
-    // Other docs → offer camera or gallery
-    showPickerSheet(
-      false,
-      async () => {
-        setLoading(doc.id, true);
-        const uri = await captureFromCamera(false);
-        if (uri) setUri(doc.id, uri);
-        else setLoading(doc.id, false);
-      },
-      async () => {
-        setLoading(doc.id, true);
-        const uri = await pickFromGallery();
-        if (uri) setUri(doc.id, uri);
-        else setLoading(doc.id, false);
+  /**
+   * Run the picker (camera or gallery) and apply the result.
+   * Must be called from inside an Alert.alert callback — not from
+   * a sync context — so that the Alert dismisses before the picker opens.
+   */
+  async function runPicker(id: DocId, pickFn: () => Promise<string | null>) {
+    patch(id, { loading: true });
+    try {
+      const uri = await pickFn();
+      if (uri) {
+        patch(id, { uri, uploadedAt: Date.now(), loading: false });
+      } else {
+        patch(id, { loading: false });
       }
+    } catch {
+      patch(id, { loading: false });
+    }
+  }
+
+  function handleUpload(doc: DocSpec) {
+    showSourceSheet(
+      !!doc.isSelfie,
+      // Camera option
+      () => runPicker(doc.id, () => openCamera(!!doc.isSelfie)),
+      // Gallery option
+      () => runPicker(doc.id, openGallery),
     );
   }
 
-  const uploadedCount = Object.values(docs).filter((d) => d.uri).length;
-  const totalDocs     = DOCS.length;
-  const progress      = uploadedCount / totalDocs;
-  const allUploaded   = uploadedCount === totalDocs;
+  // ── Derived ──
+
+  const uploadedCount = (Object.values(docs) as DocState[]).filter((d) => d.uri).length;
+  const total         = DOCS.length;
+  const progress      = uploadedCount / total;
+  const allDone       = uploadedCount === total;
 
   function handleSubmit() {
-    if (!allUploaded) return;
+    if (!allDone) return;
     router.replace("/verification-pending");
   }
 
+  // ── Render ──
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      {/* ── Header ── */}
+      {/* ────── Header ────── */}
       <View
         style={[
           styles.header,
           { paddingTop: insets.top + 12, backgroundColor: "#fff" },
         ]}
       >
-        <View style={styles.headerTop}>
+        <View style={styles.headerRow}>
           <TouchableOpacity
             onPress={() => router.back()}
-            style={[styles.backBtn, { backgroundColor: "#f5f5f5" }]}
+            style={styles.backBtn}
+            activeOpacity={0.7}
           >
             <Feather name="arrow-left" size={19} color="#0a0a0a" />
           </TouchableOpacity>
-          <View style={styles.headerTitle}>
-            <Text style={styles.headerLabel}>Upload Documents</Text>
+          <View style={styles.headerCenter}>
+            <Text style={styles.headerTitle}>Upload Documents</Text>
             <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
               Step 4 · Verification
             </Text>
@@ -447,36 +441,36 @@ export default function DocumentUploadScreen() {
           <View style={{ width: 38 }} />
         </View>
 
-        {/* Progress */}
+        {/* Progress bar */}
         <View style={styles.progressRow}>
-          <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
+          <View
+            style={[styles.progressTrack, { backgroundColor: colors.border }]}
+          >
             <View
               style={[
                 styles.progressFill,
-                {
-                  backgroundColor: "#00C853",
-                  width: `${Math.max(progress * 100, 3)}%`,
-                },
+                { width: `${Math.max(progress * 100, 3)}%` },
               ]}
             />
           </View>
           <Text style={[styles.progressLabel, { color: colors.foreground }]}>
-            {uploadedCount}/{totalDocs}
+            {uploadedCount}/{total}
           </Text>
         </View>
       </View>
 
-      {/* ── Scrollable content ── */}
+      {/* ────── Scroll content ────── */}
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
           { paddingBottom: insets.bottom + 110 },
         ]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {/* Security banner */}
         <View style={styles.banner}>
-          <View style={styles.bannerIconWrap}>
+          <View style={styles.bannerIcon}>
             <Feather name="shield" size={16} color="#00C853" />
           </View>
           <View style={{ flex: 1 }}>
@@ -489,8 +483,8 @@ export default function DocumentUploadScreen() {
           </View>
         </View>
 
-        {/* Document cards */}
-        <View style={styles.docsList}>
+        {/* Doc cards */}
+        <View style={styles.docList}>
           {DOCS.map((doc) => (
             <DocumentCard
               key={doc.id}
@@ -503,61 +497,73 @@ export default function DocumentUploadScreen() {
         </View>
 
         {/* Tips */}
-        <View style={[styles.tipBox, { backgroundColor: "#fff", borderColor: colors.border }]}>
+        <View
+          style={[
+            styles.tipBox,
+            { backgroundColor: "#fff", borderColor: colors.border },
+          ]}
+        >
           <View style={styles.tipHeader}>
-            <Feather name="info" size={14} color={colors.mutedForeground} />
+            <Feather name="info" size={13} color={colors.mutedForeground} />
             <Text style={[styles.tipTitle, { color: colors.foreground }]}>
               Tips for a clear photo
             </Text>
           </View>
           {[
-            "Place document on flat, dark surface",
-            "All 4 corners must be visible",
+            "Lay document flat on a dark surface",
+            "All 4 corners must fit in the frame",
             "Avoid glare, shadows, and blur",
-            "All text must be clearly readable",
+            "Every digit and letter must be readable",
           ].map((tip) => (
             <View key={tip} style={styles.tipRow}>
-              <View style={[styles.tipDot, { backgroundColor: "#00C853" }]} />
+              <View style={styles.tipDot} />
               <Text style={[styles.tipText, { color: colors.mutedForeground }]}>
                 {tip}
               </Text>
             </View>
           ))}
         </View>
+
+        {/* Platform notice (development helper) */}
+        {Platform.OS === "android" && (
+          <View style={styles.platformNote}>
+            <Feather name="smartphone" size={12} color="#6B7280" />
+            <Text style={styles.platformNoteText}>
+              After selecting a photo, tap the checkmark / Done button to confirm.
+            </Text>
+          </View>
+        )}
       </ScrollView>
 
-      {/* ── Sticky footer ── */}
+      {/* ────── Sticky footer ────── */}
       <View
         style={[
           styles.footer,
           {
             paddingBottom: insets.bottom + 16,
-            borderTopColor: colors.border,
             backgroundColor: "#fff",
+            borderTopColor: colors.border,
           },
         ]}
       >
         <View style={styles.footerHint}>
           <Feather
-            name={allUploaded ? "check-circle" : "info"}
+            name={allDone ? "check-circle" : "info"}
             size={13}
-            color={allUploaded ? "#00C853" : colors.mutedForeground}
+            color={allDone ? "#00C853" : colors.mutedForeground}
           />
-          <Text style={[styles.footerHintText, { color: colors.mutedForeground }]}>
-            {allUploaded
+          <Text style={[styles.hintText, { color: colors.mutedForeground }]}>
+            {allDone
               ? "All documents uploaded. Ready to submit."
-              : `${totalDocs - uploadedCount} more document${totalDocs - uploadedCount > 1 ? "s" : ""} needed.`}
+              : `${total - uploadedCount} more document${total - uploadedCount > 1 ? "s" : ""} needed.`}
           </Text>
         </View>
 
         <TouchableOpacity
-          style={[
-            styles.submitBtn,
-            { opacity: allUploaded ? 1 : 0.5 },
-          ]}
+          style={[styles.submitBtn, { opacity: allDone ? 1 : 0.45 }]}
           onPress={handleSubmit}
           activeOpacity={0.85}
-          disabled={!allUploaded}
+          disabled={!allDone}
         >
           <LinearGradient
             colors={["#00C853", "#00E676"]}
@@ -565,7 +571,7 @@ export default function DocumentUploadScreen() {
             end={{ x: 1, y: 0 }}
             style={styles.submitGrad}
           >
-            <Text style={styles.submitBtnText}>Submit for Verification</Text>
+            <Text style={styles.submitText}>Submit for Verification</Text>
             <Feather name="arrow-right" size={18} color="#fff" />
           </LinearGradient>
         </TouchableOpacity>
@@ -574,19 +580,20 @@ export default function DocumentUploadScreen() {
   );
 }
 
-// ─── Styles ─────────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
 
+  // Header
   header: {
     paddingHorizontal: 20,
     paddingBottom: 14,
     gap: 14,
     borderBottomWidth: 1,
     borderBottomColor: "#f0f0f0",
-    zIndex: 10,
   },
-  headerTop: {
+  headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -595,20 +602,23 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 11,
+    backgroundColor: "#f5f5f5",
     alignItems: "center",
     justifyContent: "center",
   },
-  headerTitle: { alignItems: "center" },
-  headerLabel: { fontSize: 16, fontWeight: "700", color: "#0a0a0a" },
+  headerCenter: { alignItems: "center" },
+  headerTitle: { fontSize: 16, fontWeight: "700", color: "#0a0a0a" },
   headerSub: { fontSize: 12, marginTop: 1 },
 
   progressRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   progressTrack: { flex: 1, height: 6, borderRadius: 3, overflow: "hidden" },
-  progressFill: { height: "100%", borderRadius: 3 },
+  progressFill: { height: "100%", borderRadius: 3, backgroundColor: "#00C853" },
   progressLabel: { fontSize: 12, fontWeight: "700" },
 
+  // Scroll
   scroll: { paddingHorizontal: 16, paddingTop: 14, gap: 14 },
 
+  // Banner
   banner: {
     flexDirection: "row",
     alignItems: "center",
@@ -619,7 +629,7 @@ const styles = StyleSheet.create({
     borderColor: "#b9f6ca",
     backgroundColor: "#f0fdf4",
   },
-  bannerIconWrap: {
+  bannerIcon: {
     width: 36,
     height: 36,
     borderRadius: 18,
@@ -628,9 +638,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   bannerTitle: { fontSize: 13, fontWeight: "700" },
-  bannerSub: { fontSize: 11, marginTop: 2 },
+  bannerSub:   { fontSize: 11, marginTop: 2 },
 
-  docsList: { gap: 12 },
+  // Doc list
+  docList: { gap: 12 },
 
   // Card
   card: {
@@ -648,10 +659,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  docEmoji: { fontSize: 22 },
+  docEmoji:       { fontSize: 22 },
   cardHeaderText: { flex: 1, gap: 2 },
-  cardTitle: { fontSize: 15, fontWeight: "700" },
-  cardDesc: { fontSize: 12 },
+  cardTitle:      { fontSize: 15, fontWeight: "700" },
+  cardDesc:       { fontSize: 12 },
 
   badge: {
     flexDirection: "row",
@@ -663,8 +674,22 @@ const styles = StyleSheet.create({
   },
   badgeText: { fontSize: 10, fontWeight: "700", letterSpacing: 0.2 },
 
+  // Loading
+  loadingBox: {
+    height: 72,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    borderRadius: 12,
+    backgroundColor: "#f9fafb",
+    borderWidth: 1,
+    borderColor: "#f0f0f0",
+  },
+  loadingText: { fontSize: 13, fontWeight: "500" },
+
   // Upload zone
-  uploadZoneWrap: {
+  uploadZone: {
     borderWidth: 1.5,
     borderStyle: "dashed",
     borderRadius: 14,
@@ -675,13 +700,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
-  uploadPrimaryBtn: {
-    width: "100%",
-    borderRadius: 12,
-    overflow: "hidden",
-    borderWidth: 0,
-  },
-  uploadPrimaryGrad: {
+  uploadBtn:     { width: "100%", borderRadius: 12, overflow: "hidden" },
+  uploadBtnGrad: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -689,36 +709,23 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
   },
-  uploadPrimaryText: { fontSize: 15, fontWeight: "700", color: "#fff" },
-  uploadHint: { fontSize: 12, textAlign: "center" },
-  uploadTagRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  uploadTag: { flexDirection: "row", alignItems: "center", gap: 3 },
-  uploadTagText: { fontSize: 10, fontWeight: "500", color: "#6B7280" },
-  uploadTagDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "#D1D5DB" },
-
-  // Loading
-  loadingZone: {
-    height: 100,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    borderRadius: 12,
-    backgroundColor: "#f9fafb",
-    borderWidth: 1,
-    borderColor: "#F0F0F0",
-  },
-  loadingText: { fontSize: 13, fontWeight: "600" },
+  uploadBtnText: { fontSize: 15, fontWeight: "700", color: "#fff" },
+  uploadHint:    { fontSize: 12, textAlign: "center" },
+  tagsRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  tag:     { flexDirection: "row", alignItems: "center", gap: 3 },
+  tagText: { fontSize: 10, fontWeight: "500", color: "#9CA3AF" },
+  tagDot:  { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "#D1D5DB" },
 
   // Preview
   previewWrap: {
     borderRadius: 12,
     overflow: "hidden",
     aspectRatio: 16 / 9,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#f0f0f0",
   },
-  previewWrapSelfie: { aspectRatio: 1 },
-  previewImage: { width: "100%", height: "100%" },
-  previewBanner: {
+  previewWrapSquare: { aspectRatio: 1 },
+  previewImg:        { width: "100%", height: "100%" },
+  previewBar: {
     position: "absolute",
     bottom: 0,
     left: 0,
@@ -728,10 +735,10 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 9,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: "rgba(0,0,0,0.58)",
   },
-  previewBannerText: { fontSize: 12, fontWeight: "600", color: "#fff" },
-  previewActionBtn: {
+  previewBarText: { fontSize: 12, fontWeight: "600", color: "#fff" },
+  barBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
@@ -740,16 +747,31 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 7,
   },
-  previewActionDanger: { backgroundColor: "rgba(255,59,48,0.18)" },
-  previewActionText: { fontSize: 11, fontWeight: "700", color: "#fff" },
+  barBtnDanger: { backgroundColor: "rgba(255,59,48,0.18)" },
+  barBtnText:   { fontSize: 11, fontWeight: "700", color: "#fff" },
 
   // Tips
   tipBox: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 8 },
-  tipHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 2 },
+  tipHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 2,
+  },
   tipTitle: { fontSize: 13, fontWeight: "700" },
-  tipRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  tipDot: { width: 4, height: 4, borderRadius: 2 },
-  tipText: { fontSize: 12 },
+  tipRow:   { flexDirection: "row", alignItems: "center", gap: 8 },
+  tipDot:   { width: 4, height: 4, borderRadius: 2, backgroundColor: "#00C853" },
+  tipText:  { fontSize: 12 },
+
+  // Platform note (Android)
+  platformNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 4,
+    marginTop: -4,
+  },
+  platformNoteText: { fontSize: 11, color: "#9CA3AF" },
 
   // Footer
   footer: {
@@ -759,8 +781,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   footerHint: { flexDirection: "row", alignItems: "center", gap: 6 },
-  footerHintText: { fontSize: 12 },
-  submitBtn: { borderRadius: 15, overflow: "hidden" },
+  hintText:   { fontSize: 12 },
+  submitBtn:  { borderRadius: 15, overflow: "hidden" },
   submitGrad: {
     height: 56,
     flexDirection: "row",
@@ -769,5 +791,5 @@ const styles = StyleSheet.create({
     gap: 8,
     borderRadius: 15,
   },
-  submitBtnText: { fontSize: 17, fontWeight: "700", color: "#fff" },
+  submitText: { fontSize: 17, fontWeight: "700", color: "#fff" },
 });
