@@ -154,6 +154,7 @@ export default function SettingsScreen() {
   const router = useRouter();
 
   const [autoAccept, setAutoAccept] = useState(false);
+  const [language, setLanguage] = useState<"English" | "हिन्दी" | "ಕನ್ನಡ">("English");
   const [soundAlerts, setSoundAlerts] = useState(true);
   const [vibration, setVibration] = useState(true);
   const [longTrips, setLongTrips] = useState(true);
@@ -484,22 +485,25 @@ export default function SettingsScreen() {
               iconBg="#e3f2fd"
               iconColor="#1976D2"
               title="Language"
+              sub="Tap to switch · English / हिन्दी / ಕನ್ನಡ"
               right={
                 <View style={styles.rowValue}>
-                  <Text style={[styles.rowValueText, { color: colors.mutedForeground }]}>
-                    English
+                  <Text style={[styles.rowValueText, { color: colors.foreground, fontWeight: "700" }]}>
+                    {language}
                   </Text>
                   <Feather name="chevron-right" size={15} color={colors.mutedForeground} />
                 </View>
               }
-              onPress={() =>
-                Alert.alert("Language", "Choose your preferred language", [
-                  { text: "English" },
-                  { text: "हिन्दी" },
-                  { text: "ಕನ್ನಡ" },
-                  { text: "Cancel", style: "cancel" },
-                ])
-              }
+              onPress={() => {
+                const order: Array<"English" | "हिन्दी" | "ಕನ್ನಡ"> = [
+                  "English",
+                  "हिन्दी",
+                  "ಕನ್ನಡ",
+                ];
+                const next = order[(order.indexOf(language) + 1) % order.length];
+                setLanguage(next);
+                infoAlert("Language updated", `App language set to ${next}.`);
+              }}
               divider
             />
             <Row
