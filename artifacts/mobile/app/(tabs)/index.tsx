@@ -19,6 +19,10 @@ import Svg, { Circle, Path, Rect } from "react-native-svg";
 
 import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
+import IncomingOrderModal, {
+  TEST_ORDERS,
+  type TestOrder,
+} from "@/components/IncomingOrderModal";
 
 function RadarPulse({ color }: { color: string }) {
   const a1 = useRef(new Animated.Value(0)).current;
@@ -226,6 +230,27 @@ export default function HomeScreen() {
   const weeklyEarned = 4280;
   const weeklyGoal = 7000;
   const weeklyPct = Math.min(weeklyEarned / weeklyGoal, 1);
+
+  // ── Test order simulation ────────────────────────────────────
+  const [testOrder, setTestOrder] = useState<TestOrder | null>(null);
+  const lastOrderIndex = useRef(-1);
+
+  function fireTestOrder() {
+    let idx: number;
+    do { idx = Math.floor(Math.random() * TEST_ORDERS.length); }
+    while (idx === lastOrderIndex.current && TEST_ORDERS.length > 1);
+    lastOrderIndex.current = idx;
+    setTestOrder(TEST_ORDERS[idx]);
+  }
+
+  function handleOrderAccept(order: TestOrder) {
+    setTestOrder(null);
+    Alert.alert(
+      "✅ Order Accepted!",
+      `You accepted ${order.customer}'s delivery.\nEarning: ₹${order.surge ? Math.round(order.earning * (order.surgeMultiplier ?? 1)) : order.earning}`,
+      [{ text: "Go to pickup", style: "default" }]
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -487,6 +512,33 @@ export default function HomeScreen() {
           ))}
         </View>
       </ScrollView>
+
+      {/* ── Floating test-order button (dev only) ── */}
+      <TouchableOpacity
+        onPress={fireTestOrder}
+        activeOpacity={0.85}
+        style={[
+          styles.testOrderBtn,
+          { bottom: insets.bottom + 90 },
+        ]}
+      >
+        <LinearGradient
+          colors={["#7C3AED", "#4F46E5"]}
+          style={styles.testOrderGrad}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <Text style={styles.testOrderIcon}>🧪</Text>
+          <Text style={styles.testOrderLabel}>Test{"\n"}Order</Text>
+        </LinearGradient>
+      </TouchableOpacity>
+
+      {/* ── Incoming order modal ── */}
+      <IncomingOrderModal
+        order={testOrder}
+        onClose={() => setTestOrder(null)}
+        onAccept={handleOrderAccept}
+      />
     </View>
   );
 }
@@ -856,4 +908,28 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   actionLabel: { fontSize: 11, fontWeight: "700" },
+
+  // Floating test-order button
+  testOrderBtn: {
+    position: "absolute",
+    right: 16,
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    shadowColor: "#4F46E5",
+    shadowOpacity: 0.45,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 10,
+  },
+  testOrderGrad: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+  },
+  testOrderIcon:  { fontSize: 20 },
+  testOrderLabel: { fontSize: 9, fontWeight: "800", color: "#fff", textAlign: "center", lineHeight: 11 },
 });
