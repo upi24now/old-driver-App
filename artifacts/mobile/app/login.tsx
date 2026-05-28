@@ -83,16 +83,18 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.formSection}>
-          <View
+          <Pressable
+            onPress={() => inputRef.current?.focus()}
             style={[
               styles.inputCard,
               focused && styles.inputCardFocused,
             ]}
           >
             <TouchableOpacity
-              activeOpacity={0.7}
+              activeOpacity={0.6}
               onPress={() => setShowCountryPicker(true)}
               style={styles.countrySelector}
+              hitSlop={{ top: 12, bottom: 12, left: 8, right: 4 }}
             >
               <View style={styles.flagWrap}>
                 <View style={[styles.flagBand, { backgroundColor: "#FF9933" }]} />
@@ -102,7 +104,7 @@ export default function LoginScreen() {
                 <View style={[styles.flagBand, { backgroundColor: "#138808" }]} />
               </View>
               <Text style={styles.codeText}>{COUNTRY_CODE}</Text>
-              <Feather name="chevron-down" size={16} color={TEXT_MUTED} />
+              <Feather name="chevron-down" size={15} color={TEXT_MUTED} />
             </TouchableOpacity>
 
             <View style={styles.codeDivider} />
@@ -119,8 +121,10 @@ export default function LoginScreen() {
               onBlur={() => setFocused(false)}
               returnKeyType="done"
               onSubmitEditing={handleContinue}
+              underlineColorAndroid="transparent"
+              selectionColor={GRADIENT_FROM}
             />
-          </View>
+          </Pressable>
 
           <TouchableOpacity
             onPress={handleContinue}
@@ -260,29 +264,30 @@ const styles = StyleSheet.create({
     alignItems: "center",
     height: 64,
     borderRadius: 22,
-    backgroundColor: "#fff",
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: BORDER,
-    overflow: "hidden",
+    paddingHorizontal: 6,
     shadowColor: "#0F172A",
     shadowOpacity: 0.04,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
     elevation: 2,
   },
   inputCardFocused: {
     borderColor: GRADIENT_FROM,
     shadowColor: GRADIENT_FROM,
-    shadowOpacity: 0.12,
-    shadowRadius: 14,
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
   },
   countrySelector: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingLeft: 18,
-    paddingRight: 10,
+    paddingLeft: 14,
+    paddingRight: 12,
     height: "100%",
+    backgroundColor: "transparent",
   },
   flagWrap: {
     width: 24,
@@ -290,7 +295,7 @@ const styles = StyleSheet.create({
     borderRadius: 2.5,
     overflow: "hidden",
     borderWidth: 0.5,
-    borderColor: "#D1D5DB",
+    borderColor: "#E5E7EB",
     flexDirection: "column",
   },
   flagBand: {
@@ -310,19 +315,29 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     color: TEXT_PRIMARY,
+    letterSpacing: 0.2,
   },
   codeDivider: {
     width: 1,
-    height: 28,
-    backgroundColor: BORDER,
+    height: 26,
+    backgroundColor: "#F1F5F9",
+    alignSelf: "center",
   },
   phoneInput: {
     flex: 1,
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "600",
     color: TEXT_PRIMARY,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     height: "100%",
+    borderWidth: 0,
+    ...Platform.select({
+      web: {
+        outlineWidth: 0,
+        outlineStyle: "none",
+      } as object,
+      default: {},
+    }),
   },
   ctaWrap: {
     borderRadius: 20,
