@@ -245,11 +245,25 @@ export default function HomeScreen() {
 
   function handleOrderAccept(order: TestOrder) {
     setTestOrder(null);
-    Alert.alert(
-      "✅ Order Accepted!",
-      `You accepted ${order.customer}'s delivery.\nEarning: ₹${order.surge ? Math.round(order.earning * (order.surgeMultiplier ?? 1)) : order.earning}`,
-      [{ text: "Go to pickup", style: "default" }]
-    );
+    const earning = order.surge
+      ? Math.round(order.earning * (order.surgeMultiplier ?? 1))
+      : order.earning;
+    router.push({
+      pathname: "/active-delivery",
+      params: {
+        customer:    order.customer,
+        parcelType:  order.parcelType,
+        parcelEmoji: order.parcelEmoji,
+        pickup:      order.pickup,
+        pickupCity:  order.pickupCity,
+        drop:        order.drop,
+        dropCity:    order.dropCity,
+        distanceKm:  String(order.distanceKm),
+        durationMin: String(order.durationMin),
+        earning:     String(earning),
+        weight:      order.weight ?? "",
+      },
+    });
   }
 
   return (

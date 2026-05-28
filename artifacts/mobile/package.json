@@ -56,6 +56,7 @@
     "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
+    "expo-av": "^16.0.8",
     "expo-intent-launcher": "^56.0.4"
   }
 }
