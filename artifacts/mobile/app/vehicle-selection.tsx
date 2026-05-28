@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,13 +19,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDriver } from "@/contexts/DriverContext";
 
 // ─── Brand tokens ──────────────────────────────────────────────
-const PINK = "#FF4D8D";
+const PINK   = "#FF4D8D";
 const ORANGE = "#FF7A3D";
 const TEXT_PRIMARY = "#111111";
-const TEXT_MUTED = "#6B7280";
-const BORDER = "#F0E6EC";
+const TEXT_MUTED   = "#6B7280";
+const BORDER       = "#F0E6EC";
 
-// ─── Vehicle image sources (cropped from reference) ─────────────
+// ─── Vehicle image assets ───────────────────────────────────────
 const IMAGES: Record<string, ImageSourcePropType> = {
   bike:  require("../assets/vehicles/bike.png"),
   auto:  require("../assets/vehicles/auto.png"),
@@ -34,85 +35,130 @@ const IMAGES: Record<string, ImageSourcePropType> = {
   truck: require("../assets/vehicles/truck.png"),
 };
 
+// ─── Vehicle data ───────────────────────────────────────────────
 type VehicleOption = {
   id: string;
   name: string;
-  tagline: string;
   cardBg: [string, string];
-  seatLabel: string;
-  seatIcon: "user" | "users" | "package";
+  capacity: string;
+  capacityIcon: "user" | "users" | "package";
   price: string;
   badge?: { text: string; bg: string; fg: string };
+  imageKey?: string;
+  emoji?: string;
+  emojiBg?: string;
 };
 
 const VEHICLES: VehicleOption[] = [
   {
     id: "bike",
     name: "Bike",
-    tagline: "Quick, agile rides",
     cardBg: ["#F5F3FF", "#FAF5FF"],
-    seatLabel: "1 Seat",
-    seatIcon: "user",
+    capacity: "1 Seat",
+    capacityIcon: "user",
     price: "₹6/km",
     badge: { text: "⭐ Popular", bg: "#A855F7", fg: "#fff" },
+    imageKey: "bike",
   },
   {
-    id: "auto",
-    name: "Auto",
-    tagline: "3-seater, in-city",
-    cardBg: ["#FFFBEB", "#FEFCE8"],
-    seatLabel: "3 Seats",
-    seatIcon: "users",
-    price: "₹10/km",
-  },
-  {
-    id: "mini",
-    name: "Mini Car",
-    tagline: "Compact, economy",
-    cardBg: ["#EFF6FF", "#F0F9FF"],
-    seatLabel: "4 Seats",
-    seatIcon: "users",
-    price: "₹14/km",
-  },
-  {
-    id: "sedan",
-    name: "Sedan",
-    tagline: "Premium comfort",
-    cardBg: ["#FDF2F8", "#FFF0F6"],
-    seatLabel: "4 Seats",
-    seatIcon: "users",
-    price: "₹18/km",
+    id: "scooter",
+    name: "Scooter",
+    cardBg: ["#FFF1F2", "#FFF5F6"],
+    capacity: "1 Seat",
+    capacityIcon: "user",
+    price: "₹7/km",
+    emoji: "🛵",
+    emojiBg: "#FFE4E6",
   },
   {
     id: "ev",
     name: "EV",
-    tagline: "Electric, eco-friendly",
     cardBg: ["#ECFDF5", "#F0FFF8"],
-    seatLabel: "4 Seats",
-    seatIcon: "users",
+    capacity: "4 Seats",
+    capacityIcon: "users",
     price: "₹12/km",
     badge: { text: "⚡ New", bg: "#10B981", fg: "#fff" },
+    imageKey: "ev",
+  },
+  {
+    id: "auto",
+    name: "Auto",
+    cardBg: ["#FFFBEB", "#FEFCE8"],
+    capacity: "3 Seats",
+    capacityIcon: "users",
+    price: "₹10/km",
+    imageKey: "auto",
+  },
+  {
+    id: "mini",
+    name: "Mini Car",
+    cardBg: ["#EFF6FF", "#F0F9FF"],
+    capacity: "4 Seats",
+    capacityIcon: "users",
+    price: "₹14/km",
+    imageKey: "mini",
+  },
+  {
+    id: "sedan",
+    name: "Sedan",
+    cardBg: ["#FDF2F8", "#FFF0F6"],
+    capacity: "4 Seats",
+    capacityIcon: "users",
+    price: "₹18/km",
+    imageKey: "sedan",
+  },
+  {
+    id: "suv",
+    name: "SUV",
+    cardBg: ["#FFF7ED", "#FFFBF5"],
+    capacity: "6 Seats",
+    capacityIcon: "users",
+    price: "₹22/km",
+    emoji: "🚙",
+    emojiBg: "#FFEDD5",
+  },
+  {
+    id: "pickup",
+    name: "Pickup",
+    cardBg: ["#F0FDF4", "#F0FFF4"],
+    capacity: "500 kg",
+    capacityIcon: "package",
+    price: "₹20/km",
+    emoji: "🛻",
+    emojiBg: "#DCFCE7",
   },
   {
     id: "truck",
     name: "Truck",
-    tagline: "Goods delivery",
     cardBg: ["#F1F5F9", "#F8FAFC"],
-    seatLabel: "Up to 8 Ton",
-    seatIcon: "package",
-    price: "₹22/km",
+    capacity: "2 Ton",
+    capacityIcon: "package",
+    price: "₹35/km",
+    imageKey: "truck",
+  },
+  {
+    id: "mini-truck",
+    name: "Mini Truck",
+    cardBg: ["#FFF8F0", "#FFFAF5"],
+    capacity: "1 Ton",
+    capacityIcon: "package",
+    price: "₹25/km",
+    emoji: "🚚",
+    emojiBg: "#FEF3C7",
   },
 ];
 
-// ─── Vehicle Card ───────────────────────────────────────────────
+// ─── Vehicle Card (3-column compact) ───────────────────────────
 function VehicleCard({
   vehicle,
   selected,
   onPress,
+  cardWidth,
 }: {
   vehicle: VehicleOption;
   selected: boolean;
   onPress: () => void;
+  cardWidth: number;
 }) {
   const scale = useRef(new Animated.Value(1)).current;
   const glow  = useRef(new Animated.Value(0)).current;
@@ -122,160 +168,93 @@ function VehicleCard({
     if (selected && !prev.current) {
       Animated.parallel([
         Animated.sequence([
-          Animated.spring(scale, {
-            toValue: 1.05,
-            friction: 4,
-            tension: 260,
-            useNativeDriver: true,
-          }),
-          Animated.spring(scale, {
-            toValue: 1,
-            friction: 5,
-            tension: 200,
-            useNativeDriver: true,
-          }),
+          Animated.spring(scale, { toValue: 1.04, friction: 4, tension: 280, useNativeDriver: true }),
+          Animated.spring(scale, { toValue: 1,    friction: 5, tension: 200, useNativeDriver: true }),
         ]),
-        Animated.timing(glow, {
-          toValue: 1,
-          duration: 220,
-          useNativeDriver: true,
-        }),
+        Animated.timing(glow, { toValue: 1, duration: 200, useNativeDriver: true }),
       ]).start();
     }
     if (!selected && prev.current) {
-      Animated.timing(glow, {
-        toValue: 0,
-        duration: 160,
-        useNativeDriver: true,
-      }).start();
+      Animated.timing(glow, { toValue: 0, duration: 150, useNativeDriver: true }).start();
     }
     prev.current = selected;
   }, [selected]);
 
-  return (
-    <Animated.View style={[styles.cardWrap, { transform: [{ scale }] }]}>
-      {/* Pink glow bloom behind selected card */}
-      <Animated.View
-        style={[styles.cardGlow, { opacity: glow }]}
-        pointerEvents="none"
-      />
+  const imgZoneH = Math.round(cardWidth * 0.74); // ~74% of card width for image zone
 
-      <TouchableOpacity
-        activeOpacity={0.88}
-        onPress={onPress}
-        style={styles.cardTouchable}
-      >
-        {selected ? (
-          <LinearGradient
-            colors={["#FFF0F6", "#FDF2F8"]}
-            style={[styles.card, styles.cardSelected]}
-          >
-            <CardContent vehicle={vehicle} selected={selected} />
-          </LinearGradient>
-        ) : (
-          <LinearGradient colors={vehicle.cardBg} style={styles.card}>
-            <CardContent vehicle={vehicle} selected={selected} />
-          </LinearGradient>
-        )}
+  return (
+    <Animated.View style={[styles.cardWrap, { width: cardWidth, transform: [{ scale }] }]}>
+      <Animated.View style={[styles.cardGlow, { opacity: glow }]} pointerEvents="none" />
+
+      <TouchableOpacity activeOpacity={0.88} onPress={onPress} style={styles.cardTouchable}>
+        <LinearGradient
+          colors={selected ? ["#FFF0F6", "#FDF2F8"] : vehicle.cardBg}
+          style={[styles.card, selected && styles.cardSelected]}
+        >
+          {/* IMAGE ZONE */}
+          <View style={[styles.imageZone, { height: imgZoneH }]}>
+            {vehicle.imageKey ? (
+              <Image
+                source={IMAGES[vehicle.imageKey]}
+                style={styles.vehicleImage}
+                resizeMode="contain"
+              />
+            ) : (
+              <View style={[styles.emojiWrap, { backgroundColor: vehicle.emojiBg ?? "#F3F4F6" }]}>
+                <Text style={styles.emojiText}>{vehicle.emoji}</Text>
+              </View>
+            )}
+
+            {vehicle.badge && (
+              <View style={[styles.badge, { backgroundColor: vehicle.badge.bg }]}>
+                <Text style={[styles.badgeText, { color: vehicle.badge.fg }]}>
+                  {vehicle.badge.text}
+                </Text>
+              </View>
+            )}
+
+            {selected && (
+              <LinearGradient
+                colors={[PINK, ORANGE]}
+                style={styles.checkCircle}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Feather name="check" size={9} color="#fff" />
+              </LinearGradient>
+            )}
+          </View>
+
+          {/* TEXT ZONE */}
+          <View style={styles.textZone}>
+            <Text style={[styles.cardName, selected && { color: PINK }]} numberOfLines={1}>
+              {vehicle.name}
+            </Text>
+            <View style={[styles.metaRow, selected && styles.metaRowSelected]}>
+              <Feather
+                name={vehicle.capacityIcon}
+                size={9}
+                color={selected ? PINK : TEXT_MUTED}
+              />
+              <Text style={[styles.metaCapacity, selected && { color: PINK }]} numberOfLines={1}>
+                {vehicle.capacity}
+              </Text>
+              <View style={styles.metaDot} />
+              <Text style={[styles.metaPrice, selected && { color: PINK }]}>
+                {vehicle.price}
+              </Text>
+            </View>
+          </View>
+        </LinearGradient>
       </TouchableOpacity>
     </Animated.View>
-  );
-}
-
-function CardContent({
-  vehicle,
-  selected,
-}: {
-  vehicle: VehicleOption;
-  selected: boolean;
-}) {
-  return (
-    <View style={styles.cardInner}>
-      {/* ── IMAGE ZONE: ~60% of card, badges float inside ── */}
-      <View style={styles.imageZone}>
-        {/* Vehicle image — contain, perfectly centered */}
-        <Image
-          source={IMAGES[vehicle.id]}
-          style={styles.vehicleImage}
-          resizeMode="contain"
-        />
-
-        {/* Badge anchored inside image zone top-left */}
-        {vehicle.badge && (
-          <View style={[styles.badge, { backgroundColor: vehicle.badge.bg }]}>
-            <Text style={[styles.badgeText, { color: vehicle.badge.fg }]}>
-              {vehicle.badge.text}
-            </Text>
-          </View>
-        )}
-
-        {/* Check circle anchored inside image zone top-right */}
-        {selected && (
-          <LinearGradient
-            colors={[PINK, ORANGE]}
-            style={styles.checkCircle}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <Feather name="check" size={11} color="#fff" />
-          </LinearGradient>
-        )}
-      </View>
-
-      {/* ── TEXT ZONE: always below, never overlaps image ── */}
-      <View style={styles.textZone}>
-        <Text style={styles.cardName} numberOfLines={1}>
-          {vehicle.name}
-        </Text>
-        <Text style={styles.cardTagline} numberOfLines={1}>
-          {vehicle.tagline}
-        </Text>
-
-        <View
-          style={[
-            styles.infoRow,
-            {
-              backgroundColor: selected
-                ? "rgba(255,77,141,0.09)"
-                : "rgba(255,255,255,0.75)",
-              borderColor: selected
-                ? "rgba(255,77,141,0.25)"
-                : "rgba(0,0,0,0.07)",
-            },
-          ]}
-        >
-          <Feather
-            name={vehicle.seatIcon}
-            size={11}
-            color={selected ? PINK : TEXT_MUTED}
-          />
-          <Text
-            style={[styles.infoText, { color: selected ? PINK : TEXT_MUTED }]}
-            numberOfLines={1}
-          >
-            {vehicle.seatLabel}
-          </Text>
-          <View style={styles.infoDivider} />
-          <Text style={[styles.priceText, { color: selected ? PINK : ORANGE }]}>
-            {vehicle.price}
-          </Text>
-        </View>
-      </View>
-    </View>
   );
 }
 
 // ─── Progress Step Dot ──────────────────────────────────────────
 function StepDot({ filled }: { filled: boolean }) {
   return (
-    <View
-      style={[
-        styles.stepDot,
-        filled
-          ? { backgroundColor: PINK }
-          : { backgroundColor: "#E5E7EB", borderWidth: 2, borderColor: "#D1D5DB" },
-      ]}
-    >
+    <View style={[styles.stepDot, filled ? { backgroundColor: PINK } : { backgroundColor: "#E5E7EB", borderWidth: 2, borderColor: "#D1D5DB" }]}>
       {filled && <Feather name="check" size={9} color="#fff" />}
     </View>
   );
@@ -286,104 +265,104 @@ export default function VehicleSelectionScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { setVehicle } = useDriver();
+  const { width: screenW } = useWindowDimensions();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const selectedVehicle = VEHICLES.find((v) => v.id === selectedId) ?? null;
 
+  // Responsive 3-column sizing
+  const COLS        = 3;
+  const H_PAD       = 14;
+  const COL_GAP     = 10;
+  const totalGap    = COL_GAP * (COLS - 1);
+  const cardWidth   = Math.floor((screenW - H_PAD * 2 - totalGap) / COLS);
+
+  // Build rows of 3
+  const rows: VehicleOption[][] = [];
+  for (let i = 0; i < VEHICLES.length; i += COLS) {
+    rows.push(VEHICLES.slice(i, i + COLS));
+  }
+
   function handleContinue() {
     if (!selectedId || !selectedVehicle) return;
     setVehicle({ id: selectedVehicle.id, name: selectedVehicle.name });
-    router.push({
-      pathname: "/profile-setup",
-      params: { vehicle: selectedId },
-    });
-  }
-
-  const rows: VehicleOption[][] = [];
-  for (let i = 0; i < VEHICLES.length; i += 2) {
-    rows.push(VEHICLES.slice(i, i + 2));
+    router.push({ pathname: "/profile-setup", params: { vehicle: selectedId } });
   }
 
   return (
-    <LinearGradient
-      colors={["#FFF5F8", "#FFFAF5", "#FFF8FC"]}
-      style={styles.root}
-    >
+    <LinearGradient colors={["#FFF5F8", "#FFFAF5", "#FFF8FC"]} style={styles.root}>
       {/* ── Header ── */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backBtn}
-          activeOpacity={0.7}
-        >
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
           <Feather name="arrow-left" size={18} color={TEXT_PRIMARY} />
         </TouchableOpacity>
 
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Choose Vehicle 🚗</Text>
-          <Text style={styles.headerSub}>Step 2 of 3</Text>
+          <Text style={styles.headerSub}>Step 2 of 3 · Pick your vehicle type</Text>
         </View>
 
         <TouchableOpacity style={styles.helpBtn} activeOpacity={0.7}>
-          <Feather name="help-circle" size={15} color={PINK} />
+          <Feather name="help-circle" size={14} color={PINK} />
           <Text style={styles.helpText}>Help</Text>
         </TouchableOpacity>
       </View>
 
-      {/* ── Progress bar ── */}
+      {/* ── Progress ── */}
       <View style={styles.progressRow}>
         <StepDot filled />
-        <LinearGradient
-          colors={[PINK, ORANGE]}
-          style={styles.progressLine}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-        />
+        <LinearGradient colors={[PINK, ORANGE]} style={styles.progressLine} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} />
         <StepDot filled />
         <View style={styles.progressLineEmpty} />
         <StepDot filled={false} />
       </View>
 
-      {/* ── Scrollable grid ── */}
+      {/* ── Vehicle count label ── */}
+      <View style={styles.countRow}>
+        <Text style={styles.countText}>{VEHICLES.length} vehicle types available</Text>
+        <View style={styles.countPill}>
+          <Text style={styles.countPillText}>All India</Text>
+        </View>
+      </View>
+
+      {/* ── Scrollable 3-col grid ── */}
       <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          { paddingBottom: insets.bottom + 184 },
-        ]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 170 }]}
         showsVerticalScrollIndicator={false}
       >
         {rows.map((row, ri) => (
-          <View key={ri} style={styles.row}>
+          <View key={ri} style={[styles.row, { gap: COL_GAP }]}>
             {row.map((v) => (
               <VehicleCard
                 key={v.id}
                 vehicle={v}
                 selected={selectedId === v.id}
                 onPress={() => setSelectedId(v.id)}
+                cardWidth={cardWidth}
               />
             ))}
-            {row.length === 1 && <View style={{ flex: 1 }} />}
+            {/* Fill remaining columns in last row with invisible spacers */}
+            {row.length < COLS &&
+              Array.from({ length: COLS - row.length }).map((_, i) => (
+                <View key={`spacer-${i}`} style={{ width: cardWidth }} />
+              ))}
           </View>
         ))}
       </ScrollView>
 
       {/* ── Sticky footer ── */}
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 14 }]}>
         {/* Selection summary */}
         <View style={styles.summaryCard}>
-          {/* Thumbnail of selected vehicle */}
           <View style={styles.summaryThumbWrap}>
-            {selectedVehicle ? (
-              <Image
-                source={IMAGES[selectedVehicle.id]}
-                style={styles.summaryThumb}
-                resizeMode="cover"
-              />
+            {selectedVehicle?.imageKey ? (
+              <Image source={IMAGES[selectedVehicle.imageKey]} style={styles.summaryThumb} resizeMode="contain" />
+            ) : selectedVehicle?.emoji ? (
+              <View style={[styles.summaryEmojiWrap, { backgroundColor: selectedVehicle.emojiBg ?? "#F3F4F6" }]}>
+                <Text style={styles.summaryEmoji}>{selectedVehicle.emoji}</Text>
+              </View>
             ) : (
-              <LinearGradient
-                colors={[PINK + "30", ORANGE + "18"]}
-                style={styles.summaryThumbPlaceholder}
-              >
+              <LinearGradient colors={[PINK + "30", ORANGE + "18"]} style={styles.summaryThumbPlaceholder}>
                 <Feather name="truck" size={20} color={PINK} />
               </LinearGradient>
             )}
@@ -391,7 +370,7 @@ export default function VehicleSelectionScreen() {
 
           <View style={{ flex: 1 }}>
             <Text style={styles.summaryLabel}>
-              {selectedVehicle ? "You have selected" : "No vehicle selected"}
+              {selectedVehicle ? "Selected vehicle" : "No vehicle selected"}
             </Text>
             {selectedVehicle && (
               <Text style={styles.summaryName}>{selectedVehicle.name}</Text>
@@ -399,11 +378,14 @@ export default function VehicleSelectionScreen() {
           </View>
 
           {selectedVehicle && (
-            <Text style={styles.summaryPrice}>{selectedVehicle.price}</Text>
+            <View style={styles.summaryPriceWrap}>
+              <Text style={styles.summaryPrice}>{selectedVehicle.price}</Text>
+              <Text style={styles.summaryCapacity}>{selectedVehicle.capacity}</Text>
+            </View>
           )}
         </View>
 
-        {/* Continue button */}
+        {/* CTA */}
         <TouchableOpacity
           activeOpacity={selectedId ? 0.82 : 1}
           onPress={handleContinue}
@@ -416,19 +398,10 @@ export default function VehicleSelectionScreen() {
             end={{ x: 1, y: 0 }}
             style={styles.ctaBtn}
           >
-            <Text
-              style={[
-                styles.ctaText,
-                { color: selectedId ? "#fff" : TEXT_MUTED },
-              ]}
-            >
+            <Text style={[styles.ctaText, { color: selectedId ? "#fff" : TEXT_MUTED }]}>
               Continue
             </Text>
-            <Feather
-              name="arrow-right"
-              size={20}
-              color={selectedId ? "#fff" : TEXT_MUTED}
-            />
+            <Feather name="arrow-right" size={20} color={selectedId ? "#fff" : TEXT_MUTED} />
           </LinearGradient>
         </TouchableOpacity>
       </View>
@@ -444,31 +417,31 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingBottom: 10,
+    paddingHorizontal: 14,
+    paddingBottom: 8,
   },
   backBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 11,
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
     shadowOpacity: 0.07,
-    shadowRadius: 8,
+    shadowRadius: 7,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
   headerCenter: { flex: 1, alignItems: "center" },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "800",
     color: TEXT_PRIMARY,
     letterSpacing: -0.3,
   },
   headerSub: {
-    fontSize: 12,
+    fontSize: 11,
     color: TEXT_MUTED,
     fontWeight: "500",
     marginTop: 1,
@@ -476,31 +449,31 @@ const styles = StyleSheet.create({
   helpBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 3,
     backgroundColor: "#fff",
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 12,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 11,
     shadowColor: "#000",
     shadowOpacity: 0.06,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  helpText: { fontSize: 12, fontWeight: "700", color: PINK },
+  helpText: { fontSize: 11, fontWeight: "700", color: PINK },
 
   // Progress
   progressRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 32,
-    paddingBottom: 14,
-    paddingTop: 4,
+    paddingHorizontal: 28,
+    paddingBottom: 10,
+    paddingTop: 2,
   },
   stepDot: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -518,41 +491,53 @@ const styles = StyleSheet.create({
     marginHorizontal: -2,
   },
 
+  // Count label
+  countRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingBottom: 8,
+    gap: 8,
+  },
+  countText: { fontSize: 11, color: TEXT_MUTED, fontWeight: "600", flex: 1 },
+  countPill: {
+    backgroundColor: PINK + "18",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 20,
+  },
+  countPillText: { fontSize: 10, color: PINK, fontWeight: "700" },
+
   // Grid
-  scroll: { paddingHorizontal: 14, paddingTop: 4, gap: 12 },
-  row:    { flexDirection: "row", gap: 12 },
+  scroll:  { paddingHorizontal: 14, paddingTop: 2, gap: 10 },
+  row:     { flexDirection: "row" },
 
   // Card outer
   cardWrap: {
-    flex: 1,
-    borderRadius: 20,
+    borderRadius: 16,
     shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
   cardGlow: {
     position: "absolute",
     inset: -3,
-    borderRadius: 23,
+    borderRadius: 19,
     shadowColor: PINK,
-    shadowOpacity: 0.38,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 5 },
     elevation: 0,
   },
   cardTouchable: {
-    borderRadius: 20,
+    borderRadius: 16,
     overflow: "hidden",
-    alignSelf: "stretch",
-    flex: 1,
   },
-  // Card shell — gradient wraps everything, no padding here
   card: {
-    borderRadius: 20,
+    borderRadius: 16,
     overflow: "hidden",
-    flex: 1,
     borderWidth: 1.5,
     borderColor: "rgba(255,255,255,0.9)",
   },
@@ -561,96 +546,105 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
 
-  // cardInner keeps the two zones stacked cleanly
-  cardInner: {
-    flexDirection: "column",
-    alignSelf: "stretch",
-    flex: 1,
-  },
-
-  // ── IMAGE ZONE ────────────────────────────────────────────────
-  // Fixed height = ~62% of total card (~230px). Badges sit inside.
-  // White bg ensures any vehicle color is visible + ready for user uploads.
+  // Image zone — white bg, responsive height
   imageZone: {
     width: "100%",
-    height: 142,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
-    position: "relative",
     backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
     borderBottomColor: "rgba(0,0,0,0.05)",
   },
-  // Image fills zone naturally; resizeMode="contain" centers it
   vehicleImage: {
     width: "100%",
     height: "100%",
   },
 
-  // Badge — inside imageZone, top-left
+  // Emoji fallback — centered in imageZone
+  emojiWrap: {
+    width: "72%",
+    aspectRatio: 1,
+    borderRadius: 100,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emojiText: { fontSize: 36 },
+
+  // Badge
   badge: {
     position: "absolute",
-    top: 9,
-    left: 9,
+    top: 6,
+    left: 6,
     zIndex: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
   },
-  badgeText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.2 },
+  badgeText: { fontSize: 8, fontWeight: "800", letterSpacing: 0.2 },
 
-  // Check circle — inside imageZone, top-right
+  // Check circle
   checkCircle: {
     position: "absolute",
-    top: 9,
-    right: 9,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    top: 6,
+    right: 6,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 4,
     shadowColor: PINK,
-    shadowOpacity: 0.45,
-    shadowRadius: 6,
+    shadowOpacity: 0.4,
+    shadowRadius: 5,
     shadowOffset: { width: 0, height: 2 },
   },
 
-  // ── TEXT ZONE ─────────────────────────────────────────────────
-  // Completely separate from image — impossible to overlap
+  // Text zone
   textZone: {
-    paddingHorizontal: 11,
-    paddingTop: 9,
-    paddingBottom: 11,
+    paddingHorizontal: 8,
+    paddingTop: 7,
+    paddingBottom: 8,
     gap: 4,
   },
   cardName: {
-    fontSize: 15,
+    fontSize: 12,
     fontWeight: "800",
     color: TEXT_PRIMARY,
-    letterSpacing: -0.2,
+    letterSpacing: -0.1,
   },
-  cardTagline: {
-    fontSize: 11,
-    color: TEXT_MUTED,
-    fontWeight: "500",
-  },
-
-  // Info row — seats | price pill
-  infoRow: {
+  metaRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 8,
+    gap: 3,
+    backgroundColor: "rgba(255,255,255,0.75)",
     borderWidth: 1,
-    marginTop: 2,
+    borderColor: "rgba(0,0,0,0.07)",
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 3,
   },
-  infoText:    { fontSize: 10, fontWeight: "600", flex: 1 },
-  infoDivider: { width: 1, height: 10, backgroundColor: "#E5E7EB" },
-  priceText:   { fontSize: 11, fontWeight: "800" },
+  metaRowSelected: {
+    backgroundColor: "rgba(255,77,141,0.09)",
+    borderColor: "rgba(255,77,141,0.22)",
+  },
+  metaCapacity: {
+    fontSize: 9,
+    fontWeight: "600",
+    color: TEXT_MUTED,
+    flex: 1,
+  },
+  metaDot: {
+    width: 2,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: "#D1D5DB",
+  },
+  metaPrice: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: ORANGE,
+  },
 
   // Footer
   footer: {
@@ -659,7 +653,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: 16,
-    paddingTop: 14,
+    paddingTop: 12,
     gap: 10,
     backgroundColor: "rgba(255,248,252,0.97)",
     borderTopLeftRadius: 24,
@@ -671,9 +665,7 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     shadowOffset: { width: 0, height: -6 },
     elevation: 12,
-    ...Platform.select({
-      web: { backdropFilter: "blur(12px)" },
-    }),
+    ...Platform.select({ web: { backdropFilter: "blur(12px)" } }),
   },
 
   // Summary card
@@ -682,7 +674,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     backgroundColor: "#fff",
-    borderRadius: 16,
+    borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
@@ -694,52 +686,49 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   summaryThumbWrap: {
-    width: 58,
-    height: 44,
+    width: 54,
+    height: 40,
     borderRadius: 10,
     overflow: "hidden",
     backgroundColor: "#FFF0F6",
   },
-  summaryThumb: {
+  summaryThumb: { width: "100%", height: "100%" },
+  summaryEmojiWrap: {
     width: "100%",
     height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
   },
+  summaryEmoji: { fontSize: 22 },
   summaryThumbPlaceholder: {
     width: "100%",
     height: "100%",
     alignItems: "center",
     justifyContent: "center",
   },
-  summaryLabel: { fontSize: 11, color: TEXT_MUTED, fontWeight: "500" },
-  summaryName: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: TEXT_PRIMARY,
-    marginTop: 1,
-  },
-  summaryPrice: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: PINK,
-  },
+  summaryLabel: { fontSize: 10, color: TEXT_MUTED, fontWeight: "500" },
+  summaryName:  { fontSize: 15, fontWeight: "800", color: TEXT_PRIMARY, marginTop: 1 },
+  summaryPriceWrap: { alignItems: "flex-end" },
+  summaryPrice: { fontSize: 16, fontWeight: "800", color: PINK },
+  summaryCapacity: { fontSize: 10, color: TEXT_MUTED, fontWeight: "500" },
 
   // CTA
   ctaTouchable: {
-    borderRadius: 16,
+    borderRadius: 14,
     overflow: "hidden",
     shadowColor: PINK,
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.32,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 5 },
     elevation: 7,
   },
   ctaBtn: {
-    height: 56,
+    height: 52,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    borderRadius: 16,
+    borderRadius: 14,
   },
-  ctaText: { fontSize: 18, fontWeight: "800", letterSpacing: 0.2 },
+  ctaText: { fontSize: 17, fontWeight: "800", letterSpacing: 0.2 },
 });
