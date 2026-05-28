@@ -340,20 +340,8 @@ export default function RideRequestScreen() {
 
   function handleAccept() {
     Vibration.vibrate(50);
-    Animated.sequence([
-      Animated.spring(acceptScale, {
-        toValue: 0.92,
-        friction: 5,
-        useNativeDriver: true,
-      }),
-      Animated.spring(acceptScale, {
-        toValue: 1,
-        friction: 4,
-        useNativeDriver: true,
-      }),
-    ]).start();
     acceptRide();
-    setTimeout(() => dismiss("/trip/active"), 220);
+    dismiss("/trip/active");
   }
 
   const cardTranslate = slide.interpolate({

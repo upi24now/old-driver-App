@@ -227,16 +227,20 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     }
   }, [subscriptionActive, isOnline]);
 
-  // Auto-trigger an incoming ride when online and idle
+  // Continuous ride queue: auto-pop the next ride a few seconds after the
+  // driver becomes idle (online, no incoming, no active). Cycle uses a
+  // rotating cursor so consecutive rides differ.
   const incomingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rideCursor = useRef(0);
   useEffect(() => {
     if (incomingTimer.current) clearTimeout(incomingTimer.current);
     if (isOnline && !incomingRide && !activeRide) {
       incomingTimer.current = setTimeout(() => {
-        const sample = SAMPLE_RIDES[Math.floor(Math.random() * SAMPLE_RIDES.length)];
+        const sample = SAMPLE_RIDES[rideCursor.current % SAMPLE_RIDES.length];
+        rideCursor.current += 1;
         setIncomingRide({ ...sample, id: `r${Date.now()}` });
         router.push("/ride-request");
-      }, 12000);
+      }, 3500);
     }
     return () => {
       if (incomingTimer.current) clearTimeout(incomingTimer.current);
@@ -299,7 +303,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
   const triggerIncomingRide: DriverState["triggerIncomingRide"] = (mode = "modal") => {
     if (activeRide) return;
-    const sample = SAMPLE_RIDES[Math.floor(Math.random() * SAMPLE_RIDES.length)];
+    const sample = SAMPLE_RIDES[rideCursor.current % SAMPLE_RIDES.length];
+    rideCursor.current += 1;
     setIncomingRide({ ...sample, id: `r${Date.now()}` });
     router.push(mode === "lock" ? "/lock-alert" : "/ride-request");
   };
