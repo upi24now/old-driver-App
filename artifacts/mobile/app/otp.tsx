@@ -23,10 +23,10 @@ const RESEND_SECONDS = 30;
 
 const GRADIENT_FROM = "#FF4D8D";
 const GRADIENT_TO = "#FF7A3D";
-const PAGE_BG = "#F8FAFC";
+const PAGE_BG = "#F7ECEC";
 const TEXT_PRIMARY = "#111827";
 const TEXT_MUTED = "#6B7280";
-const BORDER = "#E5E7EB";
+const BORDER = "#E9D7D7";
 
 // ─── Subtle pop on digit entry ────────────────────────────────────────────────
 function CellPop({

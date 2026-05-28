@@ -1,68 +1,68 @@
 const colors = {
   light: {
-    text: "#0a0a0a",
-    tint: "#00C853",
+    text: "#111827",
+    tint: "#FF4D8D",
 
-    background: "#F5F5F5",
-    foreground: "#0a0a0a",
+    background: "#F7ECEC",
+    foreground: "#111827",
 
     card: "#FFFFFF",
-    cardForeground: "#0a0a0a",
+    cardForeground: "#111827",
 
-    primary: "#00C853",
+    primary: "#FF4D8D",
     primaryForeground: "#FFFFFF",
 
-    secondary: "#E8F5E9",
-    secondaryForeground: "#1B5E20",
+    secondary: "#FFF0F6",
+    secondaryForeground: "#111827",
 
-    muted: "#F0F0F0",
-    mutedForeground: "#757575",
+    muted: "#F2E4E4",
+    mutedForeground: "#6B7280",
 
-    accent: "#E8F5E9",
-    accentForeground: "#1B5E20",
+    accent: "#FFF0F6",
+    accentForeground: "#111827",
 
     destructive: "#D32F2F",
     destructiveForeground: "#FFFFFF",
 
-    border: "#E0E0E0",
-    input: "#E0E0E0",
+    border: "#E9D7D7",
+    input: "#E9D7D7",
 
-    online: "#00C853",
+    online: "#22C55E",
     offline: "#9E9E9E",
-    warning: "#FF6F00",
+    warning: "#FF7A3D",
   },
 
   dark: {
     text: "#F5F5F5",
-    tint: "#00E676",
+    tint: "#FF4D8D",
 
-    background: "#0a0a0a",
+    background: "#1A0F0F",
     foreground: "#F5F5F5",
 
-    card: "#161616",
+    card: "#261414",
     cardForeground: "#F5F5F5",
 
-    primary: "#00E676",
-    primaryForeground: "#0a0a0a",
+    primary: "#FF4D8D",
+    primaryForeground: "#FFFFFF",
 
-    secondary: "#1B3A22",
-    secondaryForeground: "#A5D6A7",
+    secondary: "#3A1A1A",
+    secondaryForeground: "#F9A8C9",
 
-    muted: "#1F1F1F",
+    muted: "#2A1515",
     mutedForeground: "#9E9E9E",
 
-    accent: "#1B3A22",
-    accentForeground: "#A5D6A7",
+    accent: "#3A1A1A",
+    accentForeground: "#F9A8C9",
 
     destructive: "#FF5252",
     destructiveForeground: "#FFFFFF",
 
-    border: "#2A2A2A",
-    input: "#2A2A2A",
+    border: "#3D2020",
+    input: "#3D2020",
 
-    online: "#00E676",
+    online: "#22C55E",
     offline: "#616161",
-    warning: "#FFAB40",
+    warning: "#FF7A3D",
   },
 
   radius: 12,
