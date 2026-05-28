@@ -184,6 +184,13 @@ export default function LoginScreen() {
           <ContinueButton enabled={isValid} onPress={handleContinue} />
         </View>
 
+        <View style={styles.signupRow}>
+          <Text style={styles.signupText}>Don't have an account? </Text>
+          <TouchableOpacity activeOpacity={0.6} hitSlop={8}>
+            <Text style={styles.signupLink}>Sign up</Text>
+          </TouchableOpacity>
+        </View>
+
         <Text style={styles.termsText}>
           By continuing you agree to{" "}
           <Text style={styles.termsLink}>Terms</Text>
@@ -406,11 +413,28 @@ const styles = StyleSheet.create({
     color: "#9CA3AF",
     fontWeight: "600",
   },
+  signupRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 22,
+  },
+  signupText: {
+    fontSize: 14,
+    color: TEXT_MUTED,
+    fontWeight: "400",
+  },
+  signupLink: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: GRADIENT_FROM,
+    letterSpacing: 0.2,
+  },
   termsText: {
     fontSize: 12,
     color: TEXT_MUTED,
     textAlign: "center",
-    marginTop: 24,
+    marginTop: 18,
     marginBottom: 8,
   },
   termsLink: {
