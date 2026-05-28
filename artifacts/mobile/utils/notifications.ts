@@ -20,6 +20,27 @@ export const CHANNEL_ORDERS  = "incoming_orders";
 export const CHANNEL_UPDATES = "order_updates";
 export const CHANNEL_ALERTS  = "driver_alerts";
 
+// ─── Notification action identifiers ─────────────────────────────────────────
+// These appear as buttons on the lock-screen / heads-up notification.
+export const ACTION_ACCEPT   = "accept_order";
+export const ACTION_REJECT   = "reject_order";
+export const CATEGORY_ORDERS = "incoming_order_actions";
+
+// ─── Order action handler registry ───────────────────────────────────────────
+// DriverContext registers these so notification button taps can call
+// acceptRide() / rejectRide() even when the app is in the background.
+type OrderActionHandlers = {
+  onAccept: () => void;
+  onReject: () => void;
+};
+let orderHandlers: OrderActionHandlers | null = null;
+
+export function registerOrderActionHandlers(
+  handlers: OrderActionHandlers
+): void {
+  orderHandlers = handlers;
+}
+
 // ─── Foreground presentation ──────────────────────────────────────────────────
 // Must be called at module-level (before any component mounts).
 Notifications.setNotificationHandler({
@@ -43,6 +64,29 @@ Notifications.setNotificationHandler({
 
 // ─── Deduplication tracker ────────────────────────────────────────────────────
 let activeOrderNotifId: string | null = null;
+
+// ─── Notification category setup (action buttons) ────────────────────────────
+// Creates Accept / Reject buttons that appear directly on the lock-screen
+// heads-up notification. Works on Android; iOS shows them as swipe actions.
+export async function setupNotificationCategories(): Promise<void> {
+  try {
+    await Notifications.setNotificationCategoryAsync(CATEGORY_ORDERS, [
+      {
+        identifier: ACTION_ACCEPT,
+        buttonTitle: "✅  Accept",
+        options: { opensAppToForeground: true, isDestructive: false },
+      },
+      {
+        identifier: ACTION_REJECT,
+        buttonTitle: "❌  Reject",
+        options: { opensAppToForeground: false, isDestructive: true },
+      },
+    ]);
+    console.log("[Notifications] Category registered:", CATEGORY_ORDERS);
+  } catch (err) {
+    console.error("[Notifications] setupNotificationCategories error:", err);
+  }
+}
 
 // ─── Android channel setup ────────────────────────────────────────────────────
 export async function setupAndroidChannels(): Promise<void> {
@@ -156,6 +200,7 @@ export async function sendIncomingOrderNotification(
         sound: "default",
         badge:    1,
         priority: "max",
+        categoryIdentifier: CATEGORY_ORDERS,
         ...(Platform.OS === "android" && {
           channelId: CHANNEL_ORDERS,
           color:     "#FF4D8D",
@@ -242,11 +287,13 @@ export async function sendDriverAlertNotification(params: {
   }
 }
 
-// ─── Notification tap handler ─────────────────────────────────────────────────
+// ─── Notification tap / action handler ───────────────────────────────────────
+// Called for both plain taps and action button taps (Accept / Reject).
 export function handleNotificationResponse(
   response: Notifications.NotificationResponse
 ): void {
-  const data = response.notification.request.content.data as
+  const { actionIdentifier, notification } = response;
+  const data = notification.request.content.data as
     | Record<string, unknown>
     | null
     | undefined;
@@ -254,15 +301,42 @@ export function handleNotificationResponse(
   const type   = data?.type   as string | undefined;
   const screen = data?.screen as string | undefined;
 
-  console.log("[Notifications] Tapped:", type, "→", screen);
+  console.log("[Notifications] Response:", actionIdentifier, "type:", type);
 
-  if (type === "incoming_order" && screen) {
-    // Small delay ensures the app is fully foregrounded before navigating
+  if (type !== "incoming_order") return;
+
+  if (actionIdentifier === ACTION_ACCEPT) {
+    // ── Accept action button ───────────────────────────────────────────────
+    // Call DriverContext handler (accepts the ride in state), then navigate
+    // directly to the active trip screen — skip the slider UI.
+    console.log("[Notifications] → Accept action");
+    if (orderHandlers?.onAccept) {
+      orderHandlers.onAccept();
+    }
     setTimeout(() => {
       try {
-        router.push(screen as Parameters<typeof router.push>[0]);
+        router.replace("/trip/active" as Parameters<typeof router.replace>[0]);
       } catch (err) {
-        console.error("[Notifications] Navigate failed:", screen, err);
+        console.error("[Notifications] Navigate (accept) failed:", err);
+      }
+    }, 600);
+  } else if (actionIdentifier === ACTION_REJECT) {
+    // ── Reject action button ───────────────────────────────────────────────
+    // Call DriverContext handler — the app may stay backgrounded, no navigation.
+    console.log("[Notifications] → Reject action");
+    if (orderHandlers?.onReject) {
+      orderHandlers.onReject();
+    }
+  } else {
+    // ── Plain notification tap ─────────────────────────────────────────────
+    // Opens the in-app slider order UI so the driver can review & swipe.
+    const dest = screen ?? "/ride-request";
+    console.log("[Notifications] → Default tap →", dest);
+    setTimeout(() => {
+      try {
+        router.push(dest as Parameters<typeof router.push>[0]);
+      } catch (err) {
+        console.error("[Notifications] Navigate (tap) failed:", dest, err);
       }
     }, 600);
   }
@@ -283,6 +357,7 @@ export async function initNotifications(): Promise<{
 }> {
   try {
     await setupAndroidChannels();
+    await setupNotificationCategories(); // Register Accept / Reject action buttons
     const permissionGranted = await requestNotificationPermissions();
 
     if (!permissionGranted) {

@@ -12,6 +12,7 @@ import { Platform } from "react-native";
 
 import {
   cancelIncomingOrderNotification,
+  registerOrderActionHandlers,
   sendDriverAlertNotification,
   sendIncomingOrderNotification,
   sendOrderUpdateNotification,
@@ -355,6 +356,35 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     setIncomingRide(null);
     cancelIncomingOrderNotification().catch(console.error);
   };
+
+  // ─── Notification action handler registration ─────────────────────────────
+  // Keep a ref so the stable handlers registered once always read fresh state.
+  const incomingRideRef = useRef<IncomingRide | null>(null);
+  useEffect(() => {
+    incomingRideRef.current = incomingRide;
+  }, [incomingRide]);
+
+  useEffect(() => {
+    registerOrderActionHandlers({
+      onAccept: () => {
+        const ride = incomingRideRef.current;
+        if (!ride) return;
+        setActiveRide({ ...ride, stage: "to_pickup", acceptedAt: Date.now() });
+        setIncomingRide(null);
+        cancelIncomingOrderNotification().catch(console.error);
+        sendOrderUpdateNotification({
+          title: "✅ Order Accepted",
+          body:  `Heading to ${ride.pickup}`,
+          data:  { type: "order_update", stage: "to_pickup" },
+        }).catch(console.error);
+      },
+      onReject: () => {
+        setIncomingRide(null);
+        cancelIncomingOrderNotification().catch(console.error);
+      },
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // register once — handlers read from incomingRideRef for fresh state
 
   const advanceStage = () => {
     if (!activeRide) return;
