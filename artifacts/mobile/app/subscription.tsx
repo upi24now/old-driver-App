@@ -202,7 +202,7 @@ export default function SubscriptionScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#fafafa" }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <View
         style={[
           styles.header,

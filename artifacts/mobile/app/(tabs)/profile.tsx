@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
+import { useTheme } from "@/contexts/ThemeContext";
 import { useColors } from "@/hooks/useColors";
 
 function confirmAction(
@@ -153,13 +154,15 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
+  const { isDark, setDark } = useTheme();
   const [autoAccept, setAutoAccept] = useState(false);
   const [language, setLanguage] = useState<"English" | "हिन्दी" | "ಕನ್ನಡ">("English");
   const [soundAlerts, setSoundAlerts] = useState(true);
   const [vibration, setVibration] = useState(true);
   const [longTrips, setLongTrips] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
   const [navVoice, setNavVoice] = useState(true);
+  const darkMode = isDark;
+  const setDarkMode = setDark;
 
   const verifiedCount = DOCS.filter((d) => d.status === "verified").length;
   const needsAttention = DOCS.length - verifiedCount;
@@ -178,7 +181,7 @@ export default function SettingsScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#fafafa" }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <ScrollView
         contentContainerStyle={{
           paddingTop: insets.top + 12,
@@ -440,13 +443,11 @@ export default function SettingsScreen() {
                       setOverlayPermission(false);
                       return;
                     }
-                    const res = await requestOverlayPermission();
-                    if (!res.ok) {
-                      Alert.alert(
-                        "Permission required",
-                        res.reason ?? "Permission required for incoming ride alerts",
-                      );
+                    if (Platform.OS !== "android") {
+                      setOverlayPermission(true);
+                      return;
                     }
+                    await requestOverlayPermission();
                   }}
                   trackColor={{ true: colors.primary, false: "#e5e5e5" }}
                   thumbColor="#fff"

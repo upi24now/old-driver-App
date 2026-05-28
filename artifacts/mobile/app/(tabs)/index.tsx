@@ -228,7 +228,7 @@ export default function HomeScreen() {
   const weeklyPct = Math.min(weeklyEarned / weeklyGoal, 1);
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#fafafa" }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <ScrollView
         contentContainerStyle={{
           paddingTop: insets.top + 12,

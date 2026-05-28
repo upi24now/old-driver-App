@@ -246,7 +246,7 @@ export default function DocumentUploadScreen() {
   }
 
   return (
-    <View style={[styles.root, { backgroundColor: "#fafafa" }]}>
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
       <View
         style={[
           styles.header,

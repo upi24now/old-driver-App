@@ -195,7 +195,7 @@ export default function VerificationPendingScreen() {
   const router = useRouter();
 
   return (
-    <View style={[styles.root, { backgroundColor: "#fafafa" }]}>
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <View style={{ width: 38 }} />
         <Text style={styles.headerTitle}>Application Status</Text>
