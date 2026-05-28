@@ -3,6 +3,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import {
+  Animated,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -27,6 +28,60 @@ const PAGE_BG = "#F8FAFC";
 const TEXT_PRIMARY = "#111827";
 const TEXT_MUTED = "#6B7280";
 const BORDER = "#E5E7EB";
+
+function ContinueButton({
+  enabled,
+  onPress,
+}: {
+  enabled: boolean;
+  onPress: () => void;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const press = (to: number) =>
+    Animated.spring(scale, {
+      toValue: to,
+      useNativeDriver: true,
+      speed: 40,
+      bounciness: 6,
+    }).start();
+
+  return (
+    <Animated.View
+      style={[
+        styles.ctaWrap,
+        !enabled && styles.ctaWrapDisabled,
+        { transform: [{ scale }] },
+      ]}
+    >
+      <Pressable
+        onPress={onPress}
+        onPressIn={() => enabled && press(0.97)}
+        onPressOut={() => press(1)}
+        disabled={!enabled}
+        style={styles.ctaPressable}
+      >
+        {enabled ? (
+          <LinearGradient
+            colors={[GRADIENT_FROM, GRADIENT_TO]}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={styles.ctaButton}
+          >
+            <Text style={styles.ctaText}>Continue</Text>
+            <Feather name="arrow-right" size={18} color="#fff" />
+          </LinearGradient>
+        ) : (
+          <View style={[styles.ctaButton, styles.ctaButtonDisabled]}>
+            <Text style={[styles.ctaText, styles.ctaTextDisabled]}>
+              Continue
+            </Text>
+          </View>
+        )}
+      </Pressable>
+    </Animated.View>
+  );
+}
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
@@ -126,35 +181,7 @@ export default function LoginScreen() {
             />
           </Pressable>
 
-          <TouchableOpacity
-            onPress={handleContinue}
-            activeOpacity={0.92}
-            disabled={!isValid}
-            style={[styles.ctaWrap, !isValid && styles.ctaWrapDisabled]}
-          >
-            <LinearGradient
-              colors={
-                isValid
-                  ? [GRADIENT_FROM, GRADIENT_TO]
-                  : ["#E5E7EB", "#E5E7EB"]
-              }
-              start={{ x: 0, y: 0.5 }}
-              end={{ x: 1, y: 0.5 }}
-              style={styles.ctaButton}
-            >
-              <Text
-                style={[
-                  styles.ctaText,
-                  !isValid && { color: "#9CA3AF" },
-                ]}
-              >
-                Continue
-              </Text>
-              {isValid && (
-                <Feather name="arrow-right" size={18} color="#fff" />
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
+          <ContinueButton enabled={isValid} onPress={handleContinue} />
         </View>
 
         <Text style={styles.termsText}>
@@ -342,14 +369,18 @@ const styles = StyleSheet.create({
   ctaWrap: {
     borderRadius: 20,
     shadowColor: GRADIENT_FROM,
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
     elevation: 6,
   },
   ctaWrapDisabled: {
     shadowOpacity: 0,
     elevation: 0,
+  },
+  ctaPressable: {
+    borderRadius: 20,
+    overflow: "hidden",
   },
   ctaButton: {
     height: 58,
@@ -358,12 +389,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
+    width: "100%",
+  },
+  ctaButtonDisabled: {
+    backgroundColor: "#F1F5F9",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   ctaText: {
     fontSize: 18,
     fontWeight: "700",
     color: "#fff",
     letterSpacing: 0.2,
+  },
+  ctaTextDisabled: {
+    color: "#9CA3AF",
+    fontWeight: "600",
   },
   termsText: {
     fontSize: 12,
