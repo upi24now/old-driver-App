@@ -219,7 +219,7 @@ export default function LoginScreen() {
         contentContainerStyle={[
           styles.container,
           {
-            paddingTop: insets.top + 12,
+            paddingTop: insets.top + 4,
             paddingBottom: insets.bottom + 24,
           },
         ]}
@@ -330,7 +330,7 @@ const styles = StyleSheet.create({
   topBar: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 4,
   },
   backBtn: {
     width: 40,
@@ -345,15 +345,15 @@ const styles = StyleSheet.create({
   heroSection: {
     alignItems: "center",
     justifyContent: "center",
-    paddingTop: 4,
+    paddingTop: 0,
   },
   logoImage: {
-    width: 220,
-    height: 220,
+    width: 180,
+    height: 180,
   },
   headingSection: {
-    marginTop: 28,
-    gap: 10,
+    marginTop: 12,
+    gap: 8,
     alignItems: "center",
   },
   title: {
@@ -372,8 +372,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   formSection: {
-    marginTop: 36,
-    gap: 16,
+    marginTop: 20,
+    gap: 14,
   },
   // ─── 3D Phone Input Card ──────────────────────────────────────────────────
   card3dOuter: {
