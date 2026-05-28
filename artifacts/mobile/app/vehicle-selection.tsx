@@ -190,52 +190,57 @@ function CardContent({
   selected: boolean;
 }) {
   return (
-    <>
-      {/* ── Fixed-height image zone ── */}
+    <View style={styles.cardInner}>
+      {/* ── IMAGE ZONE: ~60% of card, badges float inside ── */}
       <View style={styles.imageZone}>
+        {/* Vehicle image — contain, perfectly centered */}
         <Image
           source={IMAGES[vehicle.id]}
           style={styles.vehicleImage}
           resizeMode="contain"
         />
+
+        {/* Badge anchored inside image zone top-left */}
+        {vehicle.badge && (
+          <View style={[styles.badge, { backgroundColor: vehicle.badge.bg }]}>
+            <Text style={[styles.badgeText, { color: vehicle.badge.fg }]}>
+              {vehicle.badge.text}
+            </Text>
+          </View>
+        )}
+
+        {/* Check circle anchored inside image zone top-right */}
+        {selected && (
+          <LinearGradient
+            colors={[PINK, ORANGE]}
+            style={styles.checkCircle}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <Feather name="check" size={11} color="#fff" />
+          </LinearGradient>
+        )}
       </View>
 
-      {/* Badge — absolute over image zone */}
-      {vehicle.badge && (
-        <View style={[styles.badge, { backgroundColor: vehicle.badge.bg }]}>
-          <Text style={[styles.badgeText, { color: vehicle.badge.fg }]}>
-            {vehicle.badge.text}
-          </Text>
-        </View>
-      )}
-
-      {/* Check circle — absolute over image zone */}
-      {selected && (
-        <LinearGradient
-          colors={[PINK, ORANGE]}
-          style={styles.checkCircle}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <Feather name="check" size={11} color="#fff" />
-        </LinearGradient>
-      )}
-
-      {/* ── Text section ── */}
-      <View style={styles.textSection}>
-        <Text style={styles.cardName}>{vehicle.name}</Text>
-        <Text style={styles.cardTagline}>{vehicle.tagline}</Text>
+      {/* ── TEXT ZONE: always below, never overlaps image ── */}
+      <View style={styles.textZone}>
+        <Text style={styles.cardName} numberOfLines={1}>
+          {vehicle.name}
+        </Text>
+        <Text style={styles.cardTagline} numberOfLines={1}>
+          {vehicle.tagline}
+        </Text>
 
         <View
           style={[
             styles.infoRow,
             {
               backgroundColor: selected
-                ? "rgba(255,77,141,0.08)"
-                : "rgba(255,255,255,0.72)",
+                ? "rgba(255,77,141,0.09)"
+                : "rgba(255,255,255,0.75)",
               borderColor: selected
-                ? "rgba(255,77,141,0.22)"
-                : "rgba(0,0,0,0.06)",
+                ? "rgba(255,77,141,0.25)"
+                : "rgba(0,0,0,0.07)",
             },
           ]}
         >
@@ -246,6 +251,7 @@ function CardContent({
           />
           <Text
             style={[styles.infoText, { color: selected ? PINK : TEXT_MUTED }]}
+            numberOfLines={1}
           >
             {vehicle.seatLabel}
           </Text>
@@ -255,7 +261,7 @@ function CardContent({
           </Text>
         </View>
       </View>
-    </>
+    </View>
   );
 }
 
@@ -539,66 +545,84 @@ const styles = StyleSheet.create({
   cardTouchable: {
     borderRadius: 20,
     overflow: "hidden",
+    alignSelf: "stretch",
+    flex: 1,
   },
+  // Card shell — gradient wraps everything, no padding here
   card: {
     borderRadius: 20,
     overflow: "hidden",
+    flex: 1,
     borderWidth: 1.5,
     borderColor: "rgba(255,255,255,0.9)",
-    // no gap — sections control their own spacing
   },
   cardSelected: {
     borderColor: PINK,
     borderWidth: 2,
   },
 
-  // Badge — absolute, floats over the image zone
+  // cardInner keeps the two zones stacked cleanly
+  cardInner: {
+    flexDirection: "column",
+    alignSelf: "stretch",
+    flex: 1,
+  },
+
+  // ── IMAGE ZONE ────────────────────────────────────────────────
+  // Fixed height = ~62% of total card (~230px). Badges sit inside.
+  // White bg ensures any vehicle color is visible + ready for user uploads.
+  imageZone: {
+    width: "100%",
+    height: 142,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    position: "relative",
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0,0,0,0.05)",
+  },
+  // Image fills zone naturally; resizeMode="contain" centers it
+  vehicleImage: {
+    width: "100%",
+    height: "100%",
+  },
+
+  // Badge — inside imageZone, top-left
   badge: {
     position: "absolute",
-    top: 10,
-    left: 10,
-    zIndex: 3,
+    top: 9,
+    left: 9,
+    zIndex: 4,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,
   },
   badgeText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.2 },
 
-  // Check circle — absolute top-right
+  // Check circle — inside imageZone, top-right
   checkCircle: {
     position: "absolute",
-    top: 10,
-    right: 10,
+    top: 9,
+    right: 9,
     width: 22,
     height: 22,
     borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 3,
+    zIndex: 4,
     shadowColor: PINK,
     shadowOpacity: 0.45,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
   },
 
-  // Fixed-height image zone — contain keeps full vehicle visible
-  imageZone: {
-    width: "100%",
-    height: 96,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  vehicleImage: {
-    width: "100%",
-    height: "100%",
-  },
-
-  // Text section below image
-  textSection: {
-    paddingHorizontal: 10,
-    paddingBottom: 10,
-    paddingTop: 6,
+  // ── TEXT ZONE ─────────────────────────────────────────────────
+  // Completely separate from image — impossible to overlap
+  textZone: {
+    paddingHorizontal: 11,
+    paddingTop: 9,
+    paddingBottom: 11,
     gap: 4,
   },
   cardName: {
@@ -613,7 +637,7 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
 
-  // Info row
+  // Info row — seats | price pill
   infoRow: {
     flexDirection: "row",
     alignItems: "center",
