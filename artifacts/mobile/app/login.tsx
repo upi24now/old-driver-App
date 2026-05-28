@@ -162,14 +162,36 @@ export default function LoginScreen() {
   const { setPhone: setDriverPhone } = useDriver();
   const [focused, setFocused] = useState(false);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const isValid = phone.replace(/\D/g, "").length === 10;
 
-  function handleContinue() {
-    if (!isValid) return;
-    setDriverPhone(phone);
-    router.push({ pathname: "/otp", params: { phone } });
+  function goToOtp() {
+    if (loading) return;
+    const digits = phone.replace(/\D/g, "");
+    if (!digits) {
+      setError("Please enter your mobile number.");
+      inputRef.current?.focus();
+      return;
+    }
+    if (digits.length !== 10) {
+      setError("Enter a valid 10-digit mobile number.");
+      inputRef.current?.focus();
+      return;
+    }
+    setError("");
+    setLoading(true);
+    setDriverPhone(digits);
+    // Small delay so the loading state is visible before navigation
+    setTimeout(() => {
+      setLoading(false);
+      router.push({ pathname: "/otp", params: { phone: digits } });
+    }, 180);
   }
+
+  function handleContinue() { goToOtp(); }
+  function handleSignUp()    { goToOtp(); }
 
   const inputInner = (
     <>
@@ -259,13 +281,26 @@ export default function LoginScreen() {
             {inputInner}
           </PhoneInputCard>
 
-          <ContinueButton enabled={isValid} onPress={handleContinue} />
+          <ContinueButton enabled={isValid && !loading} onPress={handleContinue} />
+
+          {/* Inline validation error */}
+          {!!error && (
+            <View style={styles.errorRow}>
+              <Feather name="alert-circle" size={13} color="#EF4444" />
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.signupRow}>
-          <Text style={styles.signupText}>Don't have an account? </Text>
-          <TouchableOpacity activeOpacity={0.6} hitSlop={8}>
-            <Text style={styles.signupLink}>Sign up</Text>
+          <Text style={styles.signupText}>New driver? </Text>
+          <TouchableOpacity
+            activeOpacity={0.6}
+            hitSlop={8}
+            onPress={handleSignUp}
+            disabled={loading}
+          >
+            <Text style={[styles.signupLink, loading && { opacity: 0.5 }]}>Sign up</Text>
           </TouchableOpacity>
         </View>
 
@@ -538,6 +573,19 @@ const styles = StyleSheet.create({
   ctaTextDisabled: {
     color: "#9CA3AF",
     fontWeight: "600",
+  },
+  errorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 10,
+    paddingHorizontal: 4,
+  },
+  errorText: {
+    fontSize: 13,
+    color: "#EF4444",
+    fontWeight: "500",
+    flex: 1,
   },
   signupRow: {
     flexDirection: "row",
