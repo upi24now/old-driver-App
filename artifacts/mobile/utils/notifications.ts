@@ -2,7 +2,14 @@
  * Notification Service
  *
  * Handles all push / local notification logic for the Bike Courier driver app.
- * Works in Expo Go (local notifications only — no FCM/APNs push token needed).
+ *
+ * EXPO GO COMPATIBILITY NOTE
+ * ──────────────────────────
+ * expo-notifications removed Android push support from Expo Go in SDK 53.
+ * The module now throws on import when running inside Expo Go on Android.
+ * We safe-require it at runtime so the rest of the app never crashes.
+ * All exported functions silently no-op when the module isn't available.
+ * In a development build or production APK everything works normally.
  *
  * Channels (Android):
  *   incoming_orders  — MAX importance, sound + vibration, bypass DnD
@@ -11,9 +18,26 @@
  */
 
 import * as Device from "expo-device";
-import * as Notifications from "expo-notifications";
+import type * as NotificationsType from "expo-notifications";
 import { router } from "expo-router";
 import { Platform } from "react-native";
+
+// ─── Safe runtime import ──────────────────────────────────────────────────────
+// expo-notifications throws on import inside Expo Go on Android SDK 53+.
+// We catch the error here so the app loads normally; all callers check `Notif`.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const Notif: typeof NotificationsType | null = (() => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require("expo-notifications") as typeof NotificationsType;
+  } catch {
+    console.warn(
+      "[Notifications] expo-notifications unavailable (Expo Go on Android). " +
+        "System notifications disabled — in-app alerts work as fallback."
+    );
+    return null;
+  }
+})();
 
 // ─── Channel IDs ──────────────────────────────────────────────────────────────
 export const CHANNEL_ORDERS  = "incoming_orders";
@@ -42,25 +66,27 @@ export function registerOrderActionHandlers(
 }
 
 // ─── Foreground presentation ──────────────────────────────────────────────────
-// Must be called at module-level (before any component mounts).
-Notifications.setNotificationHandler({
-  handleNotification: async (notification) => {
-    const channelId =
-      (notification.request.content as Record<string, unknown>).channelId ??
-      (notification.request.trigger as Record<string, unknown> | null)?.channelId;
-    const isOrder = channelId === CHANNEL_ORDERS;
+// Set notification handler at module init time (safe-guarded).
+if (Notif) {
+  Notif.setNotificationHandler({
+    handleNotification: async (notification) => {
+      const channelId =
+        (notification.request.content as Record<string, unknown>).channelId ??
+        (notification.request.trigger as Record<string, unknown> | null)?.channelId;
+      const isOrder = channelId === CHANNEL_ORDERS;
 
-    return {
-      shouldShowBanner: true,
-      shouldShowList:   true,
-      shouldPlaySound:  true,
-      shouldSetBadge:   isOrder,
-      priority: isOrder
-        ? Notifications.AndroidNotificationPriority.MAX
-        : Notifications.AndroidNotificationPriority.HIGH,
-    };
-  },
-});
+      return {
+        shouldShowBanner: true,
+        shouldShowList:   true,
+        shouldPlaySound:  true,
+        shouldSetBadge:   isOrder,
+        priority: isOrder
+          ? Notif!.AndroidNotificationPriority.MAX
+          : Notif!.AndroidNotificationPriority.HIGH,
+      };
+    },
+  });
+}
 
 // ─── Deduplication tracker ────────────────────────────────────────────────────
 let activeOrderNotifId: string | null = null;
@@ -69,8 +95,9 @@ let activeOrderNotifId: string | null = null;
 // Creates Accept / Reject buttons that appear directly on the lock-screen
 // heads-up notification. Works on Android; iOS shows them as swipe actions.
 export async function setupNotificationCategories(): Promise<void> {
+  if (!Notif) return;
   try {
-    await Notifications.setNotificationCategoryAsync(CATEGORY_ORDERS, [
+    await Notif.setNotificationCategoryAsync(CATEGORY_ORDERS, [
       {
         identifier: ACTION_ACCEPT,
         buttonTitle: "✅  Accept",
@@ -84,43 +111,42 @@ export async function setupNotificationCategories(): Promise<void> {
     ]);
     console.log("[Notifications] Category registered:", CATEGORY_ORDERS);
   } catch (err) {
-    console.error("[Notifications] setupNotificationCategories error:", err);
+    console.warn("[Notifications] setupNotificationCategories error:", err);
   }
 }
 
 // ─── Android channel setup ────────────────────────────────────────────────────
 export async function setupAndroidChannels(): Promise<void> {
-  if (Platform.OS !== "android") return;
+  if (!Notif || Platform.OS !== "android") return;
 
-  await Notifications.setNotificationChannelAsync(CHANNEL_ORDERS, {
+  await Notif.setNotificationChannelAsync(CHANNEL_ORDERS, {
     name: "Incoming Orders",
     description: "High-priority alerts for new delivery requests",
-    importance: Notifications.AndroidImportance.MAX,
+    importance: Notif.AndroidImportance.MAX,
     sound: "default",
     vibrationPattern: [0, 400, 200, 400, 200, 400],
     enableLights: true,
     lightColor: "#FF4D8D",
     enableVibrate: true,
     showBadge: true,
-    lockscreenVisibility:
-      Notifications.AndroidNotificationVisibility.PUBLIC,
+    lockscreenVisibility: Notif.AndroidNotificationVisibility.PUBLIC,
     bypassDnd: true,
   });
 
-  await Notifications.setNotificationChannelAsync(CHANNEL_UPDATES, {
+  await Notif.setNotificationChannelAsync(CHANNEL_UPDATES, {
     name: "Order Updates",
     description: "Delivery status changes and confirmations",
-    importance: Notifications.AndroidImportance.HIGH,
+    importance: Notif.AndroidImportance.HIGH,
     sound: "default",
     vibrationPattern: [0, 200, 100, 200],
     enableVibrate: true,
     showBadge: false,
   });
 
-  await Notifications.setNotificationChannelAsync(CHANNEL_ALERTS, {
+  await Notif.setNotificationChannelAsync(CHANNEL_ALERTS, {
     name: "Driver Alerts",
     description: "Subscription, earnings, and account alerts",
-    importance: Notifications.AndroidImportance.DEFAULT,
+    importance: Notif.AndroidImportance.DEFAULT,
     sound: "default",
     showBadge: false,
   });
@@ -133,14 +159,15 @@ export async function setupAndroidChannels(): Promise<void> {
 type PermStatus = { granted: boolean; canAskAgain: boolean };
 
 export async function requestNotificationPermissions(): Promise<boolean> {
+  if (!Notif) return false;
+
   if (!Device.isDevice) {
-    // Emulators/simulators cannot receive push tokens but local notifs work.
     console.log(
       "[Notifications] Simulator detected — local notifications only"
     );
   }
 
-  const existing = (await Notifications.getPermissionsAsync()) as unknown as PermStatus;
+  const existing = (await Notif.getPermissionsAsync()) as unknown as PermStatus;
   if (existing.granted) {
     console.log("[Notifications] Permission already granted");
     return true;
@@ -153,7 +180,7 @@ export async function requestNotificationPermissions(): Promise<boolean> {
     return false;
   }
 
-  const result = (await Notifications.requestPermissionsAsync({
+  const result = (await Notif.requestPermissionsAsync({
     ios: {
       allowAlert: true,
       allowBadge: true,
@@ -183,11 +210,13 @@ export interface IncomingOrderNotifParams {
 export async function sendIncomingOrderNotification(
   params: IncomingOrderNotifParams
 ): Promise<void> {
+  if (!Notif) return;
+
   // Cancel previous order notification first (prevent stacking)
   await cancelIncomingOrderNotification();
 
   try {
-    const id = await Notifications.scheduleNotificationAsync({
+    const id = await Notif.scheduleNotificationAsync({
       content: {
         title: "🛵  New Delivery Request!",
         body: `${params.customer} • ₹${params.earning} • ${params.distanceKm} km`,
@@ -202,10 +231,10 @@ export async function sendIncomingOrderNotification(
         priority: "max",
         categoryIdentifier: CATEGORY_ORDERS,
         ...(Platform.OS === "android" && {
-          channelId: CHANNEL_ORDERS,
-          color:     "#FF4D8D",
-          vibrate:   [0, 400, 200, 400, 200, 400],
-          sticky:    false,
+          channelId:   CHANNEL_ORDERS,
+          color:       "#FF4D8D",
+          vibrate:     [0, 400, 200, 400, 200, 400],
+          sticky:      false,
           autoDismiss: true,
         }),
       },
@@ -224,14 +253,14 @@ export async function sendIncomingOrderNotification(
 
 // ─── Cancel active order notification ────────────────────────────────────────
 export async function cancelIncomingOrderNotification(): Promise<void> {
-  if (!activeOrderNotifId) return;
+  if (!Notif || !activeOrderNotifId) return;
   try {
-    await Notifications.dismissNotificationAsync(activeOrderNotifId);
+    await Notif.dismissNotificationAsync(activeOrderNotifId);
   } catch {
     // Already dismissed — harmless
   }
   try {
-    await Notifications.cancelScheduledNotificationAsync(activeOrderNotifId);
+    await Notif.cancelScheduledNotificationAsync(activeOrderNotifId);
   } catch {
     // Already fired — harmless
   }
@@ -240,12 +269,13 @@ export async function cancelIncomingOrderNotification(): Promise<void> {
 
 // ─── Order update notification ────────────────────────────────────────────────
 export async function sendOrderUpdateNotification(params: {
-  title:   string;
-  body:    string;
-  data?:   Record<string, unknown>;
+  title:  string;
+  body:   string;
+  data?:  Record<string, unknown>;
 }): Promise<void> {
+  if (!Notif) return;
   try {
-    await Notifications.scheduleNotificationAsync({
+    await Notif.scheduleNotificationAsync({
       content: {
         title:  params.title,
         body:   params.body,
@@ -269,8 +299,9 @@ export async function sendDriverAlertNotification(params: {
   title: string;
   body:  string;
 }): Promise<void> {
+  if (!Notif) return;
   try {
-    await Notifications.scheduleNotificationAsync({
+    await Notif.scheduleNotificationAsync({
       content: {
         title: params.title,
         body:  params.body,
@@ -289,8 +320,9 @@ export async function sendDriverAlertNotification(params: {
 
 // ─── Notification tap / action handler ───────────────────────────────────────
 // Called for both plain taps and action button taps (Accept / Reject).
+// The parameter type is inlined so callers don't import from expo-notifications.
 export function handleNotificationResponse(
-  response: Notifications.NotificationResponse
+  response: NotificationsType.NotificationResponse
 ): void {
   const { actionIdentifier, notification } = response;
   const data = notification.request.content.data as
@@ -310,9 +342,7 @@ export function handleNotificationResponse(
     // Call DriverContext handler (accepts the ride in state), then navigate
     // directly to the active trip screen — skip the slider UI.
     console.log("[Notifications] → Accept action");
-    if (orderHandlers?.onAccept) {
-      orderHandlers.onAccept();
-    }
+    orderHandlers?.onAccept();
     setTimeout(() => {
       try {
         router.replace("/trip/active" as Parameters<typeof router.replace>[0]);
@@ -320,13 +350,13 @@ export function handleNotificationResponse(
         console.error("[Notifications] Navigate (accept) failed:", err);
       }
     }, 600);
+
   } else if (actionIdentifier === ACTION_REJECT) {
     // ── Reject action button ───────────────────────────────────────────────
-    // Call DriverContext handler — the app may stay backgrounded, no navigation.
+    // The app may stay backgrounded — no navigation needed.
     console.log("[Notifications] → Reject action");
-    if (orderHandlers?.onReject) {
-      orderHandlers.onReject();
-    }
+    orderHandlers?.onReject();
+
   } else {
     // ── Plain notification tap ─────────────────────────────────────────────
     // Opens the in-app slider order UI so the driver can review & swipe.
@@ -344,8 +374,9 @@ export function handleNotificationResponse(
 
 // ─── Clear badge ──────────────────────────────────────────────────────────────
 export async function clearBadge(): Promise<void> {
+  if (!Notif) return;
   try {
-    await Notifications.setBadgeCountAsync(0);
+    await Notif.setBadgeCountAsync(0);
   } catch {
     // Ignore
   }
@@ -355,6 +386,14 @@ export async function clearBadge(): Promise<void> {
 export async function initNotifications(): Promise<{
   permissionGranted: boolean;
 }> {
+  if (!Notif) {
+    console.warn(
+      "[Notifications] Skipping init — expo-notifications unavailable. " +
+        "Use a development build for full notification support."
+    );
+    return { permissionGranted: false };
+  }
+
   try {
     await setupAndroidChannels();
     await setupNotificationCategories(); // Register Accept / Reject action buttons
