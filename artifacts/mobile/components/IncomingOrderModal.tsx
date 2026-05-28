@@ -2,18 +2,21 @@
  * IncomingOrderModal.tsx
  *
  * Realistic live driver order experience:
- *  - Looping two-tone ringtone via expo-av (stops instantly on accept/reject/timeout)
+ *  - Looping ringtone via expo-audio (SDK 54 — replaces expo-av)
  *  - Repeating urgent vibration pattern via Vibration.vibrate(pattern, true)
  *  - SVG circular countdown (green → orange → red)
- *  - Pulse animation on Accept button while ringing
- *  - Loading state during accept transition
+ *  - Pulse-glow animation on Accept button
+ *  - Loading "Confirmed ✓" state during accept transition
  *  - Smooth slide-up / slide-down sheet animation
  */
 
 import { Feather } from "@expo/vector-icons";
-import { Audio } from "expo-av";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
+import {
+  setAudioModeAsync,
+  useAudioPlayer,
+} from "expo-audio";
 import { useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -34,9 +37,9 @@ const ORANGE = "#FF7A3D";
 const GREEN  = "#00C853";
 const RED    = "#FF3B30";
 
-// ─── Vibration pattern (repeating) ───────────────────────────────────────────
-// [wait, vibrate, pause, vibrate, pause, vibrate, long-pause] — very urgent
-const VIB_PATTERN = [0, 600, 220, 600, 220, 600, 800];
+// ─── Vibration pattern (repeats until Vibration.cancel()) ────────────────────
+// [wait, vib, pause, vib, pause, vib, long-rest] — three urgent bursts
+const VIB_PATTERN = [0, 600, 220, 600, 220, 600, 900];
 
 // ─── Order types ──────────────────────────────────────────────────────────────
 export type TestOrder = {
@@ -126,9 +129,9 @@ const CIRCUMF    = 2 * Math.PI * TIMER_R;
 const COUNTDOWN  = 15;
 
 function TimerCircle({ seconds, total }: { seconds: number; total: number }) {
-  const pct    = seconds / total;
+  const pct     = seconds / total;
   const dashOff = CIRCUMF * (1 - pct);
-  const color  = seconds <= 5 ? RED : seconds <= 9 ? ORANGE : GREEN;
+  const color   = seconds <= 5 ? RED : seconds <= 9 ? ORANGE : GREEN;
   return (
     <View style={styles.timerWrap}>
       <Svg width={TIMER_SIZE} height={TIMER_SIZE}>
@@ -151,14 +154,14 @@ function TimerCircle({ seconds, total }: { seconds: number; total: number }) {
   );
 }
 
-// ─── Live pulse dot ───────────────────────────────────────────────────────────
+// ─── Pulsing live dot ─────────────────────────────────────────────────────────
 function PulseDot({ color }: { color: string }) {
-  const pulse = useRef(new Animated.Value(1)).current;
+  const anim = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1.5, duration: 500, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 1,   duration: 500, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 1.6, duration: 500, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 1,   duration: 500, useNativeDriver: true }),
       ])
     ).start();
   }, []);
@@ -166,26 +169,26 @@ function PulseDot({ color }: { color: string }) {
     <View style={{ width: 10, height: 10, alignItems: "center", justifyContent: "center" }}>
       <Animated.View style={{
         position: "absolute", width: 10, height: 10, borderRadius: 5,
-        backgroundColor: color + "40", transform: [{ scale: pulse }],
+        backgroundColor: color + "40", transform: [{ scale: anim }],
       }} />
       <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color }} />
     </View>
   );
 }
 
-// ─── Accept button with pulse glow ────────────────────────────────────────────
+// ─── Pulsing Accept button ────────────────────────────────────────────────────
 function AcceptButton({ onPress, label }: { onPress: () => void; label: string }) {
-  const glow = useRef(new Animated.Value(1)).current;
+  const scale = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(glow, { toValue: 1.04, duration: 600, useNativeDriver: true }),
-        Animated.timing(glow, { toValue: 1,    duration: 600, useNativeDriver: true }),
+        Animated.timing(scale, { toValue: 1.035, duration: 650, useNativeDriver: true }),
+        Animated.timing(scale, { toValue: 1,     duration: 650, useNativeDriver: true }),
       ])
     ).start();
   }, []);
   return (
-    <Animated.View style={[styles.acceptBtnWrap, { transform: [{ scale: glow }] }]}>
+    <Animated.View style={[styles.acceptWrap, { transform: [{ scale }] }]}>
       <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={{ flex: 1 }}>
         <LinearGradient
           colors={[GREEN, "#00E676"]}
@@ -208,67 +211,89 @@ type Props = {
 };
 
 export default function IncomingOrderModal({ order, onClose, onAccept }: Props) {
-  const slideY  = useRef(new Animated.Value(700)).current;
-  const bgOpac  = useRef(new Animated.Value(0)).current;
-  const soundRef = useRef<Audio.Sound | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // ── Animations ──────────────────────────────────────────────────────────────
+  const slideY = useRef(new Animated.Value(700)).current;
+  const bgOpac = useRef(new Animated.Value(0)).current;
 
+  // ── State ───────────────────────────────────────────────────────────────────
   const [seconds,   setSeconds]   = useState(COUNTDOWN);
   const [accepting, setAccepting] = useState(false);
 
-  // ── Audio helpers ──────────────────────────────────────────────
+  // ── Countdown ref ───────────────────────────────────────────────────────────
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── expo-audio player (hook must be unconditional) ──────────────────────────
+  // Starts with null source — we load the ringtone imperatively when an order arrives.
+  const player = useAudioPlayer(null);
+
+  // ── Audio: initialise mode + start ringtone ──────────────────────────────────
   async function startRingtone() {
-    if (Platform.OS === "web") return;
     try {
-      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
-      const { sound } = await Audio.Sound.createAsync(
-        require("../assets/ringtone.wav"),
-        { isLooping: true, volume: 1.0, shouldPlay: true }
-      );
-      soundRef.current = sound;
-    } catch (e) {
-      // expo-av unavailable in this Expo Go build — vibration carries the urgency
+      // Configure audio session for alert/ringtone behaviour:
+      //  • playsInSilentMode = true  → audible even on Android silent/vibrate mode
+      //  • interruptionMode = 'doNotMix' → requests audio focus, pauses other apps
+      //  • shouldPlayInBackground = false → we don't need background audio
+      await setAudioModeAsync({
+        playsInSilentMode: true,
+        interruptionMode: "doNotMix",
+        allowsRecording: false,
+        shouldPlayInBackground: false,
+        shouldRouteThroughEarpiece: false,
+      });
+
+      // Stop any previously playing instance
+      player.pause();
+
+      // Set looping before replacing so the very first loop is configured
+      player.loop   = true;
+      player.volume = 1.0;
+      player.muted  = false;
+
+      // Load and immediately begin playback
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      player.replace(require("../assets/ringtone.wav") as number);
+      player.play();
+    } catch (err) {
+      // Audio unavailable (e.g. Replit web preview without audio support)
+      // Vibration alone still signals urgency — no user-visible error needed.
     }
   }
 
-  async function stopRingtone() {
+  function stopRingtone() {
     try {
-      if (soundRef.current) {
-        await soundRef.current.stopAsync();
-        await soundRef.current.unloadAsync();
-        soundRef.current = null;
-      }
+      player.pause();
     } catch {}
   }
 
-  // ── Start everything when a new order arrives ──────────────────
+  // ── Lifecycle: new order arrives ──────────────────────────────────────────
   useEffect(() => {
     if (!order) return;
 
+    // Reset UI state
     setSeconds(COUNTDOWN);
     setAccepting(false);
 
-    // Slide-up + backdrop fade
+    // Slide sheet up + fade backdrop
     Animated.parallel([
       Animated.spring(slideY, { toValue: 0, friction: 9, tension: 90, useNativeDriver: true }),
       Animated.timing(bgOpac, { toValue: 1, duration: 280, useNativeDriver: true }),
     ]).start();
 
-    // Ringtone
+    // Ringtone (async, fire-and-forget — errors are caught inside)
     startRingtone();
 
-    // Repeating vibration (second arg = true = repeat)
+    // Vibration: second arg `true` = repeat the pattern until Vibration.cancel()
     if (Platform.OS !== "web") {
       Vibration.vibrate(VIB_PATTERN, true);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
     }
 
-    // Countdown
+    // Countdown tick
     timerRef.current = setInterval(() => {
       setSeconds((s) => {
         if (s <= 1) {
           clearInterval(timerRef.current!);
-          doClose(); // auto-reject on timeout
+          doClose(); // auto-dismiss on timeout
           return 0;
         }
         return s - 1;
@@ -280,9 +305,12 @@ export default function IncomingOrderModal({ order, onClose, onAccept }: Props) 
       Vibration.cancel();
       stopRingtone();
     };
+    // We intentionally depend only on order.id to avoid re-running on every
+    // re-render while the same order is visible.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order?.id]);
 
-  // ── Shared slide-out animation ─────────────────────────────────
+  // ── Shared slide-out ──────────────────────────────────────────────────────
   function slideOut(callback: () => void) {
     clearInterval(timerRef.current!);
     Vibration.cancel();
@@ -297,9 +325,7 @@ export default function IncomingOrderModal({ order, onClose, onAccept }: Props) 
     });
   }
 
-  function doClose() {
-    slideOut(onClose);
-  }
+  function doClose() { slideOut(onClose); }
 
   function handleReject() {
     if (Platform.OS !== "web") {
@@ -320,12 +346,11 @@ export default function IncomingOrderModal({ order, onClose, onAccept }: Props) 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     }
 
-    // Brief loading pause, then transition
-    setTimeout(() => {
-      slideOut(() => onAccept(order));
-    }, 600);
+    // Show "Confirmed ✓" briefly before navigating
+    setTimeout(() => slideOut(() => onAccept(order)), 600);
   }
 
+  // ── Nothing to show if no order ───────────────────────────────────────────
   if (!order) return null;
 
   const earningDisplay = order.surge
@@ -333,21 +358,20 @@ export default function IncomingOrderModal({ order, onClose, onAccept }: Props) 
     : order.earning;
 
   return (
-    <Modal transparent visible={!!order} animationType="none" statusBarTranslucent>
-      {/* ── Dim backdrop ── */}
+    <Modal transparent visible animationType="none" statusBarTranslucent>
+      {/* Dim backdrop — tap to reject */}
       <Animated.View style={[styles.backdrop, { opacity: bgOpac }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleReject} />
       </Animated.View>
 
-      {/* ── Bottom sheet ── */}
-      <Animated.View
-        style={[styles.sheet, { transform: [{ translateY: slideY }] }]}
+      {/* Bottom sheet */}
+      <Animated.View style={[styles.sheet, { transform: [{ translateY: slideY }] }]}
         pointerEvents="box-none"
       >
-        {/* Handle */}
+        {/* Handle pill */}
         <View style={styles.handle} />
 
-        {/* Header */}
+        {/* ── Header ── */}
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
             <View style={styles.bellWrap}>
@@ -357,7 +381,7 @@ export default function IncomingOrderModal({ order, onClose, onAccept }: Props) 
             </View>
             <View>
               <Text style={styles.headerTitle}>New Delivery Request</Text>
-              <View style={styles.liveDot}>
+              <View style={styles.livePill}>
                 <PulseDot color={GREEN} />
                 <Text style={styles.liveText}>Live order · Just now</Text>
               </View>
@@ -368,7 +392,7 @@ export default function IncomingOrderModal({ order, onClose, onAccept }: Props) 
 
         <View style={styles.divider} />
 
-        {/* Customer */}
+        {/* ── Customer ── */}
         <View style={styles.customerRow}>
           <View style={styles.avatarCircle}>
             <Text style={styles.avatarText}>{order.customer.charAt(0)}</Text>
@@ -383,47 +407,45 @@ export default function IncomingOrderModal({ order, onClose, onAccept }: Props) 
           </View>
         </View>
 
-        {/* Route */}
+        {/* ── Route ── */}
         <View style={styles.routeCard}>
           <View style={styles.routeRow}>
-            <View style={styles.routeDotGreen} />
+            <View style={styles.dotGreen} />
             <View style={{ flex: 1 }}>
               <Text style={styles.routeLabel}>PICKUP</Text>
-              <Text style={styles.routeAddress} numberOfLines={1}>{order.pickup}</Text>
+              <Text style={styles.routeAddr} numberOfLines={1}>{order.pickup}</Text>
               <Text style={styles.routeCity}>{order.pickupCity}</Text>
             </View>
           </View>
-          <View style={styles.routeConnector}>
-            <View style={styles.connectorLine} />
-          </View>
+          <View style={styles.connector}><View style={styles.connLine} /></View>
           <View style={styles.routeRow}>
-            <View style={styles.routeDotRed} />
+            <View style={styles.dotRed} />
             <View style={{ flex: 1 }}>
               <Text style={styles.routeLabel}>DROP</Text>
-              <Text style={styles.routeAddress} numberOfLines={1}>{order.drop}</Text>
+              <Text style={styles.routeAddr} numberOfLines={1}>{order.drop}</Text>
               <Text style={styles.routeCity}>{order.dropCity}</Text>
             </View>
           </View>
         </View>
 
-        {/* Stats */}
+        {/* ── Stats ── */}
         <View style={styles.statsBar}>
           <View style={styles.statItem}>
             <Feather name="map-pin" size={14} color={PINK} />
-            <Text style={styles.statValue}>{order.distanceKm} km</Text>
-            <Text style={styles.statLabel}>Distance</Text>
+            <Text style={styles.statVal}>{order.distanceKm} km</Text>
+            <Text style={styles.statLbl}>Distance</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
             <Feather name="clock" size={14} color={ORANGE} />
-            <Text style={styles.statValue}>{order.durationMin} min</Text>
-            <Text style={styles.statLabel}>Est. time</Text>
+            <Text style={styles.statVal}>{order.durationMin} min</Text>
+            <Text style={styles.statLbl}>Est. time</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
             <Feather name="package" size={14} color="#6B7280" />
-            <Text style={styles.statValue}>{order.weight}</Text>
-            <Text style={styles.statLabel}>Weight</Text>
+            <Text style={styles.statVal}>{order.weight}</Text>
+            <Text style={styles.statLbl}>Weight</Text>
           </View>
           <View style={styles.statDivider} />
           <LinearGradient
@@ -437,16 +459,15 @@ export default function IncomingOrderModal({ order, onClose, onAccept }: Props) 
               </View>
             )}
             <Text style={styles.earningAmt}>₹{earningDisplay}</Text>
-            <Text style={styles.earningLabel}>Earning</Text>
+            <Text style={styles.earningLbl}>Earning</Text>
           </LinearGradient>
         </View>
 
-        {/* Expiry hint */}
         <Text style={styles.expiryHint}>
           Auto-expires in {seconds}s · Tap outside to decline
         </Text>
 
-        {/* Action buttons */}
+        {/* ── Actions ── */}
         <View style={styles.actionRow}>
           <TouchableOpacity
             style={styles.rejectBtn}
@@ -459,8 +480,7 @@ export default function IncomingOrderModal({ order, onClose, onAccept }: Props) 
           </TouchableOpacity>
 
           {accepting ? (
-            /* Loading state while transitioning */
-            <View style={[styles.acceptBtnWrap, styles.acceptingState]}>
+            <View style={[styles.acceptWrap, { shadowOpacity: 0.15 }]}>
               <LinearGradient
                 colors={[GREEN, "#00E676"]}
                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
@@ -503,20 +523,17 @@ const styles = StyleSheet.create({
   },
 
   // Header
-  headerRow: {
-    flexDirection: "row", alignItems: "center",
-    justifyContent: "space-between", marginBottom: 14,
-  },
+  headerRow:  { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
   bellWrap: {
     borderRadius: 14, overflow: "hidden",
     shadowColor: PINK, shadowOpacity: 0.35, shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 }, elevation: 5,
   },
-  bellGrad: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 14 },
+  bellGrad:    { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 14 },
   headerTitle: { fontSize: 16, fontWeight: "800", color: "#111", letterSpacing: -0.2 },
-  liveDot:  { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 3 },
-  liveText: { fontSize: 11, color: "#6B7280", fontWeight: "500" },
+  livePill:    { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 3 },
+  liveText:    { fontSize: 11, color: "#6B7280", fontWeight: "500" },
 
   // Timer
   timerWrap:   { width: TIMER_SIZE, height: TIMER_SIZE },
@@ -527,7 +544,7 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: "#F3F4F6", marginBottom: 14 },
 
   // Customer
-  customerRow: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14 },
+  customerRow:  { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14 },
   avatarCircle: {
     width: 42, height: 42, borderRadius: 21,
     backgroundColor: PINK + "20", alignItems: "center", justifyContent: "center",
@@ -547,14 +564,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#F9FAFB", borderRadius: 16, borderWidth: 1, borderColor: "#F0F0F0",
     paddingHorizontal: 14, paddingVertical: 12, marginBottom: 14,
   },
-  routeRow:      { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-  routeDotGreen: { width: 12, height: 12, borderRadius: 6, backgroundColor: GREEN, marginTop: 2 },
-  routeDotRed:   { width: 12, height: 12, borderRadius: 6, backgroundColor: RED,   marginTop: 2 },
-  routeLabel:    { fontSize: 9, fontWeight: "800", color: "#9CA3AF", letterSpacing: 0.8, marginBottom: 1 },
-  routeAddress:  { fontSize: 13, fontWeight: "700", color: "#111" },
-  routeCity:     { fontSize: 11, color: "#6B7280", fontWeight: "500", marginTop: 1 },
-  routeConnector: { paddingLeft: 5, paddingVertical: 3 },
-  connectorLine:  { width: 2, height: 18, backgroundColor: "#E5E7EB", marginLeft: 5, borderRadius: 1 },
+  routeRow:  { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  dotGreen:  { width: 12, height: 12, borderRadius: 6, backgroundColor: GREEN, marginTop: 2 },
+  dotRed:    { width: 12, height: 12, borderRadius: 6, backgroundColor: RED,   marginTop: 2 },
+  routeLabel: { fontSize: 9, fontWeight: "800", color: "#9CA3AF", letterSpacing: 0.8, marginBottom: 1 },
+  routeAddr:  { fontSize: 13, fontWeight: "700", color: "#111" },
+  routeCity:  { fontSize: 11, color: "#6B7280", fontWeight: "500", marginTop: 1 },
+  connector:  { paddingLeft: 5, paddingVertical: 3 },
+  connLine:   { width: 2, height: 18, backgroundColor: "#E5E7EB", marginLeft: 5, borderRadius: 1 },
 
   // Stats
   statsBar: {
@@ -562,17 +579,17 @@ const styles = StyleSheet.create({
     backgroundColor: "#F9FAFB", borderRadius: 14, borderWidth: 1, borderColor: "#F0F0F0",
     padding: 12, marginBottom: 10,
   },
-  statItem:   { flex: 1, alignItems: "center", gap: 3 },
-  statValue:  { fontSize: 13, fontWeight: "800", color: "#111" },
-  statLabel:  { fontSize: 9,  fontWeight: "600", color: "#9CA3AF" },
+  statItem:    { flex: 1, alignItems: "center", gap: 3 },
+  statVal:     { fontSize: 13, fontWeight: "800", color: "#111" },
+  statLbl:     { fontSize: 9, fontWeight: "600", color: "#9CA3AF" },
   statDivider: { width: 1, height: 32, backgroundColor: "#E5E7EB" },
   earningChip: {
     flex: 1, alignItems: "center", justifyContent: "center",
     paddingVertical: 6, borderRadius: 10,
-    borderWidth: 1, borderColor: PINK + "22", gap: 2,
+    borderWidth: 1, borderColor: PINK + "22",
   },
-  earningAmt:   { fontSize: 16, fontWeight: "900", color: PINK },
-  earningLabel: { fontSize: 9,  fontWeight: "700", color: ORANGE },
+  earningAmt: { fontSize: 16, fontWeight: "900", color: PINK },
+  earningLbl: { fontSize: 9,  fontWeight: "700", color: ORANGE },
   surgeTag: {
     position: "absolute", top: -8,
     backgroundColor: ORANGE, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
@@ -584,7 +601,7 @@ const styles = StyleSheet.create({
   },
 
   // Buttons
-  actionRow:      { flexDirection: "row", gap: 12 },
+  actionRow: { flexDirection: "row", gap: 12 },
   rejectBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
     gap: 7, borderWidth: 2, borderColor: RED + "40", borderRadius: 16,
@@ -592,12 +609,11 @@ const styles = StyleSheet.create({
   },
   rejectText: { fontSize: 15, fontWeight: "800", color: RED },
 
-  acceptBtnWrap: {
+  acceptWrap: {
     flex: 1, borderRadius: 16, overflow: "hidden",
     shadowColor: GREEN, shadowOpacity: 0.45,
     shadowRadius: 14, shadowOffset: { width: 0, height: 5 }, elevation: 8,
   },
-  acceptingState: { shadowOpacity: 0.2 },
   acceptBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
     gap: 8, paddingVertical: 16, borderRadius: 16,

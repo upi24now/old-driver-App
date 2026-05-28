@@ -1,0 +1,2 @@
+- [expo-audio vs expo-av](expo-audio-sdk54.md) — SDK 54 removed expo-av; use expo-audio@1.1.1 with useAudioPlayer hook.
+- [Expo Go Android image picker](expo-go-android.md) — allowsEditing: true causes UCrop silent drop on Android; always use false.
