@@ -373,7 +373,7 @@ const styles = StyleSheet.create({
   },
   formSection: {
     marginTop: 20,
-    gap: 14,
+    gap: 20,
   },
   // ─── 3D Phone Input Card ──────────────────────────────────────────────────
   card3dOuter: {
