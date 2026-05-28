@@ -10,6 +10,13 @@ import {
 } from "react";
 import { Platform } from "react-native";
 
+import {
+  cancelIncomingOrderNotification,
+  sendDriverAlertNotification,
+  sendIncomingOrderNotification,
+  sendOrderUpdateNotification,
+} from "@/utils/notifications";
+
 export type SubPlan = "daily" | "weekly" | "monthly";
 export type RideStage = "to_pickup" | "arrived" | "in_trip" | "completed";
 
@@ -238,7 +245,18 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       incomingTimer.current = setTimeout(() => {
         const sample = SAMPLE_RIDES[rideCursor.current % SAMPLE_RIDES.length];
         rideCursor.current += 1;
-        setIncomingRide({ ...sample, id: `r${Date.now()}` });
+        const ride: IncomingRide = { ...sample, id: `r${Date.now()}` };
+        setIncomingRide(ride);
+        // Fire a local notification so the driver is alerted even if
+        // the app is in the background or the screen is locked.
+        sendIncomingOrderNotification({
+          orderId:    ride.id,
+          customer:   ride.passengerName,
+          pickup:     ride.pickup,
+          drop:       ride.drop,
+          earning:    ride.fareEstimate,
+          distanceKm: ride.distanceKm,
+        }).catch(console.error);
         router.push("/ride-request");
       }, 3500);
     }
@@ -305,7 +323,17 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     if (activeRide) return;
     const sample = SAMPLE_RIDES[rideCursor.current % SAMPLE_RIDES.length];
     rideCursor.current += 1;
-    setIncomingRide({ ...sample, id: `r${Date.now()}` });
+    const ride: IncomingRide = { ...sample, id: `r${Date.now()}` };
+    setIncomingRide(ride);
+    // Fire notification so driver is alerted even when screen is off
+    sendIncomingOrderNotification({
+      orderId:    ride.id,
+      customer:   ride.passengerName,
+      pickup:     ride.pickup,
+      drop:       ride.drop,
+      earning:    ride.fareEstimate,
+      distanceKm: ride.distanceKm,
+    }).catch(console.error);
     router.push(mode === "lock" ? "/lock-alert" : "/ride-request");
   };
 
@@ -313,16 +341,37 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     if (!incomingRide) return;
     setActiveRide({ ...incomingRide, stage: "to_pickup", acceptedAt: Date.now() });
     setIncomingRide(null);
+    // Dismiss the incoming order notification immediately
+    cancelIncomingOrderNotification().catch(console.error);
+    // Confirm acceptance to driver
+    sendOrderUpdateNotification({
+      title: "✅ Order Accepted",
+      body:  `Heading to ${incomingRide.pickup}`,
+      data:  { type: "order_update", stage: "to_pickup" },
+    }).catch(console.error);
   };
 
-  const rejectRide = () => setIncomingRide(null);
+  const rejectRide = () => {
+    setIncomingRide(null);
+    cancelIncomingOrderNotification().catch(console.error);
+  };
 
   const advanceStage = () => {
     if (!activeRide) return;
     if (activeRide.stage === "to_pickup") {
       setActiveRide({ ...activeRide, stage: "arrived" });
+      sendOrderUpdateNotification({
+        title: "📍 Arrived at Pickup",
+        body:  `Waiting at ${activeRide.pickup}`,
+        data:  { type: "order_update", stage: "arrived" },
+      }).catch(console.error);
     } else if (activeRide.stage === "arrived") {
       setActiveRide({ ...activeRide, stage: "in_trip" });
+      sendOrderUpdateNotification({
+        title: "🚀 Trip Started",
+        body:  `Delivering to ${activeRide.drop}`,
+        data:  { type: "order_update", stage: "in_trip" },
+      }).catch(console.error);
     } else if (activeRide.stage === "in_trip") {
       const completed: ActiveRide = { ...activeRide, stage: "completed" };
       const earning = completed.fareEstimate;
@@ -344,6 +393,11 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         },
         ...t,
       ]);
+      sendOrderUpdateNotification({
+        title: "🎉 Delivery Complete!",
+        body:  `₹${earning} earned — ${completed.distanceKm} km trip`,
+        data:  { type: "order_update", stage: "completed", earning },
+      }).catch(console.error);
     }
   };
 

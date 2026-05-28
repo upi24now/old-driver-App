@@ -58,6 +58,8 @@
   "dependencies": {
     "expo-audio": "^1.1.1",
     "expo-av": "^16.0.8",
-    "expo-intent-launcher": "^56.0.4"
+    "expo-device": "^56.0.4",
+    "expo-intent-launcher": "^56.0.4",
+    "expo-notifications": "^56.0.14"
   }
 }

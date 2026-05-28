@@ -17,12 +17,17 @@ import { AnimatedSplash } from "@/components/AnimatedSplash";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { DriverProvider } from "@/contexts/DriverContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import { useNotifications } from "@/hooks/useNotifications";
 
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 
 function RootLayoutNav() {
+  // Initialize notification channels, request permission, attach listeners.
+  // Must be inside DriverProvider so notifications can access router context.
+  useNotifications();
+
   return (
     <Stack
       initialRouteName="login"
