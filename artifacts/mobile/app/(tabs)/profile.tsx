@@ -502,7 +502,6 @@ export default function SettingsScreen() {
                 ];
                 const next = order[(order.indexOf(language) + 1) % order.length];
                 setLanguage(next);
-                infoAlert("Language updated", `App language set to ${next}.`);
               }}
               divider
             />
