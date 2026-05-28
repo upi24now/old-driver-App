@@ -437,9 +437,9 @@ const styles = StyleSheet.create({
   countrySelector: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingLeft: 14,
-    paddingRight: 12,
+    gap: 5,
+    paddingLeft: 10,
+    paddingRight: 8,
     height: "100%",
     backgroundColor: "transparent",
   },
@@ -473,16 +473,17 @@ const styles = StyleSheet.create({
   },
   codeDivider: {
     width: 1,
-    height: 26,
-    backgroundColor: "#F1F5F9",
+    height: 22,
+    backgroundColor: "#E5E7EB",
     alignSelf: "center",
+    marginRight: 2,
   },
   phoneInput: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
     color: TEXT_PRIMARY,
-    paddingHorizontal: 14,
+    paddingHorizontal: 10,
     height: "100%",
     borderWidth: 0,
     ...Platform.select({
