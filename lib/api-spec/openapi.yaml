@@ -135,15 +135,11 @@ components:
     VerifyOtpResult:
       type: object
       properties:
-        email:
+        token:
           type: string
-          description: Derived Firebase email for this phone number
-        password:
-          type: string
-          description: HMAC-derived password — use with signInWithEmailAndPassword
+          description: Firebase custom token — use with signInWithCustomToken
       required:
-        - email
-        - password
+        - token
     ApiErrorBody:
       type: object
       properties:

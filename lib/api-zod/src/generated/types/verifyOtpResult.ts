@@ -7,8 +7,6 @@
  */
 
 export interface VerifyOtpResult {
-  /** Derived Firebase email for this phone number */
-  email: string;
-  /** HMAC-derived password — use with signInWithEmailAndPassword */
-  password: string;
+  /** Firebase custom token — use with signInWithCustomToken */
+  token: string;
 }
