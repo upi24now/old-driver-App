@@ -123,8 +123,16 @@ function ClassicTabLayout() {
   );
 }
 
+function safeIsLiquidGlassAvailable(): boolean {
+  try {
+    return isLiquidGlassAvailable();
+  } catch {
+    return false;
+  }
+}
+
 export default function TabLayout() {
-  if (isLiquidGlassAvailable()) {
+  if (safeIsLiquidGlassAvailable()) {
     return <NativeTabLayout />;
   }
   return <ClassicTabLayout />;
