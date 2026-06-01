@@ -17,6 +17,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
+import { sendOtp } from "@/utils/auth-api";
 
 const OTP_LENGTH = 6;
 const RESEND_SECONDS = 30;
@@ -192,6 +193,7 @@ export default function OtpScreen() {
   const [canResend, setCanResend] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState("");
+  const [currentDevOtp, setCurrentDevOtp] = useState(devOtp ?? "");
   const inputRef = useRef<TextInput>(null);
 
   const formattedPhone = phone
@@ -231,12 +233,18 @@ export default function OtpScreen() {
     }
   }
 
-  function handleResend() {
-    if (!canResend) return;
+  async function handleResend() {
+    if (!canResend || !phone) return;
     setOtp("");
     setError("");
+    setCurrentDevOtp("");
     setTimer(RESEND_SECONDS);
     setCanResend(false);
+
+    const result = await sendOtp(phone);
+    if (result.ok && result.devOtp) {
+      setCurrentDevOtp(result.devOtp);
+    }
     setTimeout(() => inputRef.current?.focus(), 100);
   }
 
@@ -351,8 +359,8 @@ export default function OtpScreen() {
             </View>
           )}
 
-          {!!devOtp && (
-            <Text style={styles.devHint}>Dev — code: {devOtp}</Text>
+          {!!currentDevOtp && (
+            <Text style={styles.devHint}>Dev — code: {currentDevOtp}</Text>
           )}
         </View>
 
@@ -366,7 +374,7 @@ export default function OtpScreen() {
 
         <View style={styles.resendRow}>
           {canResend ? (
-            <TouchableOpacity onPress={handleResend} activeOpacity={0.6}>
+            <TouchableOpacity onPress={() => void handleResend()} activeOpacity={0.6}>
               <Text style={styles.resendText}>
                 Didn't receive it?{" "}
                 <Text style={styles.resendLink}>Resend code</Text>

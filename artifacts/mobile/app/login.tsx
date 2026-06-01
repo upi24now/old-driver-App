@@ -192,7 +192,7 @@ export default function LoginScreen() {
 
     setDriverPhone(digits);
     setLoading(false);
-    router.push({
+    router.replace({
       pathname: "/otp",
       params: { phone: digits, devOtp: result.devOtp ?? "" },
     });
