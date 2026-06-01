@@ -79,6 +79,20 @@ export async function updateDriverSubscription(
 }
 
 /**
+ * Mark the driver's document submission in Firestore.
+ * Does NOT upload images — only writes submission metadata.
+ * Called by document-upload.tsx after all 5 docs are selected locally.
+ */
+export async function submitDriverDocuments(uid: string): Promise<void> {
+  await setDoc(doc(db, "drivers", uid), {
+    documentsSubmitted:   true,
+    verificationStatus:   "pending",
+    documentsSubmittedAt: serverTimestamp(),
+    updatedAt:            serverTimestamp(),
+  }, { merge: true });
+}
+
+/**
  * Persist the driver's online/offline status so the customer app and
  * dispatcher can filter available drivers.
  */

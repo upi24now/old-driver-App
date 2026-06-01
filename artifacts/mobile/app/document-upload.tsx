@@ -32,7 +32,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
+import { submitDriverDocuments } from "@/utils/firestore";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -350,9 +352,11 @@ function DocumentCard({
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function DocumentUploadScreen() {
-  const colors  = useColors();
-  const insets  = useSafeAreaInsets();
-  const router  = useRouter();
+  const colors     = useColors();
+  const insets     = useSafeAreaInsets();
+  const router     = useRouter();
+  const { driverUid } = useDriver();
+  const [submitting, setSubmitting] = useState(false);
 
   const [docs, setDocs] = useState<Record<DocId, DocState>>(() => ({
     selfie:  blankDoc(),
@@ -408,9 +412,20 @@ export default function DocumentUploadScreen() {
   const progress      = uploadedCount / total;
   const allDone       = uploadedCount === total;
 
-  function handleSubmit() {
-    if (!allDone) return;
-    router.replace("/verification-pending");
+  async function handleSubmit() {
+    if (!allDone || submitting) return;
+    if (!driverUid) {
+      console.error("[document-upload] handleSubmit: driverUid is null");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await submitDriverDocuments(driverUid);
+      router.replace("/verification-pending");
+    } catch (err) {
+      console.error("[document-upload] Firestore write failed:", err);
+      setSubmitting(false);
+    }
   }
 
   // ── Render ──
@@ -560,10 +575,10 @@ export default function DocumentUploadScreen() {
         </View>
 
         <TouchableOpacity
-          style={[styles.submitBtn, { opacity: allDone ? 1 : 0.45 }]}
-          onPress={handleSubmit}
+          style={[styles.submitBtn, { opacity: allDone && !submitting ? 1 : 0.45 }]}
+          onPress={() => void handleSubmit()}
           activeOpacity={0.85}
-          disabled={!allDone}
+          disabled={!allDone || submitting}
         >
           <LinearGradient
             colors={["#00C853", "#00E676"]}
@@ -571,8 +586,14 @@ export default function DocumentUploadScreen() {
             end={{ x: 1, y: 0 }}
             style={styles.submitGrad}
           >
-            <Text style={styles.submitText}>Submit for Verification</Text>
-            <Feather name="arrow-right" size={18} color="#fff" />
+            {submitting ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Text style={styles.submitText}>Submit for Verification</Text>
+                <Feather name="arrow-right" size={18} color="#fff" />
+              </>
+            )}
           </LinearGradient>
         </TouchableOpacity>
       </View>
