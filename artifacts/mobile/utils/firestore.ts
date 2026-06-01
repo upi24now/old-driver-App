@@ -46,20 +46,20 @@ export async function createDriverDoc(uid: string, phone: string): Promise<Drive
 }
 
 export async function updateDriverProfile(uid: string, p: Profile): Promise<void> {
-  await updateDoc(doc(db, "drivers", uid), {
+  await setDoc(doc(db, "drivers", uid), {
     name:      p.name,
     city:      p.city,
     gender:    p.gender,
     updatedAt: serverTimestamp(),
-  });
+  }, { merge: true });
 }
 
 export async function updateDriverVehicle(uid: string, v: Vehicle): Promise<void> {
-  await updateDoc(doc(db, "drivers", uid), {
+  await setDoc(doc(db, "drivers", uid), {
     vehicleId:   v.id,
     vehicleName: v.name,
     updatedAt:   serverTimestamp(),
-  });
+  }, { merge: true });
 }
 
 /**
@@ -71,11 +71,11 @@ export async function updateDriverSubscription(
   plan:                 string,
   subscriptionExpiresAt: number,
 ): Promise<void> {
-  await updateDoc(doc(db, "drivers", uid), {
+  await setDoc(doc(db, "drivers", uid), {
     subscriptionPlan:      plan,
     subscriptionExpiresAt,
     updatedAt:             serverTimestamp(),
-  });
+  }, { merge: true });
 }
 
 /**
@@ -86,10 +86,10 @@ export async function updateDriverOnlineStatus(
   uid:      string,
   isOnline: boolean,
 ): Promise<void> {
-  await updateDoc(doc(db, "drivers", uid), {
+  await setDoc(doc(db, "drivers", uid), {
     isOnline,
     updatedAt: serverTimestamp(),
-  });
+  }, { merge: true });
 }
 
 // ─── Order doc ────────────────────────────────────────────────────────────────
