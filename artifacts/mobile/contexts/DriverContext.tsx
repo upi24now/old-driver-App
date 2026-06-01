@@ -9,7 +9,16 @@ import {
   useState,
 } from "react";
 import { Platform } from "react-native";
+import { onAuthStateChanged, signInWithCustomToken, signOut as firebaseSignOut } from "firebase/auth";
 
+import { firebaseAuth } from "@/utils/firebase";
+import {
+  getDriverDoc,
+  createDriverDoc,
+  updateDriverProfile,
+  updateDriverVehicle,
+} from "@/utils/firestore";
+import { verifyOtpApi } from "@/utils/auth-api";
 import {
   cancelIncomingOrderNotification,
   registerOrderActionHandlers,
@@ -51,7 +60,7 @@ export type Txn = {
   date: string;
 };
 
-const PLAN_DAYS: Record<SubPlan, number> = { daily: 1, weekly: 7, monthly: 30 };
+const PLAN_DAYS: Record<SubPlan, number>  = { daily: 1, weekly: 7, monthly: 30 };
 const PLAN_PRICE: Record<SubPlan, number> = { daily: 19, weekly: 99, monthly: 349 };
 
 const SAMPLE_RIDES: Omit<IncomingRide, "id">[] = [
@@ -106,48 +115,51 @@ const SAMPLE_RIDES: Omit<IncomingRide, "id">[] = [
 ];
 
 const SEED_TXNS: Txn[] = [
-  { id: "s1", type: "earning", title: "Trip · Indiranagar → Whitefield", subtitle: "9.6 km · UPI", amount: 186, status: "completed", time: "2:42 PM", date: "Today" },
-  { id: "s2", type: "tip", title: "Tip from Priya S.", subtitle: "Trip #4827", amount: 24, status: "completed", time: "2:42 PM", date: "Today" },
-  { id: "s3", type: "earning", title: "Trip · HSR → Koramangala", subtitle: "4.1 km · Cash", amount: 92, status: "completed", time: "1:18 PM", date: "Today" },
-  { id: "s4", type: "bonus", title: "Daily streak bonus", subtitle: "10 trips completed", amount: 150, status: "completed", time: "11:30 AM", date: "Today" },
-  { id: "s5", type: "withdraw", title: "Withdrawal to HDFC ••2841", subtitle: "Instant transfer", amount: -2400, status: "completed", time: "9:14 AM", date: "Today" },
-  { id: "s6", type: "earning", title: "Trip · Airport → MG Road", subtitle: "32 km · UPI", amount: 478, status: "completed", time: "8:02 PM", date: "Yesterday" },
+  { id: "s1", type: "earning",  title: "Trip · Indiranagar → Whitefield", subtitle: "9.6 km · UPI",    amount: 186,   status: "completed", time: "2:42 PM",  date: "Today"     },
+  { id: "s2", type: "tip",      title: "Tip from Priya S.",               subtitle: "Trip #4827",       amount: 24,    status: "completed", time: "2:42 PM",  date: "Today"     },
+  { id: "s3", type: "earning",  title: "Trip · HSR → Koramangala",        subtitle: "4.1 km · Cash",    amount: 92,    status: "completed", time: "1:18 PM",  date: "Today"     },
+  { id: "s4", type: "bonus",    title: "Daily streak bonus",              subtitle: "10 trips completed", amount: 150,  status: "completed", time: "11:30 AM", date: "Today"     },
+  { id: "s5", type: "withdraw", title: "Withdrawal to HDFC ••2841",       subtitle: "Instant transfer",  amount: -2400, status: "completed", time: "9:14 AM",  date: "Today"     },
+  { id: "s6", type: "earning",  title: "Trip · Airport → MG Road",        subtitle: "32 km · UPI",       amount: 478,  status: "completed", time: "8:02 PM",  date: "Yesterday" },
 ];
 
+type ConfirmOtpResult = { ok: boolean; profileComplete: boolean; error?: string };
+
 type DriverState = {
-  phone: string | null;
-  isVerified: boolean;
+  driverUid:   string | null;
+  authLoading: boolean;
+  phone:       string | null;
   isAuthenticated: boolean;
-  profile: Profile | null;
-  vehicle: Vehicle | null;
+  profile:     Profile | null;
+  vehicle:     Vehicle | null;
 
   isOnline: boolean;
 
-  subscriptionPlan: SubPlan | null;
+  subscriptionPlan:      SubPlan | null;
   subscriptionExpiresAt: number | null;
-  subscriptionActive: boolean;
+  subscriptionActive:    boolean;
 
   incomingRide: IncomingRide | null;
-  activeRide: ActiveRide | null;
-  rideHistory: ActiveRide[];
+  activeRide:   ActiveRide | null;
+  rideHistory:  ActiveRide[];
 
-  walletBalance: number;
-  todayEarnings: number;
-  tripsToday: number;
-  transactions: Txn[];
+  walletBalance:  number;
+  todayEarnings:  number;
+  tripsToday:     number;
+  transactions:   Txn[];
 
-  setPhone: (p: string) => void;
-  verifyOtp: () => void;
-  setProfile: (p: Profile) => void;
-  setVehicle: (v: Vehicle) => void;
-  signOut: () => void;
+  setPhone:    (p: string) => void;
+  confirmOtp:  (phone: string, otp: string) => Promise<ConfirmOtpResult>;
+  setProfile:  (p: Profile) => void;
+  setVehicle:  (v: Vehicle) => void;
+  signOut:     () => void;
 
-  setOnline: (v: boolean) => { ok: boolean; reason?: string };
-  activatePlan: (id: SubPlan) => { ok: boolean; reason?: string };
+  setOnline:     (v: boolean) => { ok: boolean; reason?: string };
+  activatePlan:  (id: SubPlan) => { ok: boolean; reason?: string };
 
   triggerIncomingRide: (mode?: "modal" | "lock") => void;
-  acceptRide: () => void;
-  rejectRide: () => void;
+  acceptRide:  () => void;
+  rejectRide:  () => void;
   advanceStage: () => void;
   endActiveRide: () => void;
 
@@ -167,89 +179,88 @@ export function useDriver() {
 }
 
 export function DriverProvider({ children }: { children: ReactNode }) {
-  const [phone, setPhoneState] = useState<string | null>(null);
-  const [isVerified, setIsVerified] = useState(false);
-  const [profile, setProfileState] = useState<Profile | null>(null);
-  const [vehicle, setVehicleState] = useState<Vehicle | null>(null);
+  const [driverUid,   setDriverUid]    = useState<string | null>(null);
+  const [authLoading, setAuthLoading]  = useState(true);
+  const [phone,       setPhoneState]   = useState<string | null>(null);
+  const [profile,     setProfileState] = useState<Profile | null>(null);
+  const [vehicle,     setVehicleState] = useState<Vehicle | null>(null);
 
   const [isOnline, setOnlineState] = useState(false);
 
-  const [subscriptionPlan, setSubPlan] = useState<SubPlan | null>(null);
-  const [subscriptionExpiresAt, setSubExp] = useState<number | null>(null);
-  const [nowTick, setNowTick] = useState(() => Date.now());
+  const [subscriptionPlan,      setSubPlan] = useState<SubPlan | null>(null);
+  const [subscriptionExpiresAt, setSubExp]  = useState<number | null>(null);
+  const [nowTick,               setNowTick] = useState(() => Date.now());
 
   const [incomingRide, setIncomingRide] = useState<IncomingRide | null>(null);
-  const [activeRide, setActiveRide] = useState<ActiveRide | null>(null);
-  const [rideHistory, setHistory] = useState<ActiveRide[]>([]);
+  const [activeRide,   setActiveRide]   = useState<ActiveRide | null>(null);
+  const [rideHistory,  setHistory]      = useState<ActiveRide[]>([]);
 
-  const [walletBalance, setBalance] = useState(8420.5);
-  const [todayEarnings, setTodayEarnings] = useState(1248);
-  const [tripsToday, setTripsToday] = useState(14);
-  const [transactions, setTxns] = useState<Txn[]>(SEED_TXNS);
+  const [walletBalance,  setBalance]       = useState(8420.5);
+  const [todayEarnings,  setTodayEarnings] = useState(1248);
+  const [tripsToday,     setTripsToday]    = useState(14);
+  const [transactions,   setTxns]          = useState<Txn[]>(SEED_TXNS);
   const [overlayPermissionGranted, setOverlayPermissionGranted] = useState(false);
 
-  const requestOverlayPermission = async (): Promise<{ ok: boolean; reason?: string }> => {
-    if (Platform.OS !== "android") {
-      const ok = Platform.OS === "ios";
-      setOverlayPermissionGranted(ok);
-      return ok
-        ? { ok: true }
-        : { ok: false, reason: "Overlay permission is only required on Android." };
-    }
-    try {
-      await IntentLauncher.startActivityAsync(
-        "android.settings.action.MANAGE_OVERLAY_PERMISSION",
-      );
-      setOverlayPermissionGranted(true);
-      return { ok: true };
-    } catch (e) {
-      setOverlayPermissionGranted(false);
-      return {
-        ok: false,
-        reason: "Permission required for incoming ride alerts.",
-      };
-    }
-  };
+  const isAuthenticated = !!driverUid;
 
-  const subscriptionActive = !!(
-    subscriptionExpiresAt && subscriptionExpiresAt > nowTick
-  );
-  const isAuthenticated = !!phone && isVerified;
+  // ─── Firebase Auth listener — restores session on app restart ─────────────
+  useEffect(() => {
+    const unsub = onAuthStateChanged(firebaseAuth, async (user) => {
+      if (user) {
+        setDriverUid(user.uid);
+        const phoneFromUid = user.uid.startsWith("91") ? user.uid.slice(2) : user.uid;
+        setPhoneState(phoneFromUid);
+        try {
+          const driverDoc = await getDriverDoc(user.uid);
+          if (driverDoc) {
+            if (driverDoc.name) {
+              setProfileState({
+                name:   driverDoc.name   ?? "",
+                city:   driverDoc.city   ?? "",
+                gender: driverDoc.gender ?? "",
+              });
+            }
+            if (driverDoc.vehicleId) {
+              setVehicleState({ id: driverDoc.vehicleId, name: driverDoc.vehicleName ?? "" });
+            }
+          }
+        } catch {
+          // Firestore read failed — user remains authenticated, profile stays null
+        }
+      } else {
+        setDriverUid(null);
+      }
+      setAuthLoading(false);
+    });
+    return unsub;
+  }, []);
 
-  // Heartbeat to reactively detect subscription expiry
+  // ─── Subscription heartbeat ───────────────────────────────────────────────
   useEffect(() => {
     if (!subscriptionExpiresAt) return;
     const msUntilExpiry = subscriptionExpiresAt - Date.now();
-    if (msUntilExpiry <= 0) {
-      setNowTick(Date.now());
-      return;
-    }
+    if (msUntilExpiry <= 0) { setNowTick(Date.now()); return; }
     const t = setTimeout(() => setNowTick(Date.now()), msUntilExpiry + 50);
     return () => clearTimeout(t);
   }, [subscriptionExpiresAt]);
 
-  // Auto-offline if subscription expires
+  // ─── Auto-offline on subscription expiry ──────────────────────────────────
+  const subscriptionActive = !!(subscriptionExpiresAt && subscriptionExpiresAt > nowTick);
   useEffect(() => {
-    if (!subscriptionActive && isOnline) {
-      setOnlineState(false);
-    }
+    if (!subscriptionActive && isOnline) setOnlineState(false);
   }, [subscriptionActive, isOnline]);
 
-  // Continuous ride queue: auto-pop the next ride a few seconds after the
-  // driver becomes idle (online, no incoming, no active). Cycle uses a
-  // rotating cursor so consecutive rides differ.
+  // ─── Continuous ride queue ────────────────────────────────────────────────
   const incomingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const rideCursor = useRef(0);
+  const rideCursor    = useRef(0);
   useEffect(() => {
     if (incomingTimer.current) clearTimeout(incomingTimer.current);
     if (isOnline && !incomingRide && !activeRide) {
       incomingTimer.current = setTimeout(() => {
-        const sample = SAMPLE_RIDES[rideCursor.current % SAMPLE_RIDES.length];
+        const sample = SAMPLE_RIDES[rideCursor.current % SAMPLE_RIDES.length]!;
         rideCursor.current += 1;
         const ride: IncomingRide = { ...sample, id: `r${Date.now()}` };
         setIncomingRide(ride);
-        // Fire a local notification so the driver is alerted even if
-        // the app is in the background or the screen is locked.
         sendIncomingOrderNotification({
           orderId:    ride.id,
           customer:   ride.passengerName,
@@ -261,19 +272,63 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         router.push("/ride-request");
       }, 3500);
     }
-    return () => {
-      if (incomingTimer.current) clearTimeout(incomingTimer.current);
-    };
+    return () => { if (incomingTimer.current) clearTimeout(incomingTimer.current); };
   }, [isOnline, incomingRide, activeRide]);
 
+  // ─── Auth actions ─────────────────────────────────────────────────────────
   const setPhone = (p: string) => setPhoneState(p);
-  const verifyOtp = () => setIsVerified(true);
-  const setProfile = (p: Profile) => setProfileState(p);
-  const setVehicle = (v: Vehicle) => setVehicleState(v);
+
+  const confirmOtp = async (
+    phone: string,
+    otp:   string,
+  ): Promise<ConfirmOtpResult> => {
+    const apiResult = await verifyOtpApi(phone, otp);
+    if (!apiResult.ok) return { ok: false, profileComplete: false, error: apiResult.error };
+
+    try {
+      const credential = await signInWithCustomToken(firebaseAuth, apiResult.token);
+      const uid        = credential.user.uid;
+      setDriverUid(uid);
+      setPhoneState(phone);
+
+      let driverDoc = await getDriverDoc(uid);
+      if (!driverDoc) {
+        driverDoc = await createDriverDoc(uid, phone);
+      } else {
+        if (driverDoc.name) {
+          setProfileState({
+            name:   driverDoc.name   ?? "",
+            city:   driverDoc.city   ?? "",
+            gender: driverDoc.gender ?? "",
+          });
+        }
+        if (driverDoc.vehicleId) {
+          setVehicleState({ id: driverDoc.vehicleId, name: driverDoc.vehicleName ?? "" });
+        }
+      }
+
+      const profileComplete = !!(driverDoc.name && driverDoc.vehicleId);
+      return { ok: true, profileComplete };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Sign-in failed.";
+      return { ok: false, profileComplete: false, error: msg };
+    }
+  };
+
+  const setProfile = (p: Profile) => {
+    setProfileState(p);
+    if (driverUid) updateDriverProfile(driverUid, p).catch(console.error);
+  };
+
+  const setVehicle = (v: Vehicle) => {
+    setVehicleState(v);
+    if (driverUid) updateDriverVehicle(driverUid, v).catch(console.error);
+  };
 
   const signOut = () => {
+    firebaseSignOut(firebaseAuth).catch(console.error);
+    setDriverUid(null);
     setPhoneState(null);
-    setIsVerified(false);
     setProfileState(null);
     setVehicleState(null);
     setOnlineState(false);
@@ -288,6 +343,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     setTxns([]);
   };
 
+  // ─── Online / subscription ────────────────────────────────────────────────
   const setOnline: DriverState["setOnline"] = (v) => {
     if (v && !subscriptionActive) {
       return { ok: false, reason: "Your subscription has expired. Activate a plan to go online." };
@@ -320,13 +376,13 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   };
 
+  // ─── Ride actions ─────────────────────────────────────────────────────────
   const triggerIncomingRide: DriverState["triggerIncomingRide"] = (mode = "modal") => {
     if (activeRide) return;
-    const sample = SAMPLE_RIDES[rideCursor.current % SAMPLE_RIDES.length];
+    const sample = SAMPLE_RIDES[rideCursor.current % SAMPLE_RIDES.length]!;
     rideCursor.current += 1;
     const ride: IncomingRide = { ...sample, id: `r${Date.now()}` };
     setIncomingRide(ride);
-    // Fire notification so driver is alerted even when screen is off
     sendIncomingOrderNotification({
       orderId:    ride.id,
       customer:   ride.passengerName,
@@ -338,31 +394,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     router.push(mode === "lock" ? "/lock-alert" : "/ride-request");
   };
 
-  const acceptRide = () => {
-    if (!incomingRide) return;
-    setActiveRide({ ...incomingRide, stage: "to_pickup", acceptedAt: Date.now() });
-    setIncomingRide(null);
-    // Dismiss the incoming order notification immediately
-    cancelIncomingOrderNotification().catch(console.error);
-    // Confirm acceptance to driver
-    sendOrderUpdateNotification({
-      title: "✅ Order Accepted",
-      body:  `Heading to ${incomingRide.pickup}`,
-      data:  { type: "order_update", stage: "to_pickup" },
-    }).catch(console.error);
-  };
-
-  const rejectRide = () => {
-    setIncomingRide(null);
-    cancelIncomingOrderNotification().catch(console.error);
-  };
-
-  // ─── Notification action handler registration ─────────────────────────────
-  // Keep a ref so the stable handlers registered once always read fresh state.
   const incomingRideRef = useRef<IncomingRide | null>(null);
-  useEffect(() => {
-    incomingRideRef.current = incomingRide;
-  }, [incomingRide]);
+  useEffect(() => { incomingRideRef.current = incomingRide; }, [incomingRide]);
 
   useEffect(() => {
     registerOrderActionHandlers({
@@ -384,7 +417,24 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       },
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // register once — handlers read from incomingRideRef for fresh state
+  }, []);
+
+  const acceptRide = () => {
+    if (!incomingRide) return;
+    setActiveRide({ ...incomingRide, stage: "to_pickup", acceptedAt: Date.now() });
+    setIncomingRide(null);
+    cancelIncomingOrderNotification().catch(console.error);
+    sendOrderUpdateNotification({
+      title: "✅ Order Accepted",
+      body:  `Heading to ${incomingRide.pickup}`,
+      data:  { type: "order_update", stage: "to_pickup" },
+    }).catch(console.error);
+  };
+
+  const rejectRide = () => {
+    setIncomingRide(null);
+    cancelIncomingOrderNotification().catch(console.error);
+  };
 
   const advanceStage = () => {
     if (!activeRide) return;
@@ -452,11 +502,29 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
+  // ─── Overlay permission ───────────────────────────────────────────────────
+  const requestOverlayPermission = async (): Promise<{ ok: boolean; reason?: string }> => {
+    if (Platform.OS !== "android") {
+      const ok = Platform.OS === "ios";
+      setOverlayPermissionGranted(ok);
+      return ok ? { ok: true } : { ok: false, reason: "Overlay permission is only required on Android." };
+    }
+    try {
+      await IntentLauncher.startActivityAsync("android.settings.action.MANAGE_OVERLAY_PERMISSION");
+      setOverlayPermissionGranted(true);
+      return { ok: true };
+    } catch {
+      setOverlayPermissionGranted(false);
+      return { ok: false, reason: "Permission required for incoming ride alerts." };
+    }
+  };
+
   return (
     <DriverContext.Provider
       value={{
+        driverUid,
+        authLoading,
         phone,
-        isVerified,
         isAuthenticated,
         profile,
         vehicle,
@@ -472,7 +540,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         tripsToday,
         transactions,
         setPhone,
-        verifyOtp,
+        confirmOtp,
         setProfile,
         setVehicle,
         signOut,

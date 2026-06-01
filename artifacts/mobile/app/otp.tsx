@@ -97,11 +97,7 @@ function VerifyingDots() {
     a.start();
     b.start();
     c.start();
-    return () => {
-      a.stop();
-      b.stop();
-      c.stop();
-    };
+    return () => { a.stop(); b.stop(); c.stop(); };
   }, []);
 
   return (
@@ -113,7 +109,7 @@ function VerifyingDots() {
   );
 }
 
-// ─── Verify button (matches login ContinueButton pattern) ─────────────────────
+// ─── Verify button ─────────────────────────────────────────────────────────────
 function VerifyButton({
   state,
   digitCount,
@@ -186,15 +182,16 @@ function VerifyButton({
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
 export default function OtpScreen() {
-  const { verifyOtp } = useDriver();
+  const { confirmOtp } = useDriver();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { phone } = useLocalSearchParams<{ phone: string }>();
+  const { phone, devOtp } = useLocalSearchParams<{ phone: string; devOtp?: string }>();
 
   const [otp, setOtp] = useState("");
   const [timer, setTimer] = useState(RESEND_SECONDS);
   const [canResend, setCanResend] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [error, setError] = useState("");
   const inputRef = useRef<TextInput>(null);
 
   const formattedPhone = phone
@@ -207,28 +204,44 @@ export default function OtpScreen() {
   }, []);
 
   useEffect(() => {
-    if (timer === 0) {
-      setCanResend(true);
-      return;
-    }
+    if (timer === 0) { setCanResend(true); return; }
     const id = setInterval(() => setTimer((t) => t - 1), 1000);
     return () => clearInterval(id);
   }, [timer]);
 
+  async function handleVerify(code: string) {
+    if (verifying || code.length !== OTP_LENGTH || !phone) return;
+    setVerifying(true);
+    setError("");
+
+    const result = await confirmOtp(phone, code);
+
+    if (!result.ok) {
+      setVerifying(false);
+      setOtp("");
+      setError(result.error ?? "Verification failed.");
+      setTimeout(() => inputRef.current?.focus(), 100);
+      return;
+    }
+
+    if (result.profileComplete) {
+      router.replace("/(tabs)");
+    } else {
+      router.replace("/vehicle-selection");
+    }
+  }
+
   useEffect(() => {
     if (otp.length === OTP_LENGTH) {
-      setVerifying(true);
-      const t = setTimeout(() => {
-        verifyOtp();
-        router.replace("/vehicle-selection");
-      }, 1400);
-      return () => clearTimeout(t);
+      void handleVerify(otp);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [otp]);
 
   function handleResend() {
     if (!canResend) return;
     setOtp("");
+    setError("");
     setTimer(RESEND_SECONDS);
     setCanResend(false);
     setTimeout(() => inputRef.current?.focus(), 100);
@@ -251,7 +264,6 @@ export default function OtpScreen() {
           { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 28 },
         ]}
       >
-        {/* Back button */}
         <TouchableOpacity
           onPress={() => router.back()}
           style={styles.backBtn}
@@ -260,7 +272,6 @@ export default function OtpScreen() {
           <Feather name="arrow-left" size={20} color={TEXT_PRIMARY} />
         </TouchableOpacity>
 
-        {/* Header */}
         <View style={styles.headerSection}>
           <View style={styles.iconWrap}>
             <Feather name="shield" size={22} color={GRADIENT_FROM} />
@@ -272,7 +283,6 @@ export default function OtpScreen() {
           </View>
         </View>
 
-        {/* OTP cells */}
         <View style={styles.otpSection}>
           <Pressable
             onPress={() => inputRef.current?.focus()}
@@ -321,12 +331,12 @@ export default function OtpScreen() {
             })}
           </Pressable>
 
-          {/* Hidden input */}
           <TextInput
             ref={inputRef}
             value={otp}
             onChangeText={(t) => {
               if (verifying) return;
+              setError("");
               setOtp(t.replace(/\D/g, "").slice(0, OTP_LENGTH));
             }}
             keyboardType="number-pad"
@@ -338,19 +348,26 @@ export default function OtpScreen() {
             underlineColorAndroid="transparent"
           />
 
-          <Text style={styles.hintText}>Enter 123456 to verify</Text>
+          {!!error && (
+            <View style={styles.errorRow}>
+              <Feather name="alert-circle" size={13} color="#EF4444" />
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          )}
+
+          {!!devOtp && !error && (
+            <Text style={styles.devHint}>Dev — code: {devOtp}</Text>
+          )}
         </View>
 
-        {/* Verify button */}
         <View style={styles.ctaSection}>
           <VerifyButton
             state={btnState}
             digitCount={otp.length}
-            onPress={() => {}}
+            onPress={() => void handleVerify(otp)}
           />
         </View>
 
-        {/* Resend */}
         <View style={styles.resendRow}>
           {canResend ? (
             <TouchableOpacity onPress={handleResend} activeOpacity={0.6}>
@@ -375,13 +392,7 @@ export default function OtpScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-
-  container: {
-    flex: 1,
-    paddingHorizontal: 24,
-  },
-
-  // ─── Back button ─────────────────────────────────────────────────────────
+  container: { flex: 1, paddingHorizontal: 24 },
   backBtn: {
     width: 42,
     height: 42,
@@ -398,13 +409,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 2,
   },
-
-  // ─── Header ──────────────────────────────────────────────────────────────
-  headerSection: {
-    marginTop: 32,
-    gap: 8,
-  },
-
+  headerSection: { marginTop: 32, gap: 8 },
   iconWrap: {
     width: 48,
     height: 48,
@@ -416,196 +421,65 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#FFD6E8",
   },
-
   headline: {
     fontSize: 30,
     fontWeight: "700",
     color: TEXT_PRIMARY,
     letterSpacing: -0.5,
   },
-
   codeSentRow: {
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
     marginTop: 2,
   },
-
-  codeSentText: {
-    fontSize: 15,
-    color: TEXT_MUTED,
-    fontWeight: "400",
-  },
-
-  codeSentPhone: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: TEXT_PRIMARY,
-  },
-
-  // ─── OTP cells ───────────────────────────────────────────────────────────
-  otpSection: {
-    alignItems: "center",
-    marginTop: 40,
-    gap: 14,
-  },
-
-  cellsRow: {
-    flexDirection: "row",
-    gap: 10,
-    alignItems: "center",
-  },
-
-  // Active cell: gradient shell (1.5px padding = gradient border)
+  codeSentText:  { fontSize: 15, color: TEXT_MUTED, fontWeight: "400" },
+  codeSentPhone: { fontSize: 15, fontWeight: "700", color: TEXT_PRIMARY },
+  otpSection: { alignItems: "center", marginTop: 40, gap: 14 },
+  cellsRow:   { flexDirection: "row", gap: 10, alignItems: "center" },
   cellShellActive: {
-    width: 50,
-    height: 62,
-    borderRadius: 17.5,
-    padding: 1.5,
-    shadowColor: GRADIENT_FROM,
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
+    width: 50, height: 62, borderRadius: 17.5, padding: 1.5,
+    shadowColor: GRADIENT_FROM, shadowOpacity: 0.12, shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 }, elevation: 3,
   },
-
-  // Idle / filled cell: plain border shell
   cellShellIdle: {
-    width: 50,
-    height: 62,
-    borderRadius: 17.5,
-    borderWidth: 1,
-    borderColor: BORDER,
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
+    width: 50, height: 62, borderRadius: 17.5, borderWidth: 1, borderColor: BORDER,
+    shadowColor: "#0F172A", shadowOpacity: 0.03, shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 }, elevation: 1,
   },
-
-  cellShellFilled: {
-    borderColor: "#D1D5DB",
-    shadowOpacity: 0.05,
-  },
-
-  // Inner white card (sits inside both shell types)
+  cellShellFilled: { borderColor: "#D1D5DB", shadowOpacity: 0.05 },
   cellInner: {
-    flex: 1,
-    borderRadius: 16,
-    backgroundColor: "#FFFFFF",
-    alignItems: "center",
-    justifyContent: "center",
+    flex: 1, borderRadius: 16, backgroundColor: "#FFFFFF",
+    alignItems: "center", justifyContent: "center",
   },
-
-  cellText: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: TEXT_PRIMARY,
-    letterSpacing: 0,
+  cellText:       { fontSize: 22, fontWeight: "700", color: TEXT_PRIMARY, letterSpacing: 0 },
+  cellTextFilled: { color: TEXT_PRIMARY },
+  hiddenInput:    { position: "absolute", width: 1, height: 1, opacity: 0 },
+  errorRow: {
+    flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 4,
   },
-
-  cellTextFilled: {
-    color: TEXT_PRIMARY,
-  },
-
-  hiddenInput: {
-    position: "absolute",
-    width: 1,
-    height: 1,
-    opacity: 0,
-  },
-
-  hintText: {
-    fontSize: 12,
-    color: TEXT_MUTED,
-    marginTop: 2,
-  },
-
-  // ─── Verify button ───────────────────────────────────────────────────────
-  ctaSection: {
-    marginTop: 32,
-  },
-
+  errorText: { fontSize: 13, color: "#EF4444", fontWeight: "500", flex: 1 },
+  devHint:   { fontSize: 12, color: TEXT_MUTED },
+  ctaSection: { marginTop: 32 },
   ctaWrap: {
     borderRadius: 20,
-    shadowColor: GRADIENT_FROM,
-    shadowOpacity: 0.13,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 4,
+    shadowColor: GRADIENT_FROM, shadowOpacity: 0.13, shadowRadius: 16,
+    shadowOffset: { width: 0, height: 7 }, elevation: 4,
   },
-
-  ctaWrapDisabled: {
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-
-  ctaPressable: {
-    borderRadius: 20,
-    overflow: "hidden",
-  },
-
+  ctaWrapDisabled: { shadowOpacity: 0, elevation: 0 },
+  ctaPressable:    { borderRadius: 20, overflow: "hidden" },
   ctaButton: {
-    height: 58,
-    borderRadius: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    width: "100%",
+    height: 58, borderRadius: 20, flexDirection: "row",
+    alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 20, width: "100%",
   },
-
-  ctaButtonDisabled: {
-    backgroundColor: "#F1F5F9",
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
-
-  ctaText: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#FFFFFF",
-    letterSpacing: 0.2,
-  },
-
-  ctaTextDisabled: {
-    color: "#9CA3AF",
-    fontWeight: "600",
-  },
-
-  dotsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    width: 28,
-  },
-
-  loadDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#FFFFFF",
-  },
-
-  // ─── Resend ──────────────────────────────────────────────────────────────
-  resendRow: {
-    alignItems: "center",
-    marginTop: 20,
-  },
-
-  resendText: {
-    fontSize: 14,
-    color: TEXT_MUTED,
-    fontWeight: "400",
-  },
-
-  resendTimer: {
-    color: TEXT_PRIMARY,
-    fontWeight: "700",
-  },
-
-  resendLink: {
-    color: GRADIENT_FROM,
-    fontWeight: "700",
-  },
+  ctaButtonDisabled: { backgroundColor: "#F1F5F9", borderWidth: 1, borderColor: BORDER },
+  ctaText:         { fontSize: 18, fontWeight: "700", color: "#FFFFFF", letterSpacing: 0.2 },
+  ctaTextDisabled: { color: "#9CA3AF", fontWeight: "600" },
+  dotsRow:         { flexDirection: "row", alignItems: "center", gap: 4, width: 28 },
+  loadDot:         { width: 6, height: 6, borderRadius: 3, backgroundColor: "#FFFFFF" },
+  resendRow:       { alignItems: "center", marginTop: 20 },
+  resendText:      { fontSize: 14, color: TEXT_MUTED, fontWeight: "400" },
+  resendTimer:     { color: TEXT_PRIMARY, fontWeight: "700" },
+  resendLink:      { color: GRADIENT_FROM, fontWeight: "700" },
 });

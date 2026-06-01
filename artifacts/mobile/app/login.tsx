@@ -20,6 +20,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
+import { sendOtp } from "@/utils/auth-api";
 
 const LOGO = require("@/assets/images/logo.png");
 
@@ -69,7 +70,6 @@ function PhoneInputCard({
       end={{ x: 0.5, y: 1 }}
       style={styles.card3dSurface}
     >
-      {/* Top-edge sheen — light catching the raised surface */}
       <View style={styles.card3dSheen} />
       <Pressable onPress={onPress} style={styles.card3dRow}>
         {children}
@@ -79,7 +79,6 @@ function PhoneInputCard({
 
   return (
     <Animated.View style={[styles.card3dOuter, { transform: [{ scale }] }]}>
-      {/* Glow bloom — fades in on focus */}
       <Animated.View style={[styles.card3dGlow, { opacity: glow }]} />
 
       {focused ? (
@@ -167,7 +166,7 @@ export default function LoginScreen() {
 
   const isValid = phone.replace(/\D/g, "").length === 10;
 
-  function goToOtp() {
+  async function goToOtp() {
     if (loading) return;
     const digits = phone.replace(/\D/g, "");
     if (!digits) {
@@ -182,16 +181,25 @@ export default function LoginScreen() {
     }
     setError("");
     setLoading(true);
-    setDriverPhone(digits);
-    // Small delay so the loading state is visible before navigation
-    setTimeout(() => {
+
+    const result = await sendOtp(digits);
+
+    if (!result.ok) {
       setLoading(false);
-      router.push({ pathname: "/otp", params: { phone: digits } });
-    }, 180);
+      setError(result.error);
+      return;
+    }
+
+    setDriverPhone(digits);
+    setLoading(false);
+    router.push({
+      pathname: "/otp",
+      params: { phone: digits, devOtp: result.devOtp ?? "" },
+    });
   }
 
-  function handleContinue() { goToOtp(); }
-  function handleSignUp()    { goToOtp(); }
+  function handleContinue() { void goToOtp(); }
+  function handleSignUp()    { void goToOtp(); }
 
   const inputInner = (
     <>
@@ -283,7 +291,6 @@ export default function LoginScreen() {
 
           <ContinueButton enabled={isValid && !loading} onPress={handleContinue} />
 
-          {/* Inline validation error */}
           {!!error && (
             <View style={styles.errorRow}>
               <Feather name="alert-circle" size={13} color="#EF4444" />
@@ -410,7 +417,6 @@ const styles = StyleSheet.create({
     marginTop: 20,
     gap: 0,
   },
-  // ─── 3D Phone Input Card ──────────────────────────────────────────────────
   card3dOuter: {
     position: "relative",
   },

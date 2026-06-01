@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Driver authentication
 paths:
   /healthz:
     get:
@@ -24,6 +26,72 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /auth/send-otp:
+    post:
+      operationId: authSendOtp
+      tags: [auth]
+      summary: Send OTP to driver phone
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendOtpRequest"
+      responses:
+        "200":
+          description: OTP sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendOtpResult"
+        "400":
+          description: Invalid phone number
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
+        "500":
+          description: Firebase not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
+  /auth/verify-otp:
+    post:
+      operationId: authVerifyOtp
+      tags: [auth]
+      summary: Verify OTP and get Firebase custom token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyOtpRequest"
+      responses:
+        "200":
+          description: OTP verified — returns Firebase custom token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyOtpResult"
+        "400":
+          description: Missing fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
+        "401":
+          description: Invalid or expired OTP
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
+        "500":
+          description: Firebase not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +101,49 @@ components:
           type: string
       required:
         - status
-
+    SendOtpRequest:
+      type: object
+      properties:
+        phone:
+          type: string
+          description: 10-digit Indian mobile number (no country code)
+          example: "9876543210"
+      required:
+        - phone
+    SendOtpResult:
+      type: object
+      properties:
+        sent:
+          type: boolean
+        devOtp:
+          type: string
+          description: OTP returned only in development mode
+      required:
+        - sent
+    VerifyOtpRequest:
+      type: object
+      properties:
+        phone:
+          type: string
+          example: "9876543210"
+        otp:
+          type: string
+          example: "123456"
+      required:
+        - phone
+        - otp
+    VerifyOtpResult:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Firebase custom token — use with signInWithCustomToken
+      required:
+        - token
+    ApiErrorBody:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
