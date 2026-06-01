@@ -211,7 +211,9 @@ export default function ActiveTripScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  const { activeRide, advanceStage, endActiveRide } = useDriver();
+  // Active trip flow is now handled by active-delivery.tsx.
+  // This route (/trip/[id]) is kept for trip history detail (Phase H-3).
+  const { activeRide, endActiveRide } = useDriver();
   const [rating, setRating] = useState(0);
   const [tipped, setTipped] = useState<number | null>(null);
 
@@ -221,17 +223,15 @@ export default function ActiveTripScreen() {
     }
   }, [activeRide]);
 
-  const stage: TripStage = activeRide?.stage ?? "to_pickup";
+  // Stage is managed locally in active-delivery.tsx and written to Firestore.
+  // This screen is kept as a route stub; active trip flow uses active-delivery.tsx.
+  const [stage] = useState<TripStage>("to_pickup");
   const stageInfo = STAGES.find((s) => s.id === stage)!;
   const isInTrip = stage === "in_trip" || stage === "arrived";
 
   function advance() {
-    if (stage === "completed") {
-      endActiveRide();
-      router.replace("/(tabs)");
-      return;
-    }
-    advanceStage();
+    endActiveRide();
+    router.replace("/(tabs)");
   }
 
   const ctaConfig = {

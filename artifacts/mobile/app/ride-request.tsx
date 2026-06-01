@@ -340,8 +340,33 @@ export default function RideRequestScreen() {
 
   function handleAccept() {
     Vibration.vibrate(50);
+    const ride = incomingRide;
+    if (!ride) return;
     acceptRide();
-    dismiss("/trip/active");
+    // Animate dismiss then navigate to the unified delivery stage screen
+    Animated.parallel([
+      Animated.timing(backdrop, { toValue: 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(slide,    { toValue: 0, duration: 240, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+    ]).start(() => {
+      router.replace({
+        pathname: "/active-delivery",
+        params: {
+          orderId:     ride.id,
+          customer:    ride.passengerName,
+          phone:       ride.customerPhone,
+          parcelType:  ride.parcelType,
+          parcelEmoji: ride.parcelEmoji,
+          pickup:      ride.pickup,
+          pickupCity:  ride.pickupCity,
+          drop:        ride.drop,
+          dropCity:    ride.dropCity,
+          distanceKm:  String(ride.distanceKm),
+          durationMin: String(ride.durationMin),
+          earning:     String(ride.fareEstimate),
+          weight:      ride.parcelWeight,
+        },
+      });
+    });
   }
 
   const cardTranslate = slide.interpolate({

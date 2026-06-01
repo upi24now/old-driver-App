@@ -17,6 +17,7 @@ import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
+import { updateOrderStage, type DeliveryStage } from "@/utils/firestore";
 import {
   Alert,
   Animated,
@@ -491,6 +492,7 @@ export default function ActiveDeliveryScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{
+    orderId: string;   // Firestore order document ID — required for stage writes
     customer: string; phone: string; parcelType: string; parcelEmoji: string;
     pickup: string; pickupCity: string; drop: string; dropCity: string;
     distanceKm: string; durationMin: string; earning: string; weight: string;
@@ -512,6 +514,7 @@ export default function ActiveDeliveryScreen() {
   useEffect(() => { animateIn(); }, [stage]);
 
   // Params
+  const orderId    = params.orderId     ?? null;
   const customer   = params.customer    ?? "Customer";
   const phone      = params.phone       ?? "";
   const parcel     = params.parcelType  ?? "Parcel";
@@ -526,6 +529,14 @@ export default function ActiveDeliveryScreen() {
   const earning    = params.earning ? `₹${params.earning}` : "₹—";
   const isDelivered = stage === "delivered";
 
+  // Write "to_pickup" stage on mount — customer sees driver is en route immediately
+  useEffect(() => {
+    if (orderId) {
+      updateOrderStage(orderId, "to_pickup").catch(console.error);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const stageMeta: Record<Stage, { topLabel: string; topColor: [string, string]; pill: string }> = {
     to_pickup: { topLabel: "Navigating to Pickup", topColor: [NAVY, "#1E293B"],     pill: "🛵 En Route to Pickup"  },
     at_pickup: { topLabel: "At Pickup Location",   topColor: ["#065F46", "#047857"], pill: "📦 Collect Parcel"      },
@@ -538,7 +549,16 @@ export default function ActiveDeliveryScreen() {
   function advance() {
     haptic("success");
     const next = nextStage(stage);
-    if (!next) { router.replace("/(tabs)"); return; }
+    if (!next) {
+      // Already at "delivered" — go home
+      router.replace("/(tabs)");
+      return;
+    }
+    // Write the incoming stage to Firestore before updating local state.
+    // Customer app listens to orders/{orderId}.status for real-time tracking.
+    if (orderId) {
+      updateOrderStage(orderId, next as DeliveryStage).catch(console.error);
+    }
     setStage(next);
   }
 

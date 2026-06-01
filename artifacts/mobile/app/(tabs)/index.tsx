@@ -214,7 +214,6 @@ export default function HomeScreen() {
     subscriptionActive,
     todayEarnings,
     tripsToday,
-    triggerIncomingRide,
   } = useDriver();
 
   function setOnline(v: boolean) {
@@ -431,30 +430,6 @@ export default function HomeScreen() {
 
           <LiveMap online={online} color={colors.primary} />
 
-          {online && (
-            <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
-              <TouchableOpacity
-                style={[styles.simulateBtn, { borderColor: colors.primary, flex: 1 }]}
-                onPress={() => triggerIncomingRide("modal")}
-                activeOpacity={0.7}
-              >
-                <Feather name="bell" size={12} color={colors.primary} />
-                <Text style={[styles.simulateText, { color: colors.primary }]}>
-                  Simulate request
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.simulateBtn, { borderColor: "#FF3B30", flex: 1 }]}
-                onPress={() => triggerIncomingRide("lock")}
-                activeOpacity={0.7}
-              >
-                <Feather name="lock" size={12} color="#FF3B30" />
-                <Text style={[styles.simulateText, { color: "#FF3B30" }]}>
-                  Lock screen alert
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
         </View>
 
         {/* WEEKLY GOAL */}
@@ -528,32 +503,35 @@ export default function HomeScreen() {
         </View>
       </ScrollView>
 
-      {/* ── Floating test-order button (dev only) ── */}
-      <TouchableOpacity
-        onPress={fireTestOrder}
-        activeOpacity={0.85}
-        style={[
-          styles.testOrderBtn,
-          { bottom: insets.bottom + 90 },
-        ]}
-      >
-        <LinearGradient
-          colors={["#7C3AED", "#4F46E5"]}
-          style={styles.testOrderGrad}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <Text style={styles.testOrderIcon}>🧪</Text>
-          <Text style={styles.testOrderLabel}>Test{"\n"}Order</Text>
-        </LinearGradient>
-      </TouchableOpacity>
+      {/* ── Test Order button + modal — dev builds only ── */}
+      {__DEV__ && (
+        <>
+          <TouchableOpacity
+            onPress={fireTestOrder}
+            activeOpacity={0.85}
+            style={[
+              styles.testOrderBtn,
+              { bottom: insets.bottom + 90 },
+            ]}
+          >
+            <LinearGradient
+              colors={["#7C3AED", "#4F46E5"]}
+              style={styles.testOrderGrad}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Text style={styles.testOrderIcon}>🧪</Text>
+              <Text style={styles.testOrderLabel}>Test{"\n"}Order</Text>
+            </LinearGradient>
+          </TouchableOpacity>
 
-      {/* ── Incoming order modal ── */}
-      <IncomingOrderModal
-        order={testOrder}
-        onClose={() => setTestOrder(null)}
-        onAccept={handleOrderAccept}
-      />
+          <IncomingOrderModal
+            order={testOrder}
+            onClose={() => setTestOrder(null)}
+            onAccept={handleOrderAccept}
+          />
+        </>
+      )}
     </View>
   );
 }
