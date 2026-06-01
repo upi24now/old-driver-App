@@ -231,13 +231,6 @@ export default function OtpScreen() {
     }
   }
 
-  useEffect(() => {
-    if (otp.length === OTP_LENGTH) {
-      void handleVerify(otp);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [otp]);
-
   function handleResend() {
     if (!canResend) return;
     setOtp("");
@@ -343,9 +336,12 @@ export default function OtpScreen() {
             maxLength={OTP_LENGTH}
             style={styles.hiddenInput}
             caretHidden
-            autoFocus
             selectionColor="transparent"
             underlineColorAndroid="transparent"
+            autoComplete="off"
+            textContentType="none"
+            importantForAutofill="no"
+            autoCorrect={false}
           />
 
           {!!error && (
@@ -355,7 +351,7 @@ export default function OtpScreen() {
             </View>
           )}
 
-          {!!devOtp && !error && (
+          {!!devOtp && (
             <Text style={styles.devHint}>Dev — code: {devOtp}</Text>
           )}
         </View>
