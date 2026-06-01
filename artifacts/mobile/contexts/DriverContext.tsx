@@ -171,12 +171,12 @@ function orderDocToRide(order: OrderDoc): IncomingRide {
     paymentMode:      order.paymentMode,
     surge:            order.surge             ?? false,
     surgeMultiplier:  order.surgeMultiplier   ?? 1,
-    passengerName:    order.customerName,
-    customerPhone:    order.customerPhone,
+    passengerName:    order.customerName    ?? "Customer",
+    customerPhone:    order.customerPhone   ?? "",
     passengerRating:  order.customerRating,
-    parcelType:       order.parcelType,
-    parcelEmoji:      order.parcelEmoji,
-    parcelWeight:     order.parcelWeight,
+    parcelType:       order.parcelType      ?? "Parcel",
+    parcelEmoji:      order.parcelEmoji     ?? "📦",
+    parcelWeight:     order.parcelWeight    ?? "Package",
   };
 }
 

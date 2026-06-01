@@ -202,7 +202,7 @@ export default function RideRequestScreen() {
     passengerRating: 4.9,
     paymentMode: "UPI" as const,
   };
-  const riderInitials = ride.passengerName
+  const riderInitials = (ride.passengerName || "Customer")
     .split(" ")
     .map((s) => s[0])
     .join("")
