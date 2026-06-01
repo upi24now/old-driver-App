@@ -26,8 +26,10 @@ export interface VerifyOtpRequest {
 }
 
 export interface VerifyOtpResult {
-  /** Firebase custom token — use with signInWithCustomToken */
-  token: string;
+  /** Derived Firebase email for this phone number */
+  email: string;
+  /** HMAC-derived password — use with signInWithEmailAndPassword */
+  password: string;
 }
 
 export interface ApiErrorBody {

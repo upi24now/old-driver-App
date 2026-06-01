@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import { Platform } from "react-native";
-import { onAuthStateChanged, signInWithCustomToken, signOut as firebaseSignOut } from "firebase/auth";
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut as firebaseSignOut } from "firebase/auth";
 
 import { firebaseAuth } from "@/utils/firebase";
 import {
@@ -286,7 +286,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     if (!apiResult.ok) return { ok: false, profileComplete: false, error: apiResult.error };
 
     try {
-      const credential = await signInWithCustomToken(firebaseAuth, apiResult.token);
+      const credential = await signInWithEmailAndPassword(firebaseAuth, apiResult.email, apiResult.password);
       const uid        = credential.user.uid;
       setDriverUid(uid);
       setPhoneState(phone);

@@ -198,7 +198,7 @@ export const getAuthVerifyOtpUrl = () => {
 }
 
 /**
- * @summary Verify OTP and get Firebase custom token
+ * @summary Verify OTP and get Firebase credentials
  */
 export const authVerifyOtp = async (verifyOtpRequest: VerifyOtpRequest, options?: RequestInit): Promise<VerifyOtpResult> => {
 
@@ -247,7 +247,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type AuthVerifyOtpMutationError = ErrorType<ApiErrorBody>
 
     /**
- * @summary Verify OTP and get Firebase custom token
+ * @summary Verify OTP and get Firebase credentials
  */
 export const useAuthVerifyOtp = <TError = ErrorType<ApiErrorBody>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof authVerifyOtp>>, TError,{data: BodyType<VerifyOtpRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}

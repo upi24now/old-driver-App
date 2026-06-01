@@ -31,7 +31,7 @@ export const AuthSendOtpResponse = zod.object({
 
 
 /**
- * @summary Verify OTP and get Firebase custom token
+ * @summary Verify OTP and get Firebase credentials
  */
 export const AuthVerifyOtpBody = zod.object({
   "phone": zod.string(),
@@ -39,7 +39,8 @@ export const AuthVerifyOtpBody = zod.object({
 })
 
 export const AuthVerifyOtpResponse = zod.object({
-  "token": zod.string().describe('Firebase custom token — use with signInWithCustomToken')
+  "email": zod.string().describe('Derived Firebase email for this phone number'),
+  "password": zod.string().describe('HMAC-derived password — use with signInWithEmailAndPassword')
 })
 
 

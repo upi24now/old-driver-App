@@ -6,7 +6,7 @@ export type SendOtpResult =
   | { ok: false; error: string };
 
 export type VerifyOtpResult =
-  | { ok: true;  token: string }
+  | { ok: true;  email: string; password: string }
   | { ok: false; error: string };
 
 export async function sendOtp(phone: string): Promise<SendOtpResult> {
@@ -31,10 +31,10 @@ export async function verifyOtpApi(phone: string, otp: string): Promise<VerifyOt
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ phone, otp }),
     });
-    const json = (await res.json()) as { token?: string; error?: string };
+    const json = (await res.json()) as { email?: string; password?: string; error?: string };
     if (!res.ok) return { ok: false, error: json.error ?? "Verification failed." };
-    if (!json.token) return { ok: false, error: "No token received from server." };
-    return { ok: true, token: json.token };
+    if (!json.email || !json.password) return { ok: false, error: "Incomplete credentials from server." };
+    return { ok: true, email: json.email, password: json.password };
   } catch {
     return { ok: false, error: "Network error. Check your connection." };
   }
