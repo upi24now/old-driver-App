@@ -38,3 +38,8 @@ externalPort = 3000
 [[ports]]
 localPort = 18116
 externalPort = 3002
+
+[userenv]
+
+[userenv.shared]
+EXPO_PUBLIC_DOMAIN = "8d87a5af-e82c-4a3b-9696-3ede901f26a1-00-1uvs4s41ult22.sisko.replit.dev"
