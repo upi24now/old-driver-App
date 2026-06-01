@@ -22,6 +22,7 @@ import {
   updateDriverProfile,
   updateDriverVehicle,
   updateDriverOnlineStatus,
+  updateDriverSubscription,
   listenToDispatchedOrder,
   acceptOrder,
   rejectOrder,
@@ -428,7 +429,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       },
       ...t,
     ]);
-    // TODO Phase M-1: persist subscriptionPlan + subscriptionExpiresAt to Firestore
+    if (driverUid) {
+      updateDriverSubscription(driverUid, id, expiresAt).catch(console.error);
+    }
     return { ok: true };
   };
 

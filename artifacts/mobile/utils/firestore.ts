@@ -63,6 +63,22 @@ export async function updateDriverVehicle(uid: string, v: Vehicle): Promise<void
 }
 
 /**
+ * Persist the driver's active subscription so it survives app restarts.
+ * Called by activatePlan() in DriverContext.
+ */
+export async function updateDriverSubscription(
+  uid:                  string,
+  plan:                 string,
+  subscriptionExpiresAt: number,
+): Promise<void> {
+  await updateDoc(doc(db, "drivers", uid), {
+    subscriptionPlan:      plan,
+    subscriptionExpiresAt,
+    updatedAt:             serverTimestamp(),
+  });
+}
+
+/**
  * Persist the driver's online/offline status so the customer app and
  * dispatcher can filter available drivers.
  */
