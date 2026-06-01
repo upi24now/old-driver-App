@@ -468,7 +468,7 @@ export default function RideRequestScreen() {
               <View style={styles.riderMeta}>
                 <Feather name="star" size={11} color="#FFB300" />
                 <Text style={[styles.riderMetaText, { color: colors.mutedForeground }]}>
-                  {ride.passengerRating.toFixed(2)}
+                  {Number(ride.passengerRating ?? 5).toFixed(2)}
                 </Text>
                 <View style={[styles.metaDot, { backgroundColor: colors.border }]} />
                 <Text style={[styles.riderMetaText, { color: colors.mutedForeground }]}>
