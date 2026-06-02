@@ -318,6 +318,7 @@ export default function HomeScreen() {
 
         {/* ACTIVE DELIVERY BANNER — shown whenever driver has an in-progress order */}
         {activeRide && currentOrderId && (
+          <>
           <TouchableOpacity
             activeOpacity={0.88}
             onPress={() =>
@@ -364,6 +365,18 @@ export default function HomeScreen() {
               </View>
             </LinearGradient>
           </TouchableOpacity>
+
+          {/* Secondary link — opens the Delivery Command Center */}
+          <TouchableOpacity
+            style={styles.commandCenterLink}
+            activeOpacity={0.7}
+            onPress={() => router.push("/delivery-command-center")}
+          >
+            <Feather name="layers" size={12} color="#64748B" />
+            <Text style={styles.commandCenterLinkText}>Open Command Center</Text>
+            <Feather name="chevron-right" size={11} color="#64748B" />
+          </TouchableOpacity>
+          </>
         )}
 
         {/* EARNINGS HERO */}
@@ -997,4 +1010,19 @@ const styles = StyleSheet.create({
   activeBannerDrop:   { fontSize: 14, fontWeight: "700", color: "#fff" },
   activeBannerRight:  { flexDirection: "row", alignItems: "center", gap: 6 },
   activeBannerEarning:{ fontSize: 20, fontWeight: "800", color: "#fff" },
+
+  // Command Center secondary link (below active delivery banner)
+  commandCenterLink: {
+    flexDirection:   "row",
+    alignItems:      "center",
+    justifyContent:  "center",
+    gap:             5,
+    paddingVertical: 8,
+    marginTop:       2,
+  },
+  commandCenterLinkText: {
+    fontSize:   12,
+    fontWeight: "600",
+    color:      "#64748B",
+  },
 });
