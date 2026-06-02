@@ -283,13 +283,13 @@ export default function DeliveryCommandCenter() {
                     <Text style={styles.ghostOccupiedLabel} numberOfLines={1}>
                       {secondaryOrders[1]!.passengerName.split(" ")[0]} · ₹{secondaryOrders[1]!.fareEstimate}
                     </Text>
-                    <Feather name="chevron-up" size={10} color="#3B2060" />
+                    <Feather name="chevron-up" size={10} color="rgba(255,255,255,0.35)" />
                   </View>
                 </TouchableOpacity>
               ) : (
                 <View pointerEvents="none" style={[styles.ghostCard, styles.ghost3]}>
                   <View style={styles.ghostCardInner}>
-                    <Feather name="plus-circle" size={13} color="#1E293B" />
+                    <Feather name="plus-circle" size={13} color="rgba(255,255,255,0.25)" />
                     <Text style={styles.ghostCardLabel}>Slot 3 · Available</Text>
                   </View>
                 </View>
@@ -308,14 +308,14 @@ export default function DeliveryCommandCenter() {
                     <Text style={styles.ghostOccupiedLabel} numberOfLines={1}>
                       {secondaryOrders[0]!.passengerName.split(" ")[0]} · ₹{secondaryOrders[0]!.fareEstimate}
                     </Text>
-                    <Feather name="chevron-up" size={10} color="#3B2060" />
+                    <Feather name="chevron-up" size={10} color="rgba(255,255,255,0.35)" />
                   </View>
                 </TouchableOpacity>
               ) : (
                 <View pointerEvents="none" style={[styles.ghostCard, styles.ghost2]}>
                   <View style={styles.ghostCardInner}>
-                    <Feather name="plus-circle" size={13} color="#263352" />
-                    <Text style={[styles.ghostCardLabel, { color: "#263352" }]}>
+                    <Feather name="plus-circle" size={13} color="rgba(255,255,255,0.28)" />
+                    <Text style={styles.ghostCardLabel}>
                       Slot 2 · Available
                     </Text>
                   </View>
@@ -335,14 +335,18 @@ export default function DeliveryCommandCenter() {
 
                 {/* ROW 1 — Customer + 3D Earning card */}
                 <View style={styles.customerBlock}>
-                  <LinearGradient
-                    colors={["#FFF0F5", "#FFE4EE"]}
-                    style={styles.avatarRing}
-                  >
-                    <Text style={styles.avatarInitial}>
-                      {(focused.passengerName || "?")[0].toUpperCase()}
-                    </Text>
-                  </LinearGradient>
+                  <View style={styles.avatarWrap}>
+                    <LinearGradient
+                      colors={["#FF4D8D", "#FF7A3D"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.avatarRing}
+                    >
+                      <Text style={styles.avatarInitial}>
+                        {(focused.passengerName || "?")[0].toUpperCase()}
+                      </Text>
+                    </LinearGradient>
+                  </View>
                   <View style={styles.customerText}>
                     <Text style={styles.customerName}>{focused.passengerName}</Text>
                     <View style={styles.customerPhoneRow}>
@@ -353,7 +357,7 @@ export default function DeliveryCommandCenter() {
                   {/* 3D Earning price tile */}
                   <View style={styles.priceCard}>
                     <LinearGradient
-                      colors={["#FF6B35", "#FF4D8D"]}
+                      colors={["#22C55E", "#16A34A"]}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 1 }}
                       style={styles.priceCardGrad}
@@ -814,9 +818,9 @@ const styles = StyleSheet.create({
     paddingTop:    12,
   },
   ghostCardLabel: {
-    fontSize:   11,
-    fontWeight: "600",
-    color:      "#111E36",
+    fontSize:      11,
+    fontWeight:    "600",
+    color:         "rgba(255,255,255,0.22)",
     letterSpacing: 0.3,
   },
 
@@ -847,21 +851,27 @@ const styles = StyleSheet.create({
     paddingTop:    12,
     paddingBottom: 10,
   },
-  avatarRing: {
-    width:         38,
-    height:        38,
-    borderRadius:  19,
-    alignItems:    "center",
-    justifyContent:"center",
+  avatarWrap: {
     shadowColor:   "#FF4D8D",
-    shadowOpacity: 0.15,
-    shadowRadius:  8,
-    shadowOffset:  { width: 0, height: 2 },
+    shadowOpacity: 0.38,
+    shadowRadius:  10,
+    shadowOffset:  { width: 0, height: 4 },
+    elevation:     8,
+    borderRadius:  22,
+  },
+  avatarRing: {
+    width:          44,
+    height:         44,
+    borderRadius:   22,
+    alignItems:     "center",
+    justifyContent: "center",
+    overflow:       "hidden",
   },
   avatarInitial: {
-    fontSize:   15,
+    fontSize:   18,
     fontWeight: "800",
-    color:      "#FF4D8D",
+    color:      "#fff",
+    letterSpacing: -0.3,
   },
   customerText: { flex: 1 },
   customerName: {
@@ -1003,10 +1013,10 @@ const styles = StyleSheet.create({
     color:      "#0F172A",
   },
 
-  // 3D Earning price tile (replaces plain fareCallout in focused card)
+  // 3D Earning price tile — green reward chip
   priceCard: {
-    shadowColor:   "#FF4D8D",
-    shadowOpacity: 0.45,
+    shadowColor:   "#16A34A",
+    shadowOpacity: 0.5,
     shadowRadius:  14,
     shadowOffset:  { width: 0, height: 6 },
     elevation:     12,
@@ -1122,11 +1132,11 @@ const styles = StyleSheet.create({
   // Secondary order cards (QUEUED ORDERS section below stack)
   secondarySection: { gap: 10 },
   secondaryCard: {
-    flexDirection:  "row",
-    backgroundColor: "#0A0F1C",
+    flexDirection:   "row",
+    backgroundColor: "#0D1628",
     borderRadius:    16,
     borderWidth:     1,
-    borderColor:     "#111E35",
+    borderColor:     "rgba(255,255,255,0.08)",
     overflow:        "hidden",
     shadowColor:     "#000",
     shadowOpacity:   0.3,
