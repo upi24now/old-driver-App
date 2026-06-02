@@ -1,6 +1,8 @@
 import { getApps, initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, initializeAuth } from "firebase/auth";
+import type { Persistence } from "firebase/auth";
 import { getFirestore, initializeFirestore } from "firebase/firestore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const firebaseConfig = {
   apiKey:            process.env["EXPO_PUBLIC_FIREBASE_API_KEY"]             ?? "",
@@ -15,9 +17,26 @@ const firebaseConfig = {
 const existingApps = getApps();
 const app = existingApps.length > 0 ? existingApps[0]! : initializeApp(firebaseConfig);
 
-// In React Native, Metro resolves firebase/auth to the RN-specific build which
-// uses @react-native-async-storage/async-storage automatically for persistence.
-export const firebaseAuth = getAuth(app);
+// getReactNativePersistence is exported from the react-native build of firebase/auth
+// (Metro uses the react-native condition at runtime), but tsc resolves to the browser
+// types which don't include it. require() lets us reach the runtime export without
+// a type error. The cast is safe: at runtime Metro always provides the RN build.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { getReactNativePersistence } = require("firebase/auth") as {
+  getReactNativePersistence: (storage: typeof AsyncStorage) => Persistence;
+};
+
+// initializeAuth throws "auth/already-initialized" on Fast Refresh re-evaluation.
+// Fall back to getAuth(app) which returns the already-initialized instance.
+let firebaseAuth: ReturnType<typeof getAuth>;
+try {
+  firebaseAuth = initializeAuth(app, {
+    persistence: getReactNativePersistence(AsyncStorage),
+  });
+} catch {
+  firebaseAuth = getAuth(app);
+}
+export { firebaseAuth };
 
 // Firestore needs long-polling in Expo Go (no WebSocket support in Expo Go < SDK 51)
 let db: ReturnType<typeof getFirestore>;
