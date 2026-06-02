@@ -333,7 +333,7 @@ export default function DeliveryCommandCenter() {
                   style={styles.cardAccentStripe}
                 />
 
-                {/* Customer block */}
+                {/* ROW 1 — Customer + 3D Earning card */}
                 <View style={styles.customerBlock}>
                   <LinearGradient
                     colors={["#FFF0F5", "#FFE4EE"]}
@@ -350,16 +350,35 @@ export default function DeliveryCommandCenter() {
                       <Text style={styles.customerPhone}>{focused.customerPhone}</Text>
                     </View>
                   </View>
-                  <View style={styles.fareCallout}>
-                    <Text style={styles.fareCalloutCurrency}>₹</Text>
-                    <Text style={styles.fareCalloutAmount}>{focused.fareEstimate}</Text>
+                  {/* 3D Earning price tile */}
+                  <View style={styles.priceCard}>
+                    <LinearGradient
+                      colors={["#FF6B35", "#FF4D8D"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.priceCardGrad}
+                    >
+                      <View style={styles.priceCardGlass} />
+                      <Text style={styles.priceCardLabel}>EARNING</Text>
+                      <View style={styles.priceCardAmtRow}>
+                        <Text style={styles.priceCardCurrency}>₹</Text>
+                        <Text style={styles.priceCardAmt}>{focused.fareEstimate}</Text>
+                      </View>
+                    </LinearGradient>
                   </View>
                 </View>
 
-                {/* Divider */}
-                <View style={styles.cardDivider} />
+                {/* ROW 2 — Status pill */}
+                <View style={styles.statusRow}>
+                  <View style={[styles.cardStatusPill, { backgroundColor: sm.bg }]}>
+                    <Feather name={sm.icon} size={10} color={sm.color} />
+                    <Text style={[styles.cardStatusText, { color: sm.color }]}>
+                      {sm.label}
+                    </Text>
+                  </View>
+                </View>
 
-                {/* Route section */}
+                {/* ROW 3 — Route block */}
                 <View style={styles.routeSection}>
                   {/* Pickup */}
                   <View style={styles.routeRow}>
@@ -388,34 +407,7 @@ export default function DeliveryCommandCenter() {
                   </View>
                 </View>
 
-                {/* Divider */}
-                <View style={styles.cardDivider} />
-
-                {/* Details grid 2 × 2 */}
-                <View style={styles.detailsGrid}>
-                  <DetailCell
-                    icon="package"
-                    label="Parcel"
-                    value={`${focused.parcelEmoji} ${focused.parcelType}`}
-                  />
-                  <DetailCell
-                    icon="disc"
-                    label="Weight"
-                    value={focused.parcelWeight}
-                  />
-                  <DetailCell
-                    icon="dollar-sign"
-                    label="Fare"
-                    value={`₹${focused.fareEstimate}`}
-                  />
-                  <DetailCell
-                    icon="credit-card"
-                    label="Payment"
-                    value={focused.paymentMode}
-                  />
-                </View>
-
-                {/* Continue Delivery CTA */}
+                {/* ROW 4 — Continue Delivery CTA */}
                 <TouchableOpacity
                   onPress={handleContinue}
                   activeOpacity={0.84}
@@ -458,23 +450,16 @@ export default function DeliveryCommandCenter() {
                             {(order.passengerName || "?")[0].toUpperCase()}
                           </Text>
                         </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.secondaryName} numberOfLines={1}>
-                            {order.passengerName}
-                          </Text>
-                          <Text style={styles.secondaryDrop} numberOfLines={1}>
-                            → {order.drop}
+                        <Text style={[styles.secondaryName, { flex: 1 }]} numberOfLines={1}>
+                          {order.passengerName}
+                        </Text>
+                        <View style={[styles.secondaryStatusPill, { backgroundColor: sm2.bg }]}>
+                          <Feather name={sm2.icon} size={9} color={sm2.color} />
+                          <Text style={[styles.secondaryStatusText, { color: sm2.color }]}>
+                            {sm2.label}
                           </Text>
                         </View>
-                        <View style={styles.secondaryRight}>
-                          <Text style={styles.secondaryFare}>₹{order.fareEstimate}</Text>
-                          <View style={[styles.secondaryStatusPill, { backgroundColor: sm2.bg }]}>
-                            <Feather name={sm2.icon} size={9} color={sm2.color} />
-                            <Text style={[styles.secondaryStatusText, { color: sm2.color }]}>
-                              {sm2.label}
-                            </Text>
-                          </View>
-                        </View>
+                        <Text style={styles.secondaryFare}>₹{order.fareEstimate}</Text>
                         <Feather name="chevron-right" size={14} color="#253050" />
                       </View>
                     </TouchableOpacity>
@@ -1016,6 +1001,76 @@ const styles = StyleSheet.create({
     fontSize:   12,
     fontWeight: "800",
     color:      "#0F172A",
+  },
+
+  // 3D Earning price tile (replaces plain fareCallout in focused card)
+  priceCard: {
+    shadowColor:   "#FF4D8D",
+    shadowOpacity: 0.45,
+    shadowRadius:  14,
+    shadowOffset:  { width: 0, height: 6 },
+    elevation:     12,
+    borderRadius:  12,
+  },
+  priceCardGrad: {
+    borderRadius:      12,
+    overflow:          "hidden",
+    paddingHorizontal: 13,
+    paddingTop:        9,
+    paddingBottom:     11,
+    minWidth:          78,
+    alignItems:        "flex-start",
+  },
+  priceCardGlass: {
+    position:        "absolute",
+    top:             0,
+    left:            0,
+    right:           0,
+    height:          22,
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+  priceCardLabel: {
+    fontSize:      8,
+    fontWeight:    "800",
+    color:         "rgba(255,255,255,0.72)",
+    letterSpacing: 1.4,
+    marginBottom:  4,
+  },
+  priceCardAmtRow: {
+    flexDirection: "row",
+    alignItems:    "baseline",
+    gap:           1,
+  },
+  priceCardCurrency: {
+    fontSize:   12,
+    fontWeight: "700",
+    color:      "rgba(255,255,255,0.85)",
+  },
+  priceCardAmt: {
+    fontSize:      24,
+    fontWeight:    "900",
+    color:         "#fff",
+    letterSpacing: -1,
+  },
+
+  // In-card status pill row (ROW 2)
+  statusRow: {
+    flexDirection:     "row",
+    paddingHorizontal: 14,
+    paddingBottom:     8,
+  },
+  cardStatusPill: {
+    flexDirection:     "row",
+    alignItems:        "center",
+    gap:               5,
+    paddingHorizontal: 10,
+    paddingVertical:   4,
+    borderRadius:      20,
+  },
+  cardStatusText: {
+    fontSize:      11,
+    fontWeight:    "700",
+    letterSpacing: 0.2,
   },
 
   // CTA
