@@ -216,6 +216,7 @@ export default function HomeScreen() {
     tripsToday,
     activeRide,
     currentOrderId,
+    activeOrderCount,
   } = useDriver();
 
   function setOnline(v: boolean) {
@@ -316,98 +317,72 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* ACTIVE DELIVERY BANNER — shown whenever driver has an in-progress order */}
-        {activeRide && currentOrderId && (
-          <>
-          <TouchableOpacity
-            activeOpacity={0.88}
-            onPress={() =>
-              router.push({
-                pathname: "/active-delivery",
-                params: {
-                  orderId:         currentOrderId,
-                  customer:        activeRide.passengerName,
-                  phone:           activeRide.customerPhone,
-                  parcelType:      activeRide.parcelType,
-                  parcelEmoji:     activeRide.parcelEmoji,
-                  pickup:          activeRide.pickup,
-                  pickupCity:      activeRide.pickupCity,
-                  drop:            activeRide.drop,
-                  dropCity:        activeRide.dropCity,
-                  distanceKm:      String(activeRide.distanceKm),
-                  durationMin:     String(activeRide.durationMin),
-                  earning:         String(activeRide.fareEstimate),
-                  weight:          activeRide.parcelWeight,
-                  paymentMode:     activeRide.paymentMode,
-                  surge:           String(activeRide.surge        ?? false),
-                  surgeMultiplier: String(activeRide.surgeMultiplier ?? 1),
-                },
-              })
-            }
-          >
+        {/* ACTION CARDS — always visible; orange = availability, blue = command center */}
+        <View style={styles.actionCardsRow}>
+
+          {/* Card 1 — Available Deliveries (orange) */}
+          <TouchableOpacity style={styles.actionCardWrap} activeOpacity={0.82}>
             <LinearGradient
-              colors={["#FF4D8D", "#FF7A3D"]}
+              colors={["#FF8C42", "#E04E00"]}
               start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.activeBanner}
+              end={{ x: 1, y: 1 }}
+              style={styles.actionCard}
             >
-              <View style={styles.activeBannerLeft}>
-                <Text style={styles.activeBannerPill}>🚀 Active Delivery</Text>
-                <Text style={styles.activeBannerDrop} numberOfLines={1}>
-                  → {activeRide.drop}
-                </Text>
+              {/* Glass shimmer highlight */}
+              <View style={styles.actionCardGlass} pointerEvents="none" />
+
+              {/* Static notification dot — signals availability */}
+              <View style={styles.actionCardBadgeDot} />
+
+              {/* Icon pill */}
+              <View style={styles.actionCardIconWrap}>
+                <Feather name="bell" size={16} color="#fff" />
               </View>
-              <View style={styles.activeBannerRight}>
-                <Text style={styles.activeBannerEarning}>
-                  ₹{activeRide.fareEstimate}
-                </Text>
-                <Feather name="chevron-right" size={20} color="#fff" />
+
+              {/* Text */}
+              <View style={styles.actionCardContent}>
+                <Text style={styles.actionCardTitle}>Available Deliveries</Text>
+                <Text style={styles.actionCardSub}>New orders nearby</Text>
               </View>
             </LinearGradient>
           </TouchableOpacity>
 
-          {/* Action cards — Available Deliveries + My Deliveries */}
-          <View style={styles.actionCardsRow}>
-
-            {/* Card 1 — Available Deliveries (orange) */}
-            <TouchableOpacity style={styles.actionCardWrap} activeOpacity={0.82}>
-              <LinearGradient
-                colors={["#FF7A3D", "#E05200"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.actionCard}
-              >
-                <View style={styles.actionCardIcon}>
-                  <Feather name="bell" size={20} color="#fff" />
-                </View>
-                <Text style={styles.actionCardTitle}>Available{"\n"}Deliveries</Text>
-                <Text style={styles.actionCardSub}>New orders incoming</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-
-            {/* Card 2 — My Deliveries (blue) → Command Center */}
-            <TouchableOpacity
-              style={styles.actionCardWrap}
-              activeOpacity={0.82}
-              onPress={() => router.push("/delivery-command-center")}
+          {/* Card 2 — My Deliveries (blue) → Command Center */}
+          <TouchableOpacity
+            style={styles.actionCardWrap}
+            activeOpacity={0.82}
+            onPress={() => router.push("/delivery-command-center")}
+          >
+            <LinearGradient
+              colors={["#4A90E2", "#1A56DB"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.actionCard}
             >
-              <LinearGradient
-                colors={["#3B82F6", "#1A56DB"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.actionCard}
-              >
-                <View style={styles.actionCardIcon}>
-                  <Feather name="layers" size={20} color="#fff" />
-                </View>
-                <Text style={styles.actionCardTitle}>My{"\n"}Deliveries</Text>
-                <Text style={styles.actionCardSub}>Active & multiple orders</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+              {/* Glass shimmer highlight */}
+              <View style={styles.actionCardGlass} pointerEvents="none" />
 
-          </View>
-          </>
-        )}
+              {/* Count badge — only when there are active orders */}
+              {activeOrderCount > 0 && (
+                <View style={styles.actionCardBadgeCount}>
+                  <Text style={styles.actionCardBadgeText}>{activeOrderCount}</Text>
+                </View>
+              )}
+
+              {/* Icon pill */}
+              <View style={styles.actionCardIconWrap}>
+                <Feather name="layers" size={16} color="#fff" />
+              </View>
+
+              {/* Text */}
+              <View style={styles.actionCardContent}>
+                <Text style={styles.actionCardTitle}>My Deliveries</Text>
+                <Text style={styles.actionCardSub}>Active & multiple orders</Text>
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+
+        </View>
 
         {/* EARNINGS HERO */}
         <LinearGradient
@@ -1021,62 +996,98 @@ const styles = StyleSheet.create({
   testOrderIcon:  { fontSize: 20 },
   testOrderLabel: { fontSize: 9, fontWeight: "800", color: "#fff", textAlign: "center", lineHeight: 11 },
 
-  // Active delivery banner
-  activeBanner: {
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    shadowColor: "#FF4D8D",
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
-  activeBannerLeft:   { flex: 1, gap: 3 },
-  activeBannerPill:   { fontSize: 11, fontWeight: "800", color: "#fff", letterSpacing: 0.3 },
-  activeBannerDrop:   { fontSize: 14, fontWeight: "700", color: "#fff" },
-  activeBannerRight:  { flexDirection: "row", alignItems: "center", gap: 6 },
-  activeBannerEarning:{ fontSize: 20, fontWeight: "800", color: "#fff" },
-
-  // Action cards row (below active delivery banner)
+  // Action cards row — always visible, 50/50, compact 3D glass style
   actionCardsRow: {
     flexDirection: "row",
     gap:           13,
-    marginTop:     10,
   },
   actionCardWrap: {
-    flex:         1,
-    borderRadius: 16,
-    overflow:     "hidden",
+    flex:          1,
+    borderRadius:  18,
+    overflow:      "hidden",
+    // 3D floating shadow
+    shadowColor:   "#000",
+    shadowOpacity: 0.28,
+    shadowRadius:  12,
+    shadowOffset:  { width: 0, height: 6 },
+    elevation:     8,
   },
   actionCard: {
-    paddingVertical:   18,
-    paddingHorizontal: 16,
-    gap:               6,
-    minHeight:         110,
-    justifyContent:    "space-between",
+    flexDirection:     "row",
+    alignItems:        "center",
+    paddingVertical:   13,
+    paddingHorizontal: 13,
+    gap:               11,
+    minHeight:         62,
   },
-  actionCardIcon: {
-    width:           36,
-    height:          36,
-    borderRadius:    10,
-    backgroundColor: "rgba(255,255,255,0.18)",
+  // Frosted glass top-highlight (absolute overlay)
+  actionCardGlass: {
+    position:        "absolute",
+    top:             0,
+    left:            0,
+    right:           0,
+    height:          "50%",
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderTopLeftRadius:  18,
+    borderTopRightRadius: 18,
+  },
+  // Icon pill
+  actionCardIconWrap: {
+    width:           32,
+    height:          32,
+    borderRadius:    9,
+    backgroundColor: "rgba(255,255,255,0.20)",
     alignItems:      "center",
     justifyContent:  "center",
+    flexShrink:      0,
+  },
+  // Text column
+  actionCardContent: {
+    flex: 1,
+    gap:  2,
   },
   actionCardTitle: {
-    fontSize:      16,
+    fontSize:      13,
     fontWeight:    "800",
     color:         "#fff",
-    lineHeight:    20,
-    letterSpacing: -0.2,
+    letterSpacing: -0.1,
   },
   actionCardSub: {
-    fontSize:   11,
+    fontSize:   10,
     fontWeight: "500",
     color:      "rgba(255,255,255,0.78)",
+  },
+  // Orange card: static red availability dot (top-right corner)
+  actionCardBadgeDot: {
+    position:        "absolute",
+    top:             9,
+    right:           9,
+    width:           8,
+    height:          8,
+    borderRadius:    4,
+    backgroundColor: "#FF3B30",
+    borderWidth:     1.5,
+    borderColor:     "rgba(255,255,255,0.6)",
+  },
+  // Blue card: count badge (top-right corner, only when activeOrderCount > 0)
+  actionCardBadgeCount: {
+    position:        "absolute",
+    top:             7,
+    right:           9,
+    minWidth:        18,
+    height:          18,
+    borderRadius:    9,
+    backgroundColor: "#FF3B30",
+    alignItems:      "center",
+    justifyContent:  "center",
+    paddingHorizontal: 4,
+    borderWidth:     1.5,
+    borderColor:     "rgba(255,255,255,0.55)",
+  },
+  actionCardBadgeText: {
+    fontSize:   10,
+    fontWeight: "800",
+    color:      "#fff",
+    lineHeight: 12,
   },
 });
