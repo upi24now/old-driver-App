@@ -55,6 +55,10 @@ function RootLayoutNav() {
         options={{
           presentation: "fullScreenModal",
           animation: "slide_from_bottom",
+          // Disable swipe-down / swipe-back gesture dismissal so the driver
+          // cannot exit the request screen without explicitly accepting,
+          // rejecting, or waiting for the 15-second timer to expire.
+          gestureEnabled: false,
         }}
       />
       <Stack.Screen
