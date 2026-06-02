@@ -294,6 +294,12 @@ export default function RideRequestScreen() {
     if (seconds === 0) {
       Vibration.vibrate(80);
       setTimeout(() => {
+        // If the driver pressed Accept just before the timer fired, the accept
+        // transaction is already in flight (didAcceptRef.current === true).
+        // Do not call rejectRide() — the safe rejectOrder transaction would
+        // still no-op in Firestore, but skipping it here avoids any UI race.
+        // Also skip dismiss() so the accept path can handle its own navigation.
+        if (didAcceptRef.current) return;
         rejectRide();
         dismiss();
       }, 600);
@@ -318,6 +324,8 @@ export default function RideRequestScreen() {
   }, [incomingRide]);
 
   function handleReject() {
+    // Ignore reject tap if accept transaction is already in flight.
+    if (didAcceptRef.current) return;
     Vibration.vibrate(40);
     Animated.parallel([
       Animated.sequence([

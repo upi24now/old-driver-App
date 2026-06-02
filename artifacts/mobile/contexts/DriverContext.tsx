@@ -587,9 +587,14 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     const uid  = driverUid;
     if (!ride || !uid) return;
 
-    // Write to Firestore — dispatcher can reassign to another driver
+    // Safe conditional transaction — will not write if the order has already
+    // been accepted, cancelled, or reassigned.  Fire-and-forget is fine here:
+    // the UI clears immediately regardless of the Firestore result, and the
+    // transaction's no-op on failure is the correct behaviour (do not overwrite
+    // an already-accepted order with "rejected").
     rejectOrder(ride.id, uid).catch(console.error);
 
+    // Always clear local state so the request screen dismisses cleanly.
     setIncomingRide(null);
     lastSeenOrderId.current = null; // allow next dispatch to arrive
     cancelIncomingOrderNotification().catch(console.error);

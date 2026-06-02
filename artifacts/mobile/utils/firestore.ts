@@ -340,15 +340,61 @@ export async function acceptOrder(
 }
 
 /**
- * Driver rejects a dispatched order.
- * Appends driverUid to rejectedBy[] so the dispatcher can reassign to another driver.
+ * Safely reject a dispatched order.
+ *
+ * Uses a Firestore runTransaction so a stale timeout or reject tap can never
+ * overwrite an order that was already accepted (by this driver or another),
+ * cancelled, or reassigned by the dispatcher.
+ *
+ * Pre-conditions checked inside the transaction:
+ *   • doc exists
+ *   • status === "dispatched"  (not accepted, to_pickup, at_pickup, …)
+ *   • driverUid === this driver (not reassigned to someone else)
+ *
+ * On success writes: status="rejected", rejectedBy arrayUnion, rejectedAt, updatedAt.
+ * Returns AcceptOrderResult so callers use the same typed result shape.
  */
-export async function rejectOrder(orderId: string, driverUid: string): Promise<void> {
-  await updateDoc(doc(db, "orders", orderId), {
-    status:     "rejected",
-    rejectedAt: serverTimestamp(),
-    rejectedBy: arrayUnion(driverUid),
-  });
+export async function rejectOrder(orderId: string, driverUid: string): Promise<AcceptOrderResult> {
+  try {
+    await runTransaction(db, async (tx) => {
+      const ref  = doc(db, "orders", orderId);
+      const snap = await tx.get(ref);
+
+      if (!snap.exists()) {
+        throw Object.assign(new Error("Order document missing"), { code: "missing" });
+      }
+
+      const data = snap.data() as OrderDoc;
+
+      if (data.status !== "dispatched") {
+        // Already accepted, in-progress, or cancelled — do not overwrite.
+        const sameDriver = data.driverUid === driverUid;
+        throw Object.assign(new Error("Order no longer dispatched"), {
+          code: sameDriver ? "already_claimed" : "not_dispatched",
+        });
+      }
+
+      if (data.driverUid !== driverUid) {
+        throw Object.assign(new Error("Order reassigned to another driver"), { code: "reassigned" });
+      }
+
+      tx.update(ref, {
+        status:     "rejected",
+        rejectedAt: serverTimestamp(),
+        updatedAt:  serverTimestamp(),
+        rejectedBy: arrayUnion(driverUid),
+      });
+    });
+
+    return { ok: true };
+  } catch (e: unknown) {
+    const code = (e as { code?: string }).code;
+    if (code === "already_claimed") return { ok: false, reason: "already_claimed" };
+    if (code === "reassigned")      return { ok: false, reason: "reassigned" };
+    if (code === "missing")         return { ok: false, reason: "missing" };
+    if (code === "not_dispatched")  return { ok: false, reason: "not_dispatched" };
+    return { ok: false, reason: "unknown" };
+  }
 }
 
 /**
