@@ -797,18 +797,28 @@ const styles = StyleSheet.create({
     left:            22,
     right:           22,
     height:          72,
-    backgroundColor: "#080D1A",
+    backgroundColor: "#0D1628",
     borderWidth:     1,
-    borderColor:     "#0C1525",
+    borderColor:     "rgba(255,255,255,0.07)",
+    shadowColor:     "#000",
+    shadowOpacity:   0.12,
+    shadowRadius:    6,
+    shadowOffset:    { width: 0, height: 2 },
+    elevation:       2,
   },
   ghost2: {
     bottom:          -11,
     left:            11,
     right:           11,
     height:          72,
-    backgroundColor: "#0C1422",
+    backgroundColor: "#101B32",
     borderWidth:     1,
-    borderColor:     "#111E36",
+    borderColor:     "rgba(255,255,255,0.10)",
+    shadowColor:     "#000",
+    shadowOpacity:   0.15,
+    shadowRadius:    8,
+    shadowOffset:    { width: 0, height: 3 },
+    elevation:       4,
   },
   ghostCardInner: {
     flex:          1,
@@ -1036,8 +1046,8 @@ const styles = StyleSheet.create({
 
   // Ghost cards — occupied state
   ghostOccupied: {
-    backgroundColor: "#110B20",
-    borderColor:     "#1E1040",
+    backgroundColor: "#0F1B30",
+    borderColor:     "rgba(255,255,255,0.11)",
     overflow:        "hidden",
   },
   ghostOccupiedRow: {
