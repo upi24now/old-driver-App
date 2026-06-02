@@ -24,6 +24,7 @@ import {
   updateDriverOnlineStatus,
   updateDriverSubscription,
   getActiveOrderForDriver,
+  getActiveOrdersForDriver,
   listenToDispatchedOrder,
   listenToActiveOrder,
   acceptOrder,
@@ -326,23 +327,27 @@ export function DriverProvider({ children }: { children: ReactNode }) {
               setSubExp(driverDoc.subscriptionExpiresAt);
             }
           }
-          // Restore active order if driver app was restarted mid-delivery
+          // Restore up to 3 active orders if driver app was restarted mid-delivery.
+          // getActiveOrdersForDriver returns newest-first, capped at MAX_ACTIVE_ORDERS.
           try {
-            const activeOrder = await getActiveOrderForDriver(user.uid);
-            if (activeOrder) {
-              const ride = orderDocToRide(activeOrder);
-              // Use the real Firestore acceptedAt so ElapsedTimer shows true elapsed time
-              // after an app restart. Firestore Timestamps expose .toMillis(); fall back
-              // to Date.now() only if the field is missing (e.g. very old orders).
-              const acceptedAtMs =
-                (activeOrder.acceptedAt as { toMillis?: () => number })?.toMillis?.() ??
-                Date.now();
-              const restoredRide: ActiveRide = { ...ride, acceptedAt: acceptedAtMs, orderStatus: activeOrder.status };
-              setActiveOrders([restoredRide]);
-              setCurrentActiveOrderId(activeOrder.id);
+            const activeOrderDocs = await getActiveOrdersForDriver(user.uid, MAX_ACTIVE_ORDERS);
+            if (activeOrderDocs.length > 0) {
+              const restoredRides: ActiveRide[] = activeOrderDocs.map((doc) => {
+                const ride = orderDocToRide(doc);
+                // Use the real Firestore acceptedAt so ElapsedTimer shows true elapsed time
+                // after an app restart. Firestore Timestamps expose .toMillis(); fall back
+                // to Date.now() only if the field is missing (e.g. very old orders).
+                const acceptedAtMs =
+                  (doc.acceptedAt as { toMillis?: () => number })?.toMillis?.() ??
+                  Date.now();
+                return { ...ride, acceptedAt: acceptedAtMs, orderStatus: doc.status };
+              });
+              setActiveOrders(restoredRides);
+              // Focus the newest order (index 0 — sorted by acceptedAt desc).
+              setCurrentActiveOrderId(restoredRides[0]!.id);
             }
           } catch {
-            // Active order restore failed — driver sees Continue banner once online
+            // Active order restore failed — driver sees no active delivery after restart
           }
         } catch {
           // Firestore read failed — user remains authenticated, profile stays null

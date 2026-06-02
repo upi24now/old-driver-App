@@ -260,6 +260,33 @@ export async function getActiveOrderForDriver(uid: string): Promise<OrderDoc | n
 }
 
 /**
+ * Returns up to MAX_ACTIVE_ORDERS (3) active orders for the given driver,
+ * sorted by acceptedAt descending (newest first).
+ *
+ * Used by the auth-restore path in DriverContext so that after an app restart
+ * the driver's full multi-order set is rebuilt rather than just the newest one.
+ * The cap of 3 prevents an edge-case where Firestore holds stale in-progress
+ * docs from a previous session from flooding the restored state.
+ */
+export async function getActiveOrdersForDriver(
+  uid: string,
+  limit = 3,
+): Promise<OrderDoc[]> {
+  const snap = await getDocs(
+    query(collection(db, "orders"), where("driverUid", "==", uid)),
+  );
+  const active = snap.docs
+    .map((d) => ({ id: d.id, ...d.data() } as OrderDoc))
+    .filter((o) => ACTIVE_STATUSES.has(o.status));
+  active.sort((a, b) => {
+    const ta = (a.acceptedAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
+    const tb = (b.acceptedAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
+    return tb - ta; // newest first
+  });
+  return active.slice(0, limit);
+}
+
+/**
  * Typed result returned by the atomic acceptOrder transaction.
  *
  * ok: true  — transaction succeeded; this driver now owns the order.
