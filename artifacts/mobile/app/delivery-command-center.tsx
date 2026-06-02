@@ -67,10 +67,10 @@ function DetailCell({
 }) {
   return (
     <View style={styles.detailCell}>
-      <View style={styles.detailIconWrap}>
-        <Feather name={icon} size={13} color="#6366F1" />
+      <View style={styles.detailCellHead}>
+        <Feather name={icon} size={10} color="#6366F1" />
+        <Text style={styles.detailLabel}>{label}</Text>
       </View>
-      <Text style={styles.detailLabel}>{label}</Text>
       <Text style={styles.detailValue} numberOfLines={1}>{value}</Text>
     </View>
   );
@@ -847,15 +847,15 @@ const styles = StyleSheet.create({
   customerBlock: {
     flexDirection: "row",
     alignItems:    "center",
-    gap:           12,
-    paddingHorizontal: 18,
-    paddingTop:    16,
-    paddingBottom: 14,
+    gap:           10,
+    paddingHorizontal: 14,
+    paddingTop:    12,
+    paddingBottom: 10,
   },
   avatarRing: {
-    width:         46,
-    height:        46,
-    borderRadius:  23,
+    width:         38,
+    height:        38,
+    borderRadius:  19,
     alignItems:    "center",
     justifyContent:"center",
     shadowColor:   "#FF4D8D",
@@ -864,7 +864,7 @@ const styles = StyleSheet.create({
     shadowOffset:  { width: 0, height: 2 },
   },
   avatarInitial: {
-    fontSize:   18,
+    fontSize:   15,
     fontWeight: "800",
     color:      "#FF4D8D",
   },
@@ -892,44 +892,44 @@ const styles = StyleSheet.create({
     gap:           1,
   },
   fareCalloutCurrency: {
-    fontSize:   14,
+    fontSize:   12,
     fontWeight: "700",
     color:      "#475569",
   },
   fareCalloutAmount: {
-    fontSize:   26,
+    fontSize:   20,
     fontWeight: "800",
     color:      "#0F172A",
-    letterSpacing: -0.5,
+    letterSpacing: -0.4,
   },
 
   // Card divider
   cardDivider: {
     height:            1,
     backgroundColor:   "#F1F5F9",
-    marginHorizontal:  18,
+    marginHorizontal:  14,
   },
 
   // Route
   routeSection: {
-    paddingHorizontal: 18,
-    paddingVertical:   14,
+    paddingHorizontal: 14,
+    paddingVertical:   10,
     gap:               0,
   },
   routeRow: {
     flexDirection: "row",
-    gap:           14,
-    minHeight:     52,
+    gap:           12,
+    minHeight:     36,
   },
   routeTimeline: {
     alignItems:  "center",
-    width:       18,
-    paddingTop:  4,
+    width:       16,
+    paddingTop:  3,
   },
   routeNode: {
-    width:        11,
-    height:       11,
-    borderRadius: 6,
+    width:        9,
+    height:       9,
+    borderRadius: 5,
   },
   routeNodePickup: {
     backgroundColor: "#FF4D8D",
@@ -953,67 +953,66 @@ const styles = StyleSheet.create({
   },
   routeText: {
     flex:          1,
-    paddingBottom: 10,
+    paddingBottom: 6,
   },
   routeTag: {
-    fontSize:      9,
+    fontSize:      8,
     fontWeight:    "800",
     color:         "#CBD5E1",
     letterSpacing: 1.2,
-    marginBottom:  4,
+    marginBottom:  2,
   },
   routeAddress: {
-    fontSize:   13,
+    fontSize:   12,
     fontWeight: "700",
     color:      "#0F172A",
-    lineHeight: 19,
+    lineHeight: 17,
   },
 
   // Details grid
   detailsGrid: {
     flexDirection:     "row",
     flexWrap:          "wrap",
-    gap:               8,
-    paddingHorizontal: 18,
-    paddingBottom:     16,
+    gap:               6,
+    paddingHorizontal: 14,
+    paddingTop:        6,
+    paddingBottom:     12,
   },
   detailCell: {
     flex:            1,
     minWidth:        "46%",
     backgroundColor: "#F8FAFC",
-    borderRadius:    13,
-    padding:         12,
-    gap:             5,
+    borderRadius:    10,
+    paddingHorizontal: 10,
+    paddingVertical:   8,
+    gap:             2,
     borderWidth:     1,
     borderColor:     "#F1F5F9",
   },
-  detailIconWrap: {
-    width:           26,
-    height:          26,
-    borderRadius:    8,
-    backgroundColor: "#EEF2FF",
-    alignItems:      "center",
-    justifyContent:  "center",
-    marginBottom:    2,
+  detailCellHead: {
+    flexDirection: "row",
+    alignItems:    "center",
+    gap:           4,
+    marginBottom:  1,
   },
   detailLabel: {
-    fontSize:      9,
+    fontSize:      8,
     fontWeight:    "800",
     color:         "#CBD5E1",
-    letterSpacing: 0.9,
+    letterSpacing: 0.8,
     textTransform: "uppercase",
   },
   detailValue: {
-    fontSize:   13,
+    fontSize:   12,
     fontWeight: "800",
     color:      "#0F172A",
   },
 
   // CTA
   ctaWrapper: {
-    margin:       16,
-    marginTop:    4,
-    borderRadius: 16,
+    margin:       14,
+    marginTop:    2,
+    borderRadius: 14,
     overflow:     "hidden",
     shadowColor:  "#FF4D8D",
     shadowOpacity: 0.45,
@@ -1026,7 +1025,7 @@ const styles = StyleSheet.create({
     alignItems:      "center",
     justifyContent:  "center",
     gap:             10,
-    paddingVertical: 17,
+    paddingVertical: 14,
   },
   ctaText: {
     fontSize:      16,
