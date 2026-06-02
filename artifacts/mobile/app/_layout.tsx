@@ -53,9 +53,8 @@ function RootLayoutNav() {
       <Stack.Screen
         name="ride-request"
         options={{
-          presentation: "transparentModal",
-          animation: "fade",
-          contentStyle: { backgroundColor: "transparent" },
+          presentation: "fullScreenModal",
+          animation: "slide_from_bottom",
         }}
       />
     </Stack>

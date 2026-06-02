@@ -557,9 +557,15 @@ export default function ActiveDeliveryScreen() {
   // Fires whenever activeRide changes. If it becomes null and THIS screen did
   // not trigger the clear (didEndSelf), the order was cancelled externally
   // (customer, admin, etc.). Exit the flow immediately.
+  //
+  // "delivered" is excluded: the DriverContext listener clears activeRide as
+  // soon as it sees status="delivered" in Firestore. That happens ~100–500ms
+  // after advance() writes the status — before the driver presses "Back to Home".
+  // At that point didEndSelf may still be false, so we must also guard on stage.
   useEffect(() => {
     if (activeRide !== null) return;       // still active — nothing to do
     if (didEndSelf.current) return;        // normal completion — already navigating
+    if (stage === "delivered") return;     // delivery finished normally — not a cancel
     // External cancellation detected while screen is open.
     Alert.alert(
       "Order Cancelled",
@@ -618,7 +624,10 @@ export default function ActiveDeliveryScreen() {
   function advance() {
     // Guard: if activeRide was cleared externally (customer cancellation), do
     // not write any stage to Firestore. The cancellation useEffect handles exit.
-    if (!activeRide) return;
+    // Exception: at delivered stage the DriverContext listener may have already
+    // cleared activeRide (it fires on status="delivered"), so we must still allow
+    // "Back to Home" to proceed — there is no Firestore write at this stage anyway.
+    if (!activeRide && stage !== "delivered") return;
 
     haptic("success");
 
@@ -644,6 +653,13 @@ export default function ActiveDeliveryScreen() {
       endActiveRide();
       router.replace("/(tabs)");
       return;
+    }
+    // For the at_drop → delivered transition: set didEndSelf BEFORE the Firestore
+    // write so that when the DriverContext listener sees status="delivered" and
+    // clears activeRide (~100–500ms later), the cancellation guard is already armed
+    // and does not show a false "Order Cancelled" alert on the celebration screen.
+    if (next === "delivered") {
+      didEndSelf.current = true;
     }
     // Write the incoming stage to Firestore before updating local state.
     // Customer app listens to orders/{orderId}.status for real-time tracking.
