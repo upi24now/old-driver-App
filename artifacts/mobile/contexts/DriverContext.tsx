@@ -378,9 +378,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const lastSeenOrderId = useRef<string | null>(null);
   useEffect(() => {
     // Capacity gate: only listen for new orders when a slot is free.
-    // Phase 3: single-order mode — block as soon as 1 order is active (activeOrderCount > 0).
-    // Phase 4: relax to isAtCapacity so drivers can hold up to MAX_ACTIVE_ORDERS orders.
-    if (!isOnline || !driverUid || activeOrderCount > 0) return;
+    // Phase 4: isAtCapacity allows up to MAX_ACTIVE_ORDERS concurrent orders.
+    if (!isOnline || !driverUid || isAtCapacity) return;
 
     const unsub = listenToDispatchedOrder(driverUid, (order) => {
       if (!order) {
@@ -554,10 +553,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     if (!ride || !uid) return { ok: false, reason: "missing" };
 
     // Defensive capacity guard — second line of defence after the dispatch gate.
-    // Phase 3: single-order mode, block any second acceptance.
-    // Phase 4: change this condition to isAtCapacity so up to MAX_ACTIVE_ORDERS
-    //          orders can be appended (change setActiveOrders([accepted]) → push).
-    if (activeOrderCount > 0) return { ok: false, reason: "already_claimed" };
+    // Phase 4: blocks acceptance only when all MAX_ACTIVE_ORDERS slots are full.
+    if (isAtCapacity) return { ok: false, reason: "already_claimed" };
 
     // 1. Firestore transaction — atomic claim; must succeed before ANY local state update.
     //    The transaction reads the order doc, verifies status==="dispatched" and
@@ -577,10 +574,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     }
 
     // 2. Transaction succeeded — safe to commit local state.
-    // Phase 3: single-slot — replaces any prior entry (array always length 0 here).
-    // Phase 4: push onto array: setActiveOrders(prev => [...prev, accepted]).
+    // Append to array with duplicate guard and hard cap at MAX_ACTIVE_ORDERS.
     const accepted: ActiveRide = { ...ride, acceptedAt: Date.now(), orderStatus: "accepted" };
-    setActiveOrders([accepted]);
+    setActiveOrders((prev) => {
+      if (prev.some((o) => o.id === accepted.id)) return prev;       // dedup
+      return [...prev, accepted].slice(0, MAX_ACTIVE_ORDERS);        // cap
+    });
     setCurrentActiveOrderId(ride.id);
     setIncomingRide(null);
     lastSeenOrderId.current = ride.id; // prevent re-trigger
@@ -772,9 +771,13 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
           // Defensive capacity check using the stable ref (this handler is
           // registered once; direct state reads would be stale).
-          // Phase 3: single-order mode — reject if any order is already active.
-          // Phase 4: change to >= MAX_ACTIVE_ORDERS.
-          if (activeOrdersRef.current.length > 0) return;
+          // Phase 4: block only when all slots are full.
+          if (activeOrdersRef.current.length >= MAX_ACTIVE_ORDERS) return;
+
+          // Dedup guard: bail if this order is already in the active set.
+          // Prevents a redundant Firestore round-trip when the notification
+          // fires twice before React state has updated.
+          if (activeOrdersRef.current.some((o) => o.id === ride.id)) return;
 
           // Atomic Firestore transaction — same guard as in-app acceptRide().
           const result = await acceptOrder(ride.id, uid, profileRef.current?.name ?? null);
@@ -789,7 +792,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
           // Transaction succeeded — commit local state then navigate.
           const accepted: ActiveRide = { ...ride, acceptedAt: Date.now(), orderStatus: "accepted" };
-          setActiveOrders([accepted]);
+          setActiveOrders((prev) => {
+            if (prev.some((o) => o.id === accepted.id)) return prev;   // dedup
+            return [...prev, accepted].slice(0, MAX_ACTIVE_ORDERS);    // cap
+          });
           setCurrentActiveOrderId(ride.id);
           setIncomingRide(null);
           lastSeenOrderId.current = ride.id;
