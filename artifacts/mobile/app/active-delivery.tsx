@@ -16,6 +16,7 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useDriver } from "@/contexts/DriverContext";
 import { useEffect, useRef, useState } from "react";
 import { updateOrderStage, type DeliveryStage } from "@/utils/firestore";
 import {
@@ -513,20 +514,25 @@ export default function ActiveDeliveryScreen() {
   }
   useEffect(() => { animateIn(); }, [stage]);
 
-  // Params
-  const orderId    = params.orderId     ?? null;
-  const customer   = params.customer    ?? "Customer";
-  const phone      = params.phone       ?? "";
-  const parcel     = params.parcelType  ?? "Parcel";
-  const emoji      = params.parcelEmoji ?? "📦";
-  const pickup     = params.pickup      ?? "Pickup location";
-  const pickupCity = params.pickupCity  ?? "";
-  const drop       = params.drop        ?? "Drop location";
-  const dropCity   = params.dropCity    ?? "";
-  const distKm     = params.distanceKm  ?? "—";
-  const durMin     = params.durationMin ?? "—";
-  const weight     = params.weight      ?? "—";
-  const earning    = params.earning ? `₹${params.earning}` : "₹—";
+  const { activeRide } = useDriver();
+
+  // Params — fall back to DriverContext activeRide when navigating back to this
+  // screen without fresh route params (e.g. after app restore or tab switch).
+  const orderId    = params.orderId     ?? activeRide?.id             ?? null;
+  const customer   = params.customer    ?? activeRide?.passengerName  ?? "Customer";
+  const phone      = params.phone       ?? activeRide?.customerPhone  ?? "";
+  const parcel     = params.parcelType  ?? activeRide?.parcelType     ?? "Parcel";
+  const emoji      = params.parcelEmoji ?? activeRide?.parcelEmoji    ?? "📦";
+  const pickup     = params.pickup      ?? activeRide?.pickup         ?? "Pickup location";
+  const pickupCity = params.pickupCity  ?? activeRide?.pickupCity     ?? "";
+  const drop       = params.drop        ?? activeRide?.drop           ?? "Drop location";
+  const dropCity   = params.dropCity    ?? activeRide?.dropCity       ?? "";
+  const distKm     = params.distanceKm  ?? (activeRide ? String(activeRide.distanceKm)  : "—");
+  const durMin     = params.durationMin ?? (activeRide ? String(activeRide.durationMin) : "—");
+  const weight     = params.weight      ?? activeRide?.parcelWeight   ?? "—";
+  const earning    = params.earning     ? `₹${params.earning}`
+                   : activeRide         ? `₹${activeRide.fareEstimate}`
+                   : "₹—";
   const isDelivered = stage === "delivered";
 
   // Write "to_pickup" stage on mount — customer sees driver is en route immediately

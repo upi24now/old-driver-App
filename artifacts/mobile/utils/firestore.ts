@@ -3,6 +3,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   query,
   serverTimestamp,
@@ -209,6 +210,31 @@ export function listenToDispatchedOrder(
       onOrder({ id: docSnap.id, ...docSnap.data() } as OrderDoc);
     }
   });
+}
+
+/**
+ * Return the single in-progress order assigned to this driver, or null.
+ * Queries by driverUid only (no composite index needed), then filters
+ * active statuses client-side.
+ */
+const ACTIVE_STATUSES = new Set<OrderStatus>([
+  "accepted", "to_pickup", "at_pickup", "to_drop", "at_drop",
+]);
+
+export async function getActiveOrderForDriver(uid: string): Promise<OrderDoc | null> {
+  const snap = await getDocs(
+    query(collection(db, "orders"), where("driverUid", "==", uid)),
+  );
+  const active = snap.docs
+    .map((d) => ({ id: d.id, ...d.data() } as OrderDoc))
+    .filter((o) => ACTIVE_STATUSES.has(o.status));
+  if (active.length === 0) return null;
+  active.sort((a, b) => {
+    const ta = (a.acceptedAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
+    const tb = (b.acceptedAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
+    return tb - ta;
+  });
+  return active[0]!;
 }
 
 /**

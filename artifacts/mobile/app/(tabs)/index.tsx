@@ -214,6 +214,8 @@ export default function HomeScreen() {
     subscriptionActive,
     todayEarnings,
     tripsToday,
+    activeRide,
+    currentOrderId,
   } = useDriver();
 
   function setOnline(v: boolean) {
@@ -313,6 +315,53 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* ACTIVE DELIVERY BANNER — shown whenever driver has an in-progress order */}
+        {activeRide && currentOrderId && (
+          <TouchableOpacity
+            activeOpacity={0.88}
+            onPress={() =>
+              router.push({
+                pathname: "/active-delivery",
+                params: {
+                  orderId:     currentOrderId,
+                  customer:    activeRide.passengerName,
+                  phone:       activeRide.customerPhone,
+                  parcelType:  activeRide.parcelType,
+                  parcelEmoji: activeRide.parcelEmoji,
+                  pickup:      activeRide.pickup,
+                  pickupCity:  activeRide.pickupCity,
+                  drop:        activeRide.drop,
+                  dropCity:    activeRide.dropCity,
+                  distanceKm:  String(activeRide.distanceKm),
+                  durationMin: String(activeRide.durationMin),
+                  earning:     String(activeRide.fareEstimate),
+                  weight:      activeRide.parcelWeight,
+                },
+              })
+            }
+          >
+            <LinearGradient
+              colors={["#FF4D8D", "#FF7A3D"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.activeBanner}
+            >
+              <View style={styles.activeBannerLeft}>
+                <Text style={styles.activeBannerPill}>🚀 Active Delivery</Text>
+                <Text style={styles.activeBannerDrop} numberOfLines={1}>
+                  → {activeRide.drop}
+                </Text>
+              </View>
+              <View style={styles.activeBannerRight}>
+                <Text style={styles.activeBannerEarning}>
+                  ₹{activeRide.fareEstimate}
+                </Text>
+                <Feather name="chevron-right" size={20} color="#fff" />
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
 
         {/* EARNINGS HERO */}
         <LinearGradient
@@ -925,4 +974,24 @@ const styles = StyleSheet.create({
   },
   testOrderIcon:  { fontSize: 20 },
   testOrderLabel: { fontSize: 9, fontWeight: "800", color: "#fff", textAlign: "center", lineHeight: 11 },
+
+  // Active delivery banner
+  activeBanner: {
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    shadowColor: "#FF4D8D",
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  activeBannerLeft:   { flex: 1, gap: 3 },
+  activeBannerPill:   { fontSize: 11, fontWeight: "800", color: "#fff", letterSpacing: 0.3 },
+  activeBannerDrop:   { fontSize: 14, fontWeight: "700", color: "#fff" },
+  activeBannerRight:  { flexDirection: "row", alignItems: "center", gap: 6 },
+  activeBannerEarning:{ fontSize: 20, fontWeight: "800", color: "#fff" },
 });

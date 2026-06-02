@@ -217,11 +217,7 @@ export default function ActiveTripScreen() {
   const [rating, setRating] = useState(0);
   const [tipped, setTipped] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (!activeRide) {
-      router.replace("/(tabs)");
-    }
-  }, [activeRide]);
+  // Removed: do not redirect to dashboard just because activeRide is null on app restore
 
   // Stage is managed locally in active-delivery.tsx and written to Firestore.
   // This screen is kept as a route stub; active trip flow uses active-delivery.tsx.

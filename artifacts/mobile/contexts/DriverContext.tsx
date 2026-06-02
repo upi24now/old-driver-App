@@ -23,6 +23,7 @@ import {
   updateDriverVehicle,
   updateDriverOnlineStatus,
   updateDriverSubscription,
+  getActiveOrderForDriver,
   listenToDispatchedOrder,
   acceptOrder,
   rejectOrder,
@@ -243,6 +244,17 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             if (driverDoc.subscriptionExpiresAt) {
               setSubExp(driverDoc.subscriptionExpiresAt);
             }
+          }
+          // Restore active order if driver app was restarted mid-delivery
+          try {
+            const activeOrder = await getActiveOrderForDriver(user.uid);
+            if (activeOrder) {
+              const ride = orderDocToRide(activeOrder);
+              setActiveRide({ ...ride, acceptedAt: Date.now() });
+              setCurrentOrderId(activeOrder.id);
+            }
+          } catch {
+            // Active order restore failed — driver sees Continue banner once online
           }
         } catch {
           // Firestore read failed — user remains authenticated, profile stays null
