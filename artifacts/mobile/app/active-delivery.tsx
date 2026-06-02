@@ -517,7 +517,7 @@ export default function ActiveDeliveryScreen() {
   }>();
 
   // Must come before useState so the lazy initializer can read restored status.
-  const { activeRide } = useDriver();
+  const { activeRide, endActiveRide } = useDriver();
 
   // Restore delivery stage from Firestore status on app restart.
   // For fresh accepts, activeRide.orderStatus is "accepted" → maps to "to_pickup".
@@ -587,7 +587,8 @@ export default function ActiveDeliveryScreen() {
     haptic("success");
     const next = nextStage(stage);
     if (!next) {
-      // Already at "delivered" — go home
+      // Delivery complete — clear context so banner disappears, then go home
+      endActiveRide();
       router.replace("/(tabs)");
       return;
     }
