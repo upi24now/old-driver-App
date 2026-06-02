@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   Animated,
+  BackHandler,
   Easing,
   PanResponder,
   Pressable,
@@ -279,6 +280,14 @@ export default function RideRequestScreen() {
     return () => loop.stop();
   }, [urgent]);
 
+  // Block Android hardware back — only Accept, Reject, timeout, or external
+  // cancellation may exit this screen.  Returning true tells the OS the press
+  // was handled so the default navigation-back action is suppressed.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => true);
+    return () => sub.remove();
+  }, []);
+
   // auto-dismiss when timer hits zero (auto-reject)
   useEffect(() => {
     if (seconds === 0) {
@@ -413,7 +422,10 @@ export default function RideRequestScreen() {
           { opacity: backdrop.interpolate({ inputRange: [0, 1], outputRange: [0, 0.7] }) },
         ]}
       >
-        <Pressable style={{ flex: 1 }} onPress={() => dismiss()} />
+        {/* Backdrop is intentionally non-interactive — back/dismiss is locked
+            for the duration of the timer. Only Accept, Reject, timeout, or
+            external order cancellation can exit this screen. */}
+        <Pressable style={{ flex: 1 }} />
       </Animated.View>
 
       <Animated.View
