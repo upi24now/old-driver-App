@@ -6,6 +6,7 @@ import {
   getDocs,
   onSnapshot,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -259,20 +260,83 @@ export async function getActiveOrderForDriver(uid: string): Promise<OrderDoc | n
 }
 
 /**
- * Driver accepts a dispatched order.
- * Writes: status="accepted", driverUid, driverName, acceptedAt.
+ * Typed result returned by the atomic acceptOrder transaction.
+ *
+ * ok: true  — transaction succeeded; this driver now owns the order.
+ * ok: false — transaction aborted; reason tells the caller why:
+ *   "already_claimed" — order was accepted by this driver on another code path
+ *   "reassigned"      — order driverUid no longer matches this driver
+ *   "not_dispatched"  — order status has moved past "dispatched"
+ *   "missing"         — order document does not exist
+ *   "unknown"         — unexpected Firestore error
+ */
+export type AcceptOrderResult =
+  | { ok: true }
+  | { ok: false; reason: "already_claimed" | "reassigned" | "not_dispatched" | "missing" | "unknown" };
+
+/**
+ * Atomically claim a dispatched order for this driver.
+ *
+ * Uses a Firestore runTransaction so exactly one driver wins when multiple
+ * drivers (or multiple code paths on the same device) call this concurrently:
+ *   • Reads the order doc inside the transaction.
+ *   • Aborts if the doc is missing, the status is no longer "dispatched",
+ *     or the driverUid has been reassigned to a different driver.
+ *   • Writes status="accepted", driverUid, driverName, acceptedAt, updatedAt
+ *     only when all pre-conditions pass.
+ *
+ * Returns AcceptOrderResult — callers MUST check result.ok before updating
+ * local state.  Never set activeOrders until this returns { ok: true }.
  */
 export async function acceptOrder(
   orderId:    string,
   driverUid:  string,
   driverName: string | null,
-): Promise<void> {
-  await updateDoc(doc(db, "orders", orderId), {
-    status:     "accepted",
-    driverUid,
-    driverName: driverName ?? "",
-    acceptedAt: serverTimestamp(),
-  });
+): Promise<AcceptOrderResult> {
+  try {
+    await runTransaction(db, async (tx) => {
+      const ref  = doc(db, "orders", orderId);
+      const snap = await tx.get(ref);
+
+      if (!snap.exists()) {
+        throw Object.assign(new Error("Order document missing"), { code: "missing" });
+      }
+
+      const data = snap.data() as OrderDoc;
+
+      // Order must still be waiting for a driver.
+      if (data.status !== "dispatched") {
+        // Distinguish "this driver already accepted on another path" vs
+        // "a different driver claimed it" vs "customer cancelled / timed out".
+        const sameDriver = data.driverUid === driverUid;
+        throw Object.assign(new Error("Order no longer dispatched"), {
+          code: sameDriver ? "already_claimed" : "not_dispatched",
+        });
+      }
+
+      // Order must still be assigned to this driver (not reassigned by dispatcher).
+      if (data.driverUid !== driverUid) {
+        throw Object.assign(new Error("Order reassigned to another driver"), { code: "reassigned" });
+      }
+
+      tx.update(ref, {
+        status:     "accepted",
+        driverUid,
+        driverName: driverName ?? "",
+        acceptedAt: serverTimestamp(),
+        updatedAt:  serverTimestamp(),
+      });
+    });
+
+    return { ok: true };
+  } catch (e: unknown) {
+    const code = (e as { code?: string }).code;
+    if (code === "already_claimed") return { ok: false, reason: "already_claimed" };
+    if (code === "reassigned")      return { ok: false, reason: "reassigned" };
+    if (code === "missing")         return { ok: false, reason: "missing" };
+    if (code === "not_dispatched")  return { ok: false, reason: "not_dispatched" };
+    return { ok: false, reason: "unknown" };
+  }
 }
 
 /**

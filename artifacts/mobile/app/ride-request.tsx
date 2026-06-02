@@ -3,6 +3,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Animated,
   BackHandler,
   Easing,
@@ -364,15 +365,37 @@ export default function RideRequestScreen() {
     });
   }
 
-  function handleAccept() {
+  async function handleAccept() {
     Vibration.vibrate(50);
     const ride = incomingRide;
     if (!ride) return;
-    // Arm before acceptRide() so the hadRideRef useEffect sees it synchronously
-    // when incomingRide → null and does not call dismiss() to the dashboard.
+
+    // Arm the ref BEFORE awaiting the transaction so the hadRideRef useEffect
+    // (which fires when incomingRide → null) does not call dismiss() to the
+    // dashboard while we are still waiting for Firestore.
     didAcceptRef.current = true;
-    acceptRide();
-    // Animate dismiss then navigate to the unified delivery stage screen
+
+    // Atomic Firestore transaction — wait for the result before navigating.
+    // acceptRide() sets incomingRide to null internally whether it succeeds or fails.
+    const result = await acceptRide();
+
+    if (!result.ok) {
+      // Transaction failed — another driver claimed the order, it was reassigned,
+      // or it was cancelled before we could accept.
+      // Reset the arm flag so the hadRideRef useEffect can dismiss normally.
+      didAcceptRef.current = false;
+      Alert.alert(
+        "Order Unavailable",
+        "This order was already accepted or is no longer available.",
+        [{ text: "OK" }],
+        { cancelable: true },
+      );
+      // dismiss() with no arg navigates back / to dashboard.
+      dismiss();
+      return;
+    }
+
+    // Transaction succeeded — animate dismiss then navigate to active-delivery.
     Animated.parallel([
       Animated.timing(backdrop, { toValue: 0, duration: 200, useNativeDriver: true }),
       Animated.timing(slide,    { toValue: 0, duration: 240, easing: Easing.in(Easing.cubic), useNativeDriver: true }),

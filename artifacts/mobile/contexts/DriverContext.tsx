@@ -30,7 +30,9 @@ import {
   rejectOrder,
   type OrderDoc,
   type OrderStatus,
+  type AcceptOrderResult,
 } from "@/utils/firestore";
+export type { AcceptOrderResult };
 import { verifyOtpApi } from "@/utils/auth-api";
 import {
   cancelIncomingOrderNotification,
@@ -155,7 +157,7 @@ type DriverState = {
   setOnline:    (v: boolean) => { ok: boolean; reason?: string };
   activatePlan: (id: SubPlan) => { ok: boolean; reason?: string };
 
-  acceptRide:    () => void;
+  acceptRide:    () => Promise<AcceptOrderResult>;
   rejectRide:    () => void;
   endActiveRide: () => void;
 
@@ -531,21 +533,37 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   };
 
   // ─── Ride actions ─────────────────────────────────────────────────────────
-  const acceptRide = () => {
+  const acceptRide = async (): Promise<AcceptOrderResult> => {
     const ride = incomingRide;
     const uid  = driverUid;
-    if (!ride || !uid) return;
+
+    // Guard: no ride or driver in context.
+    if (!ride || !uid) return { ok: false, reason: "missing" };
 
     // Defensive capacity guard — second line of defence after the dispatch gate.
     // Phase 3: single-order mode, block any second acceptance.
     // Phase 4: change this condition to isAtCapacity so up to MAX_ACTIVE_ORDERS
     //          orders can be appended (change setActiveOrders([accepted]) → push).
-    if (activeOrderCount > 0) return;
+    if (activeOrderCount > 0) return { ok: false, reason: "already_claimed" };
 
-    // 1. Write to Firestore — customer app sees "accepted" immediately
-    acceptOrder(ride.id, uid, profile?.name ?? null).catch(console.error);
+    // 1. Firestore transaction — atomic claim; must succeed before ANY local state update.
+    //    The transaction reads the order doc, verifies status==="dispatched" and
+    //    driverUid===uid, then writes accepted fields in a single atomic operation.
+    //    If another driver beat us, the transaction throws and we get ok:false.
+    const result = await acceptOrder(ride.id, uid, profile?.name ?? null);
 
-    // 2. Update local state
+    if (!result.ok) {
+      // Transaction failed — do not enter active-delivery.
+      // Clear incomingRide so the ride-request screen auto-dismisses (the
+      // hadRideRef useEffect in ride-request.tsx calls dismiss() when
+      // incomingRide → null and didAcceptRef is false).
+      setIncomingRide(null);
+      lastSeenOrderId.current = null; // allow next dispatch
+      cancelIncomingOrderNotification().catch(console.error);
+      return result;
+    }
+
+    // 2. Transaction succeeded — safe to commit local state.
     // Phase 3: single-slot — replaces any prior entry (array always length 0 here).
     // Phase 4: push onto array: setActiveOrders(prev => [...prev, accepted]).
     const accepted: ActiveRide = { ...ride, acceptedAt: Date.now(), orderStatus: "accepted" };
@@ -560,6 +578,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       body:  `Heading to ${ride.pickup}`,
       data:  { type: "order_update", stage: "accepted" },
     }).catch(console.error);
+
+    return result; // { ok: true }
   };
 
   const rejectRide = () => {
@@ -716,49 +736,63 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     registerOrderActionHandlers({
       onAccept: () => {
-        const ride = incomingRideRef.current;
-        const uid  = driverUidRef.current;
-        if (!ride || !uid) return;
+        // Notification action handlers must be synchronous callbacks, so the
+        // async transaction runs inside a void IIFE.
+        void (async () => {
+          const ride = incomingRideRef.current;
+          const uid  = driverUidRef.current;
+          if (!ride || !uid) return;
 
-        // Defensive capacity check using the stable ref (this handler is
-        // registered once; direct state reads would be stale).
-        // Phase 3: single-order mode — reject if any order is already active.
-        // Phase 4: change to >= MAX_ACTIVE_ORDERS.
-        if (activeOrdersRef.current.length > 0) return;
+          // Defensive capacity check using the stable ref (this handler is
+          // registered once; direct state reads would be stale).
+          // Phase 3: single-order mode — reject if any order is already active.
+          // Phase 4: change to >= MAX_ACTIVE_ORDERS.
+          if (activeOrdersRef.current.length > 0) return;
 
-        acceptOrder(ride.id, uid, profileRef.current?.name ?? null).catch(console.error);
+          // Atomic Firestore transaction — same guard as in-app acceptRide().
+          const result = await acceptOrder(ride.id, uid, profileRef.current?.name ?? null);
 
-        const accepted: ActiveRide = { ...ride, acceptedAt: Date.now(), orderStatus: "accepted" };
-        setActiveOrders([accepted]);
-        setCurrentActiveOrderId(ride.id);
-        setIncomingRide(null);
-        lastSeenOrderId.current = ride.id;
+          if (!result.ok) {
+            // Another path beat us — clear the incoming ride and bail.
+            setIncomingRide(null);
+            lastSeenOrderId.current = null;
+            cancelIncomingOrderNotification().catch(console.error);
+            return;
+          }
 
-        cancelIncomingOrderNotification().catch(console.error);
-        sendOrderUpdateNotification({
-          title: "✅ Order Accepted",
-          body:  `Heading to ${ride.pickup}`,
-          data:  { type: "order_update", stage: "accepted" },
-        }).catch(console.error);
+          // Transaction succeeded — commit local state then navigate.
+          const accepted: ActiveRide = { ...ride, acceptedAt: Date.now(), orderStatus: "accepted" };
+          setActiveOrders([accepted]);
+          setCurrentActiveOrderId(ride.id);
+          setIncomingRide(null);
+          lastSeenOrderId.current = ride.id;
 
-        router.push({
-          pathname: "/active-delivery",
-          params: {
-            orderId:     ride.id,
-            customer:    ride.passengerName,
-            phone:       ride.customerPhone,
-            parcelType:  ride.parcelType,
-            parcelEmoji: ride.parcelEmoji,
-            pickup:      ride.pickup,
-            pickupCity:  ride.pickupCity,
-            drop:        ride.drop,
-            dropCity:    ride.dropCity,
-            distanceKm:  String(ride.distanceKm),
-            durationMin: String(ride.durationMin),
-            earning:     String(ride.fareEstimate),
-            weight:      ride.parcelWeight,
-          },
-        });
+          cancelIncomingOrderNotification().catch(console.error);
+          sendOrderUpdateNotification({
+            title: "✅ Order Accepted",
+            body:  `Heading to ${ride.pickup}`,
+            data:  { type: "order_update", stage: "accepted" },
+          }).catch(console.error);
+
+          router.push({
+            pathname: "/active-delivery",
+            params: {
+              orderId:     ride.id,
+              customer:    ride.passengerName,
+              phone:       ride.customerPhone,
+              parcelType:  ride.parcelType,
+              parcelEmoji: ride.parcelEmoji,
+              pickup:      ride.pickup,
+              pickupCity:  ride.pickupCity,
+              drop:        ride.drop,
+              dropCity:    ride.dropCity,
+              distanceKm:  String(ride.distanceKm),
+              durationMin: String(ride.durationMin),
+              earning:     String(ride.fareEstimate),
+              weight:      ride.parcelWeight,
+            },
+          });
+        })();
       },
       onReject: () => {
         const ride = incomingRideRef.current;
