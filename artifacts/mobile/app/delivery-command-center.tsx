@@ -13,21 +13,26 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver, type ActiveRide } from "@/contexts/DriverContext";
 
-// ─── Status display metadata ──────────────────────────────────────────────────
-const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
-  accepted:  { label: "Accepted",  color: "#22C55E", bg: "#22C55E1A" },
-  to_pickup: { label: "To Pickup", color: "#F97316", bg: "#F973161A" },
-  at_pickup: { label: "At Pickup", color: "#EAB308", bg: "#EAB3081A" },
-  to_drop:   { label: "En Route",  color: "#3B82F6", bg: "#3B82F61A" },
-  at_drop:   { label: "At Drop",   color: "#A855F7", bg: "#A855F71A" },
-  delivered: { label: "Delivered", color: "#22C55E", bg: "#22C55E1A" },
+// ─── Status metadata ──────────────────────────────────────────────────────────
+const STATUS_META: Record<string, { label: string; color: string; bg: string; icon: React.ComponentProps<typeof Feather>["name"] }> = {
+  accepted:  { label: "Accepted",  color: "#22C55E", bg: "#22C55E18", icon: "check-circle" },
+  to_pickup: { label: "To Pickup", color: "#F97316", bg: "#F9731618", icon: "navigation"   },
+  at_pickup: { label: "At Pickup", color: "#EAB308", bg: "#EAB30818", icon: "map-pin"      },
+  to_drop:   { label: "En Route",  color: "#3B82F6", bg: "#3B82F618", icon: "navigation"   },
+  at_drop:   { label: "At Drop",   color: "#A855F7", bg: "#A855F718", icon: "map-pin"      },
+  delivered: { label: "Delivered", color: "#22C55E", bg: "#22C55E18", icon: "check-circle" },
 };
 
 function statusMeta(status: string) {
-  return STATUS_META[status] ?? { label: status, color: "#94A3B8", bg: "#94A3B81A" };
+  return STATUS_META[status] ?? {
+    label: status,
+    color: "#94A3B8",
+    bg:    "#94A3B818",
+    icon:  "circle" as React.ComponentProps<typeof Feather>["name"],
+  };
 }
 
-// ─── Route param builder (mirrors the index.tsx banner exactly) ───────────────
+// ─── Route param builder — mirrors index.tsx banner exactly ──────────────────
 function rideToParams(ride: ActiveRide) {
   return {
     orderId:         ride.id,
@@ -49,21 +54,70 @@ function rideToParams(ride: ActiveRide) {
   };
 }
 
-// ─── Detail cell component ────────────────────────────────────────────────────
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
 function DetailCell({
   icon,
   label,
   value,
 }: {
-  icon: React.ComponentProps<typeof Feather>["name"];
+  icon:  React.ComponentProps<typeof Feather>["name"];
   label: string;
   value: string;
 }) {
   return (
     <View style={styles.detailCell}>
-      <Feather name={icon} size={14} color="#64748B" />
+      <View style={styles.detailIconWrap}>
+        <Feather name={icon} size={13} color="#6366F1" />
+      </View>
       <Text style={styles.detailLabel}>{label}</Text>
       <Text style={styles.detailValue} numberOfLines={1}>{value}</Text>
+    </View>
+  );
+}
+
+function SlotChip({
+  index,
+  occupied,
+  isFocused,
+}: {
+  index:    number;
+  occupied: boolean;
+  isFocused: boolean;
+}) {
+  if (occupied) {
+    return (
+      <LinearGradient
+        colors={isFocused ? ["#FF4D8D", "#FF7A3D"] : ["#7C3AED", "#4F46E5"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.slotChip}
+      >
+        <View style={styles.slotChipInner}>
+          <View style={styles.slotChipIconWrap}>
+            <Feather name="package" size={12} color="#fff" />
+          </View>
+          <View>
+            <Text style={styles.slotChipTitle}>Slot {index + 1}</Text>
+            <Text style={styles.slotChipSubFilled}>
+              {isFocused ? "● Focused" : "● Active"}
+            </Text>
+          </View>
+        </View>
+      </LinearGradient>
+    );
+  }
+  return (
+    <View style={styles.slotChipEmpty}>
+      <View style={styles.slotChipInner}>
+        <View style={styles.slotEmptyIconWrap}>
+          <Feather name="plus" size={12} color="#334155" />
+        </View>
+        <View>
+          <Text style={styles.slotChipTitleEmpty}>Slot {index + 1}</Text>
+          <Text style={styles.slotChipSubEmpty}>Available</Text>
+        </View>
+      </View>
     </View>
   );
 }
@@ -81,184 +135,199 @@ export default function DeliveryCommandCenter() {
     hasCapacity,
   } = useDriver();
 
-  // Focused order: the currently highlighted one (backward-compat shim covers this)
   const focused: ActiveRide | null = activeRide;
+  const remainingSlots = maxActiveOrders - activeOrderCount;
+  const sm = focused ? statusMeta(focused.orderStatus) : null;
 
   function handleContinue() {
     if (!focused) return;
     router.push({ pathname: "/active-delivery", params: rideToParams(focused) });
   }
 
-  const remainingSlots = maxActiveOrders - activeOrderCount;
-
   return (
-    <LinearGradient colors={["#0D0D18", "#1A1435"]} style={styles.root}>
+    <View style={styles.root}>
+      <LinearGradient colors={["#080B14", "#101425"]} style={StyleSheet.absoluteFillObject} />
+
+      {/* ── Subtle radial glow behind header ─────────────────────────────── */}
+      <View style={[styles.headerGlow, { top: insets.top - 20 }]} />
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity
           style={styles.backBtn}
           onPress={() => router.back()}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Feather name="arrow-left" size={22} color="#CBD5E1" />
+          <Feather name="arrow-left" size={20} color="#94A3B8" />
         </TouchableOpacity>
 
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Command Center</Text>
-          <Text style={styles.headerSub}>Delivery Management</Text>
+          <Text style={styles.headerEyebrow}>COMMAND CENTER</Text>
+          <Text style={styles.headerTitle}>Delivery Hub</Text>
         </View>
 
-        <View style={styles.countBadge}>
-          <Text style={styles.countBadgeNum}>{activeOrderCount}</Text>
-          <Text style={styles.countBadgeSep}>/</Text>
-          <Text style={styles.countBadgeMax}>{maxActiveOrders}</Text>
+        {/* Live count badge */}
+        <View style={styles.countPill}>
+          <View style={styles.countPillDot} />
+          <Text style={styles.countPillText}>
+            {activeOrderCount}
+            <Text style={styles.countPillMax}> / {maxActiveOrders}</Text>
+          </Text>
         </View>
       </View>
+
+      {/* ── Divider line ───────────────────────────────────────────────────── */}
+      <View style={styles.headerDivider} />
 
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: insets.bottom + 32 },
+          { paddingBottom: insets.bottom + 40 },
         ]}
         showsVerticalScrollIndicator={false}
       >
 
-        {/* ── Capacity Chips ──────────────────────────────────────────────── */}
-        <View style={styles.capacityRow}>
-          {Array.from({ length: maxActiveOrders }, (_, i) => {
-            const occupied = i < activeOrderCount;
-            const order    = activeOrders[i];
-            const isFocused = order?.id === currentActiveOrderId;
-            return (
-              <View key={i} style={styles.slotChipWrapper}>
-                {occupied ? (
-                  <LinearGradient
-                    colors={["#FF4D8D", "#FF7A3D"]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={[styles.slotChip, styles.slotChipFilled]}
-                  >
-                    <Feather name="package" size={11} color="#fff" />
-                    <Text style={styles.slotLabelFilled}>Slot {i + 1}</Text>
-                    {isFocused && <View style={styles.focusDot} />}
-                  </LinearGradient>
-                ) : (
-                  <View style={[styles.slotChip, styles.slotChipEmpty]}>
-                    <Feather name="plus-circle" size={11} color="#3D4860" />
-                    <Text style={styles.slotLabelEmpty}>Slot {i + 1}</Text>
-                  </View>
-                )}
+        {/* ── Slot row ───────────────────────────────────────────────────── */}
+        <View style={styles.slotsSection}>
+          <Text style={styles.sectionEyebrow}>ORDER SLOTS</Text>
+          <View style={styles.slotsRow}>
+            {Array.from({ length: maxActiveOrders }, (_, i) => (
+              <View key={i} style={styles.slotWrapper}>
+                <SlotChip
+                  index={i}
+                  occupied={i < activeOrderCount}
+                  isFocused={activeOrders[i]?.id === currentActiveOrderId}
+                />
               </View>
-            );
-          })}
+            ))}
+          </View>
         </View>
 
-        {/* ── Empty State ─────────────────────────────────────────────────── */}
+        {/* ── Empty state ────────────────────────────────────────────────── */}
         {activeOrderCount === 0 && (
           <View style={styles.emptyState}>
-            <View style={styles.emptyIconRing}>
-              <Feather name="inbox" size={42} color="#334155" />
+            {/* Icon ring stack */}
+            <View style={styles.emptyRingOuter}>
+              <View style={styles.emptyRingInner}>
+                <Feather name="package" size={36} color="#1E293B" />
+              </View>
             </View>
             <Text style={styles.emptyTitle}>No Active Deliveries</Text>
             <Text style={styles.emptySubtitle}>
-              Accept an order from the dashboard to see it here.
+              Accept an incoming order request to{"\n"}see it here.
             </Text>
+            {/* Slot availability hint */}
+            <View style={styles.emptySlotHint}>
+              <Feather name="layers" size={13} color="#334155" />
+              <Text style={styles.emptySlotHintText}>
+                {maxActiveOrders} slots ready · Multi-order coming soon
+              </Text>
+            </View>
             <TouchableOpacity
               style={styles.emptyBackBtn}
               activeOpacity={0.8}
               onPress={() => router.back()}
             >
-              <Feather name="arrow-left" size={15} color="#94A3B8" />
+              <Feather name="arrow-left" size={14} color="#64748B" />
               <Text style={styles.emptyBackText}>Back to Dashboard</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {/* ── 3D Order Stack ──────────────────────────────────────────────── */}
-        {focused && (
+        {/* ── 3D Order Stack ─────────────────────────────────────────────── */}
+        {focused && sm && (
           <>
-            <Text style={styles.sectionLabel}>FOCUSED ORDER</Text>
+            {/* Section header */}
+            <View style={styles.stackHeader}>
+              <Text style={styles.sectionEyebrow}>FOCUSED ORDER</Text>
+              <View style={[styles.statusPill, { backgroundColor: sm.bg }]}>
+                <Feather name={sm.icon} size={11} color={sm.color} />
+                <Text style={[styles.statusPillText, { color: sm.color }]}>
+                  {sm.label}
+                </Text>
+              </View>
+            </View>
 
-            {/* Stack container — ghost cards peek from behind the focused card */}
+            {/* Stack container */}
             <View style={styles.stackContainer}>
 
-              {/* Ghost card 3 — furthest back (phase 4: will hold 3rd order) */}
-              <View
-                pointerEvents="none"
-                style={[styles.ghostCard, {
-                  bottom: -18,
-                  left:   22,
-                  right:  22,
-                  opacity: 0.22,
-                }]}
-              />
+              {/* ── Ghost card 3 — furthest back ──────────────────────── */}
+              <View pointerEvents="none" style={[styles.ghostCard, styles.ghost3]}>
+                <View style={styles.ghostCardInner}>
+                  <Feather name="plus-circle" size={13} color="#1E293B" />
+                  <Text style={styles.ghostCardLabel}>Slot 3 · Available</Text>
+                </View>
+              </View>
 
-              {/* Ghost card 2 — one step back (phase 4: will hold 2nd order) */}
-              <View
-                pointerEvents="none"
-                style={[styles.ghostCard, {
-                  bottom: -10,
-                  left:   12,
-                  right:  12,
-                  opacity: 0.42,
-                }]}
-              />
+              {/* ── Ghost card 2 — one step back ──────────────────────── */}
+              <View pointerEvents="none" style={[styles.ghostCard, styles.ghost2]}>
+                <View style={styles.ghostCardInner}>
+                  <Feather name="plus-circle" size={13} color="#263352" />
+                  <Text style={[styles.ghostCardLabel, { color: "#263352" }]}>
+                    Slot 2 · Available
+                  </Text>
+                </View>
+              </View>
 
-              {/* ── Main focused order card ──────────────────────────────── */}
+              {/* ── Main focused card ─────────────────────────────────── */}
               <View style={styles.orderCard}>
 
-                {/* Customer + status row */}
-                <View style={styles.cardTopRow}>
-                  <View style={styles.customerBlock}>
-                    <View style={styles.avatarRing}>
-                      <Feather name="user" size={17} color="#FF4D8D" />
-                    </View>
-                    <View style={styles.customerText}>
-                      <Text style={styles.customerName}>{focused.passengerName}</Text>
+                {/* Card top accent stripe */}
+                <LinearGradient
+                  colors={["#FF4D8D", "#FF7A3D"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.cardAccentStripe}
+                />
+
+                {/* Customer block */}
+                <View style={styles.customerBlock}>
+                  <LinearGradient
+                    colors={["#FFF0F5", "#FFE4EE"]}
+                    style={styles.avatarRing}
+                  >
+                    <Text style={styles.avatarInitial}>
+                      {(focused.passengerName || "?")[0].toUpperCase()}
+                    </Text>
+                  </LinearGradient>
+                  <View style={styles.customerText}>
+                    <Text style={styles.customerName}>{focused.passengerName}</Text>
+                    <View style={styles.customerPhoneRow}>
+                      <Feather name="phone" size={11} color="#94A3B8" />
                       <Text style={styles.customerPhone}>{focused.customerPhone}</Text>
                     </View>
                   </View>
-                  <View style={[
-                    styles.statusChip,
-                    { backgroundColor: statusMeta(focused.orderStatus).bg },
-                  ]}>
-                    <View style={[
-                      styles.statusDot,
-                      { backgroundColor: statusMeta(focused.orderStatus).color },
-                    ]} />
-                    <Text style={[
-                      styles.statusLabel,
-                      { color: statusMeta(focused.orderStatus).color },
-                    ]}>
-                      {statusMeta(focused.orderStatus).label}
-                    </Text>
+                  <View style={styles.fareCallout}>
+                    <Text style={styles.fareCalloutCurrency}>₹</Text>
+                    <Text style={styles.fareCalloutAmount}>{focused.fareEstimate}</Text>
                   </View>
                 </View>
 
                 {/* Divider */}
-                <View style={styles.divider} />
+                <View style={styles.cardDivider} />
 
-                {/* Route */}
+                {/* Route section */}
                 <View style={styles.routeSection}>
+                  {/* Pickup */}
                   <View style={styles.routeRow}>
-                    <View style={styles.routeIconCol}>
-                      <View style={[styles.routeDot, styles.routeDotPickup]} />
-                      <View style={styles.routeConnector} />
+                    <View style={styles.routeTimeline}>
+                      <View style={[styles.routeNode, styles.routeNodePickup]} />
+                      <View style={styles.routeConnectorLine} />
                     </View>
-                    <View style={styles.routeTextCol}>
-                      <Text style={styles.routeTypeLabel}>PICKUP</Text>
+                    <View style={styles.routeText}>
+                      <Text style={styles.routeTag}>PICKUP</Text>
                       <Text style={styles.routeAddress} numberOfLines={2}>
                         {focused.pickup}
                       </Text>
                     </View>
                   </View>
+                  {/* Drop */}
                   <View style={styles.routeRow}>
-                    <View style={styles.routeIconCol}>
-                      <View style={[styles.routeDot, styles.routeDotDrop]} />
+                    <View style={styles.routeTimeline}>
+                      <View style={[styles.routeNode, styles.routeNodeDrop]} />
                     </View>
-                    <View style={styles.routeTextCol}>
-                      <Text style={styles.routeTypeLabel}>DROP</Text>
+                    <View style={styles.routeText}>
+                      <Text style={styles.routeTag}>DROP</Text>
                       <Text style={styles.routeAddress} numberOfLines={2}>
                         {focused.drop}
                       </Text>
@@ -267,9 +336,9 @@ export default function DeliveryCommandCenter() {
                 </View>
 
                 {/* Divider */}
-                <View style={styles.divider} />
+                <View style={styles.cardDivider} />
 
-                {/* Details grid */}
+                {/* Details grid 2 × 2 */}
                 <View style={styles.detailsGrid}>
                   <DetailCell
                     icon="package"
@@ -293,10 +362,10 @@ export default function DeliveryCommandCenter() {
                   />
                 </View>
 
-                {/* CTA */}
+                {/* Continue Delivery CTA */}
                 <TouchableOpacity
                   onPress={handleContinue}
-                  activeOpacity={0.85}
+                  activeOpacity={0.84}
                   style={styles.ctaWrapper}
                 >
                   <LinearGradient
@@ -305,350 +374,561 @@ export default function DeliveryCommandCenter() {
                     end={{ x: 1, y: 0 }}
                     style={styles.ctaBtn}
                   >
-                    <Feather name="navigation" size={17} color="#fff" />
+                    <Feather name="navigation" size={16} color="#fff" />
                     <Text style={styles.ctaText}>Continue Delivery</Text>
-                    <Feather name="chevron-right" size={17} color="#fff" />
+                    <Feather name="arrow-right" size={16} color="#fff" />
                   </LinearGradient>
                 </TouchableOpacity>
 
               </View>
-              {/* end focused card */}
-
+              {/* end main card */}
             </View>
             {/* end stack container */}
 
-            {/* Capacity hint — shows upcoming slot availability */}
+            {/* ── Multi-order capacity hint ───────────────────────────── */}
             {hasCapacity && (
-              <View style={styles.capacityHint}>
-                <Feather name="info" size={13} color="#3D4860" />
-                <Text style={styles.capacityHintText}>
-                  {remainingSlots} more slot{remainingSlots !== 1 ? "s" : ""} available — multi-order support coming soon
-                </Text>
+              <View style={styles.capacityHintRow}>
+                <LinearGradient
+                  colors={["#0F172A", "#131C35"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.capacityHintCard}
+                >
+                  <View style={styles.capacityHintIconWrap}>
+                    <Feather name="zap" size={14} color="#6366F1" />
+                  </View>
+                  <View style={styles.capacityHintText}>
+                    <Text style={styles.capacityHintTitle}>
+                      {remainingSlots} order slot{remainingSlots !== 1 ? "s" : ""} available
+                    </Text>
+                    <Text style={styles.capacityHintSub}>
+                      Multi-order support coming soon
+                    </Text>
+                  </View>
+                  <Feather name="chevron-right" size={14} color="#1E293B" />
+                </LinearGradient>
               </View>
             )}
           </>
         )}
 
       </ScrollView>
-    </LinearGradient>
+    </View>
   );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
+const CARD_RADIUS = 22;
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
 
+  // Header glow (decorative radial)
+  headerGlow: {
+    position:        "absolute",
+    left:            "20%",
+    right:           "20%",
+    height:          180,
+    borderRadius:    90,
+    backgroundColor: "#6366F1",
+    opacity:         0.07,
+    transform:       [{ scaleX: 2.5 }],
+  },
+
   // Header
   header: {
-    flexDirection:  "row",
-    alignItems:     "flex-end",
+    flexDirection:     "row",
+    alignItems:        "center",
     paddingHorizontal: 20,
-    paddingBottom:  18,
-    gap: 12,
+    paddingBottom:     16,
+    gap:               12,
   },
   backBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: "#FFFFFF10",
+    width:           36,
+    height:          36,
+    borderRadius:    11,
+    backgroundColor: "#0F1626",
+    borderWidth:     1,
+    borderColor:     "#1E2A45",
     alignItems:      "center",
     justifyContent:  "center",
   },
   headerCenter: { flex: 1 },
+  headerEyebrow: {
+    fontSize:      9,
+    fontWeight:    "800",
+    color:         "#334155",
+    letterSpacing: 1.8,
+    marginBottom:  2,
+  },
   headerTitle: {
-    fontSize:   20,
+    fontSize:      22,
+    fontWeight:    "800",
+    color:         "#F1F5F9",
+    letterSpacing: -0.6,
+  },
+  countPill: {
+    flexDirection:     "row",
+    alignItems:        "center",
+    gap:               6,
+    backgroundColor:   "#0C1120",
+    borderWidth:       1,
+    borderColor:       "#1E2A45",
+    borderRadius:      12,
+    paddingHorizontal: 12,
+    paddingVertical:   8,
+  },
+  countPillDot: {
+    width:           6,
+    height:          6,
+    borderRadius:    3,
+    backgroundColor: "#FF4D8D",
+  },
+  countPillText: {
+    fontSize:   17,
     fontWeight: "800",
     color:      "#F1F5F9",
-    letterSpacing: -0.5,
   },
-  headerSub: {
-    fontSize:   11,
-    fontWeight: "600",
-    color:      "#475569",
-    marginTop:  2,
-    letterSpacing: 0.5,
+  countPillMax: {
+    fontSize:   13,
+    fontWeight: "500",
+    color:      "#334155",
   },
-  countBadge: {
-    flexDirection:   "row",
-    alignItems:      "baseline",
-    backgroundColor: "#FFFFFF0D",
-    borderWidth:     1,
-    borderColor:     "#FFFFFF14",
-    borderRadius:    10,
-    paddingHorizontal: 10,
-    paddingVertical:  6,
-    gap: 3,
+  headerDivider: {
+    height:          1,
+    marginHorizontal: 20,
+    backgroundColor: "#0F1626",
+    marginBottom:    4,
   },
-  countBadgeNum: { fontSize: 18, fontWeight: "800", color: "#FF7A3D" },
-  countBadgeSep: { fontSize: 13, fontWeight: "600", color: "#334155" },
-  countBadgeMax: { fontSize: 14, fontWeight: "600", color: "#475569" },
 
   // Scroll
   scrollContent: {
     paddingHorizontal: 16,
-    paddingTop:        4,
-    gap: 16,
+    paddingTop:        20,
+    gap:               20,
   },
 
-  // Capacity chips
-  capacityRow: {
+  // Section eyebrow
+  sectionEyebrow: {
+    fontSize:      9,
+    fontWeight:    "800",
+    color:         "#1E2A45",
+    letterSpacing: 1.8,
+  },
+
+  // Slots
+  slotsSection: { gap: 10 },
+  slotsRow: {
     flexDirection: "row",
-    gap: 10,
+    gap:           8,
   },
-  slotChipWrapper: { flex: 1 },
+  slotWrapper: { flex: 1 },
+
+  // Slot chip — filled
   slotChip: {
-    flexDirection:   "row",
-    alignItems:      "center",
-    justifyContent:  "center",
-    borderRadius:    12,
-    paddingVertical: 9,
-    paddingHorizontal: 10,
-    gap: 5,
-  },
-  slotChipFilled: {
-    shadowColor:   "#FF4D8D",
-    shadowOpacity: 0.4,
+    borderRadius: 14,
+    overflow:     "hidden",
+    shadowColor:  "#FF4D8D",
+    shadowOpacity: 0.28,
     shadowRadius:  8,
     shadowOffset:  { width: 0, height: 3 },
     elevation:     5,
   },
+  slotChipInner: {
+    flexDirection: "row",
+    alignItems:    "center",
+    gap:           8,
+    padding:       11,
+  },
+  slotChipIconWrap: {
+    width:           26,
+    height:          26,
+    borderRadius:    8,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems:      "center",
+    justifyContent:  "center",
+  },
+  slotChipTitle: {
+    fontSize:   11,
+    fontWeight: "800",
+    color:      "#fff",
+  },
+  slotChipSubFilled: {
+    fontSize:   9,
+    fontWeight: "600",
+    color:      "rgba(255,255,255,0.7)",
+    marginTop:  1,
+  },
+
+  // Slot chip — empty
   slotChipEmpty: {
-    backgroundColor: "#131829",
+    borderRadius:    14,
+    backgroundColor: "#080D1A",
     borderWidth:     1,
-    borderColor:     "#1E2640",
+    borderColor:     "#121E33",
     borderStyle:     "dashed",
   },
-  slotLabelFilled: { fontSize: 11, fontWeight: "700", color: "#fff" },
-  slotLabelEmpty:  { fontSize: 11, fontWeight: "600", color: "#3D4860" },
-  focusDot: {
-    width:        6,
-    height:       6,
-    borderRadius: 3,
-    backgroundColor: "#fff",
-    marginLeft:   2,
+  slotEmptyIconWrap: {
+    width:           26,
+    height:          26,
+    borderRadius:    8,
+    backgroundColor: "#0F1626",
+    alignItems:      "center",
+    justifyContent:  "center",
+  },
+  slotChipTitleEmpty: {
+    fontSize:   11,
+    fontWeight: "700",
+    color:      "#253050",
+  },
+  slotChipSubEmpty: {
+    fontSize:   9,
+    fontWeight: "600",
+    color:      "#1A2640",
+    marginTop:  1,
   },
 
   // Empty state
   emptyState: {
-    alignItems:     "center",
-    paddingVertical: 64,
-    gap: 12,
+    alignItems:      "center",
+    paddingVertical: 52,
+    gap:             14,
   },
-  emptyIconRing: {
-    width:           88,
-    height:          88,
-    borderRadius:    44,
-    backgroundColor: "#0F1120",
-    borderWidth:     1,
-    borderColor:     "#1E2640",
+  emptyRingOuter: {
+    width:           100,
+    height:          100,
+    borderRadius:    50,
+    backgroundColor: "#060A14",
+    borderWidth:     1.5,
+    borderColor:     "#0F1A2E",
     alignItems:      "center",
     justifyContent:  "center",
-    marginBottom:    8,
+    marginBottom:    6,
+  },
+  emptyRingInner: {
+    width:           72,
+    height:          72,
+    borderRadius:    36,
+    backgroundColor: "#0A0F1E",
+    borderWidth:     1,
+    borderColor:     "#131D35",
+    alignItems:      "center",
+    justifyContent:  "center",
   },
   emptyTitle: {
-    fontSize:   18,
-    fontWeight: "700",
-    color:      "#CBD5E1",
-    letterSpacing: -0.3,
+    fontSize:      20,
+    fontWeight:    "800",
+    color:         "#1E2A45",
+    letterSpacing: -0.4,
   },
   emptySubtitle: {
-    fontSize:  13,
-    color:     "#475569",
-    textAlign: "center",
-    maxWidth:  260,
-    lineHeight: 19,
+    fontSize:   13,
+    color:      "#141E33",
+    textAlign:  "center",
+    lineHeight: 20,
+  },
+  emptySlotHint: {
+    flexDirection:     "row",
+    alignItems:        "center",
+    gap:               6,
+    backgroundColor:   "#070C18",
+    borderWidth:       1,
+    borderColor:       "#0F1626",
+    borderRadius:      10,
+    paddingHorizontal: 14,
+    paddingVertical:   8,
+    marginTop:         2,
+  },
+  emptySlotHintText: {
+    fontSize:   11,
+    fontWeight: "600",
+    color:      "#1A2640",
   },
   emptyBackBtn: {
-    flexDirection:   "row",
-    alignItems:      "center",
-    gap:             6,
-    marginTop:       8,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    backgroundColor: "#0F1120",
-    borderRadius:    12,
-    borderWidth:     1,
-    borderColor:     "#1E2640",
+    flexDirection:     "row",
+    alignItems:        "center",
+    gap:               6,
+    marginTop:         6,
+    paddingHorizontal: 20,
+    paddingVertical:   11,
+    backgroundColor:   "#070C18",
+    borderRadius:      13,
+    borderWidth:       1,
+    borderColor:       "#0F1A2E",
   },
   emptyBackText: {
     fontSize:   13,
-    fontWeight: "600",
-    color:      "#64748B",
+    fontWeight: "700",
+    color:      "#253050",
   },
 
-  // Section label
-  sectionLabel: {
-    fontSize:      10,
-    fontWeight:    "800",
-    color:         "#334155",
-    letterSpacing: 1.2,
-    marginBottom:  -4,
-  },
-
-  // 3D Stack
-  stackContainer: {
-    position:     "relative",
-    marginBottom: 24,   // room for ghost cards to peek below
-  },
-  ghostCard: {
-    position:        "absolute",
-    height:          72,
-    borderRadius:    20,
-    backgroundColor: "#1E1645",
-  },
-  orderCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius:    20,
-    padding:         20,
-    shadowColor:     "#000",
-    shadowOpacity:   0.35,
-    shadowRadius:    24,
-    shadowOffset:    { width: 0, height: 8 },
-    elevation:       16,
-    zIndex:          3,
-  },
-
-  // Card: top row
-  cardTopRow: {
+  // Stack header row
+  stackHeader: {
     flexDirection:  "row",
     alignItems:     "center",
     justifyContent: "space-between",
-    marginBottom:   16,
+    marginBottom:   -6,
   },
-  customerBlock: {
-    flexDirection: "row",
-    alignItems:    "center",
-    gap: 10,
-    flex: 1,
-  },
-  avatarRing: {
-    width:           40,
-    height:          40,
-    borderRadius:    20,
-    backgroundColor: "#FFF0F5",
-    borderWidth:     1.5,
-    borderColor:     "#FFB3CC",
-    alignItems:      "center",
-    justifyContent:  "center",
-  },
-  customerText: { flex: 1 },
-  customerName: {
-    fontSize:   15,
-    fontWeight: "700",
-    color:      "#0F172A",
-    letterSpacing: -0.2,
-  },
-  customerPhone: {
-    fontSize:  12,
-    color:     "#64748B",
-    marginTop: 2,
-  },
-  statusChip: {
-    flexDirection:   "row",
-    alignItems:      "center",
-    gap:             5,
+  statusPill: {
+    flexDirection:     "row",
+    alignItems:        "center",
+    gap:               5,
     paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius:    20,
+    paddingVertical:   5,
+    borderRadius:      20,
   },
-  statusDot: {
-    width: 6, height: 6, borderRadius: 3,
-  },
-  statusLabel: {
+  statusPillText: {
     fontSize:   11,
     fontWeight: "700",
     letterSpacing: 0.2,
   },
 
-  // Card: divider
-  divider: {
-    height:          1,
-    backgroundColor: "#F1F5F9",
-    marginVertical:  14,
+  // 3D Stack
+  stackContainer: {
+    position:     "relative",
+    marginBottom: 28,
   },
 
-  // Card: route
-  routeSection:   { gap: 0 },
+  // Ghost cards
+  ghostCard: {
+    position:     "absolute",
+    borderRadius: CARD_RADIUS,
+  },
+  ghost3: {
+    bottom:          -20,
+    left:            22,
+    right:           22,
+    height:          72,
+    backgroundColor: "#080D1A",
+    borderWidth:     1,
+    borderColor:     "#0C1525",
+  },
+  ghost2: {
+    bottom:          -11,
+    left:            11,
+    right:           11,
+    height:          72,
+    backgroundColor: "#0C1422",
+    borderWidth:     1,
+    borderColor:     "#111E36",
+  },
+  ghostCardInner: {
+    flex:          1,
+    flexDirection: "row",
+    alignItems:    "center",
+    justifyContent: "center",
+    gap:           7,
+    paddingTop:    12,
+  },
+  ghostCardLabel: {
+    fontSize:   11,
+    fontWeight: "600",
+    color:      "#111E36",
+    letterSpacing: 0.3,
+  },
+
+  // Main order card
+  orderCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius:    CARD_RADIUS,
+    overflow:        "hidden",
+    shadowColor:     "#000",
+    shadowOpacity:   0.5,
+    shadowRadius:    32,
+    shadowOffset:    { width: 0, height: 12 },
+    elevation:       20,
+    zIndex:          3,
+  },
+
+  // Accent stripe at top of card
+  cardAccentStripe: {
+    height: 4,
+  },
+
+  // Customer block
+  customerBlock: {
+    flexDirection: "row",
+    alignItems:    "center",
+    gap:           12,
+    paddingHorizontal: 18,
+    paddingTop:    16,
+    paddingBottom: 14,
+  },
+  avatarRing: {
+    width:         46,
+    height:        46,
+    borderRadius:  23,
+    alignItems:    "center",
+    justifyContent:"center",
+    shadowColor:   "#FF4D8D",
+    shadowOpacity: 0.15,
+    shadowRadius:  8,
+    shadowOffset:  { width: 0, height: 2 },
+  },
+  avatarInitial: {
+    fontSize:   18,
+    fontWeight: "800",
+    color:      "#FF4D8D",
+  },
+  customerText: { flex: 1 },
+  customerName: {
+    fontSize:      15,
+    fontWeight:    "800",
+    color:         "#0F172A",
+    letterSpacing: -0.2,
+  },
+  customerPhoneRow: {
+    flexDirection: "row",
+    alignItems:    "center",
+    gap:           4,
+    marginTop:     3,
+  },
+  customerPhone: {
+    fontSize:   12,
+    color:      "#94A3B8",
+    fontWeight: "500",
+  },
+  fareCallout: {
+    flexDirection: "row",
+    alignItems:    "baseline",
+    gap:           1,
+  },
+  fareCalloutCurrency: {
+    fontSize:   14,
+    fontWeight: "700",
+    color:      "#475569",
+  },
+  fareCalloutAmount: {
+    fontSize:   26,
+    fontWeight: "800",
+    color:      "#0F172A",
+    letterSpacing: -0.5,
+  },
+
+  // Card divider
+  cardDivider: {
+    height:            1,
+    backgroundColor:   "#F1F5F9",
+    marginHorizontal:  18,
+  },
+
+  // Route
+  routeSection: {
+    paddingHorizontal: 18,
+    paddingVertical:   14,
+    gap:               0,
+  },
   routeRow: {
     flexDirection: "row",
-    gap: 12,
-    minHeight: 48,
+    gap:           14,
+    minHeight:     52,
   },
-  routeIconCol: {
-    alignItems: "center",
-    width:      18,
-    paddingTop: 4,
+  routeTimeline: {
+    alignItems:  "center",
+    width:       18,
+    paddingTop:  4,
   },
-  routeDot: {
-    width: 10, height: 10, borderRadius: 5,
+  routeNode: {
+    width:        11,
+    height:       11,
+    borderRadius: 6,
   },
-  routeDotPickup: { backgroundColor: "#FF4D8D" },
-  routeDotDrop:   { backgroundColor: "#3B82F6" },
-  routeConnector: {
+  routeNodePickup: {
+    backgroundColor: "#FF4D8D",
+    shadowColor:   "#FF4D8D",
+    shadowOpacity: 0.5,
+    shadowRadius:  4,
+    shadowOffset:  { width: 0, height: 0 },
+  },
+  routeNodeDrop: {
+    backgroundColor: "#3B82F6",
+    shadowColor:   "#3B82F6",
+    shadowOpacity: 0.5,
+    shadowRadius:  4,
+    shadowOffset:  { width: 0, height: 0 },
+  },
+  routeConnectorLine: {
     flex:            1,
     width:           2,
     backgroundColor: "#E2E8F0",
-    marginVertical:  3,
+    marginVertical:  4,
   },
-  routeTextCol:   { flex: 1, paddingBottom: 12 },
-  routeTypeLabel: {
+  routeText: {
+    flex:          1,
+    paddingBottom: 10,
+  },
+  routeTag: {
     fontSize:      9,
     fontWeight:    "800",
-    color:         "#94A3B8",
-    letterSpacing: 1.0,
-    marginBottom:  3,
+    color:         "#CBD5E1",
+    letterSpacing: 1.2,
+    marginBottom:  4,
   },
   routeAddress: {
     fontSize:   13,
-    fontWeight: "600",
-    color:      "#1E293B",
+    fontWeight: "700",
+    color:      "#0F172A",
     lineHeight: 19,
   },
 
-  // Card: details grid
+  // Details grid
   detailsGrid: {
-    flexDirection:  "row",
-    flexWrap:       "wrap",
-    gap: 10,
+    flexDirection:     "row",
+    flexWrap:          "wrap",
+    gap:               8,
+    paddingHorizontal: 18,
+    paddingBottom:     16,
   },
   detailCell: {
     flex:            1,
-    minWidth:        "45%",
+    minWidth:        "46%",
     backgroundColor: "#F8FAFC",
-    borderRadius:    12,
-    padding:         10,
-    gap: 4,
+    borderRadius:    13,
+    padding:         12,
+    gap:             5,
+    borderWidth:     1,
+    borderColor:     "#F1F5F9",
+  },
+  detailIconWrap: {
+    width:           26,
+    height:          26,
+    borderRadius:    8,
+    backgroundColor: "#EEF2FF",
+    alignItems:      "center",
+    justifyContent:  "center",
+    marginBottom:    2,
   },
   detailLabel: {
     fontSize:      9,
-    fontWeight:    "700",
-    color:         "#94A3B8",
-    letterSpacing: 0.8,
+    fontWeight:    "800",
+    color:         "#CBD5E1",
+    letterSpacing: 0.9,
     textTransform: "uppercase",
   },
   detailValue: {
     fontSize:   13,
-    fontWeight: "700",
+    fontWeight: "800",
     color:      "#0F172A",
   },
 
-  // Card: CTA
+  // CTA
   ctaWrapper: {
-    marginTop:    16,
-    borderRadius: 14,
+    margin:       16,
+    marginTop:    4,
+    borderRadius: 16,
     overflow:     "hidden",
     shadowColor:  "#FF4D8D",
-    shadowOpacity: 0.38,
-    shadowRadius:  12,
-    shadowOffset:  { width: 0, height: 4 },
-    elevation:     8,
+    shadowOpacity: 0.45,
+    shadowRadius:  16,
+    shadowOffset:  { width: 0, height: 6 },
+    elevation:     10,
   },
   ctaBtn: {
     flexDirection:   "row",
     alignItems:      "center",
     justifyContent:  "center",
-    gap:             8,
-    paddingVertical: 16,
+    gap:             10,
+    paddingVertical: 17,
   },
   ctaText: {
     fontSize:      16,
@@ -657,17 +937,37 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
 
-  // Capacity hint
-  capacityHint: {
-    flexDirection: "row",
-    alignItems:    "center",
-    justifyContent:"center",
-    gap:           6,
-    marginTop:     -8,
+  // Capacity hint card
+  capacityHintRow: { marginTop: -8 },
+  capacityHintCard: {
+    flexDirection:     "row",
+    alignItems:        "center",
+    gap:               12,
+    borderRadius:      16,
+    paddingHorizontal: 16,
+    paddingVertical:   13,
+    borderWidth:       1,
+    borderColor:       "#0F1A2E",
   },
-  capacityHintText: {
+  capacityHintIconWrap: {
+    width:           32,
+    height:          32,
+    borderRadius:    10,
+    backgroundColor: "#0D1220",
+    borderWidth:     1,
+    borderColor:     "#1A2540",
+    alignItems:      "center",
+    justifyContent:  "center",
+  },
+  capacityHintText: { flex: 1 },
+  capacityHintTitle: {
+    fontSize:   13,
+    fontWeight: "700",
+    color:      "#1E3A5F",
+  },
+  capacityHintSub: {
     fontSize:  11,
-    color:     "#334155",
-    fontWeight:"500",
+    color:     "#0F1E30",
+    marginTop: 2,
   },
 });
