@@ -524,6 +524,11 @@ export default function ActiveDeliveryScreen() {
   // Must come before useState so the lazy initializer can read restored status.
   const { activeRide, endActiveRide } = useDriver();
 
+  // Tracks whether THIS screen called endActiveRide() normally (delivery complete).
+  // If activeRide becomes null without us setting this, it means an external
+  // cancellation occurred and we must exit with an alert.
+  const didEndSelf = useRef(false);
+
   // Restore delivery stage from Firestore status on app restart.
   // For fresh accepts, activeRide.orderStatus is "accepted" → maps to "to_pickup".
   const [stage, setStage] = useState<Stage>(() =>
@@ -547,6 +552,23 @@ export default function ActiveDeliveryScreen() {
     ]).start();
   }
   useEffect(() => { animateIn(); }, [stage]);
+
+  // ─── External cancellation guard ──────────────────────────────────────────
+  // Fires whenever activeRide changes. If it becomes null and THIS screen did
+  // not trigger the clear (didEndSelf), the order was cancelled externally
+  // (customer, admin, etc.). Exit the flow immediately.
+  useEffect(() => {
+    if (activeRide !== null) return;       // still active — nothing to do
+    if (didEndSelf.current) return;        // normal completion — already navigating
+    // External cancellation detected while screen is open.
+    Alert.alert(
+      "Order Cancelled",
+      "This order was cancelled by the customer.",
+      [{ text: "OK", onPress: () => router.replace("/(tabs)") }],
+      { cancelable: false },
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRide]);
 
   // Params — fall back to DriverContext activeRide when navigating back to this
   // screen without fresh route params (e.g. after app restore or tab switch).
@@ -594,6 +616,10 @@ export default function ActiveDeliveryScreen() {
   const meta = stageMeta[stage];
 
   function advance() {
+    // Guard: if activeRide was cleared externally (customer cancellation), do
+    // not write any stage to Firestore. The cancellation useEffect handles exit.
+    if (!activeRide) return;
+
     haptic("success");
 
     // OTP gate — enforced only at the at_drop → delivered transition.
@@ -612,7 +638,9 @@ export default function ActiveDeliveryScreen() {
     setOtpError(null);
     const next = nextStage(stage);
     if (!next) {
-      // Delivery complete — clear context so banner disappears, then go home
+      // Delivery complete — mark that WE initiated the clear so the cancellation
+      // useEffect does not fire an alert when activeRide becomes null.
+      didEndSelf.current = true;
       endActiveRide();
       router.replace("/(tabs)");
       return;

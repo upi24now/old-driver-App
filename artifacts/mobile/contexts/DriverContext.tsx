@@ -510,12 +510,19 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!currentOrderId) return;
 
-    const TERMINAL = new Set<OrderStatus>([
-      "delivered", "cancelled", "rejected",
+    const TERMINAL = new Set<OrderStatus>(["delivered", "rejected"]);
+    // Include all known cancellation status variants the customer app may write.
+    // Compared as raw strings so TypeScript does not restrict to OrderStatus members.
+    const CANCEL_VARIANTS = new Set([
+      "cancelled", "canceled", "customer_cancelled", "order_cancelled",
     ]);
 
     const unsub = listenToActiveOrder(currentOrderId, (status) => {
-      if (status === null || TERMINAL.has(status)) {
+      const isTerminal =
+        status === null ||
+        TERMINAL.has(status) ||
+        CANCEL_VARIANTS.has(status as string);
+      if (isTerminal) {
         setActiveRide(null);
         setCurrentOrderId(null);
       }

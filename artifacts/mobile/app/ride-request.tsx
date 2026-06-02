@@ -290,6 +290,16 @@ export default function RideRequestScreen() {
     }
   }, [seconds]);
 
+  // Auto-dismiss if the order is cancelled before the driver accepts.
+  // listenToDispatchedOrder sets incomingRide → null when the order disappears
+  // from the dispatched query (status changed externally). Only dismiss if we
+  // actually had a ride to avoid triggering on initial mount.
+  const hadRideRef = useRef(incomingRide !== null);
+  useEffect(() => {
+    if (incomingRide !== null) { hadRideRef.current = true; return; }
+    if (hadRideRef.current) dismiss();
+  }, [incomingRide]);
+
   function handleReject() {
     Vibration.vibrate(40);
     Animated.parallel([
