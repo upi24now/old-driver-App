@@ -522,7 +522,7 @@ export default function ActiveDeliveryScreen() {
   }>();
 
   // Must come before useState so the lazy initializer can read restored status.
-  const { activeRide, endRide, activeOrderRemovalReason } = useDriver();
+  const { activeRide, endRide, orderRemovalReasons } = useDriver();
 
   // Tracks whether THIS screen called endRide() normally (delivery complete).
   // If activeRide becomes null without us setting this, it means an external
@@ -554,30 +554,35 @@ export default function ActiveDeliveryScreen() {
   useEffect(() => { animateIn(); }, [stage]);
 
   // ─── External cancellation guard ──────────────────────────────────────────
-  // Fires whenever activeRide changes. If it becomes null and THIS screen did
-  // not trigger the clear (didEndSelf), the order was cancelled externally
-  // (customer, admin, etc.). Exit the flow immediately.
+  // Fires whenever activeRide or the per-order removal reason map changes.
+  // If activeRide becomes null and THIS screen did not trigger the clear
+  // (didEndSelf), the order was cancelled externally (customer, admin, etc.).
+  //
+  // P4-D: looks up the reason by THIS screen's orderId — not a shared global —
+  // so cancelling Order A never triggers a false alert on Order B's screen.
   //
   // "delivered" is excluded: the DriverContext listener clears activeRide as
-  // soon as it sees status="delivered" in Firestore. That happens ~100–500ms
-  // after advance() writes the status — before the driver presses "Back to Home".
-  // At that point didEndSelf may still be false, so we must also guard on stage.
+  // soon as it sees status="delivered" in Firestore (~100–500ms after advance()
+  // writes the status), before the driver presses "Back to Home". At that point
+  // didEndSelf may still be false, so we also guard on stage === "delivered".
   useEffect(() => {
     if (activeRide !== null) return;       // still active — nothing to do
     if (didEndSelf.current) return;        // normal completion — already navigating
     if (stage === "delivered") return;     // delivery finished normally — not a cancel
+
+    // Look up the removal reason for THIS screen's order specifically.
+    // Falls back to null when the map entry hasn't been written yet (race window
+    // between Firestore listener firing and React state updating).
+    const reason = orderRemovalReasons[orderId ?? ""] ?? null;
 
     // Only show "Order Cancelled" for genuine external events.
     // "delivered" and "completed" mean the order finished normally via the
     // DriverContext Firestore listener — not an external cancellation.
     // "cancelled", "rejected", "deleted", and null (reason not yet set) all
     // indicate an external action by the customer, admin, or test cleanup.
-    if (
-      activeOrderRemovalReason === "delivered" ||
-      activeOrderRemovalReason === "completed"
-    ) return;
+    if (reason === "delivered" || reason === "completed") return;
 
-    // External cancellation detected while screen is open.
+    // External cancellation confirmed for this specific order.
     Alert.alert(
       "Order Cancelled",
       "This order was cancelled by the customer.",
@@ -585,7 +590,7 @@ export default function ActiveDeliveryScreen() {
       { cancelable: false },
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRide, activeOrderRemovalReason]);
+  }, [activeRide, orderRemovalReasons]);
 
   // Params — fall back to DriverContext activeRide when navigating back to this
   // screen without fresh route params (e.g. after app restore or tab switch).

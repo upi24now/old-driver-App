@@ -85,6 +85,11 @@ export type ActiveRide = IncomingRide & {
   orderStatus:  OrderStatus; // last known Firestore status — used to restore stage on app restart
 };
 
+// Reason an order was removed from activeOrders.
+// "delivered" | "completed" — driver-initiated, normal completion (no alert).
+// "cancelled" | "rejected" | "deleted" — external action (show cancellation alert).
+export type RemovalReason = "delivered" | "completed" | "cancelled" | "rejected" | "deleted";
+
 export type Txn = {
   id:       string;
   type:     "earning" | "withdraw" | "bonus" | "tip";
@@ -165,11 +170,12 @@ type DriverState = {
   // full-wipe so completing Order A leaves Order B intact.
   endRide: (orderId: string) => void;
 
-  // Reason the most-recently removed active order was cleared.
-  // "delivered" | "completed" — normal driver completion (no cancel alert).
-  // "cancelled" | "rejected" | "deleted" — external action (show cancel alert).
-  // null — no order has been removed yet this session.
-  activeOrderRemovalReason: "delivered" | "completed" | "cancelled" | "rejected" | "deleted" | null;
+  // Per-order removal reasons, keyed by orderId.
+  // Set by the listener registry when an order reaches a terminal Firestore status.
+  // Consumers (e.g. active-delivery) look up their own orderId to determine whether
+  // to show a cancellation alert, guaranteeing Order A's cancellation never triggers
+  // a false alert on the active-delivery screen for Order B.
+  orderRemovalReasons: Record<string, RemovalReason>;
 
   withdraw: (amount: number) => boolean;
 
@@ -246,8 +252,11 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // Phase 1: always contains at most 1 order.  Phase 3+ lifts the cap.
   const [activeOrders,         setActiveOrders]         = useState<ActiveRide[]>([]);
   const [currentActiveOrderId, setCurrentActiveOrderId] = useState<string | null>(null);
-  const [activeOrderRemovalReason, setRemovalReason]    =
-    useState<"delivered" | "completed" | "cancelled" | "rejected" | "deleted" | null>(null);
+  // Per-order removal reasons — keyed by orderId, set when a listener fires a
+  // terminal status.  Never reset during the session so active-delivery screens
+  // that briefly re-render after dismissal still read the correct reason.
+  const [orderRemovalReasons, setOrderRemovalReasons] =
+    useState<Record<string, RemovalReason>>({});
 
   // ── Capacity model — derived each render, no extra state ────────────────────
   const activeOrderCount: number  = activeOrders.length;
@@ -703,9 +712,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        // ── Record removal reason before state update ────────────────────────
-        // active-delivery reads this to decide whether to show "Order Cancelled".
-        setRemovalReason(reason);
+        // ── Record per-order removal reason before state update ─────────────
+        // Keyed by orderId so active-delivery for Order B is never triggered by
+        // a cancellation of Order A.
+        setOrderRemovalReasons((prev) => ({ ...prev, [order.id]: reason }));
 
         // Remove only this order from the array (leaves other orders intact).
         setActiveOrders((prev) => prev.filter((o) => o.id !== order.id));
@@ -905,7 +915,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         acceptRide,
         rejectRide,
         endRide,
-        activeOrderRemovalReason,
+        orderRemovalReasons,
         withdraw,
         overlayPermissionGranted,
         requestOverlayPermission,
