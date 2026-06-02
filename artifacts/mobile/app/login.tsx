@@ -3,6 +3,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Animated,
   Easing,
   Image,
@@ -158,11 +159,20 @@ export default function LoginScreen() {
   const router = useRouter();
   const inputRef = useRef<TextInput>(null);
   const [phone, setPhone] = useState("");
-  const { setPhone: setDriverPhone } = useDriver();
+  const { setPhone: setDriverPhone, driverUid, authLoading } = useDriver();
   const [focused, setFocused] = useState(false);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // ─── Auth restore redirect ────────────────────────────────────────────────
+  // Firebase Auth reads the persisted session from AsyncStorage asynchronously.
+  // Once authLoading settles (onAuthStateChanged has fired), redirect to the
+  // dashboard if the driver is already authenticated — no re-login needed.
+  useEffect(() => {
+    if (authLoading) return;
+    if (driverUid) router.replace("/(tabs)");
+  }, [driverUid, authLoading]);
 
   const isValid = phone.replace(/\D/g, "").length === 10;
 
@@ -239,6 +249,16 @@ export default function LoginScreen() {
       />
     </>
   );
+
+  // Show blank screen while Firebase restores session from AsyncStorage.
+  // This prevents the login form from flashing before the redirect fires.
+  if (authLoading) {
+    return (
+      <View style={[styles.root, styles.loadingRoot, { backgroundColor: PAGE_BG }]}>
+        <ActivityIndicator size="large" color={GRADIENT_FROM} />
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -365,6 +385,7 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  loadingRoot: { alignItems: "center", justifyContent: "center" },
   container: {
     flexGrow: 1,
     paddingHorizontal: 24,
