@@ -74,6 +74,7 @@ export type IncomingRide = {
   parcelType:       string;
   parcelEmoji:      string;
   parcelWeight:     string;
+  deliveryOtp?:     string;  // 4-digit OTP set by customer app; validated by driver at drop
 };
 
 export type ActiveRide = IncomingRide & {
@@ -182,6 +183,7 @@ function orderDocToRide(order: OrderDoc): IncomingRide {
     parcelType:       order.parcelType      ?? "Parcel",
     parcelEmoji:      order.parcelEmoji     ?? "📦",
     parcelWeight:     order.parcelWeight    ?? "Package",
+    deliveryOtp:      order.deliveryOtp,
   };
 }
 
