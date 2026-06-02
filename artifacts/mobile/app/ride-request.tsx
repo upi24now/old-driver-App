@@ -294,9 +294,16 @@ export default function RideRequestScreen() {
   // listenToDispatchedOrder sets incomingRide → null when the order disappears
   // from the dispatched query (status changed externally). Only dismiss if we
   // actually had a ride to avoid triggering on initial mount.
-  const hadRideRef = useRef(incomingRide !== null);
+  //
+  // didAcceptRef guards against a race: acceptRide() sets incomingRide → null
+  // synchronously, which would also trigger this dismiss — navigating back to
+  // the dashboard instead of forward to active-delivery. Skip dismiss when the
+  // driver has already accepted.
+  const hadRideRef    = useRef(incomingRide !== null);
+  const didAcceptRef  = useRef(false);
   useEffect(() => {
     if (incomingRide !== null) { hadRideRef.current = true; return; }
+    if (didAcceptRef.current) return;   // driver accepted — handleAccept handles nav
     if (hadRideRef.current) dismiss();
   }, [incomingRide]);
 
@@ -352,6 +359,9 @@ export default function RideRequestScreen() {
     Vibration.vibrate(50);
     const ride = incomingRide;
     if (!ride) return;
+    // Arm before acceptRide() so the hadRideRef useEffect sees it synchronously
+    // when incomingRide → null and does not call dismiss() to the dashboard.
+    didAcceptRef.current = true;
     acceptRide();
     // Animate dismiss then navigate to the unified delivery stage screen
     Animated.parallel([
