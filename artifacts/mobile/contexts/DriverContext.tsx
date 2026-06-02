@@ -195,6 +195,20 @@ function orderDocToRide(order: OrderDoc): IncomingRide {
   };
 }
 
+// ─── Terminal status classification (module scope — no closure needed) ────────
+// Used by the Phase 2 listener registry to decide when to free an order slot.
+const ORDER_TERMINAL = new Set<OrderStatus>(["delivered", "rejected"]);
+const ORDER_CANCEL_VARIANTS = new Set([
+  "cancelled", "canceled", "customer_cancelled", "order_cancelled",
+]);
+function isOrderTerminal(status: OrderStatus | null): boolean {
+  return (
+    status === null ||
+    ORDER_TERMINAL.has(status) ||
+    ORDER_CANCEL_VARIANTS.has(status as string)
+  );
+}
+
 export function DriverProvider({ children }: { children: ReactNode }) {
   const [driverUid,   setDriverUid]   = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -419,6 +433,14 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       updateDriverOnlineStatus(driverUid, false).catch(console.error);
     }
     firebaseSignOut(firebaseAuth).catch(console.error);
+
+    // Explicitly drain the listener map before clearing state so no Firestore
+    // callbacks can fire after sign-out and attempt to update unmounted state.
+    for (const unsub of activeOrderListenersRef.current.values()) {
+      unsub();
+    }
+    activeOrderListenersRef.current.clear();
+
     setDriverUid(null);
     setPhoneState(null);
     setProfileState(null);
@@ -528,35 +550,87 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     setCurrentActiveOrderId(null);
   };
 
-  // ─── Active-order real-time sync ──────────────────────────────────────────
-  // Watches the live Firestore status of the current active order.
-  // If the order is marked terminal externally (admin write, customer cancel,
-  // duplicate accept) activeOrders is cleared so the dispatch listener unblocks.
-  // Phase 1: single subscription keyed on currentActiveOrderId.
-  // Phase 2 will replace this with a Map<orderId, unsub> to track multiple orders.
+  // ─── Phase 2: active-order listener registry ──────────────────────────────
+  //
+  // One Firestore listener per order in activeOrders.
+  // Stored in a ref-based Map so the sync effect only adds/removes individual
+  // entries and never recreates the entire set on every state update.
+  //
+  // Lifecycle:
+  //   • Order added to activeOrders  → subscribe, store unsub in map
+  //   • Order reaches terminal status → remove from activeOrders, unsub listener
+  //   • Order removed externally      → useEffect cleanup loop unsubscribes
+  //   • Provider unmounts             → dedicated cleanup effect unsubscribes all
+  //   • signOut                       → explicit loop + clear before state reset
+  //
+  // Phase 1 equivalence: with a single order the map always has exactly one
+  // entry and behaviour is identical to the old single-listener useEffect.
+
+  // Map of orderId → unsubscribe function.  Never stored in React state so
+  // mutations to the map never trigger re-renders.
+  const activeOrderListenersRef = useRef<Map<string, () => void>>(new Map());
+
+  // Stable ref to the current activeOrders array.  Used inside listener
+  // callbacks (registered once per order) to read the latest snapshot without
+  // creating stale closures.
+  const activeOrdersRef = useRef<ActiveRide[]>(activeOrders);
+  useEffect(() => { activeOrdersRef.current = activeOrders; }, [activeOrders]);
+
+  // Sync listeners with activeOrders whenever the set of active order IDs changes.
+  // Subscribes to orders that have no listener yet; unsubscribes from orders
+  // that are no longer in the array.
   useEffect(() => {
-    if (!currentActiveOrderId) return;
+    const listeners = activeOrderListenersRef.current;
+    const currentIds = new Set(activeOrders.map((o) => o.id));
 
-    const TERMINAL = new Set<OrderStatus>(["delivered", "rejected"]);
-    // Include all known cancellation status variants the customer app may write.
-    // Compared as raw strings so TypeScript does not restrict to OrderStatus members.
-    const CANCEL_VARIANTS = new Set([
-      "cancelled", "canceled", "customer_cancelled", "order_cancelled",
-    ]);
+    // ── Subscribe to newly added orders ──────────────────────────────────────
+    for (const order of activeOrders) {
+      if (listeners.has(order.id)) continue;  // already watching
 
-    const unsub = listenToActiveOrder(currentActiveOrderId, (status) => {
-      const isTerminal =
-        status === null ||
-        TERMINAL.has(status) ||
-        CANCEL_VARIANTS.has(status as string);
-      if (isTerminal) {
-        setActiveOrders([]);
-        setCurrentActiveOrderId(null);
+      const unsub = listenToActiveOrder(order.id, (status) => {
+        if (!isOrderTerminal(status)) return;
+
+        // Remove only this order from the array (leaves other orders intact).
+        setActiveOrders((prev) => prev.filter((o) => o.id !== order.id));
+
+        // If the completed order was the focused one, shift focus to the next
+        // available order (first in remaining array), or null if none left.
+        setCurrentActiveOrderId((prev) => {
+          if (prev !== order.id) return prev;
+          // activeOrdersRef.current still holds the pre-removal snapshot here,
+          // so filtering out order.id gives us the remaining candidates.
+          const remaining = activeOrdersRef.current.filter((o) => o.id !== order.id);
+          return remaining[0]?.id ?? null;
+        });
+
+        // Self-cleanup: remove this listener from the map.
+        listeners.get(order.id)?.();
+        listeners.delete(order.id);
+      });
+
+      listeners.set(order.id, unsub);
+    }
+
+    // ── Unsubscribe from orders no longer in activeOrders ────────────────────
+    // Handles the case where endActiveRide() or signOut clears the array
+    // externally before the listener's own terminal-status callback fires.
+    for (const [id, unsub] of Array.from(listeners)) {
+      if (!currentIds.has(id)) {
+        unsub();
+        listeners.delete(id);
       }
-    });
+    }
+  }, [activeOrders]);   // re-runs only when the order set changes
 
-    return unsub;
-  }, [currentActiveOrderId]);
+  // ── Provider unmount: ensure no Firestore listeners are left open ──────────
+  useEffect(() => {
+    return () => {
+      for (const unsub of activeOrderListenersRef.current.values()) {
+        unsub();
+      }
+      activeOrderListenersRef.current.clear();
+    };
+  }, []);
 
   // ─── Notification action handlers (registered once on mount) ──────────────
   useEffect(() => {
