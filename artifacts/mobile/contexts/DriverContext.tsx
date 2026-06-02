@@ -119,9 +119,15 @@ type DriverState = {
 
   isOnline:         boolean;
 
-  // ── Multi-order foundation (Phase 1: max 1 order; Phase 3+ will lift cap) ──
+  // ── Multi-order foundation (Phase 1/2: max 1 order; Phase 4 lifts cap) ──────
   activeOrders:          ActiveRide[];   // array of in-progress orders
   currentActiveOrderId:  string | null;  // which order the UI is focused on
+
+  // Capacity model (Phase 3) — derived; never stored as separate state.
+  maxActiveOrders:  number;   // = MAX_ACTIVE_ORDERS (3)
+  activeOrderCount: number;   // = activeOrders.length
+  hasCapacity:      boolean;  // activeOrderCount < MAX_ACTIVE_ORDERS
+  isAtCapacity:     boolean;  // activeOrderCount >= MAX_ACTIVE_ORDERS
 
   // Backward-compat shims — derived from activeOrders/currentActiveOrderId.
   // Existing screens read these unchanged; remove when all consumers migrate.
@@ -195,6 +201,12 @@ function orderDocToRide(order: OrderDoc): IncomingRide {
   };
 }
 
+// ─── Capacity model ───────────────────────────────────────────────────────────
+// MAX_ACTIVE_ORDERS is the maximum number of simultaneously accepted orders a
+// driver may hold.  Phase 3 keeps single-order behaviour by gating dispatch at
+// activeOrderCount > 0; Phase 4 will relax the gate to isAtCapacity.
+const MAX_ACTIVE_ORDERS = 3;
+
 // ─── Terminal status classification (module scope — no closure needed) ────────
 // Used by the Phase 2 listener registry to decide when to free an order slot.
 const ORDER_TERMINAL = new Set<OrderStatus>(["delivered", "rejected"]);
@@ -222,6 +234,11 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // Phase 1: always contains at most 1 order.  Phase 3+ lifts the cap.
   const [activeOrders,         setActiveOrders]         = useState<ActiveRide[]>([]);
   const [currentActiveOrderId, setCurrentActiveOrderId] = useState<string | null>(null);
+
+  // ── Capacity model — derived each render, no extra state ────────────────────
+  const activeOrderCount: number  = activeOrders.length;
+  const hasCapacity:      boolean = activeOrderCount < MAX_ACTIVE_ORDERS;
+  const isAtCapacity:     boolean = activeOrderCount >= MAX_ACTIVE_ORDERS;
 
   // Derived backward-compat shims — no extra state; computed each render.
   const activeRide: ActiveRide | null =
@@ -337,9 +354,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // Customer app writes such a document to dispatch an order to this driver.
   const lastSeenOrderId = useRef<string | null>(null);
   useEffect(() => {
-    // Phase 1: block new dispatches when a slot is occupied (activeOrders.length > 0).
-    // Phase 3+ will change this to: activeOrders.length >= MAX_ACTIVE_ORDERS.
-    if (!isOnline || !driverUid || activeOrders.length > 0) return;
+    // Capacity gate: only listen for new orders when a slot is free.
+    // Phase 3: single-order mode — block as soon as 1 order is active (activeOrderCount > 0).
+    // Phase 4: relax to isAtCapacity so drivers can hold up to MAX_ACTIVE_ORDERS orders.
+    if (!isOnline || !driverUid || activeOrderCount > 0) return;
 
     const unsub = listenToDispatchedOrder(driverUid, (order) => {
       if (!order) {
@@ -510,12 +528,18 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     const uid  = driverUid;
     if (!ride || !uid) return;
 
+    // Defensive capacity guard — second line of defence after the dispatch gate.
+    // Phase 3: single-order mode, block any second acceptance.
+    // Phase 4: change this condition to isAtCapacity so up to MAX_ACTIVE_ORDERS
+    //          orders can be appended (change setActiveOrders([accepted]) → push).
+    if (activeOrderCount > 0) return;
+
     // 1. Write to Firestore — customer app sees "accepted" immediately
     acceptOrder(ride.id, uid, profile?.name ?? null).catch(console.error);
 
     // 2. Update local state
-    // Phase 1: single-slot — replaces any prior entry (array always length 0 here).
-    // Phase 3+ will push onto the array up to MAX_ACTIVE_ORDERS.
+    // Phase 3: single-slot — replaces any prior entry (array always length 0 here).
+    // Phase 4: push onto array: setActiveOrders(prev => [...prev, accepted]).
     const accepted: ActiveRide = { ...ride, acceptedAt: Date.now(), orderStatus: "accepted" };
     setActiveOrders([accepted]);
     setCurrentActiveOrderId(ride.id);
@@ -640,6 +664,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         const uid  = driverUidRef.current;
         if (!ride || !uid) return;
 
+        // Defensive capacity check using the stable ref (this handler is
+        // registered once; direct state reads would be stale).
+        // Phase 3: single-order mode — reject if any order is already active.
+        // Phase 4: change to >= MAX_ACTIVE_ORDERS.
+        if (activeOrdersRef.current.length > 0) return;
+
         acceptOrder(ride.id, uid, profileRef.current?.name ?? null).catch(console.error);
 
         const accepted: ActiveRide = { ...ride, acceptedAt: Date.now(), orderStatus: "accepted" };
@@ -741,6 +771,11 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         // Multi-order foundation
         activeOrders,
         currentActiveOrderId,
+        // Capacity model (Phase 3)
+        maxActiveOrders:  MAX_ACTIVE_ORDERS,
+        activeOrderCount,
+        hasCapacity,
+        isAtCapacity,
         // Backward-compat shims (derived above)
         activeRide,
         currentOrderId,
