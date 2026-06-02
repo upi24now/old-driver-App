@@ -25,6 +25,7 @@ import {
   updateDriverSubscription,
   getActiveOrderForDriver,
   listenToDispatchedOrder,
+  listenToActiveOrder,
   acceptOrder,
   rejectOrder,
   type OrderDoc,
@@ -500,6 +501,28 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     setActiveRide(null);
     setCurrentOrderId(null);
   };
+
+  // ─── Active-order real-time sync ──────────────────────────────────────────
+  // Watches the live Firestore status of the current active order.
+  // If the order is marked terminal externally — e.g. by an admin write,
+  // customer cancellation, or a duplicate accept — activeRide is cleared
+  // immediately so listenToDispatchedOrder can unblock for the next order.
+  useEffect(() => {
+    if (!currentOrderId) return;
+
+    const TERMINAL = new Set<OrderStatus>([
+      "delivered", "cancelled", "rejected",
+    ]);
+
+    const unsub = listenToActiveOrder(currentOrderId, (status) => {
+      if (status === null || TERMINAL.has(status)) {
+        setActiveRide(null);
+        setCurrentOrderId(null);
+      }
+    });
+
+    return unsub;
+  }, [currentOrderId]);
 
   // ─── Notification action handlers (registered once on mount) ──────────────
   useEffect(() => {

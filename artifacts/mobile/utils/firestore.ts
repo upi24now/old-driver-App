@@ -216,6 +216,24 @@ export function listenToDispatchedOrder(
 }
 
 /**
+ * Subscribe to a single order document.
+ * Calls back with the live status string, or null if the doc no longer exists.
+ * Returns an unsubscribe function; call it on cleanup.
+ */
+export function listenToActiveOrder(
+  orderId:  string,
+  onChange: (status: OrderStatus | null) => void,
+): () => void {
+  return onSnapshot(doc(db, "orders", orderId), (snap) => {
+    if (!snap.exists()) {
+      onChange(null);
+      return;
+    }
+    onChange((snap.data() as OrderDoc).status);
+  });
+}
+
+/**
  * Return the single in-progress order assigned to this driver, or null.
  * Queries by driverUid only (no composite index needed), then filters
  * active statuses client-side.
