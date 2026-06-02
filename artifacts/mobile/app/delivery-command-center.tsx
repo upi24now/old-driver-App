@@ -80,31 +80,43 @@ function SlotChip({
   index,
   occupied,
   isFocused,
+  order,
+  onPress,
 }: {
-  index:    number;
-  occupied: boolean;
+  index:     number;
+  occupied:  boolean;
   isFocused: boolean;
+  order?:    ActiveRide;
+  onPress?:  () => void;
 }) {
   if (occupied) {
     return (
-      <LinearGradient
-        colors={isFocused ? ["#FF4D8D", "#FF7A3D"] : ["#7C3AED", "#4F46E5"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
+      <TouchableOpacity
         style={styles.slotChip}
+        activeOpacity={isFocused ? 1 : 0.78}
+        onPress={onPress}
       >
-        <View style={styles.slotChipInner}>
-          <View style={styles.slotChipIconWrap}>
-            <Feather name="package" size={12} color="#fff" />
+        <LinearGradient
+          colors={isFocused ? ["#FF4D8D", "#FF7A3D"] : ["#7C3AED", "#4F46E5"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={{ flex: 1 }}
+        >
+          <View style={styles.slotChipInner}>
+            <View style={styles.slotChipIconWrap}>
+              <Feather name="package" size={12} color="#fff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.slotChipTitle} numberOfLines={1}>
+                {order?.passengerName?.split(" ")[0] ?? `Slot ${index + 1}`}
+              </Text>
+              <Text style={styles.slotChipSubFilled}>
+                {isFocused ? "● Focused" : "● Tap to focus"}
+              </Text>
+            </View>
           </View>
-          <View>
-            <Text style={styles.slotChipTitle}>Slot {index + 1}</Text>
-            <Text style={styles.slotChipSubFilled}>
-              {isFocused ? "● Focused" : "● Active"}
-            </Text>
-          </View>
-        </View>
-      </LinearGradient>
+        </LinearGradient>
+      </TouchableOpacity>
     );
   }
   return (
@@ -133,9 +145,11 @@ export default function DeliveryCommandCenter() {
     activeOrderCount,
     maxActiveOrders,
     hasCapacity,
+    focusOrder,
   } = useDriver();
 
   const focused: ActiveRide | null = activeRide;
+  const secondaryOrders = activeOrders.filter((o) => o.id !== focused?.id);
   const remainingSlots = maxActiveOrders - activeOrderCount;
   const sm = focused ? statusMeta(focused.orderStatus) : null;
 
@@ -191,15 +205,20 @@ export default function DeliveryCommandCenter() {
         <View style={styles.slotsSection}>
           <Text style={styles.sectionEyebrow}>ORDER SLOTS</Text>
           <View style={styles.slotsRow}>
-            {Array.from({ length: maxActiveOrders }, (_, i) => (
-              <View key={i} style={styles.slotWrapper}>
-                <SlotChip
-                  index={i}
-                  occupied={i < activeOrderCount}
-                  isFocused={activeOrders[i]?.id === currentActiveOrderId}
-                />
-              </View>
-            ))}
+            {Array.from({ length: maxActiveOrders }, (_, i) => {
+              const slotOrder = activeOrders[i];
+              return (
+                <View key={i} style={styles.slotWrapper}>
+                  <SlotChip
+                    index={i}
+                    occupied={i < activeOrderCount}
+                    isFocused={slotOrder?.id === currentActiveOrderId}
+                    order={slotOrder}
+                    onPress={slotOrder ? () => focusOrder(slotOrder.id) : undefined}
+                  />
+                </View>
+              );
+            })}
           </View>
         </View>
 
@@ -220,7 +239,7 @@ export default function DeliveryCommandCenter() {
             <View style={styles.emptySlotHint}>
               <Feather name="layers" size={13} color="#334155" />
               <Text style={styles.emptySlotHintText}>
-                {maxActiveOrders} slots ready · Multi-order coming soon
+                {maxActiveOrders} slots ready · Accept up to {maxActiveOrders} at once
               </Text>
             </View>
             <TouchableOpacity
@@ -252,22 +271,56 @@ export default function DeliveryCommandCenter() {
             <View style={styles.stackContainer}>
 
               {/* ── Ghost card 3 — furthest back ──────────────────────── */}
-              <View pointerEvents="none" style={[styles.ghostCard, styles.ghost3]}>
-                <View style={styles.ghostCardInner}>
-                  <Feather name="plus-circle" size={13} color="#1E293B" />
-                  <Text style={styles.ghostCardLabel}>Slot 3 · Available</Text>
+              {secondaryOrders[1] ? (
+                <TouchableOpacity
+                  activeOpacity={0.75}
+                  style={[styles.ghostCard, styles.ghost3, styles.ghostOccupied]}
+                  onPress={() => focusOrder(secondaryOrders[1]!.id)}
+                >
+                  <View style={{ flex: 1 }} />
+                  <View style={styles.ghostOccupiedRow}>
+                    <Feather name="package" size={10} color="#7C3AED" />
+                    <Text style={styles.ghostOccupiedLabel} numberOfLines={1}>
+                      {secondaryOrders[1]!.passengerName.split(" ")[0]} · ₹{secondaryOrders[1]!.fareEstimate}
+                    </Text>
+                    <Feather name="chevron-up" size={10} color="#3B2060" />
+                  </View>
+                </TouchableOpacity>
+              ) : (
+                <View pointerEvents="none" style={[styles.ghostCard, styles.ghost3]}>
+                  <View style={styles.ghostCardInner}>
+                    <Feather name="plus-circle" size={13} color="#1E293B" />
+                    <Text style={styles.ghostCardLabel}>Slot 3 · Available</Text>
+                  </View>
                 </View>
-              </View>
+              )}
 
               {/* ── Ghost card 2 — one step back ──────────────────────── */}
-              <View pointerEvents="none" style={[styles.ghostCard, styles.ghost2]}>
-                <View style={styles.ghostCardInner}>
-                  <Feather name="plus-circle" size={13} color="#263352" />
-                  <Text style={[styles.ghostCardLabel, { color: "#263352" }]}>
-                    Slot 2 · Available
-                  </Text>
+              {secondaryOrders[0] ? (
+                <TouchableOpacity
+                  activeOpacity={0.75}
+                  style={[styles.ghostCard, styles.ghost2, styles.ghostOccupied]}
+                  onPress={() => focusOrder(secondaryOrders[0]!.id)}
+                >
+                  <View style={{ flex: 1 }} />
+                  <View style={styles.ghostOccupiedRow}>
+                    <Feather name="package" size={10} color="#7C3AED" />
+                    <Text style={styles.ghostOccupiedLabel} numberOfLines={1}>
+                      {secondaryOrders[0]!.passengerName.split(" ")[0]} · ₹{secondaryOrders[0]!.fareEstimate}
+                    </Text>
+                    <Feather name="chevron-up" size={10} color="#3B2060" />
+                  </View>
+                </TouchableOpacity>
+              ) : (
+                <View pointerEvents="none" style={[styles.ghostCard, styles.ghost2]}>
+                  <View style={styles.ghostCardInner}>
+                    <Feather name="plus-circle" size={13} color="#263352" />
+                    <Text style={[styles.ghostCardLabel, { color: "#263352" }]}>
+                      Slot 2 · Available
+                    </Text>
+                  </View>
                 </View>
-              </View>
+              )}
 
               {/* ── Main focused card ─────────────────────────────────── */}
               <View style={styles.orderCard}>
@@ -385,6 +438,51 @@ export default function DeliveryCommandCenter() {
             </View>
             {/* end stack container */}
 
+            {/* ── Secondary order cards ───────────────────────────────── */}
+            {secondaryOrders.length > 0 && (
+              <View style={styles.secondarySection}>
+                <Text style={styles.sectionEyebrow}>QUEUED ORDERS</Text>
+                {secondaryOrders.map((order) => {
+                  const sm2 = statusMeta(order.orderStatus);
+                  return (
+                    <TouchableOpacity
+                      key={order.id}
+                      style={styles.secondaryCard}
+                      activeOpacity={0.82}
+                      onPress={() => focusOrder(order.id)}
+                    >
+                      <View style={[styles.secondaryAccent, { backgroundColor: sm2.color }]} />
+                      <View style={styles.secondaryContent}>
+                        <View style={[styles.secondaryInitial, { borderColor: sm2.color + "44" }]}>
+                          <Text style={[styles.secondaryInitialText, { color: sm2.color }]}>
+                            {(order.passengerName || "?")[0].toUpperCase()}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.secondaryName} numberOfLines={1}>
+                            {order.passengerName}
+                          </Text>
+                          <Text style={styles.secondaryDrop} numberOfLines={1}>
+                            → {order.drop}
+                          </Text>
+                        </View>
+                        <View style={styles.secondaryRight}>
+                          <Text style={styles.secondaryFare}>₹{order.fareEstimate}</Text>
+                          <View style={[styles.secondaryStatusPill, { backgroundColor: sm2.bg }]}>
+                            <Feather name={sm2.icon} size={9} color={sm2.color} />
+                            <Text style={[styles.secondaryStatusText, { color: sm2.color }]}>
+                              {sm2.label}
+                            </Text>
+                          </View>
+                        </View>
+                        <Feather name="chevron-right" size={14} color="#253050" />
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+
             {/* ── Multi-order capacity hint ───────────────────────────── */}
             {hasCapacity && (
               <View style={styles.capacityHintRow}>
@@ -402,7 +500,7 @@ export default function DeliveryCommandCenter() {
                       {remainingSlots} order slot{remainingSlots !== 1 ? "s" : ""} available
                     </Text>
                     <Text style={styles.capacityHintSub}>
-                      Multi-order support coming soon
+                      Tap a slot chip above to switch focus
                     </Text>
                   </View>
                   <Feather name="chevron-right" size={14} color="#1E293B" />
@@ -935,6 +1033,102 @@ const styles = StyleSheet.create({
     fontWeight:    "800",
     color:         "#fff",
     letterSpacing: -0.2,
+  },
+
+  // Ghost cards — occupied state
+  ghostOccupied: {
+    backgroundColor: "#110B20",
+    borderColor:     "#1E1040",
+    overflow:        "hidden",
+  },
+  ghostOccupiedRow: {
+    flexDirection:     "row",
+    alignItems:        "center",
+    gap:               6,
+    paddingHorizontal: 14,
+    paddingBottom:     8,
+  },
+  ghostOccupiedLabel: {
+    flex:       1,
+    fontSize:   10,
+    fontWeight: "700",
+    color:      "rgba(139, 92, 246, 0.65)",
+  },
+
+  // Secondary order cards (QUEUED ORDERS section below stack)
+  secondarySection: { gap: 10 },
+  secondaryCard: {
+    flexDirection:  "row",
+    backgroundColor: "#0A0F1C",
+    borderRadius:    16,
+    borderWidth:     1,
+    borderColor:     "#111E35",
+    overflow:        "hidden",
+    shadowColor:     "#000",
+    shadowOpacity:   0.3,
+    shadowRadius:    8,
+    shadowOffset:    { width: 0, height: 3 },
+    elevation:       4,
+  },
+  secondaryAccent: {
+    width: 4,
+  },
+  secondaryContent: {
+    flex:          1,
+    flexDirection: "row",
+    alignItems:    "center",
+    gap:           12,
+    paddingHorizontal: 12,
+    paddingVertical:   12,
+  },
+  secondaryInitial: {
+    width:           34,
+    height:          34,
+    borderRadius:    17,
+    backgroundColor: "#0D1525",
+    borderWidth:     1.5,
+    alignItems:      "center",
+    justifyContent:  "center",
+    flexShrink:      0,
+  },
+  secondaryInitialText: {
+    fontSize:   14,
+    fontWeight: "800",
+  },
+  secondaryName: {
+    fontSize:      13,
+    fontWeight:    "700",
+    color:         "#CBD5E1",
+    letterSpacing: -0.1,
+  },
+  secondaryDrop: {
+    fontSize:  11,
+    fontWeight: "500",
+    color:     "#334155",
+    marginTop: 2,
+  },
+  secondaryRight: {
+    alignItems: "flex-end",
+    gap:        5,
+    flexShrink: 0,
+  },
+  secondaryFare: {
+    fontSize:   15,
+    fontWeight: "800",
+    color:      "#94A3B8",
+  },
+  secondaryStatusPill: {
+    flexDirection:     "row",
+    alignItems:        "center",
+    gap:               4,
+    paddingHorizontal: 7,
+    paddingVertical:   3,
+    borderRadius:      8,
+  },
+  secondaryStatusText: {
+    fontSize:      9,
+    fontWeight:    "700",
+    letterSpacing: 0.2,
   },
 
   // Capacity hint card

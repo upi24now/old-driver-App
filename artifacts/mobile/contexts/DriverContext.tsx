@@ -169,6 +169,10 @@ type DriverState = {
   // (or null when the last order is removed).  Replaces the Phase-3 endActiveRide()
   // full-wipe so completing Order A leaves Order B intact.
   endRide: (orderId: string) => void;
+  // Sets currentActiveOrderId to the given orderId, but only if that order
+  // currently exists in activeOrders.  Used by Command Center slot chips and
+  // secondary order cards to shift the "focused" card without mutating the array.
+  focusOrder: (orderId: string) => void;
 
   // Per-order removal reasons, keyed by orderId.
   // Set by the listener registry when an order reaches a terminal Firestore status.
@@ -612,6 +616,11 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     cancelIncomingOrderNotification().catch(console.error);
   };
 
+  const focusOrder = (orderId: string) => {
+    if (!activeOrders.some((o) => o.id === orderId)) return;
+    setCurrentActiveOrderId(orderId);
+  };
+
   const endRide = (orderId: string) => {
     // Remove only the completed order; all other active orders stay intact.
     setActiveOrders((prev) => prev.filter((o) => o.id !== orderId));
@@ -921,6 +930,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         acceptRide,
         rejectRide,
         endRide,
+        focusOrder,
         orderRemovalReasons,
         withdraw,
         overlayPermissionGranted,
