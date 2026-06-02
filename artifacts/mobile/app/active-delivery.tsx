@@ -512,6 +512,8 @@ export default function ActiveDeliveryScreen() {
     customer: string; phone: string; parcelType: string; parcelEmoji: string;
     pickup: string; pickupCity: string; drop: string; dropCity: string;
     distanceKm: string; durationMin: string; earning: string; weight: string;
+    // Payment / surge — serialized as strings for route params
+    paymentMode: string; surge: string; surgeMultiplier: string;
   }>();
 
   // Must come before useState so the lazy initializer can read restored status.
@@ -550,9 +552,12 @@ export default function ActiveDeliveryScreen() {
   const distKm     = params.distanceKm  ?? (activeRide ? String(activeRide.distanceKm)  : "—");
   const durMin     = params.durationMin ?? (activeRide ? String(activeRide.durationMin) : "—");
   const weight     = params.weight      ?? activeRide?.parcelWeight   ?? "—";
-  const earning    = params.earning     ? `₹${params.earning}`
-                   : activeRide         ? `₹${activeRide.fareEstimate}`
-                   : "₹—";
+  const earning        = params.earning     ? `₹${params.earning}`
+                       : activeRide         ? `₹${activeRide.fareEstimate}`
+                       : "₹—";
+  const paymentMode    = params.paymentMode     ?? activeRide?.paymentMode      ?? "Cash";
+  const surge          = params.surge           === "true" || (activeRide?.surge ?? false);
+  const surgeMultiplier = params.surgeMultiplier ? Number(params.surgeMultiplier) : (activeRide?.surgeMultiplier ?? 1);
   const isDelivered = stage === "delivered";
 
   // Write "to_pickup" to Firestore only for a fresh accept (status is "accepted" or
