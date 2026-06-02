@@ -473,27 +473,20 @@ export default function DeliveryCommandCenter() {
             )}
 
             {/* ── Multi-order capacity hint ───────────────────────────── */}
-            {hasCapacity && (
+            {activeOrderCount > 0 && (
               <View style={styles.capacityHintRow}>
-                <LinearGradient
-                  colors={["#0F172A", "#131C35"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.capacityHintCard}
-                >
-                  <View style={styles.capacityHintIconWrap}>
-                    <Feather name="zap" size={14} color="#6366F1" />
-                  </View>
-                  <View style={styles.capacityHintText}>
-                    <Text style={styles.capacityHintTitle}>
-                      {remainingSlots} order slot{remainingSlots !== 1 ? "s" : ""} available
-                    </Text>
-                    <Text style={styles.capacityHintSub}>
-                      Tap a slot chip above to switch focus
-                    </Text>
-                  </View>
-                  <Feather name="chevron-right" size={14} color="#1E293B" />
-                </LinearGradient>
+                <View style={styles.capacityPill}>
+                  <Feather
+                    name={activeOrderCount >= maxActiveOrders ? "alert-circle" : "zap"}
+                    size={11}
+                    color={activeOrderCount >= maxActiveOrders ? "#F59E0B" : "#6366F1"}
+                  />
+                  <Text style={styles.capacityPillText}>
+                    {activeOrderCount >= maxActiveOrders
+                      ? "Capacity full"
+                      : `${remainingSlots} slot${remainingSlots !== 1 ? "s" : ""} available`}
+                  </Text>
+                </View>
               </View>
             )}
           </>
@@ -1208,36 +1201,25 @@ const styles = StyleSheet.create({
   },
 
   // Capacity hint card
-  capacityHintRow: { marginTop: -8 },
-  capacityHintCard: {
+  capacityHintRow: {
+    marginTop:  4,
+    alignItems: "center",
+  },
+  capacityPill: {
     flexDirection:     "row",
     alignItems:        "center",
-    gap:               12,
-    borderRadius:      16,
-    paddingHorizontal: 16,
-    paddingVertical:   13,
+    gap:               6,
+    paddingHorizontal: 14,
+    paddingVertical:   7,
+    borderRadius:      20,
+    backgroundColor:   "rgba(255,255,255,0.04)",
     borderWidth:       1,
-    borderColor:       "rgba(255,255,255,0.08)",
+    borderColor:       "rgba(255,255,255,0.06)",
   },
-  capacityHintIconWrap: {
-    width:           32,
-    height:          32,
-    borderRadius:    10,
-    backgroundColor: "#1B3155",
-    borderWidth:     1,
-    borderColor:     "rgba(255,255,255,0.08)",
-    alignItems:      "center",
-    justifyContent:  "center",
-  },
-  capacityHintText: { flex: 1 },
-  capacityHintTitle: {
-    fontSize:   13,
-    fontWeight: "700",
-    color:      "#1E3A5F",
-  },
-  capacityHintSub: {
-    fontSize:  11,
-    color:     "#0F1E30",
-    marginTop: 2,
+  capacityPillText: {
+    fontSize:      11,
+    fontWeight:    "600",
+    color:         "rgba(255,255,255,0.35)",
+    letterSpacing: 0.2,
   },
 });
