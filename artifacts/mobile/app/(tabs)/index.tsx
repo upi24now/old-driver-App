@@ -366,16 +366,46 @@ export default function HomeScreen() {
             </LinearGradient>
           </TouchableOpacity>
 
-          {/* Secondary link — opens the Delivery Command Center */}
-          <TouchableOpacity
-            style={styles.commandCenterLink}
-            activeOpacity={0.7}
-            onPress={() => router.push("/delivery-command-center")}
-          >
-            <Feather name="layers" size={12} color="#64748B" />
-            <Text style={styles.commandCenterLinkText}>Open Command Center</Text>
-            <Feather name="chevron-right" size={11} color="#64748B" />
-          </TouchableOpacity>
+          {/* Action cards — Available Deliveries + My Deliveries */}
+          <View style={styles.actionCardsRow}>
+
+            {/* Card 1 — Available Deliveries (orange) */}
+            <TouchableOpacity style={styles.actionCardWrap} activeOpacity={0.82}>
+              <LinearGradient
+                colors={["#FF7A3D", "#E05200"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.actionCard}
+              >
+                <View style={styles.actionCardIcon}>
+                  <Feather name="bell" size={20} color="#fff" />
+                </View>
+                <Text style={styles.actionCardTitle}>Available{"\n"}Deliveries</Text>
+                <Text style={styles.actionCardSub}>New orders incoming</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+
+            {/* Card 2 — My Deliveries (blue) → Command Center */}
+            <TouchableOpacity
+              style={styles.actionCardWrap}
+              activeOpacity={0.82}
+              onPress={() => router.push("/delivery-command-center")}
+            >
+              <LinearGradient
+                colors={["#3B82F6", "#1A56DB"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.actionCard}
+              >
+                <View style={styles.actionCardIcon}>
+                  <Feather name="layers" size={20} color="#fff" />
+                </View>
+                <Text style={styles.actionCardTitle}>My{"\n"}Deliveries</Text>
+                <Text style={styles.actionCardSub}>Active & multiple orders</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+
+          </View>
           </>
         )}
 
@@ -1011,18 +1041,42 @@ const styles = StyleSheet.create({
   activeBannerRight:  { flexDirection: "row", alignItems: "center", gap: 6 },
   activeBannerEarning:{ fontSize: 20, fontWeight: "800", color: "#fff" },
 
-  // Command Center secondary link (below active delivery banner)
-  commandCenterLink: {
-    flexDirection:   "row",
+  // Action cards row (below active delivery banner)
+  actionCardsRow: {
+    flexDirection: "row",
+    gap:           13,
+    marginTop:     10,
+  },
+  actionCardWrap: {
+    flex:         1,
+    borderRadius: 16,
+    overflow:     "hidden",
+  },
+  actionCard: {
+    paddingVertical:   18,
+    paddingHorizontal: 16,
+    gap:               6,
+    minHeight:         110,
+    justifyContent:    "space-between",
+  },
+  actionCardIcon: {
+    width:           36,
+    height:          36,
+    borderRadius:    10,
+    backgroundColor: "rgba(255,255,255,0.18)",
     alignItems:      "center",
     justifyContent:  "center",
-    gap:             5,
-    paddingVertical: 8,
-    marginTop:       2,
   },
-  commandCenterLinkText: {
-    fontSize:   12,
-    fontWeight: "600",
-    color:      "#64748B",
+  actionCardTitle: {
+    fontSize:      16,
+    fontWeight:    "800",
+    color:         "#fff",
+    lineHeight:    20,
+    letterSpacing: -0.2,
+  },
+  actionCardSub: {
+    fontSize:   11,
+    fontWeight: "500",
+    color:      "rgba(255,255,255,0.78)",
   },
 });
