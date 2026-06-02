@@ -157,9 +157,13 @@ type DriverState = {
   setOnline:    (v: boolean) => { ok: boolean; reason?: string };
   activatePlan: (id: SubPlan) => { ok: boolean; reason?: string };
 
-  acceptRide:    () => Promise<AcceptOrderResult>;
-  rejectRide:    () => void;
-  endActiveRide: () => void;
+  acceptRide: () => Promise<AcceptOrderResult>;
+  rejectRide: () => void;
+  // Removes one specific order from activeOrders by ID.
+  // If the removed order was focused, focus shifts to the next remaining order
+  // (or null when the last order is removed).  Replaces the Phase-3 endActiveRide()
+  // full-wipe so completing Order A leaves Order B intact.
+  endRide: (orderId: string) => void;
 
   // Reason the most-recently removed active order was cleared.
   // "delivered" | "completed" — normal driver completion (no cancel alert).
@@ -600,11 +604,19 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     cancelIncomingOrderNotification().catch(console.error);
   };
 
-  const endActiveRide = () => {
-    // Phase 1: clears the single slot.
-    // Phase 5 will add an orderId param to remove a specific order from the array.
-    setActiveOrders([]);
-    setCurrentActiveOrderId(null);
+  const endRide = (orderId: string) => {
+    // Remove only the completed order; all other active orders stay intact.
+    setActiveOrders((prev) => prev.filter((o) => o.id !== orderId));
+
+    // If the completed order was the focused one, shift focus to the next
+    // available order (first in remaining array), or null if none remain.
+    // Uses activeOrdersRef.current (pre-removal snapshot) — same pattern as
+    // the listener registry at lines 703-708.
+    setCurrentActiveOrderId((prev) => {
+      if (prev !== orderId) return prev;
+      const remaining = activeOrdersRef.current.filter((o) => o.id !== orderId);
+      return remaining[0]?.id ?? null;
+    });
   };
 
   // ─── Phase 2: active-order listener registry ──────────────────────────────
@@ -892,7 +904,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         activatePlan,
         acceptRide,
         rejectRide,
-        endActiveRide,
+        endRide,
         activeOrderRemovalReason,
         withdraw,
         overlayPermissionGranted,

@@ -213,7 +213,7 @@ export default function ActiveTripScreen() {
 
   // Active trip flow is now handled by active-delivery.tsx.
   // This route (/trip/[id]) is kept for trip history detail (Phase H-3).
-  const { activeRide, endActiveRide } = useDriver();
+  const { activeRide, endRide } = useDriver();
   const [rating, setRating] = useState(0);
   const [tipped, setTipped] = useState<number | null>(null);
 
@@ -226,7 +226,7 @@ export default function ActiveTripScreen() {
   const isInTrip = stage === "in_trip" || stage === "arrived";
 
   function advance() {
-    endActiveRide();
+    if (activeRide?.id) endRide(activeRide.id);
     router.replace("/(tabs)");
   }
 

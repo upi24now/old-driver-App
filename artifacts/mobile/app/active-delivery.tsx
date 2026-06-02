@@ -522,9 +522,9 @@ export default function ActiveDeliveryScreen() {
   }>();
 
   // Must come before useState so the lazy initializer can read restored status.
-  const { activeRide, endActiveRide, activeOrderRemovalReason } = useDriver();
+  const { activeRide, endRide, activeOrderRemovalReason } = useDriver();
 
-  // Tracks whether THIS screen called endActiveRide() normally (delivery complete).
+  // Tracks whether THIS screen called endRide() normally (delivery complete).
   // If activeRide becomes null without us setting this, it means an external
   // cancellation occurred and we must exit with an alert.
   const didEndSelf = useRef(false);
@@ -661,7 +661,7 @@ export default function ActiveDeliveryScreen() {
       // Delivery complete — mark that WE initiated the clear so the cancellation
       // useEffect does not fire an alert when activeRide becomes null.
       didEndSelf.current = true;
-      endActiveRide();
+      if (orderId) endRide(orderId);
       router.replace("/(tabs)");
       return;
     }
