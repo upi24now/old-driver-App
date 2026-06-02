@@ -392,7 +392,7 @@ export default function DeliveryCommandCenter() {
                     </View>
                     <View style={styles.routeText}>
                       <Text style={styles.routeTag}>PICKUP</Text>
-                      <Text style={styles.routeAddress} numberOfLines={2}>
+                      <Text style={styles.routeAddress} numberOfLines={2} ellipsizeMode="tail">
                         {focused.pickup}
                       </Text>
                     </View>
@@ -404,7 +404,7 @@ export default function DeliveryCommandCenter() {
                     </View>
                     <View style={styles.routeText}>
                       <Text style={styles.routeTag}>DROP</Text>
-                      <Text style={styles.routeAddress} numberOfLines={2}>
+                      <Text style={styles.routeAddress} numberOfLines={2} ellipsizeMode="tail">
                         {focused.drop}
                       </Text>
                     </View>
@@ -957,7 +957,9 @@ const styles = StyleSheet.create({
     marginVertical:  4,
   },
   routeText: {
-    flex:          1,
+    flex:       1,
+    flexShrink: 1,
+    minWidth:   0,
     paddingBottom: 6,
   },
   routeTag: {
