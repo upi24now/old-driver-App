@@ -254,7 +254,13 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             const activeOrder = await getActiveOrderForDriver(user.uid);
             if (activeOrder) {
               const ride = orderDocToRide(activeOrder);
-              setActiveRide({ ...ride, acceptedAt: Date.now(), orderStatus: activeOrder.status });
+              // Use the real Firestore acceptedAt so ElapsedTimer shows true elapsed time
+              // after an app restart. Firestore Timestamps expose .toMillis(); fall back
+              // to Date.now() only if the field is missing (e.g. very old orders).
+              const acceptedAtMs =
+                (activeOrder.acceptedAt as { toMillis?: () => number })?.toMillis?.() ??
+                Date.now();
+              setActiveRide({ ...ride, acceptedAt: acceptedAtMs, orderStatus: activeOrder.status });
               setCurrentOrderId(activeOrder.id);
             }
           } catch {

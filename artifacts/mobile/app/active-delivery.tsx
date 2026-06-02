@@ -132,8 +132,8 @@ function LiveDot({ color = GREEN, size = 10 }: { color?: string; size?: number }
 }
 
 // ─── Elapsed timer ────────────────────────────────────────────────────────────
-function ElapsedTimer() {
-  const [n, setN] = useState(0);
+function ElapsedTimer({ startSec = 0 }: { startSec?: number }) {
+  const [n, setN] = useState(startSec);
   useEffect(() => { const t = setInterval(() => setN((v) => v + 1), 1000); return () => clearInterval(t); }, []);
   const m = Math.floor(n / 60).toString().padStart(2, "0");
   const s = (n % 60).toString().padStart(2, "0");
@@ -622,7 +622,13 @@ export default function ActiveDeliveryScreen() {
           <Text style={st.topBarTitle} numberOfLines={1}>{meta.topLabel}</Text>
         </View>
         <View style={st.topBarRight}>
-          {!isDelivered && <ElapsedTimer />}
+          {!isDelivered && (
+            <ElapsedTimer
+              startSec={activeRide?.acceptedAt
+                ? Math.max(0, Math.floor((Date.now() - activeRide.acceptedAt) / 1000))
+                : 0}
+            />
+          )}
           {isDelivered && <Text style={{ fontSize: 22 }}>🎉</Text>}
         </View>
       </LinearGradient>
