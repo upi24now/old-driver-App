@@ -159,6 +159,12 @@ type DriverState = {
   rejectRide:    () => void;
   endActiveRide: () => void;
 
+  // Reason the most-recently removed active order was cleared.
+  // "delivered" | "completed" — normal driver completion (no cancel alert).
+  // "cancelled" | "rejected" | "deleted" — external action (show cancel alert).
+  // null — no order has been removed yet this session.
+  activeOrderRemovalReason: "delivered" | "completed" | "cancelled" | "rejected" | "deleted" | null;
+
   withdraw: (amount: number) => boolean;
 
   overlayPermissionGranted: boolean;
@@ -234,6 +240,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // Phase 1: always contains at most 1 order.  Phase 3+ lifts the cap.
   const [activeOrders,         setActiveOrders]         = useState<ActiveRide[]>([]);
   const [currentActiveOrderId, setCurrentActiveOrderId] = useState<string | null>(null);
+  const [activeOrderRemovalReason, setRemovalReason]    =
+    useState<"delivered" | "completed" | "cancelled" | "rejected" | "deleted" | null>(null);
 
   // ── Capacity model — derived each render, no extra state ────────────────────
   const activeOrderCount: number  = activeOrders.length;
@@ -614,6 +622,54 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       const unsub = listenToActiveOrder(order.id, (status) => {
         if (!isOrderTerminal(status)) return;
 
+        // ── Classify the removal reason ──────────────────────────────────────
+        // This lets active-delivery distinguish a normal driver-initiated delivery
+        // completion from an external cancellation, so it only shows "Order
+        // Cancelled" for genuine external events, never for delivery completions.
+        const s = status as string | null;
+        const reason: "delivered" | "completed" | "cancelled" | "rejected" | "deleted" =
+          s === null          ? "deleted"   :
+          s === "delivered"   ? "delivered" :
+          s === "completed"   ? "completed" :
+          s === "rejected"    ? "rejected"  :
+          /* any cancel variant (cancelled, canceled, customer_cancelled, …) */
+                                "cancelled";
+
+        // ── Stale-snapshot guard ─────────────────────────────────────────────
+        // Problem: when a driver accepts an order, listenToActiveOrder fires an
+        // initial onSnapshot immediately. If the Firestore document still holds a
+        // terminal status from a previous delivery cycle (e.g. "delivered" from
+        // the last test run, before acceptOrder's write propagates to the server),
+        // that stale snapshot would incorrectly clear the freshly-accepted order.
+        //
+        // Rule: if the snapshot says the order is "delivered" or "completed" BUT
+        // the local record shows the order has only ever been at "accepted" or
+        // "to_pickup" (i.e. the driver never advanced past pickup), it is almost
+        // certainly a stale terminal snapshot — skip it. Real customer
+        // cancellations ("cancelled", "rejected", null/deleted) are NEVER skipped
+        // regardless of local status, because they must always surface.
+        if (reason === "delivered" || reason === "completed") {
+          const localOrder = activeOrdersRef.current.find((o) => o.id === order.id);
+          const localStatus = localOrder?.orderStatus;
+          if (localStatus === "accepted" || localStatus === "to_pickup") {
+            // The driver has not yet advanced past pickup on this device but
+            // Firestore already shows a completion status — stale snapshot.
+            // Log for debugging and bail; the next snapshot (after the
+            // acceptOrder/updateOrderStage write resolves on the server) will
+            // deliver the correct status.
+            console.warn(
+              `[DriverContext] Ignoring stale terminal snapshot for order ${order.id}: ` +
+              `Firestore status="${status}", local status="${localStatus}". ` +
+              `Likely a reused order doc from a prior test cycle.`,
+            );
+            return;
+          }
+        }
+
+        // ── Record removal reason before state update ────────────────────────
+        // active-delivery reads this to decide whether to show "Order Cancelled".
+        setRemovalReason(reason);
+
         // Remove only this order from the array (leaves other orders intact).
         setActiveOrders((prev) => prev.filter((o) => o.id !== order.id));
 
@@ -798,6 +854,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         acceptRide,
         rejectRide,
         endActiveRide,
+        activeOrderRemovalReason,
         withdraw,
         overlayPermissionGranted,
         requestOverlayPermission,

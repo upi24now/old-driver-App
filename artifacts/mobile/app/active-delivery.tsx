@@ -522,7 +522,7 @@ export default function ActiveDeliveryScreen() {
   }>();
 
   // Must come before useState so the lazy initializer can read restored status.
-  const { activeRide, endActiveRide } = useDriver();
+  const { activeRide, endActiveRide, activeOrderRemovalReason } = useDriver();
 
   // Tracks whether THIS screen called endActiveRide() normally (delivery complete).
   // If activeRide becomes null without us setting this, it means an external
@@ -566,6 +566,17 @@ export default function ActiveDeliveryScreen() {
     if (activeRide !== null) return;       // still active — nothing to do
     if (didEndSelf.current) return;        // normal completion — already navigating
     if (stage === "delivered") return;     // delivery finished normally — not a cancel
+
+    // Only show "Order Cancelled" for genuine external events.
+    // "delivered" and "completed" mean the order finished normally via the
+    // DriverContext Firestore listener — not an external cancellation.
+    // "cancelled", "rejected", "deleted", and null (reason not yet set) all
+    // indicate an external action by the customer, admin, or test cleanup.
+    if (
+      activeOrderRemovalReason === "delivered" ||
+      activeOrderRemovalReason === "completed"
+    ) return;
+
     // External cancellation detected while screen is open.
     Alert.alert(
       "Order Cancelled",
@@ -574,7 +585,7 @@ export default function ActiveDeliveryScreen() {
       { cancelable: false },
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRide]);
+  }, [activeRide, activeOrderRemovalReason]);
 
   // Params — fall back to DriverContext activeRide when navigating back to this
   // screen without fresh route params (e.g. after app restore or tab switch).
