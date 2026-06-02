@@ -118,14 +118,21 @@ type DriverState = {
   vehicle:          Vehicle | null;
 
   isOnline:         boolean;
-  currentOrderId:   string | null;
+
+  // ── Multi-order foundation (Phase 1: max 1 order; Phase 3+ will lift cap) ──
+  activeOrders:          ActiveRide[];   // array of in-progress orders
+  currentActiveOrderId:  string | null;  // which order the UI is focused on
+
+  // Backward-compat shims — derived from activeOrders/currentActiveOrderId.
+  // Existing screens read these unchanged; remove when all consumers migrate.
+  activeRide:     ActiveRide | null;   // activeOrders[focused] ?? activeOrders[0] ?? null
+  currentOrderId: string     | null;   // currentActiveOrderId ?? activeRide?.id ?? null
 
   subscriptionPlan:      SubPlan | null;
   subscriptionExpiresAt: number  | null;
   subscriptionActive:    boolean;
 
   incomingRide: IncomingRide | null;
-  activeRide:   ActiveRide   | null;
   rideHistory:  ActiveRide[];
 
   walletBalance:  number;
@@ -195,15 +202,24 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const [profile,     setProfileState]= useState<Profile | null>(null);
   const [vehicle,     setVehicleState]= useState<Vehicle | null>(null);
 
-  const [isOnline,       setOnlineState]    = useState(false);
-  const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
+  const [isOnline, setOnlineState] = useState(false);
+
+  // ── Multi-order foundation ─────────────────────────────────────────────────
+  // Phase 1: always contains at most 1 order.  Phase 3+ lifts the cap.
+  const [activeOrders,         setActiveOrders]         = useState<ActiveRide[]>([]);
+  const [currentActiveOrderId, setCurrentActiveOrderId] = useState<string | null>(null);
+
+  // Derived backward-compat shims — no extra state; computed each render.
+  const activeRide: ActiveRide | null =
+    activeOrders.find((o) => o.id === currentActiveOrderId) ?? activeOrders[0] ?? null;
+  const currentOrderId: string | null =
+    currentActiveOrderId ?? activeRide?.id ?? null;
 
   const [subscriptionPlan,      setSubPlan] = useState<SubPlan | null>(null);
   const [subscriptionExpiresAt, setSubExp]  = useState<number | null>(null);
   const [nowTick,               setNowTick] = useState(() => Date.now());
 
   const [incomingRide, setIncomingRide] = useState<IncomingRide | null>(null);
-  const [activeRide,   setActiveRide]   = useState<ActiveRide   | null>(null);
   const [rideHistory,  setHistory]      = useState<ActiveRide[]>([]);
 
   const [walletBalance,  setBalance]      = useState(8420.5);
@@ -263,8 +279,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
               const acceptedAtMs =
                 (activeOrder.acceptedAt as { toMillis?: () => number })?.toMillis?.() ??
                 Date.now();
-              setActiveRide({ ...ride, acceptedAt: acceptedAtMs, orderStatus: activeOrder.status });
-              setCurrentOrderId(activeOrder.id);
+              const restoredRide: ActiveRide = { ...ride, acceptedAt: acceptedAtMs, orderStatus: activeOrder.status };
+              setActiveOrders([restoredRide]);
+              setCurrentActiveOrderId(activeOrder.id);
             }
           } catch {
             // Active order restore failed — driver sees Continue banner once online
@@ -306,7 +323,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // Customer app writes such a document to dispatch an order to this driver.
   const lastSeenOrderId = useRef<string | null>(null);
   useEffect(() => {
-    if (!isOnline || !driverUid || activeRide) return;
+    // Phase 1: block new dispatches when a slot is occupied (activeOrders.length > 0).
+    // Phase 3+ will change this to: activeOrders.length >= MAX_ACTIVE_ORDERS.
+    if (!isOnline || !driverUid || activeOrders.length > 0) return;
 
     const unsub = listenToDispatchedOrder(driverUid, (order) => {
       if (!order) {
@@ -337,7 +356,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     });
 
     return unsub;
-  }, [isOnline, driverUid, activeRide]);
+  // Use .length (not the array) so the effect only re-runs when the slot count
+  // changes, not on every internal order-status update.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOnline, driverUid, activeOrders.length]);
 
   // ─── Auth actions ─────────────────────────────────────────────────────────
   const setPhone = (p: string) => setPhoneState(p);
@@ -402,9 +424,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     setProfileState(null);
     setVehicleState(null);
     setOnlineState(false);
-    setCurrentOrderId(null);
+    setActiveOrders([]);
+    setCurrentActiveOrderId(null);
     setIncomingRide(null);
-    setActiveRide(null);
     setHistory([]);
     setSubPlan(null);
     setSubExp(null);
@@ -470,9 +492,11 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     acceptOrder(ride.id, uid, profile?.name ?? null).catch(console.error);
 
     // 2. Update local state
+    // Phase 1: single-slot — replaces any prior entry (array always length 0 here).
+    // Phase 3+ will push onto the array up to MAX_ACTIVE_ORDERS.
     const accepted: ActiveRide = { ...ride, acceptedAt: Date.now(), orderStatus: "accepted" };
-    setActiveRide(accepted);
-    setCurrentOrderId(ride.id);
+    setActiveOrders([accepted]);
+    setCurrentActiveOrderId(ride.id);
     setIncomingRide(null);
     lastSeenOrderId.current = ride.id; // prevent re-trigger
 
@@ -498,17 +522,20 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   };
 
   const endActiveRide = () => {
-    setActiveRide(null);
-    setCurrentOrderId(null);
+    // Phase 1: clears the single slot.
+    // Phase 5 will add an orderId param to remove a specific order from the array.
+    setActiveOrders([]);
+    setCurrentActiveOrderId(null);
   };
 
   // ─── Active-order real-time sync ──────────────────────────────────────────
   // Watches the live Firestore status of the current active order.
-  // If the order is marked terminal externally — e.g. by an admin write,
-  // customer cancellation, or a duplicate accept — activeRide is cleared
-  // immediately so listenToDispatchedOrder can unblock for the next order.
+  // If the order is marked terminal externally (admin write, customer cancel,
+  // duplicate accept) activeOrders is cleared so the dispatch listener unblocks.
+  // Phase 1: single subscription keyed on currentActiveOrderId.
+  // Phase 2 will replace this with a Map<orderId, unsub> to track multiple orders.
   useEffect(() => {
-    if (!currentOrderId) return;
+    if (!currentActiveOrderId) return;
 
     const TERMINAL = new Set<OrderStatus>(["delivered", "rejected"]);
     // Include all known cancellation status variants the customer app may write.
@@ -517,19 +544,19 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       "cancelled", "canceled", "customer_cancelled", "order_cancelled",
     ]);
 
-    const unsub = listenToActiveOrder(currentOrderId, (status) => {
+    const unsub = listenToActiveOrder(currentActiveOrderId, (status) => {
       const isTerminal =
         status === null ||
         TERMINAL.has(status) ||
         CANCEL_VARIANTS.has(status as string);
       if (isTerminal) {
-        setActiveRide(null);
-        setCurrentOrderId(null);
+        setActiveOrders([]);
+        setCurrentActiveOrderId(null);
       }
     });
 
     return unsub;
-  }, [currentOrderId]);
+  }, [currentActiveOrderId]);
 
   // ─── Notification action handlers (registered once on mount) ──────────────
   useEffect(() => {
@@ -542,8 +569,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         acceptOrder(ride.id, uid, profileRef.current?.name ?? null).catch(console.error);
 
         const accepted: ActiveRide = { ...ride, acceptedAt: Date.now(), orderStatus: "accepted" };
-        setActiveRide(accepted);
-        setCurrentOrderId(ride.id);
+        setActiveOrders([accepted]);
+        setCurrentActiveOrderId(ride.id);
         setIncomingRide(null);
         lastSeenOrderId.current = ride.id;
 
@@ -637,12 +664,16 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         profile,
         vehicle,
         isOnline,
+        // Multi-order foundation
+        activeOrders,
+        currentActiveOrderId,
+        // Backward-compat shims (derived above)
+        activeRide,
         currentOrderId,
         subscriptionPlan,
         subscriptionExpiresAt,
         subscriptionActive,
         incomingRide,
-        activeRide,
         rideHistory,
         walletBalance,
         todayEarnings,
