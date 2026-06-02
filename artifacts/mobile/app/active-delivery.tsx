@@ -18,7 +18,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useDriver } from "@/contexts/DriverContext";
 import { useEffect, useRef, useState } from "react";
-import { updateOrderStage, type DeliveryStage } from "@/utils/firestore";
+import { driverCancelOrder, updateOrderStage, type DeliveryStage } from "@/utils/firestore";
 import {
   Alert,
   Animated,
@@ -522,7 +522,7 @@ export default function ActiveDeliveryScreen() {
   }>();
 
   // Must come before useState so the lazy initializer can read restored status.
-  const { activeRide, endRide, orderRemovalReasons } = useDriver();
+  const { activeRide, endRide, orderRemovalReasons, driverUid } = useDriver();
 
   // Tracks whether THIS screen called endRide() normally (delivery complete).
   // If activeRide becomes null without us setting this, it means an external
@@ -689,6 +689,44 @@ export default function ActiveDeliveryScreen() {
   function handleNavPickup()    { haptic("light"); openGoogleMaps(pickup, pickupCity); }
   function handleNavDrop()      { haptic("light"); openGoogleMaps(drop,   dropCity);   }
 
+  function handleCancelOrder() {
+    const REASONS = [
+      "Oversized Parcel",
+      "Vehicle Breakdown / Accident",
+      "Route Not Reachable",
+    ] as const;
+
+    Alert.alert(
+      "Cancel Order",
+      "Why are you cancelling this order?",
+      [
+        ...REASONS.map((reason) => ({
+          text:  reason,
+          style: "destructive" as const,
+          onPress: async () => {
+            haptic("light");
+            // Arm the self-exit guard BEFORE local cleanup so the external
+            // cancellation useEffect doesn't fire a false "Order Cancelled" alert.
+            didEndSelf.current = true;
+            try {
+              if (orderId && driverUid) {
+                await driverCancelOrder(orderId, driverUid, reason);
+              }
+            } catch {
+              // Firestore write failed — order may still be in-progress on the
+              // server.  Local cleanup proceeds regardless so the driver is
+              // unblocked; dispatcher will reconcile.
+            }
+            if (orderId) endRide(orderId);
+            router.replace("/(tabs)");
+          },
+        })),
+        { text: "Keep Order", style: "cancel" },
+      ],
+      { cancelable: true },
+    );
+  }
+
   type CtaCfg = { label: string; icon: string; color: [string, string] };
   const ctaCfg: Record<Stage, CtaCfg> = {
     to_pickup: { label: "I've Arrived at Pickup", icon: "map-pin",     color: [GREEN,     "#00E676"] },
@@ -810,6 +848,11 @@ export default function ActiveDeliveryScreen() {
         </TouchableOpacity>
         {(stage === "to_pickup" || stage === "to_drop") && (
           <Text style={st.ctaHint}>Tap after reaching the location</Text>
+        )}
+        {stage === "to_pickup" && (
+          <TouchableOpacity onPress={handleCancelOrder} activeOpacity={0.7} style={st.cancelLink}>
+            <Text style={st.cancelLinkTxt}>Cancel Order</Text>
+          </TouchableOpacity>
         )}
       </View>
     </View>
@@ -933,5 +976,7 @@ const st = StyleSheet.create({
   ctaWrap: { position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: 20, paddingTop: 14, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#E2E8F0", shadowColor: "#000", shadowOpacity: 0.07, shadowRadius: 14, shadowOffset: { width: 0, height: -4 }, elevation: 10, gap: 6 },
   ctaBtn:  { height: 60, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 18 },
   ctaTxt:  { fontSize: 17, fontWeight: "900", color: "#fff" },
-  ctaHint: { textAlign: "center", fontSize: 11, color: "#94A3B8", fontWeight: "500" },
+  ctaHint:       { textAlign: "center", fontSize: 11, color: "#94A3B8", fontWeight: "500" },
+  cancelLink:    { alignItems: "center", paddingVertical: 2 },
+  cancelLinkTxt: { fontSize: 12, fontWeight: "600", color: "#EF4444", textDecorationLine: "underline" },
 });

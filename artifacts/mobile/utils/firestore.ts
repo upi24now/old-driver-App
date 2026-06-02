@@ -440,3 +440,29 @@ export async function updateOrderStage(
     [`${stage}At`]:  serverTimestamp(),
   });
 }
+
+/**
+ * Driver-initiated pre-pickup cancellation.
+ *
+ * Sets status back to "pending" so the order re-enters the dispatch pool
+ * and can be assigned to another driver.  Does NOT write "cancelled" so
+ * the customer never sees a permanent cancellation.
+ *
+ * Allowed only at stage "to_pickup" (Firestore status "accepted" or "to_pickup").
+ * The caller (active-delivery.tsx) is responsible for the stage guard.
+ */
+export async function driverCancelOrder(
+  orderId:   string,
+  driverUid: string,
+  reason:    string,
+): Promise<void> {
+  await updateDoc(doc(db, "orders", orderId), {
+    status:             "pending",
+    driverUid:          null,
+    driverName:         "",
+    driverCancelledBy:  driverUid,
+    driverCancelReason: reason,
+    driverCancelledAt:  serverTimestamp(),
+    updatedAt:          serverTimestamp(),
+  });
+}
