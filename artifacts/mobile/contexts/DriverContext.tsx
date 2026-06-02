@@ -28,6 +28,7 @@ import {
   acceptOrder,
   rejectOrder,
   type OrderDoc,
+  type OrderStatus,
 } from "@/utils/firestore";
 import { verifyOtpApi } from "@/utils/auth-api";
 import {
@@ -75,7 +76,10 @@ export type IncomingRide = {
   parcelWeight:     string;
 };
 
-export type ActiveRide = IncomingRide & { acceptedAt: number };
+export type ActiveRide = IncomingRide & {
+  acceptedAt:   number;
+  orderStatus:  OrderStatus; // last known Firestore status — used to restore stage on app restart
+};
 
 export type Txn = {
   id:       string;
@@ -250,7 +254,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             const activeOrder = await getActiveOrderForDriver(user.uid);
             if (activeOrder) {
               const ride = orderDocToRide(activeOrder);
-              setActiveRide({ ...ride, acceptedAt: Date.now() });
+              setActiveRide({ ...ride, acceptedAt: Date.now(), orderStatus: activeOrder.status });
               setCurrentOrderId(activeOrder.id);
             }
           } catch {
@@ -457,7 +461,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     acceptOrder(ride.id, uid, profile?.name ?? null).catch(console.error);
 
     // 2. Update local state
-    const accepted: ActiveRide = { ...ride, acceptedAt: Date.now() };
+    const accepted: ActiveRide = { ...ride, acceptedAt: Date.now(), orderStatus: "accepted" };
     setActiveRide(accepted);
     setCurrentOrderId(ride.id);
     setIncomingRide(null);
@@ -499,7 +503,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
         acceptOrder(ride.id, uid, profileRef.current?.name ?? null).catch(console.error);
 
-        const accepted: ActiveRide = { ...ride, acceptedAt: Date.now() };
+        const accepted: ActiveRide = { ...ride, acceptedAt: Date.now(), orderStatus: "accepted" };
         setActiveRide(accepted);
         setCurrentOrderId(ride.id);
         setIncomingRide(null);

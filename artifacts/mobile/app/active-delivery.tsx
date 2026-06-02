@@ -45,6 +45,21 @@ const RED    = "#EF4444";
 // ─── Stage machine ────────────────────────────────────────────────────────────
 type Stage = "to_pickup" | "at_pickup" | "to_drop" | "at_drop" | "delivered";
 const STAGE_ORDER: Stage[] = ["to_pickup", "at_pickup", "to_drop", "at_drop", "delivered"];
+
+/**
+ * Map a Firestore OrderStatus to the local Stage type.
+ * "accepted" and unknown values both start at "to_pickup" (safe default).
+ * Never rolls back — caller must not pass a status regressed from actual.
+ */
+function firestoreStatusToStage(status: string | undefined): Stage {
+  switch (status) {
+    case "at_pickup": return "at_pickup";
+    case "to_drop":   return "to_drop";
+    case "at_drop":   return "at_drop";
+    case "delivered": return "delivered";
+    default:          return "to_pickup"; // covers "accepted", "to_pickup", undefined
+  }
+}
 function nextStage(s: Stage): Stage | null {
   const i = STAGE_ORDER.indexOf(s);
   return i < STAGE_ORDER.length - 1 ? STAGE_ORDER[i + 1] : null;
@@ -499,7 +514,14 @@ export default function ActiveDeliveryScreen() {
     distanceKm: string; durationMin: string; earning: string; weight: string;
   }>();
 
-  const [stage, setStage] = useState<Stage>("to_pickup");
+  // Must come before useState so the lazy initializer can read restored status.
+  const { activeRide } = useDriver();
+
+  // Restore delivery stage from Firestore status on app restart.
+  // For fresh accepts, activeRide.orderStatus is "accepted" → maps to "to_pickup".
+  const [stage, setStage] = useState<Stage>(() =>
+    firestoreStatusToStage(activeRide?.orderStatus),
+  );
   const [otp,   setOtp]   = useState("");
 
   // Card slide-in on stage change
@@ -513,8 +535,6 @@ export default function ActiveDeliveryScreen() {
     ]).start();
   }
   useEffect(() => { animateIn(); }, [stage]);
-
-  const { activeRide } = useDriver();
 
   // Params — fall back to DriverContext activeRide when navigating back to this
   // screen without fresh route params (e.g. after app restore or tab switch).
@@ -535,9 +555,15 @@ export default function ActiveDeliveryScreen() {
                    : "₹—";
   const isDelivered = stage === "delivered";
 
-  // Write "to_pickup" stage on mount — customer sees driver is en route immediately
+  // Write "to_pickup" to Firestore only for a fresh accept (status is "accepted" or
+  // undefined — meaning the driver just accepted the order and the screen opened for
+  // the first time). On app restore the order is already progressed, so we must NOT
+  // roll back its status.
   useEffect(() => {
-    if (orderId) {
+    if (!orderId) return;
+    const restored = activeRide?.orderStatus;
+    const isFreshAccept = !restored || restored === "accepted";
+    if (isFreshAccept) {
       updateOrderStage(orderId, "to_pickup").catch(console.error);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
