@@ -353,8 +353,9 @@ export default function SettingsScreen() {
                 <Switch
                   value={soundAlerts}
                   onValueChange={setSoundAlerts}
-                  trackColor={{ true: colors.primary, false: "#e5e5e5" }}
+                  trackColor={{ true: "#22C55E", false: "#EF4444" }}
                   thumbColor="#fff"
+                  style={{ transform: [{ scaleX: 1.12 }, { scaleY: 1.12 }] }}
                 />
               }
               divider
@@ -368,8 +369,9 @@ export default function SettingsScreen() {
                 <Switch
                   value={vibration}
                   onValueChange={setVibration}
-                  trackColor={{ true: colors.primary, false: "#e5e5e5" }}
+                  trackColor={{ true: "#22C55E", false: "#EF4444" }}
                   thumbColor="#fff"
+                  style={{ transform: [{ scaleX: 1.12 }, { scaleY: 1.12 }] }}
                 />
               }
               divider
@@ -383,8 +385,9 @@ export default function SettingsScreen() {
                 <Switch
                   value={darkMode}
                   onValueChange={setDarkMode}
-                  trackColor={{ true: colors.primary, false: "#e5e5e5" }}
+                  trackColor={{ true: "#22C55E", false: "#EF4444" }}
                   thumbColor="#fff"
+                  style={{ transform: [{ scaleX: 1.12 }, { scaleY: 1.12 }] }}
                 />
               }
               divider
@@ -409,8 +412,9 @@ export default function SettingsScreen() {
                     }
                     await requestOverlayPermission();
                   }}
-                  trackColor={{ true: colors.primary, false: "#e5e5e5" }}
+                  trackColor={{ true: "#22C55E", false: "#EF4444" }}
                   thumbColor="#fff"
+                  style={{ transform: [{ scaleX: 1.12 }, { scaleY: 1.12 }] }}
                 />
               }
             />
