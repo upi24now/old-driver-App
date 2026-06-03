@@ -8,10 +8,16 @@
  *    the result back to Expo Go (the #1 cause of "image not returned").
  *  - No ActionSheetIOS dynamic require — Alert.alert only for cross-platform
  *    reliability.
- *  - All five doc types (including selfie) always show both Camera & Gallery.
+ *  - All six doc types (including selfie) always show both Camera & Gallery.
  *  - Selfie "Take Photo" uses front camera; all others use back camera.
  *  - Permissions requested individually per source (camera vs media library).
  *  - Per-doc loading state shown while picker is active.
+ *
+ * Lock behavior:
+ *  - approved / verified  → locked, no upload/replace
+ *  - pending / submitted  → waiting, no replace while under review
+ *  - rejected             → re-upload enabled
+ *  - null / missing       → upload allowed
  */
 
 import { Feather } from "@expo/vector-icons";
@@ -39,6 +45,37 @@ import { submitDriverDocuments } from "@/utils/firestore";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type DocId = "selfie" | "aadhaar" | "pan" | "license" | "rc" | "insurance";
+
+/**
+ * Raw status values that may arrive from Firestore / admin review.
+ * Mapped to a NormalizedDocLock before driving UI.
+ */
+type RawDocStatus =
+  | "approved"
+  | "verified"
+  | "rejected"
+  | "pending"
+  | "submitted"
+  | "missing"
+  | null
+  | undefined;
+
+/**
+ * Canonical four-state lock model used throughout the UI.
+ *
+ *  locked   — admin approved; driver cannot change
+ *  waiting  — submitted, under review; replacement blocked
+ *  reupload — admin rejected; driver must re-upload
+ *  upload   — no file yet or no status; driver can upload freely
+ */
+type NormalizedDocLock = "locked" | "waiting" | "reupload" | "upload";
+
+function normalizeLock(status: RawDocStatus, hasUri: boolean): NormalizedDocLock {
+  if (status === "approved" || status === "verified") return "locked";
+  if (status === "rejected") return "reupload";
+  if (status === "pending" || status === "submitted") return hasUri ? "waiting" : "upload";
+  return "upload";
+}
 
 type DocSpec = {
   id: DocId;
@@ -103,6 +140,12 @@ type DocState = {
   uploadedAt: number | null;
   /** true while permission request or picker is open */
   loading: boolean;
+  /**
+   * Admin-set verification status — populated from Firestore once the
+   * driver has submitted documents and the admin has reviewed them.
+   * Leave undefined / null until real data is available.
+   */
+  status?: RawDocStatus;
 };
 
 const blankDoc = (): DocState => ({ uri: null, uploadedAt: null, loading: false });
@@ -147,7 +190,7 @@ async function openCamera(front: boolean): Promise<string | null> {
         ? ImagePicker.CameraType.front
         : ImagePicker.CameraType.back,
       mediaTypes: ["images"],
-      allowsEditing: false, // ← critical for Expo Go / Android
+      allowsEditing: false,
       quality: 0.85,
     });
     if (result.canceled || !result.assets?.length) return null;
@@ -165,7 +208,7 @@ async function openGallery(): Promise<string | null> {
   try {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
-      allowsEditing: false, // ← critical for Expo Go / Android
+      allowsEditing: false,
       quality: 0.85,
     });
     if (result.canceled || !result.assets?.length) return null;
@@ -185,8 +228,6 @@ function showSourceSheet(
   onGallery: () => void,
 ) {
   const cameraLabel = isSelfie ? "Take Selfie (Front Camera)" : "Take Photo (Camera)";
-  // Alert.alert works on iOS and Android — no ActionSheetIOS dynamic require
-  // that can break Expo Go bundling.
   Alert.alert(
     isSelfie ? "Upload Selfie" : "Upload Document",
     "Choose how to add your photo",
@@ -199,19 +240,20 @@ function showSourceSheet(
   );
 }
 
-// ─── Status badge ─────────────────────────────────────────────────────────────
+// ─── Status chip ──────────────────────────────────────────────────────────────
 
-function StatusBadge({ uploaded }: { uploaded: boolean }) {
+function DocStatusChip({ lock }: { lock: NormalizedDocLock }) {
+  const cfg = {
+    locked:  { bg: "#f0fdf4", color: "#00C853", label: "Verified",  icon: "lock"         } as const,
+    waiting: { bg: "#fff8e1", color: "#FF8F00", label: "Pending",   icon: "clock"        } as const,
+    reupload:{ bg: "#ffebee", color: "#EF4444", label: "Rejected",  icon: "alert-circle" } as const,
+    upload:  { bg: "#f5f5f5", color: "#6B7280", label: "Required",  icon: null           } as const,
+  }[lock];
+
   return (
-    <View
-      style={[styles.badge, { backgroundColor: uploaded ? "#e8f5e9" : "#fff5e6" }]}
-    >
-      {uploaded && <Feather name="check-circle" size={10} color="#00C853" />}
-      <Text
-        style={[styles.badgeText, { color: uploaded ? "#00C853" : "#b75d00" }]}
-      >
-        {uploaded ? "Uploaded" : "Required"}
-      </Text>
+    <View style={[styles.badge, { backgroundColor: cfg.bg }]}>
+      {cfg.icon && <Feather name={cfg.icon} size={10} color={cfg.color} />}
+      <Text style={[styles.badgeText, { color: cfg.color }]}>{cfg.label}</Text>
     </View>
   );
 }
@@ -221,32 +263,39 @@ function StatusBadge({ uploaded }: { uploaded: boolean }) {
 function DocumentCard({
   doc,
   state,
+  lockState,
   onUpload,
   onRemove,
 }: {
   doc: DocSpec;
   state: DocState;
+  lockState: NormalizedDocLock;
   onUpload: () => void;
   onRemove: () => void;
 }) {
   const colors = useColors();
   const uploaded = !!state.uri;
 
+  const cardBorderColor = {
+    locked:  "#00C853",
+    waiting: "#FF8F00",
+    reupload:"#EF4444",
+    upload:  uploaded ? "#00C853" : colors.border,
+  }[lockState];
+
+  const iconBg = {
+    locked:  "#f0fdf4",
+    waiting: "#fff8e1",
+    reupload:"#ffebee",
+    upload:  uploaded ? "#f0fdf4" : "#f5f5f5",
+  }[lockState];
+
   return (
-    <View
-      style={[
-        styles.card,
-        { borderColor: uploaded ? "#00C853" : colors.border },
-      ]}
-    >
+    <View style={[styles.card, { borderColor: cardBorderColor }]}>
+
       {/* ── Header row ── */}
       <View style={styles.cardHeader}>
-        <View
-          style={[
-            styles.docIconWrap,
-            { backgroundColor: uploaded ? "#f0fdf4" : "#f5f5f5" },
-          ]}
-        >
+        <View style={[styles.docIconWrap, { backgroundColor: iconBg }]}>
           <Text style={styles.docEmoji}>{doc.emoji}</Text>
         </View>
         <View style={styles.cardHeaderText}>
@@ -257,26 +306,123 @@ function DocumentCard({
             {doc.description}
           </Text>
         </View>
-        <StatusBadge uploaded={uploaded} />
+        <DocStatusChip lock={lockState} />
       </View>
 
       {/* ── Body ── */}
       {state.loading ? (
-        /* Processing… spinner */
+
+        /* Loading spinner */
         <View style={styles.loadingBox}>
           <ActivityIndicator size="small" color="#00C853" />
           <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
             Opening picker…
           </Text>
         </View>
+
+      ) : lockState === "locked" ? (
+
+        /* ── LOCKED — approved / verified ── */
+        uploaded ? (
+          <View style={[styles.previewWrap, doc.isSelfie && styles.previewWrapSquare]}>
+            <Image
+              source={{ uri: state.uri! }}
+              style={styles.previewImg}
+              contentFit="cover"
+              transition={250}
+            />
+            <View style={[styles.previewBar, { backgroundColor: "rgba(0,160,55,0.88)" }]}>
+              <Feather name="lock" size={13} color="#fff" />
+              <Text style={styles.previewBarText}>Verified — changes locked</Text>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.lockedEmptyBox}>
+            <Feather name="lock" size={22} color="#00C853" />
+            <Text style={[styles.lockedLabel, { color: "#00C853" }]}>
+              Verified — changes locked
+            </Text>
+          </View>
+        )
+
+      ) : lockState === "waiting" ? (
+
+        /* ── WAITING — pending / submitted ── */
+        uploaded ? (
+          <View style={[styles.previewWrap, doc.isSelfie && styles.previewWrapSquare]}>
+            <Image
+              source={{ uri: state.uri! }}
+              style={styles.previewImg}
+              contentFit="cover"
+              transition={250}
+            />
+            <View style={[styles.previewBar, { backgroundColor: "rgba(160,90,0,0.82)" }]}>
+              <Feather name="clock" size={13} color="#fff" />
+              <Text style={styles.previewBarText}>Pending verification</Text>
+            </View>
+          </View>
+        ) : (
+          <View style={[styles.lockedEmptyBox, { borderColor: "#FFE0B2", backgroundColor: "#fff8e1" }]}>
+            <Feather name="clock" size={22} color="#FF8F00" />
+            <Text style={[styles.lockedLabel, { color: "#FF8F00" }]}>
+              Pending verification
+            </Text>
+          </View>
+        )
+
+      ) : lockState === "reupload" ? (
+
+        /* ── REUPLOAD — rejected by admin ── */
+        <>
+          <View style={styles.rejectedBanner}>
+            <Feather name="alert-circle" size={14} color="#EF4444" />
+            <Text style={styles.rejectedBannerText}>
+              Rejected — upload again
+            </Text>
+          </View>
+          {uploaded ? (
+            <View style={[styles.previewWrap, doc.isSelfie && styles.previewWrapSquare]}>
+              <Image
+                source={{ uri: state.uri! }}
+                style={styles.previewImg}
+                contentFit="cover"
+                transition={250}
+              />
+              <View style={[styles.previewBar, { backgroundColor: "rgba(160,0,0,0.80)" }]}>
+                <Text style={styles.previewBarText}>Previous upload (rejected)</Text>
+                <View style={{ flex: 1 }} />
+                <TouchableOpacity style={styles.barBtn} onPress={onUpload} activeOpacity={0.8}>
+                  <Feather name="refresh-cw" size={11} color="#fff" />
+                  <Text style={styles.barBtnText}>Replace</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.uploadZone}>
+              <TouchableOpacity style={styles.uploadBtn} onPress={onUpload} activeOpacity={0.82}>
+                <LinearGradient
+                  colors={["#EF4444", "#FF6B6B"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.uploadBtnGrad}
+                >
+                  <Feather name="upload" size={17} color="#fff" />
+                  <Text style={styles.uploadBtnText}>
+                    {doc.isSelfie ? "Upload Selfie Again" : "Upload Again"}
+                  </Text>
+                </LinearGradient>
+              </TouchableOpacity>
+              <Text style={[styles.uploadHint, { color: colors.mutedForeground }]}>
+                {doc.hint}
+              </Text>
+            </View>
+          )}
+        </>
+
       ) : uploaded ? (
-        /* Preview */
-        <View
-          style={[
-            styles.previewWrap,
-            doc.isSelfie && styles.previewWrapSquare,
-          ]}
-        >
+
+        /* ── UPLOADED — normal, no status yet ── */
+        <View style={[styles.previewWrap, doc.isSelfie && styles.previewWrapSquare]}>
           <Image
             source={{ uri: state.uri! }}
             style={styles.previewImg}
@@ -289,11 +435,7 @@ function DocumentCard({
               {doc.isSelfie ? "Selfie saved" : "Document saved"}
             </Text>
             <View style={{ flex: 1 }} />
-            <TouchableOpacity
-              style={styles.barBtn}
-              onPress={onUpload}
-              activeOpacity={0.8}
-            >
+            <TouchableOpacity style={styles.barBtn} onPress={onUpload} activeOpacity={0.8}>
               <Feather name="refresh-cw" size={11} color="#fff" />
               <Text style={styles.barBtnText}>Retake</Text>
             </TouchableOpacity>
@@ -306,15 +448,12 @@ function DocumentCard({
             </TouchableOpacity>
           </View>
         </View>
+
       ) : (
-        /* Upload zone */
+
+        /* ── EMPTY — no file, upload allowed ── */
         <View style={styles.uploadZone}>
-          {/* Primary action button */}
-          <TouchableOpacity
-            style={styles.uploadBtn}
-            onPress={onUpload}
-            activeOpacity={0.82}
-          >
+          <TouchableOpacity style={styles.uploadBtn} onPress={onUpload} activeOpacity={0.82}>
             <LinearGradient
               colors={["#00C853", "#00E676"]}
               start={{ x: 0, y: 0 }}
@@ -327,13 +466,9 @@ function DocumentCard({
               </Text>
             </LinearGradient>
           </TouchableOpacity>
-
-          {/* Hint */}
           <Text style={[styles.uploadHint, { color: colors.mutedForeground }]}>
             {doc.hint}
           </Text>
-
-          {/* Tags row */}
           <View style={styles.tagsRow}>
             <View style={styles.tag}>
               <Feather name="camera" size={9} color="#9CA3AF" />
@@ -351,6 +486,7 @@ function DocumentCard({
             </View>
           </View>
         </View>
+
       )}
     </View>
   );
@@ -365,13 +501,24 @@ export default function DocumentUploadScreen() {
   const { driverUid } = useDriver();
   const [submitting, setSubmitting] = useState(false);
 
+  /**
+   * Mock initial state demonstrating all four lock states.
+   * Replace `status` values with data from Firestore when wiring up the
+   * backend — e.g. read from driverDoc.documents[id].status.
+   *
+   * Status mapping:
+   *   approved / verified  → locked   (no upload)
+   *   pending / submitted  → waiting  (no replace, under review)
+   *   rejected             → reupload (must upload again)
+   *   null / undefined     → upload   (free to upload)
+   */
   const [docs, setDocs] = useState<Record<DocId, DocState>>(() => ({
-    selfie:    blankDoc(),
-    aadhaar:   blankDoc(),
-    pan:       blankDoc(),
-    license:   blankDoc(),
-    rc:        blankDoc(),
-    insurance: blankDoc(),
+    selfie:    { ...blankDoc(), status: "approved"  },  // locked
+    aadhaar:   { ...blankDoc(), status: "verified"  },  // locked (synonym)
+    pan:       { ...blankDoc(), status: "rejected"  },  // re-upload allowed
+    license:   { ...blankDoc(), status: "pending"   },  // waiting (pending review)
+    rc:        blankDoc(),                              // upload allowed
+    insurance: blankDoc(),                              // upload allowed
   }));
 
   // ── Helpers ──
@@ -381,7 +528,7 @@ export default function DocumentUploadScreen() {
   }
 
   function removeDoc(id: DocId) {
-    setDocs((prev) => ({ ...prev, [id]: blankDoc() }));
+    setDocs((prev) => ({ ...prev, [id]: { ...blankDoc(), status: prev[id].status } }));
   }
 
   /**
@@ -404,24 +551,43 @@ export default function DocumentUploadScreen() {
   }
 
   function handleUpload(doc: DocSpec) {
+    const st = docs[doc.id];
+    const lock = normalizeLock(st.status, !!st.uri);
+    // Defensive guard — buttons are hidden for locked/waiting, but guard anyway
+    if (lock === "locked" || lock === "waiting") return;
     showSourceSheet(
       !!doc.isSelfie,
-      // Camera option
       () => runPicker(doc.id, () => openCamera(!!doc.isSelfie)),
-      // Gallery option
       () => runPicker(doc.id, openGallery),
     );
   }
 
   // ── Derived ──
 
-  const uploadedCount = (Object.values(docs) as DocState[]).filter((d) => d.uri).length;
-  const total         = DOCS.length;
-  const progress      = uploadedCount / total;
-  const allDone       = uploadedCount === total;
+  /**
+   * A doc counts toward progress if it has a file OR is already locked
+   * (approved) or waiting (pending review with a file already submitted).
+   */
+  const uploadedCount = DOCS.filter((d) => {
+    const st = docs[d.id];
+    const lock = normalizeLock(st.status, !!st.uri);
+    return lock === "locked" || lock === "waiting" || !!st.uri;
+  }).length;
+
+  const total = DOCS.length;
+  const progress = uploadedCount / total;
+
+  /**
+   * Submit is enabled when every doc either has a local file ready
+   * OR is already approved (locked) — meaning no action needed from driver.
+   */
+  const allReady = DOCS.every((d) => {
+    const st = docs[d.id];
+    return normalizeLock(st.status, !!st.uri) === "locked" || !!st.uri;
+  });
 
   async function handleSubmit() {
-    if (!allDone || submitting) return;
+    if (!allReady || submitting) return;
     if (!driverUid) {
       console.error("[document-upload] handleSubmit: driverUid is null");
       return;
@@ -440,6 +606,7 @@ export default function DocumentUploadScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
+
       {/* ────── Header ────── */}
       <View
         style={[
@@ -466,9 +633,7 @@ export default function DocumentUploadScreen() {
 
         {/* Progress bar */}
         <View style={styles.progressRow}>
-          <View
-            style={[styles.progressTrack, { backgroundColor: colors.border }]}
-          >
+          <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
             <View
               style={[
                 styles.progressFill,
@@ -508,15 +673,19 @@ export default function DocumentUploadScreen() {
 
         {/* Doc cards */}
         <View style={styles.docList}>
-          {DOCS.map((doc) => (
-            <DocumentCard
-              key={doc.id}
-              doc={doc}
-              state={docs[doc.id]}
-              onUpload={() => handleUpload(doc)}
-              onRemove={() => removeDoc(doc.id)}
-            />
-          ))}
+          {DOCS.map((doc) => {
+            const st = docs[doc.id];
+            return (
+              <DocumentCard
+                key={doc.id}
+                doc={doc}
+                state={st}
+                lockState={normalizeLock(st.status, !!st.uri)}
+                onUpload={() => handleUpload(doc)}
+                onRemove={() => removeDoc(doc.id)}
+              />
+            );
+          })}
         </View>
 
         {/* Tips */}
@@ -571,22 +740,22 @@ export default function DocumentUploadScreen() {
       >
         <View style={styles.footerHint}>
           <Feather
-            name={allDone ? "check-circle" : "info"}
+            name={allReady ? "check-circle" : "info"}
             size={13}
-            color={allDone ? "#00C853" : colors.mutedForeground}
+            color={allReady ? "#00C853" : colors.mutedForeground}
           />
           <Text style={[styles.hintText, { color: colors.mutedForeground }]}>
-            {allDone
-              ? "All documents uploaded. Ready to submit."
+            {allReady
+              ? "All documents ready. Ready to submit."
               : `${total - uploadedCount} more document${total - uploadedCount > 1 ? "s" : ""} needed.`}
           </Text>
         </View>
 
         <TouchableOpacity
-          style={[styles.submitBtn, { opacity: allDone && !submitting ? 1 : 0.45 }]}
+          style={[styles.submitBtn, { opacity: allReady && !submitting ? 1 : 0.45 }]}
           onPress={() => void handleSubmit()}
           activeOpacity={0.85}
-          disabled={!allDone || submitting}
+          disabled={!allReady || submitting}
         >
           <LinearGradient
             colors={["#00C853", "#00E676"]}
@@ -717,6 +886,34 @@ const styles = StyleSheet.create({
   },
   loadingText: { fontSize: 13, fontWeight: "500" },
 
+  // Locked / waiting empty box
+  lockedEmptyBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingVertical: 18,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#b9f6ca",
+    backgroundColor: "#f0fdf4",
+  },
+  lockedLabel: { fontSize: 13, fontWeight: "700" },
+
+  // Rejected banner
+  rejectedBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 10,
+    backgroundColor: "#ffebee",
+    borderWidth: 1,
+    borderColor: "#FFCDD2",
+  },
+  rejectedBannerText: { fontSize: 13, fontWeight: "700", color: "#EF4444" },
+
   // Upload zone
   uploadZone: {
     borderWidth: 1.5,
@@ -797,28 +994,33 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 4,
-    marginTop: -4,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: "#f3f4f6",
   },
-  platformNoteText: { fontSize: 11, color: "#9CA3AF" },
+  platformNoteText: { fontSize: 11, color: "#6B7280", flex: 1 },
 
   // Footer
   footer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
     paddingHorizontal: 20,
     paddingTop: 14,
     borderTopWidth: 1,
     gap: 10,
   },
-  footerHint: { flexDirection: "row", alignItems: "center", gap: 6 },
-  hintText:   { fontSize: 12 },
-  submitBtn:  { borderRadius: 15, overflow: "hidden" },
+  footerHint: { flexDirection: "row", alignItems: "center", gap: 7 },
+  hintText: { fontSize: 12, flex: 1 },
+  submitBtn: { borderRadius: 14, overflow: "hidden" },
   submitGrad: {
-    height: 56,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    borderRadius: 15,
+    gap: 10,
+    paddingVertical: 16,
+    borderRadius: 14,
   },
-  submitText: { fontSize: 17, fontWeight: "700", color: "#fff" },
+  submitText: { fontSize: 16, fontWeight: "800", color: "#fff" },
 });
