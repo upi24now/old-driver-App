@@ -992,24 +992,15 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   };
 
   // ─── Overlay permission ───────────────────────────────────────────────────
+  // Not yet implemented: real overlay support requires a native Android module
+  // (WindowManager + SYSTEM_ALERT_WINDOW) and a custom production build.
+  // requestOverlayPermission() is kept for API compatibility but always returns
+  // ok: false — the toggle in profile.tsx is locked and shows a "Coming soon" alert.
   const requestOverlayPermission = async (): Promise<{ ok: boolean; reason?: string }> => {
-    if (Platform.OS !== "android") {
-      const ok = Platform.OS === "ios";
-      setOverlayPermissionGranted(ok);
-      return ok
-        ? { ok: true }
-        : { ok: false, reason: "Overlay permission is only required on Android." };
-    }
-    try {
-      await IntentLauncher.startActivityAsync(
-        "android.settings.action.MANAGE_OVERLAY_PERMISSION",
-      );
-      setOverlayPermissionGranted(true);
-      return { ok: true };
-    } catch {
-      setOverlayPermissionGranted(false);
-      return { ok: false, reason: "Permission required for incoming ride alerts." };
-    }
+    return {
+      ok: false,
+      reason: "Overlay alerts are not enabled in this build yet.",
+    };
   };
 
   return (

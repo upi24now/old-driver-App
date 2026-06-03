@@ -427,24 +427,27 @@ export default function SettingsScreen() {
               iconBg="#e8f5e9"
               iconColor="#00C853"
               title="Allow Ride Overlay Popup"
-              sub="Show ride alerts over other apps & lock screen"
+              sub="Coming soon — requires production Android build"
+              onPress={() => {
+                Alert.alert(
+                  "Coming Soon",
+                  "Overlay alerts require a production Android build and will be enabled in the urgent order alert update.",
+                  [{ text: "OK" }],
+                );
+              }}
               right={
                 <Switch
-                  value={overlayPermissionGranted}
-                  onValueChange={async (next) => {
-                    if (!next) {
-                      setOverlayPermission(false);
-                      return;
-                    }
-                    if (Platform.OS !== "android") {
-                      setOverlayPermission(true);
-                      return;
-                    }
-                    await requestOverlayPermission();
+                  value={false}
+                  onValueChange={() => {
+                    Alert.alert(
+                      "Coming Soon",
+                      "Overlay alerts require a production Android build and will be enabled in the urgent order alert update.",
+                      [{ text: "OK" }],
+                    );
                   }}
                   trackColor={{ true: "#22C55E", false: "#EF4444" }}
                   thumbColor="#fff"
-                  style={{ transform: [{ scaleX: 1.3 }, { scaleY: 1.3 }] }}
+                  style={{ transform: [{ scaleX: 1.3 }, { scaleY: 1.3 }], opacity: 0.45 }}
                 />
               }
             />
