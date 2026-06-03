@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useState } from "react";
@@ -230,13 +230,14 @@ export default function SettingsScreen() {
               <Text style={styles.profileName}>Arjun Kumar</Text>
               <Text style={styles.profilePhone}>+91 98765 43210</Text>
               <View style={styles.profileMetaRow}>
-                <Feather name="star" size={11} color="#FFB300" />
+                <Feather name="star" size={11} color="#FFD166" />
                 <Text style={styles.profileMetaText}>4.92</Text>
                 <View style={styles.metaDotDark} />
-                <Text style={styles.profileMetaText}>1,284 trips</Text>
+                <Feather name="package" size={11} color="rgba(255,255,255,0.72)" />
+                <Text style={styles.profileMetaText}>1,284 Deliveries</Text>
               </View>
               <View style={styles.profileVehicleRow}>
-                <Feather name="truck" size={10} color="rgba(255,255,255,0.5)" />
+                <MaterialCommunityIcons name="motorbike" size={13} color="rgba(255,255,255,0.5)" />
                 <Text style={styles.profileVehicleText}>KA 05 MN 4827</Text>
               </View>
             </View>
