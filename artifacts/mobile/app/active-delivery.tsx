@@ -569,6 +569,13 @@ export default function ActiveDeliveryScreen() {
   // Card slide-in on stage change
   const cardY    = useRef(new Animated.Value(60)).current;
   const cardOpac = useRef(new Animated.Value(0)).current;
+
+  // Non-focused cancellation banner — fade in / hold / fade out.
+  const bannerOpacity     = useRef(new Animated.Value(0)).current;
+  // Tracks which orderIds have already triggered a banner to prevent duplicate
+  // notices if orderRemovalReasons re-renders without adding new keys.
+  const shownBannerForRef = useRef<Set<string>>(new Set());
+
   function animateIn() {
     cardY.setValue(60); cardOpac.setValue(0);
     Animated.parallel([
@@ -628,6 +635,26 @@ export default function ActiveDeliveryScreen() {
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeOrders, orderRemovalReasons]);
+
+  // ─── Non-focused order cancellation notice ─────────────────────────────────
+  // When a sibling order (not this screen's orderId) is cancelled/rejected/deleted,
+  // show a brief passive banner so the driver is aware without interrupting Order A.
+  // Does NOT navigate, does NOT change focus, does NOT affect stage flow.
+  useEffect(() => {
+    for (const [id, reason] of Object.entries(orderRemovalReasons)) {
+      if (id === orderId) continue;                                  // focused order — handled by Alert above
+      if (shownBannerForRef.current.has(id)) continue;              // already notified for this order
+      if (reason !== "cancelled" && reason !== "rejected" && reason !== "deleted") continue;
+      shownBannerForRef.current.add(id);                            // mark as shown
+      Animated.sequence([
+        Animated.timing(bannerOpacity, { toValue: 1, duration: 250, useNativeDriver: true }),
+        Animated.delay(3000),
+        Animated.timing(bannerOpacity, { toValue: 0, duration: 400, useNativeDriver: true }),
+      ]).start();
+      break; // one banner at a time; next re-render will handle any further removals
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderRemovalReasons]);
 
   // Params — fall back to DriverContext activeRide when navigating back to this
   // screen without fresh route params (e.g. after app restore or tab switch).
@@ -804,6 +831,15 @@ export default function ActiveDeliveryScreen() {
 
   return (
     <View style={[st.root, { paddingTop: insets.top }]}>
+      {/* Non-focused cancellation banner — passive, non-blocking, auto-hides */}
+      <Animated.View
+        pointerEvents="none"
+        style={[st.cancelBanner, { opacity: bannerOpacity, top: insets.top + 8 }]}
+      >
+        <Feather name="alert-circle" size={14} color="#fff" />
+        <Text style={st.cancelBannerText}>Another delivery was cancelled.</Text>
+      </Animated.View>
+
       {/* Top bar */}
       <LinearGradient colors={meta.topColor} style={st.topBar}>
         <View style={st.topBarLeft}>
@@ -1134,6 +1170,10 @@ const st = StyleSheet.create({
   celebStatVal: { fontSize: 16, fontWeight: "800", color: "#0F172A" },
   celebStatLbl: { fontSize: 10, fontWeight: "600", color: "#94A3B8" },
   celebSep:     { width: 1, height: 32, backgroundColor: "#E2E8F0" },
+
+  // Non-focused cancellation banner
+  cancelBanner: { position: "absolute", left: 16, right: 16, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#1E293B", borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14, zIndex: 200, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.28, shadowRadius: 6, elevation: 8 },
+  cancelBannerText: { flex: 1, color: "#fff", fontSize: 13, fontWeight: "600" },
 
   // CTA
   ctaWrap: { position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: 20, paddingTop: 14, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#E2E8F0", shadowColor: "#000", shadowOpacity: 0.07, shadowRadius: 14, shadowOffset: { width: 0, height: -4 }, elevation: 10, gap: 6 },
