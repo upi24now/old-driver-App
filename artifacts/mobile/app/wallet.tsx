@@ -17,9 +17,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
-// TEMP DEV ONLY — REMOVE BEFORE PRODUCTION
-import { devTopUpWallet } from "@/utils/firestore";
-// END TEMP DEV ONLY
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const LOCKED_BALANCE = 50;
@@ -111,21 +108,6 @@ export default function WalletScreen() {
 
   const amountRef = useRef<TextInput>(null);
 
-  // TEMP DEV ONLY — REMOVE BEFORE PRODUCTION
-  const [topping, setTopping] = useState(false);
-  const handleDevTopUp = async () => {
-    if (!driverUid || topping) return;
-    setTopping(true);
-    try {
-      await devTopUpWallet(driverUid);
-      await refreshWallet();
-    } catch (e) {
-      console.error("DEV top-up failed:", e);
-    } finally {
-      setTopping(false);
-    }
-  };
-  // END TEMP DEV ONLY
 
   // ── Computed ────────────────────────────────────────────────────────────────
   const withdrawable   = Math.max(0, walletBalance - LOCKED_BALANCE);
@@ -421,24 +403,6 @@ export default function WalletScreen() {
           )}
         </View>
 
-        {/* ── TEMP DEV ONLY — REMOVE BEFORE PRODUCTION ─────────────────────── */}
-        {__DEV__ && (
-          <TouchableOpacity
-            style={[styles.devTopUpBtn, topping && { opacity: 0.6 }]}
-            onPress={handleDevTopUp}
-            activeOpacity={0.75}
-            disabled={topping}
-          >
-            {topping
-              ? <ActivityIndicator size="small" color="#fff" />
-              : <Feather name="zap" size={14} color="#fff" />
-            }
-            <Text style={styles.devTopUpText}>
-              {topping ? "Adding…" : "DEV: Add ₹100 Test Balance"}
-            </Text>
-          </TouchableOpacity>
-        )}
-        {/* ── END TEMP DEV ONLY ─────────────────────────────────────────────── */}
 
         {/* ── PERIOD STATS ──────────────────────────────────────────────────── */}
         <View style={styles.periodRow}>
@@ -752,19 +716,4 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, paddingVertical: 30, alignItems: "center", gap: 8,
   },
   emptyText: { fontSize: 12, fontWeight: "600" },
-
-  // TEMP DEV ONLY — REMOVE BEFORE PRODUCTION
-  devTopUpBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#6200ea",
-    borderRadius: 12,
-    height: 44,
-    borderWidth: 1.5,
-    borderColor: "#7c4dff",
-  },
-  devTopUpText: { color: "#fff", fontSize: 13, fontWeight: "800" },
-  // END TEMP DEV ONLY
 });

@@ -612,37 +612,3 @@ export async function driverCancelOrder(
     updatedAt:          serverTimestamp(),
   });
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TEMP DEV ONLY — REMOVE BEFORE PRODUCTION
-// Adds ₹100 test balance to the driver's wallet for withdrawal flow testing.
-// Does NOT interact with any real payment or plan logic.
-// To remove: delete this function and the import + button in app/wallet.tsx.
-// ─────────────────────────────────────────────────────────────────────────────
-export async function devTopUpWallet(driverUid: string): Promise<void> {
-  const driverRef = doc(db, "drivers", driverUid);
-  const txnRef    = doc(collection(db, "driver_transactions")); // auto-ID
-
-  await runTransaction(db, async (tx) => {
-    const snap    = await tx.get(driverRef);
-    const d       = snap.exists() ? (snap.data() as Record<string, unknown>) : {};
-    const balance  = (d["walletBalance"]    as number | undefined) ?? 0;
-    const lifetime = (d["lifetimeEarnings"] as number | undefined) ?? 0;
-
-    tx.set(driverRef, {
-      walletBalance:    balance  + 100,
-      lifetimeEarnings: lifetime + 100,
-      updatedAt:        serverTimestamp(),
-    }, { merge: true });
-
-    tx.set(txnRef, {
-      driverUid,
-      type:      "adjustment",
-      amount:    100,
-      status:    "completed",
-      note:      "DEV wallet test top-up",
-      createdAt: serverTimestamp(),
-    });
-  });
-}
-// END TEMP DEV ONLY
