@@ -34,9 +34,9 @@ const PLANS: Plan[] = [
   {
     id: "daily",
     name: "Daily",
-    price: 19,
+    price: 3,
     period: "/ day",
-    pricePerDay: 19,
+    pricePerDay: 3,
     description: "Try it for a day — perfect for occasional drivers",
     features: [
       "0% commission on every ride",
@@ -47,10 +47,10 @@ const PLANS: Plan[] = [
   {
     id: "weekly",
     name: "Weekly",
-    price: 99,
+    price: 19,
     period: "/ week",
-    pricePerDay: 14.14,
-    badge: "Save 25%",
+    pricePerDay: 2.71,
+    badge: "Save 10%",
     badgeColor: "#1976D2",
     description: "Most flexible for part-time drivers",
     features: [
@@ -63,10 +63,10 @@ const PLANS: Plan[] = [
   {
     id: "monthly",
     name: "Monthly",
-    price: 349,
+    price: 100,
     period: "/ month",
-    pricePerDay: 11.63,
-    badge: "Save 38%",
+    pricePerDay: 3.33,
+    badge: "Best Value",
     badgeColor: "#00C853",
     highlight: true,
     description: "Best value for full-time drivers",
@@ -183,10 +183,26 @@ export default function SubscriptionScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { activatePlan } = useDriver();
+  const {
+    activatePlan,
+    subscriptionPlan,
+    subscriptionExpiresAt,
+    subscriptionActive,
+  } = useDriver();
   const [selected, setSelected] = useState<PlanId>("monthly");
 
   const selectedPlan = PLANS.find((p) => p.id === selected)!;
+
+  const PLAN_LABEL: Record<string, string> = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
+  const MS_PER_DAY = 86_400_000;
+  const activePlanName       = subscriptionPlan ? (PLAN_LABEL[subscriptionPlan] ?? subscriptionPlan) : null;
+  const activePlanExpiryDate = subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null;
+  const activePlanDaysLeft   = activePlanExpiryDate
+    ? Math.max(0, Math.ceil((activePlanExpiryDate.getTime() - Date.now()) / MS_PER_DAY))
+    : 0;
+  const activePlanExpiryStr  = activePlanExpiryDate
+    ? activePlanExpiryDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })
+    : "";
 
   function handleActivate() {
     const r = activatePlan(selected);
@@ -269,19 +285,35 @@ export default function SubscriptionScreen() {
         </LinearGradient>
 
         {/* PLAN STATUS */}
-        <View style={[styles.statusCard, { borderColor: colors.border }]}>
-          <View style={[styles.statusIcon, { backgroundColor: "#fff5e6" }]}>
-            <Feather name="alert-circle" size={16} color="#b75d00" />
+        {subscriptionActive ? (
+          <View style={[styles.statusCard, { borderColor: "#00C853", backgroundColor: "#f0fff5" }]}>
+            <View style={[styles.statusIcon, { backgroundColor: "#dcfce7" }]}>
+              <Feather name="check-circle" size={16} color="#16a34a" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.statusTitle, { color: "#15803d" }]}>
+                {activePlanName} Plan — Active
+              </Text>
+              <Text style={[styles.statusSub, { color: "#166534" }]}>
+                {activePlanDaysLeft} day{activePlanDaysLeft !== 1 ? "s" : ""} left · Expires {activePlanExpiryStr}
+              </Text>
+            </View>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.statusTitle, { color: colors.foreground }]}>
-              No active plan
-            </Text>
-            <Text style={[styles.statusSub, { color: colors.mutedForeground }]}>
-              20% commission is being deducted from your rides
-            </Text>
+        ) : (
+          <View style={[styles.statusCard, { borderColor: colors.border }]}>
+            <View style={[styles.statusIcon, { backgroundColor: "#fff5e6" }]}>
+              <Feather name="alert-circle" size={16} color="#b75d00" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.statusTitle, { color: colors.foreground }]}>
+                No active plan
+              </Text>
+              <Text style={[styles.statusSub, { color: colors.mutedForeground }]}>
+                Choose a plan below to go online and accept rides
+              </Text>
+            </View>
           </View>
-        </View>
+        )}
 
         {/* SECTION HEADER */}
         <View style={styles.sectionHeader}>
@@ -350,7 +382,7 @@ export default function SubscriptionScreen() {
         </TouchableOpacity>
 
         <Text style={[styles.terms, { color: colors.mutedForeground }]}>
-          By subscribing, you agree to Driver Plan terms. Auto-renews unless cancelled. GST included.
+          By activating, you agree to Driver Plan terms. No auto-renewal. GST included.
         </Text>
       </ScrollView>
 

@@ -130,7 +130,15 @@ function Row({
 }
 
 export default function SettingsScreen() {
-  const { signOut, overlayPermissionGranted, requestOverlayPermission, setOverlayPermission } = useDriver();
+  const {
+    signOut,
+    overlayPermissionGranted,
+    requestOverlayPermission,
+    setOverlayPermission,
+    subscriptionPlan,
+    subscriptionExpiresAt,
+    subscriptionActive,
+  } = useDriver();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -155,29 +163,26 @@ export default function SettingsScreen() {
         ? "#EF4444"
         : "#FF8F00";
 
-  // ── Plan mock data (UI model only — replace with real data when backend ready) ──
-  const planName = "Weekly Pro";
-  const planStartDate = new Date("2026-05-30");
-  const planExpiryDate = new Date("2026-06-08");
-  const isPlanActive = true;
-  const msPerDay = 86_400_000;
-  const today = new Date();
-  const remainingDays = Math.max(
-    0,
-    Math.ceil((planExpiryDate.getTime() - today.getTime()) / msPerDay),
-  );
-  const totalPlanDays = Math.round(
-    (planExpiryDate.getTime() - planStartDate.getTime()) / msPerDay,
-  );
+  // ── Plan data from DriverContext ──
+  const PLAN_LABEL: Record<string, string>  = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
+  const PLAN_TOTAL_DAYS: Record<string, number> = { daily: 1, weekly: 7, monthly: 30 };
+  const MS_PER_DAY = 86_400_000;
+
+  const planName       = subscriptionPlan ? (PLAN_LABEL[subscriptionPlan] ?? subscriptionPlan) : null;
+  const planExpiryDate = subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null;
+  const isPlanActive   = subscriptionActive;
+  const remainingDays  = planExpiryDate
+    ? Math.max(0, Math.ceil((planExpiryDate.getTime() - Date.now()) / MS_PER_DAY))
+    : 0;
+  const totalPlanDays  = subscriptionPlan ? (PLAN_TOTAL_DAYS[subscriptionPlan] ?? 30) : 30;
   const remainingPercent =
     totalPlanDays > 0
       ? Math.min(100, Math.round((remainingDays / totalPlanDays) * 100))
       : 0;
-  const planExpired = isPlanActive && remainingDays === 0;
-  const planExpiryStr = planExpiryDate.toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-  });
+  const planExpired = !!subscriptionPlan && !subscriptionActive;
+  const planExpiryStr = planExpiryDate
+    ? planExpiryDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })
+    : "";
   const planBarColor =
     remainingPercent >= 70 ? "#00C853" : remainingPercent >= 30 ? "#FF8F00" : "#FF3B30";
 
