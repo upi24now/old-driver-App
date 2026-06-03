@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { callSupport } from "@/utils/support";
+import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -237,6 +238,12 @@ export default function RideRequestScreen() {
   const rejectShake = useRef(new Animated.Value(0)).current;
   const rejectFill = useRef(new Animated.Value(0)).current;
 
+  // Stable player instance for the alert ringtone — created once per screen mount.
+  const player = useAudioPlayer(
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("../assets/ringtone.wav") as Parameters<typeof useAudioPlayer>[0]
+  );
+
   const urgent = seconds <= 5;
 
   useEffect(() => {
@@ -266,7 +273,27 @@ export default function RideRequestScreen() {
       }),
     ]).start();
 
-    Vibration.vibrate(40);
+    // Ringtone — configure audio mode then start looping immediately.
+    // playsInSilentMode: true  — audible even when device ringer is off.
+    // shouldPlayInBackground: true — keeps playing if driver backgrounds the app.
+    setAudioModeAsync({
+      playsInSilentMode: true,
+      shouldPlayInBackground: true,
+      interruptionMode: "doNotMix",
+      allowsRecording: false,
+      shouldRouteThroughEarpiece: false,
+    })
+      .then(() => {
+        player.loop = true;
+        player.volume = 1.0;
+        player.muted = false;
+        player.play();
+      })
+      .catch(() => {});
+
+    // Continuous vibration: 800ms on, 400ms off, repeating for full alert duration.
+    Vibration.vibrate([0, 800, 400], true);
+
     const t = setInterval(() => {
       setSeconds((s) => {
         if (s <= 1) {
@@ -276,7 +303,11 @@ export default function RideRequestScreen() {
         return s - 1;
       });
     }, 1000);
-    return () => clearInterval(t);
+    return () => {
+      clearInterval(t);
+      try { player.pause(); } catch {}
+      Vibration.cancel();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -359,10 +390,17 @@ export default function RideRequestScreen() {
     if (hadRideRef.current) dismiss();
   }, [incomingRide]);
 
+  // Stop ringtone + vibration immediately on any exit path.
+  function stopAlert() {
+    try { player.pause(); } catch {}
+    Vibration.cancel();
+  }
+
   function handleReject() {
     // Ignore reject tap if accept transaction is already in flight.
     if (didAcceptRef.current) return;
-    Vibration.vibrate(40);
+    stopAlert();
+    Vibration.vibrate(40); // short haptic feedback for the reject gesture
     Animated.parallel([
       Animated.sequence([
         Animated.timing(rejectShake, { toValue: 1, duration: 50, useNativeDriver: true }),
@@ -386,6 +424,7 @@ export default function RideRequestScreen() {
   }
 
   function dismiss(replaceRoute?: string) {
+    stopAlert();
     Animated.parallel([
       Animated.timing(backdrop, {
         toValue: 0,
@@ -443,7 +482,8 @@ export default function RideRequestScreen() {
       return;
     }
 
-    // Transaction succeeded — animate dismiss then navigate to active-delivery.
+    // Transaction succeeded — stop alert then animate dismiss to active-delivery.
+    stopAlert();
     Animated.parallel([
       Animated.timing(backdrop, { toValue: 0, duration: 200, useNativeDriver: true }),
       Animated.timing(slide,    { toValue: 0, duration: 240, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
