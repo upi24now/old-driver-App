@@ -21,11 +21,15 @@ import type {
 
 import type {
   ApiErrorBody,
+  CreateOrderRequest,
+  CreateOrderResult,
   HealthStatus,
   SendOtpRequest,
   SendOtpResult,
   VerifyOtpRequest,
-  VerifyOtpResult
+  VerifyOtpResult,
+  VerifyPaymentRequest,
+  VerifyPaymentResult
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -258,5 +262,151 @@ export const useAuthVerifyOtp = <TError = ErrorType<ApiErrorBody>,
         TContext
       > => {
       return useMutation(getAuthVerifyOtpMutationOptions(options));
+    }
+
+export const getDriverPlansCreateOrderUrl = () => {
+
+
+
+
+  return `/api/driver-plans/create-order`
+}
+
+/**
+ * Creates a Razorpay payment order server-side. The mobile app receives the order ID and public key ID, then opens the Razorpay checkout. The Razorpay secret key is never exposed to the client.
+
+ * @summary Create a Razorpay order for a driver plan
+ */
+export const driverPlansCreateOrder = async (createOrderRequest: CreateOrderRequest, options?: RequestInit): Promise<CreateOrderResult> => {
+
+  return customFetch<CreateOrderResult>(getDriverPlansCreateOrderUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createOrderRequest,)
+  }
+);}
+
+
+
+
+export const getDriverPlansCreateOrderMutationOptions = <TError = ErrorType<ApiErrorBody>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof driverPlansCreateOrder>>, TError,{data: BodyType<CreateOrderRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof driverPlansCreateOrder>>, TError,{data: BodyType<CreateOrderRequest>}, TContext> => {
+
+const mutationKey = ['driverPlansCreateOrder'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof driverPlansCreateOrder>>, {data: BodyType<CreateOrderRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  driverPlansCreateOrder(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DriverPlansCreateOrderMutationResult = NonNullable<Awaited<ReturnType<typeof driverPlansCreateOrder>>>
+    export type DriverPlansCreateOrderMutationBody = BodyType<CreateOrderRequest>
+    export type DriverPlansCreateOrderMutationError = ErrorType<ApiErrorBody>
+
+    /**
+ * @summary Create a Razorpay order for a driver plan
+ */
+export const useDriverPlansCreateOrder = <TError = ErrorType<ApiErrorBody>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof driverPlansCreateOrder>>, TError,{data: BodyType<CreateOrderRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof driverPlansCreateOrder>>,
+        TError,
+        {data: BodyType<CreateOrderRequest>},
+        TContext
+      > => {
+      return useMutation(getDriverPlansCreateOrderMutationOptions(options));
+    }
+
+export const getDriverPlansVerifyPaymentUrl = () => {
+
+
+
+
+  return `/api/driver-plans/verify-payment`
+}
+
+/**
+ * Verifies the Razorpay payment signature using HMAC-SHA256. On valid signature, activates the plan in Firestore using server time. An invalid signature returns 400 — the plan is NOT activated.
+
+ * @summary Verify Razorpay payment and activate driver plan
+ */
+export const driverPlansVerifyPayment = async (verifyPaymentRequest: VerifyPaymentRequest, options?: RequestInit): Promise<VerifyPaymentResult> => {
+
+  return customFetch<VerifyPaymentResult>(getDriverPlansVerifyPaymentUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      verifyPaymentRequest,)
+  }
+);}
+
+
+
+
+export const getDriverPlansVerifyPaymentMutationOptions = <TError = ErrorType<ApiErrorBody>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof driverPlansVerifyPayment>>, TError,{data: BodyType<VerifyPaymentRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof driverPlansVerifyPayment>>, TError,{data: BodyType<VerifyPaymentRequest>}, TContext> => {
+
+const mutationKey = ['driverPlansVerifyPayment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof driverPlansVerifyPayment>>, {data: BodyType<VerifyPaymentRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  driverPlansVerifyPayment(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DriverPlansVerifyPaymentMutationResult = NonNullable<Awaited<ReturnType<typeof driverPlansVerifyPayment>>>
+    export type DriverPlansVerifyPaymentMutationBody = BodyType<VerifyPaymentRequest>
+    export type DriverPlansVerifyPaymentMutationError = ErrorType<ApiErrorBody>
+
+    /**
+ * @summary Verify Razorpay payment and activate driver plan
+ */
+export const useDriverPlansVerifyPayment = <TError = ErrorType<ApiErrorBody>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof driverPlansVerifyPayment>>, TError,{data: BodyType<VerifyPaymentRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof driverPlansVerifyPayment>>,
+        TError,
+        {data: BodyType<VerifyPaymentRequest>},
+        TContext
+      > => {
+      return useMutation(getDriverPlansVerifyPaymentMutationOptions(options));
     }
 

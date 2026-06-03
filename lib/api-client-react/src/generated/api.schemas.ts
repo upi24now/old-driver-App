@@ -34,3 +34,52 @@ export interface ApiErrorBody {
   error: string;
 }
 
+/**
+ * Driver subscription plan type
+ */
+export type PlanType = typeof PlanType[keyof typeof PlanType];
+
+
+export const PlanType = {
+  daily: 'daily',
+  weekly: 'weekly',
+  monthly: 'monthly',
+} as const;
+
+export interface CreateOrderRequest {
+  /** Firebase UID of the driver (must match the bearer token) */
+  driverUid: string;
+  planType: PlanType;
+}
+
+export interface CreateOrderResult {
+  /** Razorpay order ID — pass to the checkout SDK */
+  razorpayOrderId: string;
+  /** Amount in paise (300 = ₹3, 1900 = ₹19, 10000 = ₹100) */
+  amount: number;
+  /** ISO 4217 currency code */
+  currency: string;
+  /** Razorpay public key ID — safe to expose to client */
+  keyId: string;
+}
+
+export interface VerifyPaymentRequest {
+  /** Firebase UID of the driver (must match the bearer token) */
+  driverUid: string;
+  planType: PlanType;
+  /** Order ID from create-order step */
+  razorpayOrderId: string;
+  /** Payment ID from Razorpay checkout success callback */
+  razorpayPaymentId: string;
+  /** HMAC-SHA256 signature from Razorpay checkout success callback */
+  razorpaySignature: string;
+}
+
+export interface VerifyPaymentResult {
+  ok: boolean;
+  /** Unix timestamp (ms) when the plan started — server time */
+  planStartAt: number;
+  /** Unix timestamp (ms) when the plan expires — server time */
+  planExpiryAt: number;
+}
+

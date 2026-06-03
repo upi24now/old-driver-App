@@ -1,7 +1,8 @@
 import { logger } from "./logger";
 
 let _auth: import("firebase-admin/auth").Auth | null = null;
-let _appReady = false;
+let _db:   import("firebase-admin/firestore").Firestore | null = null;
+let _appReady   = false;
 let _initError: string | null = null;
 
 async function getAdminApp() {
@@ -26,7 +27,8 @@ async function getAdminApp() {
 
   try {
     const { initializeApp, getApps, cert } = await import("firebase-admin/app");
-    const { getAuth } = await import("firebase-admin/auth");
+    const { getAuth }      = await import("firebase-admin/auth");
+    const { getFirestore } = await import("firebase-admin/firestore");
 
     const existing = getApps();
     const app =
@@ -35,6 +37,7 @@ async function getAdminApp() {
         : initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });
 
     _auth = getAuth(app);
+    _db   = getFirestore(app);
     _appReady = true;
     logger.info({ projectId }, "Firebase Admin initialized");
   } catch (err) {
@@ -47,4 +50,10 @@ export async function adminAuth(): Promise<import("firebase-admin/auth").Auth> {
   await getAdminApp();
   if (!_auth) throw new Error(_initError ?? "Firebase Admin Auth unavailable");
   return _auth;
+}
+
+export async function adminFirestore(): Promise<import("firebase-admin/firestore").Firestore> {
+  await getAdminApp();
+  if (!_db) throw new Error(_initError ?? "Firebase Admin Firestore unavailable");
+  return _db;
 }

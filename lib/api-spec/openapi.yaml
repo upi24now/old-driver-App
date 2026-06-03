@@ -12,6 +12,8 @@ tags:
     description: Health operations
   - name: auth
     description: Driver authentication
+  - name: driver-plans
+    description: Driver subscription plan management
 paths:
   /healthz:
     get:
@@ -92,7 +94,120 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorBody"
+  /driver-plans/create-order:
+    post:
+      operationId: driverPlansCreateOrder
+      tags: [driver-plans]
+      summary: Create a Razorpay order for a driver plan
+      description: >
+        Creates a Razorpay payment order server-side. The mobile app receives
+        the order ID and public key ID, then opens the Razorpay checkout.
+        The Razorpay secret key is never exposed to the client.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrderRequest"
+      responses:
+        "200":
+          description: Razorpay order created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateOrderResult"
+        "400":
+          description: Invalid driverUid or planType
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
+        "401":
+          description: Missing or invalid Firebase token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
+        "403":
+          description: Token UID does not match driverUid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
+        "502":
+          description: Razorpay API unreachable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
+        "503":
+          description: Payment service not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
+  /driver-plans/verify-payment:
+    post:
+      operationId: driverPlansVerifyPayment
+      tags: [driver-plans]
+      summary: Verify Razorpay payment and activate driver plan
+      description: >
+        Verifies the Razorpay payment signature using HMAC-SHA256.
+        On valid signature, activates the plan in Firestore using server time.
+        An invalid signature returns 400 — the plan is NOT activated.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyPaymentRequest"
+      responses:
+        "200":
+          description: Payment verified and plan activated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyPaymentResult"
+        "400":
+          description: Missing fields or invalid signature
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
+        "401":
+          description: Missing or invalid Firebase token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
+        "403":
+          description: Token UID does not match driverUid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
+        "500":
+          description: Firestore write failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
+        "503":
+          description: Payment service not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Firebase ID Token
   schemas:
     HealthStatus:
       type: object
@@ -147,3 +262,91 @@ components:
           type: string
       required:
         - error
+    PlanType:
+      type: string
+      enum:
+        - daily
+        - weekly
+        - monthly
+      description: Driver subscription plan type
+    CreateOrderRequest:
+      type: object
+      properties:
+        driverUid:
+          type: string
+          description: Firebase UID of the driver (must match the bearer token)
+          example: "919876543210"
+        planType:
+          $ref: "#/components/schemas/PlanType"
+      required:
+        - driverUid
+        - planType
+    CreateOrderResult:
+      type: object
+      properties:
+        razorpayOrderId:
+          type: string
+          description: Razorpay order ID — pass to the checkout SDK
+          example: "order_PFa1YbZFwpXmqA"
+        amount:
+          type: integer
+          description: Amount in paise (300 = ₹3, 1900 = ₹19, 10000 = ₹100)
+          example: 1900
+        currency:
+          type: string
+          description: ISO 4217 currency code
+          example: "INR"
+        keyId:
+          type: string
+          description: Razorpay public key ID — safe to expose to client
+          example: "rzp_test_xxxxxxxxxxxxxxxx"
+      required:
+        - razorpayOrderId
+        - amount
+        - currency
+        - keyId
+    VerifyPaymentRequest:
+      type: object
+      properties:
+        driverUid:
+          type: string
+          description: Firebase UID of the driver (must match the bearer token)
+          example: "919876543210"
+        planType:
+          $ref: "#/components/schemas/PlanType"
+        razorpayOrderId:
+          type: string
+          description: Order ID from create-order step
+          example: "order_PFa1YbZFwpXmqA"
+        razorpayPaymentId:
+          type: string
+          description: Payment ID from Razorpay checkout success callback
+          example: "pay_PFa1YcZGwqYnrB"
+        razorpaySignature:
+          type: string
+          description: HMAC-SHA256 signature from Razorpay checkout success callback
+          example: "9ef4dabb9e..."
+      required:
+        - driverUid
+        - planType
+        - razorpayOrderId
+        - razorpayPaymentId
+        - razorpaySignature
+    VerifyPaymentResult:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+        planStartAt:
+          type: integer
+          description: Unix timestamp (ms) when the plan started — server time
+          example: 1748908800000
+        planExpiryAt:
+          type: integer
+          description: Unix timestamp (ms) when the plan expires — server time
+          example: 1749513600000
+      required:
+        - ok
+        - planStartAt
+        - planExpiryAt

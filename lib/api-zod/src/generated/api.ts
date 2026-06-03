@@ -43,3 +43,41 @@ export const AuthVerifyOtpResponse = zod.object({
 })
 
 
+/**
+ * Creates a Razorpay payment order server-side. The mobile app receives the order ID and public key ID, then opens the Razorpay checkout. The Razorpay secret key is never exposed to the client.
+
+ * @summary Create a Razorpay order for a driver plan
+ */
+export const DriverPlansCreateOrderBody = zod.object({
+  "driverUid": zod.string().describe('Firebase UID of the driver (must match the bearer token)'),
+  "planType": zod.enum(['daily', 'weekly', 'monthly']).describe('Driver subscription plan type')
+})
+
+export const DriverPlansCreateOrderResponse = zod.object({
+  "razorpayOrderId": zod.string().describe('Razorpay order ID — pass to the checkout SDK'),
+  "amount": zod.number().describe('Amount in paise (300 = ₹3, 1900 = ₹19, 10000 = ₹100)'),
+  "currency": zod.string().describe('ISO 4217 currency code'),
+  "keyId": zod.string().describe('Razorpay public key ID — safe to expose to client')
+})
+
+
+/**
+ * Verifies the Razorpay payment signature using HMAC-SHA256. On valid signature, activates the plan in Firestore using server time. An invalid signature returns 400 — the plan is NOT activated.
+
+ * @summary Verify Razorpay payment and activate driver plan
+ */
+export const DriverPlansVerifyPaymentBody = zod.object({
+  "driverUid": zod.string().describe('Firebase UID of the driver (must match the bearer token)'),
+  "planType": zod.enum(['daily', 'weekly', 'monthly']).describe('Driver subscription plan type'),
+  "razorpayOrderId": zod.string().describe('Order ID from create-order step'),
+  "razorpayPaymentId": zod.string().describe('Payment ID from Razorpay checkout success callback'),
+  "razorpaySignature": zod.string().describe('HMAC-SHA256 signature from Razorpay checkout success callback')
+})
+
+export const DriverPlansVerifyPaymentResponse = zod.object({
+  "ok": zod.boolean(),
+  "planStartAt": zod.number().describe('Unix timestamp (ms) when the plan started — server time'),
+  "planExpiryAt": zod.number().describe('Unix timestamp (ms) when the plan expires — server time')
+})
+
+
