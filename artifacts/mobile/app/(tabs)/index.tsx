@@ -261,6 +261,7 @@ export default function HomeScreen() {
     activeRide,
     currentOrderId,
     activeOrderCount,
+    incomingRide,
   } = useDriver();
 
   function setOnline(v: boolean) {
@@ -423,7 +424,21 @@ export default function HomeScreen() {
         <View style={styles.actionCardsRow}>
 
           {/* Card 1 — Available Deliveries (orange) */}
-          <TouchableOpacity style={styles.actionCardWrap} activeOpacity={0.82}>
+          <TouchableOpacity
+            style={styles.actionCardWrap}
+            activeOpacity={0.82}
+            onPress={() => {
+              if (incomingRide) {
+                router.push("/ride-request");
+              } else {
+                Alert.alert(
+                  "No orders right now",
+                  "You'll be notified as soon as a nearby order arrives.",
+                  [{ text: "OK" }],
+                );
+              }
+            }}
+          >
             <LinearGradient
               colors={["#FF8C42", "#E04E00"]}
               start={{ x: 0, y: 0 }}

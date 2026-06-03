@@ -192,24 +192,18 @@ export default function RideRequestScreen() {
   const router = useRouter();
   const { incomingRide, acceptRide, rejectRide } = useDriver();
 
-  const ride = incomingRide ?? {
-    pickup: "Indiranagar Metro Station",
-    pickupSub: "100 Ft Rd, Bangalore",
-    drop: "Phoenix Marketcity",
-    dropSub: "Whitefield Main Rd",
-    distanceKm: 9.6,
-    pickupDistanceKm: 1.2,
-    fareEstimate: 186,
-    passengerName: "Priya S.",
-    passengerRating: 4.9,
-    paymentMode: "UPI" as const,
-  };
-  const riderInitials = (ride.passengerName || "Customer")
-    .split(" ")
-    .map((s) => s[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  // No fallback — ride-request must only render with a real live order.
+  // When incomingRide is null (stale nav, cold-start before context hydrates)
+  // the null-on-mount guard below dismisses the screen immediately.
+  const ride = incomingRide;
+  const riderInitials = ride
+    ? (ride.passengerName || "Customer")
+        .split(" ")
+        .map((s) => s[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase()
+    : "";
 
   const [seconds, setSeconds] = useState(TIMER_SECONDS);
   const slide = useRef(new Animated.Value(0)).current;
@@ -224,6 +218,11 @@ export default function RideRequestScreen() {
   const urgent = seconds <= 5;
 
   useEffect(() => {
+    // No live order on mount — the null-on-mount guard will dismiss this screen.
+    // Do not start animations, timer, or vibration; they serve no purpose and
+    // the dismiss path runs immediately without them.
+    if (!incomingRide) return;
+
     Animated.parallel([
       Animated.timing(backdrop, {
         toValue: 1,
@@ -256,6 +255,7 @@ export default function RideRequestScreen() {
       });
     }, 1000);
     return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // urgency pulse — gets faster as time drops
@@ -317,6 +317,20 @@ export default function RideRequestScreen() {
   // driver has already accepted.
   const hadRideRef    = useRef(incomingRide !== null);
   const didAcceptRef  = useRef(false);
+
+  // null-on-mount guard: if the screen is opened with no live order (e.g. stale
+  // navigation stack, cold-start notification tap before DriverContext hydrates,
+  // or any deep-link path) dismiss immediately so the driver never sees a blank
+  // or fake order card.  hadRideRef starts false here, so the existing
+  // incomingRide→null watcher below does NOT overlap (it only fires when
+  // hadRideRef.current is true — i.e. a real order was shown first).
+  useEffect(() => {
+    if (!incomingRide && !hadRideRef.current && !didAcceptRef.current) {
+      dismiss();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (incomingRide !== null) { hadRideRef.current = true; return; }
     if (didAcceptRef.current) return;   // driver accepted — handleAccept handles nav
@@ -469,6 +483,10 @@ export default function RideRequestScreen() {
           },
         ]}
       >
+        {/* Order card — only rendered when a live order exists.
+            When incomingRide is null the null-on-mount guard dismisses the
+            screen; the sheetWrap stays empty so nothing fake is ever shown. */}
+        {ride && (<>
         {/* pulsing glow halo */}
         <Animated.View
           pointerEvents="none"
@@ -702,6 +720,7 @@ export default function RideRequestScreen() {
             </View>
           </View>
         </Animated.View>
+        </>)}
       </Animated.View>
     </View>
   );
