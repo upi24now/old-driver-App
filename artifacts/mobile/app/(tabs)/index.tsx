@@ -300,6 +300,30 @@ export default function HomeScreen() {
             </View>
           </TouchableOpacity>
           <View style={styles.topActions}>
+            {/* Active plan pill — only when subscription is live */}
+            {subscriptionActive && subscriptionPlan && (
+              <TouchableOpacity
+                activeOpacity={0.82}
+                style={styles.planPill}
+                onPress={() => router.push("/subscription")}
+              >
+                <LinearGradient
+                  colors={["#22C55E", "#16A34A"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.planPillGrad}
+                >
+                  <View style={styles.planPillDot} />
+                  <Text style={styles.planPillText}>
+                    {subscriptionPlan === "daily"
+                      ? "Daily"
+                      : subscriptionPlan === "weekly"
+                        ? "Weekly"
+                        : "Monthly"}
+                  </Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
             <Switch
               value={online}
               onValueChange={setOnline}
@@ -320,23 +344,8 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* ── PLAN STATUS BANNER ───────────────────────────────────────────── */}
-        {subscriptionActive ? (
-          // Green pill — plan is active
-          <View style={styles.bannerGreen}>
-            <Feather name="check-circle" size={13} color="#16A34A" />
-            <Text style={styles.bannerGreenText}>
-              {subscriptionPlan === "daily"
-                ? "Daily"
-                : subscriptionPlan === "weekly"
-                  ? "Weekly"
-                  : subscriptionPlan === "monthly"
-                    ? "Monthly"
-                    : "Plan"}{" "}
-              Active
-            </Text>
-          </View>
-        ) : planExpiredWithOrders ? (
+        {/* ── PLAN EXPIRY BANNERS — only shown when plan has lapsed ────────── */}
+        {planExpiredWithOrders ? (
           // Amber banner — expired but active deliveries in progress
           <TouchableOpacity
             style={styles.bannerAmber}
@@ -690,7 +699,37 @@ const styles = StyleSheet.create({
   avatarText: { color: "#fff", fontSize: 14, fontWeight: "800" },
   greeting: { fontSize: 11, fontWeight: "500", letterSpacing: 0.3 },
   driverName: { fontSize: 16, fontWeight: "800", marginTop: 1 },
-  topActions: { flexDirection: "row", gap: 8 },
+  topActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+
+  // Active plan pill — sits in the header next to the online toggle
+  planPill: {
+    borderRadius:  20,
+    shadowColor:   "#16A34A",
+    shadowOpacity: 0.30,
+    shadowRadius:  6,
+    shadowOffset:  { width: 0, height: 2 },
+    elevation:     4,
+  },
+  planPillGrad: {
+    flexDirection:    "row",
+    alignItems:       "center",
+    gap:              5,
+    paddingHorizontal: 10,
+    paddingVertical:   6,
+    borderRadius:     20,
+  },
+  planPillDot: {
+    width:           6,
+    height:          6,
+    borderRadius:    3,
+    backgroundColor: "rgba(255,255,255,0.80)",
+  },
+  planPillText: {
+    fontSize:      11,
+    fontWeight:    "800" as const,
+    color:         "#fff",
+    letterSpacing: 0.1,
+  },
   iconBtn: {
     width: 40,
     height: 40,
@@ -1079,24 +1118,7 @@ const styles = StyleSheet.create({
     gap:               11,
     minHeight:         62,
   },
-  // ── Plan status banners ───────────────────────────────────────────────────
-  bannerGreen: {
-    flexDirection:    "row",
-    alignItems:       "center",
-    gap:              6,
-    backgroundColor:  "#F0FDF4",
-    borderWidth:      1,
-    borderColor:      "#BBF7D0",
-    borderRadius:     10,
-    paddingHorizontal: 12,
-    paddingVertical:   8,
-  },
-  bannerGreenText: {
-    fontSize:   13,
-    fontWeight: "600" as const,
-    color:      "#15803D",
-    flex:       1,
-  },
+  // ── Plan expiry banners (active state moved to header pill) ─────────────
   bannerRed: {
     backgroundColor: "#DC2626",
     borderRadius:    12,
