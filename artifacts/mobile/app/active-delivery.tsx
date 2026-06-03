@@ -763,11 +763,11 @@ export default function ActiveDeliveryScreen() {
         }
       }
 
-      // Server completed the order — arm self-exit guard, sync wallet, clean up.
+      // Server completed the order — arm self-exit guard, sync wallet, show celebration.
+      // endRide + navigation happen when the driver taps "Back to Home" below.
       didEndSelf.current = true;
       refreshWallet().catch(console.error);
-      if (orderId) endRide(orderId);
-      router.replace("/(tabs)");
+      setStage("delivered");
       return;
     }
 
@@ -776,7 +776,7 @@ export default function ActiveDeliveryScreen() {
     if (!next) {
       // ── Delivered "Back to Home" ──────────────────────────────────────────
       // Wallet credit was already handled by the server at the at_drop step.
-      // This branch is only reached on app-restore of an already-delivered order.
+      // No wallet transaction here — just clean up local state and go home.
       didEndSelf.current = true;
       if (orderId) endRide(orderId);
       router.replace("/(tabs)");
