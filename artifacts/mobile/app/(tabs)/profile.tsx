@@ -15,7 +15,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
-import { useTheme } from "@/contexts/ThemeContext";
 import { useColors } from "@/hooks/useColors";
 
 function confirmAction(
@@ -133,12 +132,25 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  const { isDark, setDark } = useTheme();
   const [language, setLanguage] = useState<"English" | "हिन्दी" | "ಕನ್ನಡ">("English");
   const [soundAlerts, setSoundAlerts] = useState(true);
   const [vibration, setVibration] = useState(true);
-  const darkMode = isDark;
-  const setDarkMode = setDark;
+
+  // ── Document verification mock (UI model only — replace with real data) ──
+  const verifiedDocCount: number = 5;
+  const totalDocCount: number = 6;
+  const docSubtitle =
+    verifiedDocCount === totalDocCount
+      ? "All Documents Verified"
+      : verifiedDocCount === 0
+        ? "Documents Required"
+        : `${verifiedDocCount}/${totalDocCount} Verified`;
+  const docSubColor =
+    verifiedDocCount === totalDocCount
+      ? "#00C853"
+      : verifiedDocCount === 0
+        ? "#EF4444"
+        : "#FF8F00";
 
   // ── Plan mock data (UI model only — replace with real data when backend ready) ──
   const planName = "Weekly Pro";
@@ -331,7 +343,14 @@ export default function SettingsScreen() {
               iconBg="#e8f5e9"
               iconColor="#00C853"
               title="Driver Documents"
-              sub="Selfie, Aadhaar, DL, PAN, RC, Insurance"
+              right={
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <View style={[styles.docStatusBadge, { backgroundColor: verifiedDocCount === totalDocCount ? "#f0fdf4" : verifiedDocCount === 0 ? "#ffebee" : "#fff8e1" }]}>
+                    <Text style={[styles.docStatusText, { color: docSubColor }]}>{docSubtitle}</Text>
+                  </View>
+                  <Feather name="chevron-right" size={15} color={colors.mutedForeground} />
+                </View>
+              }
               onPress={() => router.push("/document-upload")}
             />
           </SectionCard>
@@ -369,22 +388,6 @@ export default function SettingsScreen() {
                 <Switch
                   value={vibration}
                   onValueChange={setVibration}
-                  trackColor={{ true: "#22C55E", false: "#EF4444" }}
-                  thumbColor="#fff"
-                  style={{ transform: [{ scaleX: 1.12 }, { scaleY: 1.12 }] }}
-                />
-              }
-              divider
-            />
-            <Row
-              icon="moon"
-              iconBg="#eceff1"
-              iconColor="#455A64"
-              title="Dark mode"
-              right={
-                <Switch
-                  value={darkMode}
-                  onValueChange={setDarkMode}
                   trackColor={{ true: "#22C55E", false: "#EF4444" }}
                   thumbColor="#fff"
                   style={{ transform: [{ scaleX: 1.12 }, { scaleY: 1.12 }] }}
@@ -770,6 +773,13 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   planBarFill: { height: "100%", borderRadius: 3 },
+
+  docStatusBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  docStatusText: { fontSize: 11, fontWeight: "800", letterSpacing: 0.2 },
 
   appInfoBlock: { alignItems: "center", gap: 4, marginTop: 4 },
   appInfoIcon: {
