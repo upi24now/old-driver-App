@@ -5,6 +5,8 @@ import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -30,6 +32,14 @@ type CheckoutState = {
   planName: string;
   driverPhone: string;
 };
+
+type SuccessModalState = {
+  visible: boolean;
+  planName: string;
+  expiryText: string;
+};
+
+const SCREEN_WIDTH = Dimensions.get("window").width;
 
 type PlanId = "daily" | "weekly" | "monthly";
 
@@ -210,6 +220,9 @@ export default function SubscriptionScreen() {
   const [selected,       setSelected]       = useState<PlanId>("monthly");
   const [isActivating,   setIsActivating]   = useState(false);
   const [checkoutParams, setCheckoutParams] = useState<CheckoutState | null>(null);
+  const [successModal,   setSuccessModal]   = useState<SuccessModalState>({
+    visible: false, planName: "", expiryText: "",
+  });
 
   const selectedPlan = PLANS.find((p) => p.id === selected)!;
 
@@ -313,16 +326,12 @@ export default function SubscriptionScreen() {
       const expiry = data.planExpiryAt
         ? new Date(data.planExpiryAt).toLocaleDateString("en-IN", {
             day:   "numeric",
-            month: "long",
+            month: "short",
             year:  "numeric",
           })
         : "";
 
-      Alert.alert(
-        "Plan Activated Successfully",
-        `${cp.planName} Active\n\nExpires on:\n${expiry}`,
-        [{ text: "OK", onPress: () => router.back() }],
-      );
+      setSuccessModal({ visible: true, planName: cp.planName, expiryText: expiry });
     } catch {
       Alert.alert("Error", "Payment verification failed. Please contact support.");
     } finally {
@@ -568,6 +577,55 @@ export default function SubscriptionScreen() {
           onClose={() => setCheckoutParams(null)}
         />
       )}
+
+      <Modal
+        visible={successModal.visible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => {
+          setSuccessModal((s) => ({ ...s, visible: false }));
+          router.back();
+        }}
+      >
+        <View style={styles.successBackdrop}>
+          <View style={styles.successCard}>
+            <LinearGradient
+              colors={["#16A34A", "#22C55E"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.successGradient}
+            >
+              <View style={styles.successGlass}>
+                <View style={styles.successCheckCircle}>
+                  <Text style={styles.successCheckMark}>✓</Text>
+                </View>
+
+                <Text style={styles.successTitle}>Plan Activated</Text>
+                <Text style={styles.successSubtitle}>{successModal.planName} Plan Active</Text>
+
+                {successModal.expiryText ? (
+                  <View style={styles.successExpiryRow}>
+                    <Text style={styles.successExpiryLabel}>Expires</Text>
+                    <Text style={styles.successExpiryValue}>{successModal.expiryText}</Text>
+                  </View>
+                ) : null}
+
+                <TouchableOpacity
+                  style={styles.successBtn}
+                  activeOpacity={0.85}
+                  onPress={() => {
+                    setSuccessModal((s) => ({ ...s, visible: false }));
+                    router.back();
+                  }}
+                >
+                  <Text style={styles.successBtnText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            </LinearGradient>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -823,4 +881,96 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   ctaText: { color: "#fff", fontSize: 15, fontWeight: "800" },
+
+  successBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.52)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  successCard: {
+    width: SCREEN_WIDTH * 0.84,
+    borderRadius: 24,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.28,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 16,
+  },
+  successGradient: {
+    borderRadius: 24,
+  },
+  successGlass: {
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderRadius: 24,
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 22,
+    alignItems: "center",
+    gap: 6,
+  },
+  successCheckCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "rgba(255,255,255,0.22)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 6,
+  },
+  successCheckMark: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: "#fff",
+    lineHeight: 30,
+  },
+  successTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#fff",
+    letterSpacing: -0.4,
+    marginTop: 2,
+  },
+  successSubtitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.85)",
+    marginTop: 2,
+  },
+  successExpiryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 10,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 10,
+  },
+  successExpiryLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.72)",
+  },
+  successExpiryValue: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#fff",
+  },
+  successBtn: {
+    marginTop: 18,
+    width: "100%",
+    height: 46,
+    borderRadius: 13,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  successBtnText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#16A34A",
+    letterSpacing: 0.2,
+  },
 });
