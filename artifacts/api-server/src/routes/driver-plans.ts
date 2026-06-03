@@ -1,7 +1,8 @@
 import crypto from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import Razorpay from "razorpay";
-import { adminAuth, adminFirestore } from "../lib/firebase-admin";
+import { adminFirestore } from "../lib/firebase-admin";
+import { requireAuth } from "../lib/require-auth";
 
 const router = Router();
 
@@ -54,28 +55,6 @@ function getRazorpay(): { client: Razorpay; keyId: string } {
   _rzp      = new Razorpay({ key_id: keyId, key_secret: keySecret });
   _rzpKeyId = keyId;
   return { client: _rzp, keyId };
-}
-
-// ─── Auth helper ──────────────────────────────────────────────────────────────
-//
-// Validates the Firebase ID token from the Authorization header.
-// Returns the decoded UID on success, or writes a 401 and returns null.
-
-async function requireAuth(req: Request, res: Response): Promise<string | null> {
-  const authHeader = req.headers["authorization"];
-  if (!authHeader?.startsWith("Bearer ")) {
-    res.status(401).json({ error: "Missing or invalid Authorization header" });
-    return null;
-  }
-  const token = authHeader.slice(7);
-  try {
-    const auth    = await adminAuth();
-    const decoded = await auth.verifyIdToken(token);
-    return decoded.uid;
-  } catch {
-    res.status(401).json({ error: "Invalid or expired token" });
-    return null;
-  }
 }
 
 // ─── POST /api/driver-plans/create-order ──────────────────────────────────────
