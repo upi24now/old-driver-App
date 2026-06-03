@@ -3,6 +3,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   ScrollView,
   StyleSheet,
@@ -12,8 +13,23 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { RazorpayWebCheckout } from "@/components/RazorpayWebCheckout";
 import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
+import { firebaseAuth } from "@/utils/firebase";
+
+const DOMAIN   = process.env["EXPO_PUBLIC_DOMAIN"] ?? "";
+const API_BASE = DOMAIN ? `https://${DOMAIN}/api` : "/api";
+
+type CheckoutState = {
+  razorpayOrderId: string;
+  amount: number;
+  currency: string;
+  keyId: string;
+  planType: PlanId;
+  planName: string;
+  driverPhone: string;
+};
 
 type PlanId = "daily" | "weekly" | "monthly";
 
@@ -184,12 +200,16 @@ export default function SubscriptionScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const {
-    activatePlan,
+    driverUid,
+    phone,
     subscriptionPlan,
     subscriptionExpiresAt,
     subscriptionActive,
+    refreshSubscription,
   } = useDriver();
-  const [selected, setSelected] = useState<PlanId>("monthly");
+  const [selected,       setSelected]       = useState<PlanId>("monthly");
+  const [isActivating,   setIsActivating]   = useState(false);
+  const [checkoutParams, setCheckoutParams] = useState<CheckoutState | null>(null);
 
   const selectedPlan = PLANS.find((p) => p.id === selected)!;
 
@@ -204,18 +224,119 @@ export default function SubscriptionScreen() {
     ? activePlanExpiryDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })
     : "";
 
-  function handleActivate() {
-    const r = activatePlan(selected);
-    if (!r.ok) {
-      Alert.alert("Could not activate", r.reason ?? "Try a different plan.");
-      return;
+  const handleActivate = async () => {
+    if (isActivating || !driverUid) return;
+    setIsActivating(true);
+    try {
+      const user = firebaseAuth.currentUser;
+      if (!user) {
+        Alert.alert("Error", "Not logged in. Please sign in again.");
+        return;
+      }
+      const token = await user.getIdToken();
+
+      const res = await fetch(`${API_BASE}/driver-plans/create-order`, {
+        method: "POST",
+        headers: {
+          "Content-Type":  "application/json",
+          Authorization:   `Bearer ${token}`,
+        },
+        body: JSON.stringify({ driverUid, planType: selected }),
+      });
+
+      const data = (await res.json()) as {
+        razorpayOrderId?: string;
+        amount?:          number;
+        currency?:        string;
+        keyId?:           string;
+        error?:           string;
+      };
+
+      if (!res.ok || !data.razorpayOrderId || data.amount == null || !data.keyId) {
+        Alert.alert("Error", data.error ?? "Could not start payment. Please try again.");
+        return;
+      }
+
+      setCheckoutParams({
+        razorpayOrderId: data.razorpayOrderId,
+        amount:          data.amount,
+        currency:        data.currency ?? "INR",
+        keyId:           data.keyId,
+        planType:        selected,
+        planName:        selectedPlan.name,
+        driverPhone:     phone ?? "",
+      });
+    } catch {
+      Alert.alert("Error", "Could not start payment. Check your connection.");
+    } finally {
+      setIsActivating(false);
     }
-    Alert.alert(
-      "Plan activated",
-      `${selectedPlan.name} plan is now active. You can go online and accept rides.`,
-      [{ text: "Done", onPress: () => router.back() }],
-    );
-  }
+  };
+
+  const handlePaymentSuccess = async (paymentId: string, _orderId: string, signature: string) => {
+    const cp = checkoutParams;
+    if (!cp || !driverUid) return;
+    setIsActivating(true);
+    try {
+      const user = firebaseAuth.currentUser;
+      if (!user) throw new Error("Not authenticated");
+      const token = await user.getIdToken();
+
+      const res = await fetch(`${API_BASE}/driver-plans/verify-payment`, {
+        method: "POST",
+        headers: {
+          "Content-Type":  "application/json",
+          Authorization:   `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          driverUid,
+          planType:           cp.planType,
+          razorpayOrderId:    cp.razorpayOrderId,
+          razorpayPaymentId:  paymentId,
+          razorpaySignature:  signature,
+        }),
+      });
+
+      const data = (await res.json()) as {
+        ok?:          boolean;
+        planExpiryAt?: number;
+        error?:       string;
+      };
+
+      if (!res.ok || !data.ok) {
+        Alert.alert("Payment failed. Please try again.");
+        return;
+      }
+
+      await refreshSubscription();
+
+      const expiry = data.planExpiryAt
+        ? new Date(data.planExpiryAt).toLocaleDateString("en-IN", {
+            day:   "numeric",
+            month: "long",
+            year:  "numeric",
+          })
+        : "";
+
+      Alert.alert(
+        "Plan Activated Successfully",
+        `${cp.planName} Active\n\nExpires on:\n${expiry}`,
+        [{ text: "OK", onPress: () => router.back() }],
+      );
+    } catch {
+      Alert.alert("Error", "Payment verification failed. Please contact support.");
+    } finally {
+      setIsActivating(false);
+    }
+  };
+
+  const handlePaymentCancel = () => {
+    Alert.alert("Payment cancelled");
+  };
+
+  const handlePaymentFailure = (_error: string) => {
+    Alert.alert("Payment failed. Please try again.");
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -411,14 +532,42 @@ export default function SubscriptionScreen() {
           </View>
         </View>
         <TouchableOpacity
-          style={[styles.cta, { backgroundColor: colors.primary }]}
+          style={[
+            styles.cta,
+            { backgroundColor: colors.primary, opacity: isActivating ? 0.6 : 1 },
+          ]}
           activeOpacity={0.85}
           onPress={handleActivate}
+          disabled={isActivating}
         >
-          <Text style={styles.ctaText}>Activate Plan</Text>
-          <Feather name="arrow-right" size={16} color="#fff" />
+          {isActivating ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <>
+              <Text style={styles.ctaText}>Activate Plan</Text>
+              <Feather name="arrow-right" size={16} color="#fff" />
+            </>
+          )}
         </TouchableOpacity>
       </View>
+
+      {checkoutParams && (
+        <RazorpayWebCheckout
+          visible
+          params={{
+            razorpayOrderId: checkoutParams.razorpayOrderId,
+            amount:          checkoutParams.amount,
+            currency:        checkoutParams.currency,
+            keyId:           checkoutParams.keyId,
+            planName:        checkoutParams.planName,
+            driverPhone:     checkoutParams.driverPhone,
+          }}
+          onSuccess={handlePaymentSuccess}
+          onCancel={handlePaymentCancel}
+          onFailure={handlePaymentFailure}
+          onClose={() => setCheckoutParams(null)}
+        />
+      )}
     </View>
   );
 }

@@ -160,8 +160,9 @@ type DriverState = {
   setVehicle: (v: Vehicle) => void;
   signOut:    () => void;
 
-  setOnline:    (v: boolean) => { ok: boolean; reason?: string };
-  activatePlan: (id: SubPlan) => { ok: boolean; reason?: string };
+  setOnline:           (v: boolean) => { ok: boolean; reason?: string };
+  activatePlan:        (id: SubPlan) => { ok: boolean; reason?: string };
+  refreshSubscription: () => Promise<void>;
 
   acceptRide: () => Promise<AcceptOrderResult>;
   rejectRide: () => void;
@@ -553,6 +554,18 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   };
 
+  const refreshSubscription = async (): Promise<void> => {
+    if (!driverUid) return;
+    try {
+      const doc = await getDriverDoc(driverUid);
+      if (!doc) return;
+      if (doc.subscriptionPlan)      setSubPlan(doc.subscriptionPlan as SubPlan);
+      if (doc.subscriptionExpiresAt) setSubExp(doc.subscriptionExpiresAt);
+    } catch {
+      // silent — stale state is preferable to an uncaught error
+    }
+  };
+
   // ─── Ride actions ─────────────────────────────────────────────────────────
   const acceptRide = async (): Promise<AcceptOrderResult> => {
     const ride = incomingRide;
@@ -932,6 +945,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         signOut,
         setOnline,
         activatePlan,
+        refreshSubscription,
         acceptRide,
         rejectRide,
         endRide,
