@@ -39,6 +39,7 @@ import { verifyOtpApi } from "@/utils/auth-api";
 import {
   cancelIncomingOrderNotification,
   registerOrderActionHandlers,
+  sendDriverAlertNotification,
   sendIncomingOrderNotification,
   sendOrderUpdateNotification,
 } from "@/utils/notifications";
@@ -809,6 +810,22 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             );
             return;
           }
+        }
+
+        // ── Cancellation alert notification ──────────────────────────────────
+        // Fire a system notification so the driver is alerted even when the app
+        // is backgrounded.  Only sent for externally-initiated removals; normal
+        // delivery completions ("delivered"/"completed") do not use this path.
+        //
+        // Duplicate-spam protection: the self-cleanup block below (listeners.get
+        // / listeners.delete) runs synchronously inside this same callback, so
+        // Firestore cannot invoke this listener a second time for the same order
+        // after we return.  The notification fires exactly once per cancellation.
+        if (reason === "cancelled" || reason === "rejected" || reason === "deleted") {
+          sendDriverAlertNotification({
+            title: "Order Cancelled",
+            body:  "A delivery has been cancelled.",
+          }).catch(console.error);
         }
 
         // ── Record per-order removal reason before state update ─────────────

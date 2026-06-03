@@ -339,17 +339,12 @@ export function handleNotificationResponse(
 
   if (actionIdentifier === ACTION_ACCEPT) {
     // ── Accept action button ───────────────────────────────────────────────
-    // Call DriverContext handler (accepts the ride in state), then navigate
-    // directly to the active trip screen — skip the slider UI.
+    // Delegate entirely to the DriverContext handler, which runs the Firestore
+    // accept transaction and then navigates to /active-delivery with full
+    // route params.  No secondary navigation here — a second router call after
+    // onAccept() would land the driver on a different screen with no params.
     console.log("[Notifications] → Accept action");
     orderHandlers?.onAccept();
-    setTimeout(() => {
-      try {
-        router.replace("/trip/active" as Parameters<typeof router.replace>[0]);
-      } catch (err) {
-        console.error("[Notifications] Navigate (accept) failed:", err);
-      }
-    }, 600);
 
   } else if (actionIdentifier === ACTION_REJECT) {
     // ── Reject action button ───────────────────────────────────────────────
