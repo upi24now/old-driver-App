@@ -221,6 +221,24 @@ export async function updateDriverOnlineStatus(
   }, { merge: true });
 }
 
+/**
+ * Persist the driver's FCM device push token so the server can send
+ * push notifications when an order is dispatched to this driver.
+ * Called once after login and whenever the token refreshes.
+ * Fields:
+ *   fcmToken           — raw Android FCM registration token
+ *   fcmTokenUpdatedAt  — server timestamp of last write
+ */
+export async function updateDriverPushToken(
+  uid:   string,
+  token: string,
+): Promise<void> {
+  await setDoc(doc(db, "drivers", uid), {
+    fcmToken:          token,
+    fcmTokenUpdatedAt: serverTimestamp(),
+  }, { merge: true });
+}
+
 // ─── Order doc ────────────────────────────────────────────────────────────────
 //
 // Firestore collection: "orders"

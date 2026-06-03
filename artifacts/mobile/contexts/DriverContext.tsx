@@ -38,6 +38,7 @@ export type { AcceptOrderResult };
 import { verifyOtpApi } from "@/utils/auth-api";
 import {
   cancelIncomingOrderNotification,
+  registerDriverPushToken,
   registerOrderActionHandlers,
   sendDriverAlertNotification,
   sendIncomingOrderNotification,
@@ -378,6 +379,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         } catch {
           // Firestore read failed — user remains authenticated, profile stays null
         }
+
+        // Register FCM push token — fire-and-forget, never blocks auth or navigation.
+        // No-ops safely in Expo Go and when google-services.json is absent from the build.
+        registerDriverPushToken(user.uid).catch(console.error);
       } else {
         setDriverUid(null);
       }

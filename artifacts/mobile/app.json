@@ -17,6 +17,8 @@
       "supportsTablet": false
     },
     "android": {
+      "package": "in.bikecourierservice.driver",
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECEIVE_BOOT_COMPLETED",

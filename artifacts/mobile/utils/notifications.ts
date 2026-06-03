@@ -391,6 +391,56 @@ export async function clearBadge(): Promise<void> {
   }
 }
 
+// ─── FCM device push token registration ──────────────────────────────────────
+/**
+ * Collect the device's raw FCM push token and persist it to
+ * drivers/{uid}.fcmToken in Firestore.
+ *
+ * Must be called after notification permission has been granted and after
+ * google-services.json is baked into the build (EAS build / dev APK).
+ * Fails safely in Expo Go (module unavailable) and when google-services.json
+ * is absent — logs the error but never throws.
+ *
+ * The token is intentionally NOT logged in full to avoid accidental exposure
+ * in production log aggregators.
+ */
+export async function registerDriverPushToken(uid: string): Promise<void> {
+  if (!Notif || Platform.OS !== "android") return;
+
+  try {
+    // Ensure permission is granted before attempting token fetch.
+    const { granted } = (await Notif.getPermissionsAsync()) as unknown as {
+      granted: boolean;
+    };
+    if (!granted) {
+      console.warn(
+        "[Notifications] Push token skipped — notification permission not granted"
+      );
+      return;
+    }
+
+    // getDevicePushTokenAsync returns the raw FCM registration token on Android.
+    // Throws if google-services.json is absent or native FCM config is missing.
+    const tokenData = await Notif.getDevicePushTokenAsync();
+    if (!tokenData?.data) {
+      console.warn("[Notifications] Push token empty — skipping Firestore write");
+      return;
+    }
+
+    const { updateDriverPushToken } = await import("./firestore");
+    await updateDriverPushToken(uid, tokenData.data as string);
+
+    // Log only the token prefix so the entry is useful for debugging without
+    // exposing the full 152-character FCM token in plaintext logs.
+    const preview = (tokenData.data as string).slice(0, 8) + "…";
+    console.log(`[Notifications] FCM push token registered (${preview})`);
+  } catch (err) {
+    // Common causes: google-services.json not baked into the build (Expo Go),
+    // no network, or Play Services unavailable on the device.
+    console.warn("[Notifications] Failed to register FCM push token:", err);
+  }
+}
+
 // ─── Full initialization ──────────────────────────────────────────────────────
 export async function initNotifications(): Promise<{
   permissionGranted: boolean;
