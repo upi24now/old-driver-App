@@ -165,20 +165,25 @@ export default function SettingsScreen() {
 
   // ── Plan data from DriverContext ──
   const PLAN_LABEL: Record<string, string>  = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
-  const PLAN_TOTAL_DAYS: Record<string, number> = { daily: 1, weekly: 7, monthly: 30 };
-  const MS_PER_DAY = 86_400_000;
+  const PLAN_TOTAL_DAYS: Record<string, number> = { daily: 0.5, weekly: 7, monthly: 30 };
+  const MS_PER_DAY  = 86_400_000;
+  const MS_PER_HOUR = 3_600_000;
 
   const planName       = subscriptionPlan ? (PLAN_LABEL[subscriptionPlan] ?? subscriptionPlan) : null;
   const planExpiryDate = subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null;
   const isPlanActive   = subscriptionActive;
-  const remainingDays  = planExpiryDate
-    ? Math.max(0, Math.ceil((planExpiryDate.getTime() - Date.now()) / MS_PER_DAY))
-    : 0;
-  const totalPlanDays  = subscriptionPlan ? (PLAN_TOTAL_DAYS[subscriptionPlan] ?? 30) : 30;
+  const planMsLeft     = planExpiryDate ? Math.max(0, planExpiryDate.getTime() - Date.now()) : 0;
+  const totalPlanMs    = (subscriptionPlan ? (PLAN_TOTAL_DAYS[subscriptionPlan] ?? 30) : 30) * MS_PER_DAY;
   const remainingPercent =
-    totalPlanDays > 0
-      ? Math.min(100, Math.round((remainingDays / totalPlanDays) * 100))
+    totalPlanMs > 0
+      ? Math.min(100, Math.round((planMsLeft / totalPlanMs) * 100))
       : 0;
+  const showHours      = planMsLeft < MS_PER_DAY;
+  const remainingHours = Math.max(0, Math.ceil(planMsLeft / MS_PER_HOUR));
+  const remainingDays  = Math.max(0, Math.ceil(planMsLeft / MS_PER_DAY));
+  const remainingLabel = showHours
+    ? `${remainingHours} hour${remainingHours !== 1 ? "s" : ""} left`
+    : `${remainingDays} day${remainingDays !== 1 ? "s" : ""} left`;
   const planExpired = !!subscriptionPlan && !subscriptionActive;
   const planExpiryStr = planExpiryDate
     ? planExpiryDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })
@@ -283,7 +288,7 @@ export default function SettingsScreen() {
                 </View>
                 <View style={styles.planInfoRow}>
                   <Text style={styles.planDaysLeft}>
-                    {remainingDays} day{remainingDays !== 1 ? "s" : ""} left
+                    {remainingLabel}
                   </Text>
                   <Text style={styles.planExpiry}>Expires {planExpiryStr}</Text>
                 </View>

@@ -66,7 +66,7 @@ const PLANS: Plan[] = [
     description: "Try it for a day — perfect for occasional drivers",
     features: [
       "0% commission on every ride",
-      "Unlimited rides for 24 hours",
+      "Unlimited rides for 12 hours",
       "Standard driver support",
     ],
   },
@@ -227,12 +227,19 @@ export default function SubscriptionScreen() {
   const selectedPlan = PLANS.find((p) => p.id === selected)!;
 
   const PLAN_LABEL: Record<string, string> = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
-  const MS_PER_DAY = 86_400_000;
+  const MS_PER_DAY  = 86_400_000;
+  const MS_PER_HOUR = 3_600_000;
   const activePlanName       = subscriptionPlan ? (PLAN_LABEL[subscriptionPlan] ?? subscriptionPlan) : null;
   const activePlanExpiryDate = subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null;
-  const activePlanDaysLeft   = activePlanExpiryDate
-    ? Math.max(0, Math.ceil((activePlanExpiryDate.getTime() - Date.now()) / MS_PER_DAY))
+  const activePlanMsLeft     = activePlanExpiryDate
+    ? Math.max(0, activePlanExpiryDate.getTime() - Date.now())
     : 0;
+  const activePlanShowHours  = activePlanMsLeft < MS_PER_DAY;
+  const activePlanHoursLeft  = Math.max(0, Math.ceil(activePlanMsLeft / MS_PER_HOUR));
+  const activePlanDaysLeft   = Math.max(0, Math.ceil(activePlanMsLeft / MS_PER_DAY));
+  const activePlanTimeLeft   = activePlanShowHours
+    ? `${activePlanHoursLeft} hour${activePlanHoursLeft !== 1 ? "s" : ""} left`
+    : `${activePlanDaysLeft} day${activePlanDaysLeft !== 1 ? "s" : ""} left`;
   const activePlanExpiryStr  = activePlanExpiryDate
     ? activePlanExpiryDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })
     : "";
@@ -425,7 +432,7 @@ export default function SubscriptionScreen() {
                 {activePlanName} Plan — Active
               </Text>
               <Text style={[styles.statusSub, { color: "#166534" }]}>
-                {activePlanDaysLeft} day{activePlanDaysLeft !== 1 ? "s" : ""} left · Expires {activePlanExpiryStr}
+                {activePlanTimeLeft} · Expires {activePlanExpiryStr}
               </Text>
             </View>
           </View>

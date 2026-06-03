@@ -24,7 +24,7 @@ const PLAN_AMOUNT_RUPEES: Record<PlanType, number> = {
 };
 
 const PLAN_DAYS: Record<PlanType, number> = {
-  daily:   1,
+  daily:   0.5,   // 12 hours
   weekly:  7,
   monthly: 30,
 };
