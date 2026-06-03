@@ -146,6 +146,13 @@ type DriverState = {
   subscriptionExpiresAt: number  | null;
   subscriptionActive:    boolean;
 
+  // Derived expiry states — prefer these over ad-hoc !subscriptionActive checks.
+  planExpiredNoOrders:   boolean;  // plan was active, now expired, zero active orders
+  planExpiredWithOrders: boolean;  // plan was active, now expired, ≥1 active order remains
+
+  // DEV only — instantly expires the current plan for testing. null in production.
+  expirePlanNow: (() => void) | null;
+
   incomingRide: IncomingRide | null;
   rideHistory:  ActiveRide[];
 
@@ -371,15 +378,21 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   }, [subscriptionExpiresAt]);
 
   // ─── Auto-offline on subscription expiry ──────────────────────────────────
-  const subscriptionActive = !!(subscriptionExpiresAt && subscriptionExpiresAt > nowTick);
+  const subscriptionActive    = !!(subscriptionExpiresAt && subscriptionExpiresAt > nowTick);
+  const planExpiredNoOrders   = !!subscriptionPlan && !subscriptionActive && activeOrders.length === 0;
+  const planExpiredWithOrders = !!subscriptionPlan && !subscriptionActive && activeOrders.length > 0;
+
+  // Force offline when plan expires with no active orders (Rule 3), or when
+  // the last active order completes after expiry (Rule 5 — activeOrders.length
+  // drops to 0, this effect re-fires and sets the driver offline).
   useEffect(() => {
-    if (!subscriptionActive && isOnline) {
+    if (!subscriptionActive && isOnline && activeOrders.length === 0) {
       setOnlineState(false);
       if (driverUid) {
         updateDriverOnlineStatus(driverUid, false).catch(console.error);
       }
     }
-  }, [subscriptionActive, isOnline]);
+  }, [subscriptionActive, isOnline, activeOrders.length]);
 
   // ─── Firestore incoming order listener ────────────────────────────────────
   // Runs whenever the driver is online and authenticated.
@@ -387,9 +400,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // Customer app writes such a document to dispatch an order to this driver.
   const lastSeenOrderId = useRef<string | null>(null);
   useEffect(() => {
-    // Capacity gate: only listen for new orders when a slot is free.
+    // Capacity gate: only listen for new orders when a slot is free and plan is active.
     // Phase 4: isAtCapacity allows up to MAX_ACTIVE_ORDERS concurrent orders.
-    if (!isOnline || !driverUid || isAtCapacity) return;
+    if (!isOnline || !driverUid || isAtCapacity || !subscriptionActive) return;
 
     const unsub = listenToDispatchedOrder(driverUid, (order) => {
       if (!order) {
@@ -423,7 +436,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // Use .length (not the array) so the effect only re-runs when the slot count
   // changes, not on every internal order-status update.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOnline, driverUid, activeOrders.length]);
+  }, [isOnline, driverUid, activeOrders.length, subscriptionActive]);
 
   // ─── Auth actions ─────────────────────────────────────────────────────────
   const setPhone = (p: string) => setPhoneState(p);
@@ -565,6 +578,17 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       // silent — stale state is preferable to an uncaught error
     }
   };
+
+  // ─── DEV: Instant plan expiry helper ─────────────────────────────────────
+  // Sets subscriptionExpiresAt 1 second into the past so subscriptionActive
+  // immediately becomes false.  Only compiled in __DEV__ builds — never runs
+  // in production.
+  const expirePlanNow = __DEV__
+    ? (): void => {
+        setSubExp(Date.now() - 1_000);
+        setNowTick(Date.now()); // force subscriptionActive recompute
+      }
+    : null;
 
   // ─── Ride actions ─────────────────────────────────────────────────────────
   const acceptRide = async (): Promise<AcceptOrderResult> => {
@@ -932,6 +956,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         subscriptionPlan,
         subscriptionExpiresAt,
         subscriptionActive,
+        planExpiredNoOrders,
+        planExpiredWithOrders,
+        expirePlanNow,
         incomingRide,
         rideHistory,
         walletBalance,

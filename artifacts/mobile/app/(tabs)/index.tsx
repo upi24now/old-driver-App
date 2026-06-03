@@ -212,6 +212,10 @@ export default function HomeScreen() {
     isOnline: online,
     setOnline: setDriverOnline,
     subscriptionActive,
+    subscriptionPlan,
+    planExpiredNoOrders,
+    planExpiredWithOrders,
+    expirePlanNow,
     todayEarnings,
     tripsToday,
     activeRide,
@@ -316,6 +320,73 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* ── PLAN STATUS BANNER ───────────────────────────────────────────── */}
+        {subscriptionActive ? (
+          // Green pill — plan is active
+          <View style={styles.bannerGreen}>
+            <Feather name="check-circle" size={13} color="#16A34A" />
+            <Text style={styles.bannerGreenText}>
+              {subscriptionPlan === "daily"
+                ? "Daily"
+                : subscriptionPlan === "weekly"
+                  ? "Weekly"
+                  : subscriptionPlan === "monthly"
+                    ? "Monthly"
+                    : "Plan"}{" "}
+              Active
+            </Text>
+          </View>
+        ) : planExpiredWithOrders ? (
+          // Amber banner — expired but active deliveries in progress
+          <TouchableOpacity
+            style={styles.bannerAmber}
+            activeOpacity={0.88}
+            onPress={() => router.push("/subscription")}
+          >
+            <View style={styles.bannerInner}>
+              <Feather name="clock" size={15} color="#fff" style={{ flexShrink: 0 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.bannerTitle}>Plan Expired</Text>
+                <Text style={styles.bannerSub}>
+                  Finish current deliveries. Renew plan to receive new orders.
+                </Text>
+              </View>
+              <View style={styles.bannerCta}>
+                <Text style={styles.bannerCtaText}>Renew Plan</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        ) : planExpiredNoOrders ? (
+          // Red banner — expired, no active orders
+          <TouchableOpacity
+            style={styles.bannerRed}
+            activeOpacity={0.88}
+            onPress={() => router.push("/subscription")}
+          >
+            <View style={styles.bannerInner}>
+              <Feather name="alert-circle" size={15} color="#fff" style={{ flexShrink: 0 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.bannerTitle}>Plan Expired</Text>
+                <Text style={styles.bannerSub}>Renew to continue receiving orders</Text>
+              </View>
+              <View style={styles.bannerCta}>
+                <Text style={styles.bannerCtaText}>Renew Plan</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        ) : null}
+
+        {/* DEV: Instant expiry button — never visible in production builds */}
+        {__DEV__ && !!expirePlanNow && (
+          <TouchableOpacity
+            style={styles.devExpireBtn}
+            onPress={expirePlanNow}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.devExpireBtnText}>⚠ DEV: Expire Plan Now</Text>
+          </TouchableOpacity>
+        )}
 
         {/* ACTION CARDS — always visible; orange = availability, blue = command center */}
         <View style={styles.actionCardsRow}>
@@ -1019,6 +1090,79 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     gap:               11,
     minHeight:         62,
+  },
+  // ── Plan status banners ───────────────────────────────────────────────────
+  bannerGreen: {
+    flexDirection:    "row",
+    alignItems:       "center",
+    gap:              6,
+    backgroundColor:  "#F0FDF4",
+    borderWidth:      1,
+    borderColor:      "#BBF7D0",
+    borderRadius:     10,
+    paddingHorizontal: 12,
+    paddingVertical:   8,
+  },
+  bannerGreenText: {
+    fontSize:   13,
+    fontWeight: "600" as const,
+    color:      "#15803D",
+    flex:       1,
+  },
+  bannerRed: {
+    backgroundColor: "#DC2626",
+    borderRadius:    12,
+    overflow:        "hidden" as const,
+  },
+  bannerAmber: {
+    backgroundColor: "#D97706",
+    borderRadius:    12,
+    overflow:        "hidden" as const,
+  },
+  bannerInner: {
+    flexDirection:   "row",
+    alignItems:      "center",
+    gap:             10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  bannerTitle: {
+    fontSize:   13,
+    fontWeight: "700" as const,
+    color:      "#fff",
+    marginBottom: 1,
+  },
+  bannerSub: {
+    fontSize:   11,
+    fontWeight: "500" as const,
+    color:      "rgba(255,255,255,0.88)",
+    lineHeight: 15,
+  },
+  bannerCta: {
+    backgroundColor:  "rgba(255,255,255,0.22)",
+    borderRadius:     8,
+    paddingHorizontal: 10,
+    paddingVertical:  6,
+    flexShrink:       0,
+  },
+  bannerCtaText: {
+    fontSize:   11,
+    fontWeight: "700" as const,
+    color:      "#fff",
+    letterSpacing: -0.1,
+  },
+  // DEV-only test button
+  devExpireBtn: {
+    backgroundColor:  "#1E1E1E",
+    borderRadius:     8,
+    paddingHorizontal: 14,
+    paddingVertical:  8,
+    alignItems:       "center" as const,
+  },
+  devExpireBtnText: {
+    fontSize:   12,
+    fontWeight: "600" as const,
+    color:      "#FCD34D",
   },
   // Frosted glass top-highlight (absolute overlay)
   actionCardGlass: {
