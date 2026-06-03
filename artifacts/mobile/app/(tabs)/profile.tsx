@@ -205,22 +205,28 @@ export default function SettingsScreen() {
 
         {/* PROFILE HERO */}
         <LinearGradient
-          colors={["#122847", "#1B3155", "#24406B"]}
+          colors={["#12345C", "#1D4E89", "#2563A8"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.profileHero}
         >
+          {/* Glass shimmer highlight */}
+          <LinearGradient
+            colors={["rgba(255,255,255,0.11)", "rgba(255,255,255,0)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0.65, y: 1 }}
+            style={StyleSheet.absoluteFillObject}
+            pointerEvents="none"
+          />
+
           {/* Identity row */}
           <View style={styles.profileRow}>
             <View style={styles.profileAvatarWrap}>
               <View style={styles.profileAvatar}>
                 <Text style={styles.profileAvatarText}>AK</Text>
               </View>
-              <View style={[styles.profileVerified, { backgroundColor: colors.primary }]}>
-                <Feather name="check" size={9} color="#fff" />
-              </View>
             </View>
-            <View style={{ flex: 1, gap: 3 }}>
+            <View style={{ flex: 1, gap: 2 }}>
               <Text style={styles.profileName}>Arjun Kumar</Text>
               <Text style={styles.profilePhone}>+91 98765 43210</Text>
               <View style={styles.profileMetaRow}>
@@ -228,13 +234,12 @@ export default function SettingsScreen() {
                 <Text style={styles.profileMetaText}>4.92</Text>
                 <View style={styles.metaDotDark} />
                 <Text style={styles.profileMetaText}>1,284 trips</Text>
-                <View style={styles.metaDotDark} />
-                <Text style={styles.profileMetaText}>DR4827</Text>
+              </View>
+              <View style={styles.profileVehicleRow}>
+                <Feather name="truck" size={10} color="rgba(255,255,255,0.5)" />
+                <Text style={styles.profileVehicleText}>KA 05 MN 4827</Text>
               </View>
             </View>
-            <TouchableOpacity style={styles.editProfileBtn} activeOpacity={0.7}>
-              <Feather name="edit-2" size={13} color="#fff" />
-            </TouchableOpacity>
           </View>
 
           {/* Plan panel */}
@@ -560,27 +565,28 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 16,
     gap: 14,
+    overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 6,
+    borderColor: "rgba(255,255,255,0.10)",
+    shadowColor: "#1D4E89",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 18,
+    elevation: 8,
   },
   profileRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   profileAvatarWrap: { position: "relative" },
   profileAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "#fff5e6",
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "rgba(255,255,255,0.14)",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2.5,
-    borderColor: "rgba(255,255,255,0.15)",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.38)",
   },
-  profileAvatarText: { fontSize: 17, fontWeight: "800", color: "#b75d00" },
+  profileAvatarText: { fontSize: 19, fontWeight: "800", color: "#fff" },
   profileVerified: {
     position: "absolute",
     bottom: -1,
@@ -709,12 +715,19 @@ const styles = StyleSheet.create({
 
   // Plan panel
   planPanel: {
-    backgroundColor: "rgba(255,255,255,0.07)",
+    backgroundColor: "rgba(0,0,0,0.18)",
     borderRadius: 13,
     padding: 12,
     gap: 8,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  profileVehicleRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
+  profileVehicleText: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.72)",
+    fontWeight: "700",
+    letterSpacing: 0.5,
   },
   planTopRow: {
     flexDirection: "row",
