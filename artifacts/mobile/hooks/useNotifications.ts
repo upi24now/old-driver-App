@@ -13,8 +13,8 @@
  */
 
 import type * as NotificationsType from "expo-notifications";
-import { useEffect } from "react";
-import { Platform } from "react-native";
+import { useEffect, useRef } from "react";
+import { Alert, Platform } from "react-native";
 
 import {
   clearBadge,
@@ -34,14 +34,29 @@ const Notif: typeof NotificationsType | null = (() => {
 })();
 
 export function useNotifications(): void {
+  // Prevents showing the permission-denied Alert more than once per app session.
+  const permissionAlertShown = useRef(false);
+
   useEffect(() => {
     // Nothing to do on web or when the module is unavailable (Expo Go Android).
     if (Platform.OS === "web" || !Notif) return;
 
     // Init: channels + permissions + action categories
-    initNotifications().catch((err) =>
-      console.error("[useNotifications] init error:", err)
-    );
+    initNotifications()
+      .then(({ permissionGranted }) => {
+        if (!permissionGranted && !permissionAlertShown.current) {
+          permissionAlertShown.current = true;
+          Alert.alert(
+            "Notifications Disabled",
+            "Please enable notifications to receive delivery requests.",
+            [{ text: "OK" }],
+            { cancelable: true }
+          );
+        }
+      })
+      .catch((err) =>
+        console.error("[useNotifications] init error:", err)
+      );
 
     // Clear stale badge on open
     clearBadge().catch(() => {});

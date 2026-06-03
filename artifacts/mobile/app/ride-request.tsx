@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import { cancelIncomingOrderNotification } from "@/utils/notifications";
 import { callSupport } from "@/utils/support";
 import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
 import { useEffect, useRef, useState } from "react";
@@ -425,6 +426,7 @@ export default function RideRequestScreen() {
 
   function dismiss(replaceRoute?: string) {
     stopAlert();
+    cancelIncomingOrderNotification().catch(() => {});
     Animated.parallel([
       Animated.timing(backdrop, {
         toValue: 0,

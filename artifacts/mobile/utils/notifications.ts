@@ -75,14 +75,28 @@ if (Notif) {
         (notification.request.trigger as Record<string, unknown> | null)?.channelId;
       const isOrder = channelId === CHANNEL_ORDERS;
 
+      if (isOrder) {
+        // setNotificationHandler only fires when the app is foregrounded.
+        // For incoming orders the ride-request screen is already opening with
+        // its own looping ringtone + repeating vibration — suppress the system
+        // notification sound/banner to prevent a double-alert.  The entry still
+        // lands in the notification drawer (shouldShowList: true) and the badge
+        // increments so the driver can access it later if needed.
+        return {
+          shouldShowBanner: false,
+          shouldShowList:   true,
+          shouldPlaySound:  false,
+          shouldSetBadge:   true,
+          priority: Notif!.AndroidNotificationPriority.MAX,
+        };
+      }
+
       return {
         shouldShowBanner: true,
         shouldShowList:   true,
         shouldPlaySound:  true,
-        shouldSetBadge:   isOrder,
-        priority: isOrder
-          ? Notif!.AndroidNotificationPriority.MAX
-          : Notif!.AndroidNotificationPriority.HIGH,
+        shouldSetBadge:   false,
+        priority: Notif!.AndroidNotificationPriority.HIGH,
       };
     },
   });
