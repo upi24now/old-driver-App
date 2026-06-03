@@ -205,14 +205,14 @@ export default function SettingsScreen() {
 
         {/* PROFILE HERO */}
         <LinearGradient
-          colors={["#12345C", "#1D4E89", "#2563A8"]}
+          colors={["#3A0A50", "#5E1675", "#A32CC4"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.profileHero}
         >
           {/* Glass shimmer highlight */}
           <LinearGradient
-            colors={["rgba(255,255,255,0.11)", "rgba(255,255,255,0)"]}
+            colors={["rgba(216,107,255,0.18)", "rgba(255,255,255,0)"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 0.65, y: 1 }}
             style={StyleSheet.absoluteFillObject}
@@ -567,8 +567,8 @@ const styles = StyleSheet.create({
     gap: 14,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
-    shadowColor: "#1D4E89",
+    borderColor: "rgba(255,255,255,0.14)",
+    shadowColor: "#5E1675",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.45,
     shadowRadius: 18,
@@ -584,7 +584,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.38)",
+    borderColor: "rgba(216,107,255,0.45)",
   },
   profileAvatarText: { fontSize: 19, fontWeight: "800", color: "#fff" },
   profileVerified: {
@@ -715,12 +715,12 @@ const styles = StyleSheet.create({
 
   // Plan panel
   planPanel: {
-    backgroundColor: "rgba(0,0,0,0.18)",
+    backgroundColor: "rgba(0,0,0,0.22)",
     borderRadius: 13,
     padding: 12,
     gap: 8,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: "rgba(255,255,255,0.14)",
   },
   profileVehicleRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
   profileVehicleText: {
