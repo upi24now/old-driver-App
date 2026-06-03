@@ -3,10 +3,12 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   BackHandler,
   Easing,
+  Linking,
   PanResponder,
   Pressable,
   StyleSheet,
@@ -83,7 +85,7 @@ const SLIDE_HEIGHT = 54;
 const SLIDE_THUMB = 46;
 const SLIDE_PAD = 4;
 
-function SlideToAccept({ onAccept }: { onAccept: () => void }) {
+function SlideToAccept({ onAccept, disabled = false }: { onAccept: () => void; disabled?: boolean }) {
   const [trackW, setTrackW] = useState(220);
   const x = useRef(new Animated.Value(0)).current;
   const xValue = useRef(0);
@@ -152,6 +154,24 @@ function SlideToAccept({ onAccept }: { onAccept: () => void }) {
     extrapolate: "clamp",
   });
 
+  if (disabled) {
+    // Accepting in-flight — fill the track green and show a spinner.
+    return (
+      <View style={[styles.slideTrack, { overflow: "hidden" }]}>
+        <LinearGradient
+          colors={["#00E060", "#00A847"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFillObject}
+        />
+        <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
+        <Text style={[styles.slideLabel, { color: "#fff", opacity: 1 }]}>
+          Accepting…
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View
       style={styles.slideTrack}
@@ -206,6 +226,7 @@ export default function RideRequestScreen() {
     : "";
 
   const [seconds, setSeconds] = useState(TIMER_SECONDS);
+  const [isAccepting, setIsAccepting] = useState(false);
   const slide = useRef(new Animated.Value(0)).current;
   const backdrop = useRef(new Animated.Value(0)).current;
   const ring = useRef(new Animated.Value(0)).current;
@@ -392,6 +413,9 @@ export default function RideRequestScreen() {
     const ride = incomingRide;
     if (!ride) return;
 
+    // Show accepting spinner immediately so the driver gets visual feedback.
+    setIsAccepting(true);
+
     // Arm the ref BEFORE awaiting the transaction so the hadRideRef useEffect
     // (which fires when incomingRide → null) does not call dismiss() to the
     // dashboard while we are still waiting for Firestore.
@@ -406,6 +430,7 @@ export default function RideRequestScreen() {
       // or it was cancelled before we could accept.
       // Reset the arm flag so the hadRideRef useEffect can dismiss normally.
       didAcceptRef.current = false;
+      setIsAccepting(false);
       Alert.alert(
         "Order Unavailable",
         "This order was already accepted or is no longer available.",
@@ -533,9 +558,11 @@ export default function RideRequestScreen() {
                   {urgent ? "HURRY" : "NEW REQUEST"}
                 </Text>
               </View>
-              <Text style={[styles.tripType, { color: colors.foreground }]}>
-                Mini Car · 2 stops
-              </Text>
+              {(ride.parcelType || ride.parcelWeight) && (
+                <Text style={[styles.tripType, { color: colors.foreground }]}>
+                  {[ride.parcelType, ride.parcelWeight].filter(Boolean).join(" · ")}
+                </Text>
+              )}
             </View>
             <UrgencyRing progress={ring} seconds={seconds} urgent={urgent} />
           </View>
@@ -555,10 +582,6 @@ export default function RideRequestScreen() {
                   {Number(ride.passengerRating ?? 5).toFixed(2)}
                 </Text>
                 <View style={[styles.metaDot, { backgroundColor: colors.border }]} />
-                <Text style={[styles.riderMetaText, { color: colors.mutedForeground }]}>
-                  142 trips
-                </Text>
-                <View style={[styles.metaDot, { backgroundColor: colors.border }]} />
                 <View style={styles.payChip}>
                   <Feather name="credit-card" size={9} color={colors.primary} />
                   <Text style={[styles.payChipText, { color: colors.primary }]}>
@@ -570,6 +593,10 @@ export default function RideRequestScreen() {
             <TouchableOpacity
               style={[styles.iconBtn, { backgroundColor: "#f5f5f5" }]}
               activeOpacity={0.7}
+              onPress={() => {
+                if (!ride.customerPhone) return;
+                Linking.openURL(`tel:${ride.customerPhone}`).catch(() => {});
+              }}
             >
               <Feather name="phone" size={15} color="#0a0a0a" />
             </TouchableOpacity>
@@ -609,7 +636,7 @@ export default function RideRequestScreen() {
               </View>
               <View style={styles.routePoint}>
                 <Text style={[styles.routeLabel, { color: colors.mutedForeground }]}>
-                  DROP · {ride.distanceKm} km · ~{Math.round(ride.distanceKm * 2.5)} min
+                  DROP · {ride.distanceKm} km{ride.durationMin ? ` · ~${ride.durationMin} min` : ""}
                 </Text>
                 <Text
                   style={[styles.routeAddr, { color: colors.foreground }]}
@@ -643,14 +670,18 @@ export default function RideRequestScreen() {
                 <Text style={[styles.fareAmount, { color: colors.foreground }]}>
                   {ride.fareEstimate}
                 </Text>
-                <View style={styles.surgeBadge}>
-                  <Feather name="zap" size={10} color="#fff" />
-                  <Text style={styles.surgeText}>1.5×</Text>
-                </View>
+                {ride.surge && (
+                  <View style={styles.surgeBadge}>
+                    <Feather name="zap" size={10} color="#fff" />
+                    <Text style={styles.surgeText}>{ride.surgeMultiplier ?? 1}×</Text>
+                  </View>
+                )}
               </View>
-              <Text style={[styles.fareSub, { color: colors.mutedForeground }]}>
-                Incl. ₹24 tip · Cash + UPI accepted
-              </Text>
+              {ride.paymentMode ? (
+                <Text style={[styles.fareSub, { color: colors.mutedForeground }]}>
+                  {ride.paymentMode} accepted
+                </Text>
+              ) : null}
             </View>
             <View style={[styles.fareDistanceBox, { borderColor: colors.primary }]}>
               <Text style={[styles.fareDistanceNum, { color: colors.primary }]}>
@@ -716,7 +747,7 @@ export default function RideRequestScreen() {
             </Animated.View>
 
             <View style={{ flex: 2 }}>
-              <SlideToAccept onAccept={handleAccept} />
+              <SlideToAccept onAccept={handleAccept} disabled={isAccepting} />
             </View>
           </View>
         </Animated.View>
