@@ -18,7 +18,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useDriver } from "@/contexts/DriverContext";
 import { useEffect, useRef, useState } from "react";
-import { driverCancelOrder, updateOrderStage, type DeliveryStage } from "@/utils/firestore";
+import { creditOrderEarning, driverCancelOrder, updateOrderStage, type DeliveryStage } from "@/utils/firestore";
 import {
   Alert,
   Animated,
@@ -524,7 +524,7 @@ export default function ActiveDeliveryScreen() {
   }>();
 
   // Must come before useState so the lazy initializer can read restored status.
-  const { activeRide, endRide, orderRemovalReasons, driverUid } = useDriver();
+  const { activeRide, endRide, orderRemovalReasons, driverUid, addEarningLocally, refreshWallet } = useDriver();
 
   // Tracks whether THIS screen called endRide() normally (delivery complete).
   // If activeRide becomes null without us setting this, it means an external
@@ -613,6 +613,9 @@ export default function ActiveDeliveryScreen() {
   const earning        = params.earning     ? `₹${params.earning}`
                        : activeRide         ? `₹${activeRide.fareEstimate}`
                        : "₹—";
+  // Raw numeric fare used for earning credit on delivery
+  const fareAmount     = params.earning     ? Number(params.earning)
+                       : (activeRide?.fareEstimate ?? 0);
   const paymentMode    = params.paymentMode     ?? activeRide?.paymentMode      ?? "Cash";
   const surge          = params.surge           === "true" || (activeRide?.surge ?? false);
   const surgeMultiplier = params.surgeMultiplier ? Number(params.surgeMultiplier) : (activeRide?.surgeMultiplier ?? 1);
@@ -670,6 +673,24 @@ export default function ActiveDeliveryScreen() {
       // Delivery complete — mark that WE initiated the clear so the cancellation
       // useEffect does not fire an alert when activeRide becomes null.
       didEndSelf.current = true;
+
+      // ── Credit earning ─────────────────────────────────────────────────────
+      // 1. Optimistic local update so the dashboard shows the new balance
+      //    immediately when the driver navigates back.
+      // 2. Atomic Firestore transaction (idempotent — safe if called twice).
+      // 3. refreshWallet reconciles with the server-confirmed value.
+      if (orderId && driverUid && fareAmount > 0) {
+        addEarningLocally(fareAmount);
+        creditOrderEarning(
+          driverUid,
+          orderId,
+          fareAmount,
+          paymentMode as "Cash" | "UPI" | "Card",
+        )
+          .then(() => refreshWallet())
+          .catch(console.error);
+      }
+
       if (orderId) endRide(orderId);
       router.replace("/(tabs)");
       return;

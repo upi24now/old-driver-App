@@ -29,6 +29,13 @@ export type DriverDoc = {
   subscriptionPlan?:      string;
   subscriptionExpiresAt?: number;
   createdAt:              unknown;
+
+  // ── Wallet ────────────────────────────────────────────────────────────────
+  walletBalance?:    number;  // running total, authoritative balance
+  lifetimeEarnings?: number;  // cumulative all-time earnings
+  todayEarnings?:    number;  // earnings on todayDate (UTC)
+  tripsToday?:       number;  // completed deliveries on todayDate
+  todayDate?:        string;  // "YYYY-MM-DD" sentinel for daily reset
 };
 
 export async function getDriverDoc(uid: string): Promise<DriverDoc | null> {
@@ -438,6 +445,66 @@ export async function updateOrderStage(
   await updateDoc(doc(db, "orders", orderId), {
     status:          stage,
     [`${stage}At`]:  serverTimestamp(),
+  });
+}
+
+/**
+ * Credit a completed delivery earning to the driver's wallet.
+ *
+ * Runs inside a Firestore transaction for atomicity.
+ * Idempotency: the transaction document ID is "${orderId}_earn".
+ * If that document already exists the transaction aborts safely —
+ * the wallet is never double-credited for the same order.
+ *
+ * Daily reset: if drivers/{uid}.todayDate differs from today (UTC),
+ * todayEarnings and tripsToday are reset to 0 before crediting.
+ */
+export async function creditOrderEarning(
+  driverUid:   string,
+  orderId:     string,
+  fareAmount:  number,
+  paymentMode: "Cash" | "UPI" | "Card",
+): Promise<void> {
+  const txnId     = `${orderId}_earn`;
+  const txnRef    = doc(db, "driver_transactions", txnId);
+  const driverRef = doc(db, "drivers", driverUid);
+  const today     = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+
+  await runTransaction(db, async (tx) => {
+    const [txnSnap, driverSnap] = await Promise.all([
+      tx.get(txnRef),
+      tx.get(driverRef),
+    ]);
+
+    // Idempotency guard — do nothing if earning already credited
+    if (txnSnap.exists()) return;
+
+    const d          = driverSnap.exists() ? (driverSnap.data() as Record<string, number | string>) : {};
+    const isSameDay  = d["todayDate"] === today;
+
+    const newWallet   = ((d["walletBalance"]    as number | undefined) ?? 0) + fareAmount;
+    const newLifetime = ((d["lifetimeEarnings"] as number | undefined) ?? 0) + fareAmount;
+    const newToday    = (isSameDay ? ((d["todayEarnings"] as number | undefined) ?? 0) : 0) + fareAmount;
+    const newTrips    = (isSameDay ? ((d["tripsToday"]    as number | undefined) ?? 0) : 0) + 1;
+
+    tx.set(driverRef, {
+      walletBalance:    newWallet,
+      lifetimeEarnings: newLifetime,
+      todayEarnings:    newToday,
+      tripsToday:       newTrips,
+      todayDate:        today,
+      updatedAt:        serverTimestamp(),
+    }, { merge: true });
+
+    tx.set(txnRef, {
+      driverUid,
+      orderId,
+      type:        "earning",
+      amount:      fareAmount,
+      paymentMode,
+      status:      "completed",
+      createdAt:   serverTimestamp(),
+    });
   });
 }
 

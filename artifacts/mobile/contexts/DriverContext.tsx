@@ -168,6 +168,12 @@ type DriverState = {
   activatePlan:        (id: SubPlan) => { ok: boolean; reason?: string };
   refreshSubscription: () => Promise<void>;
 
+  // ── Wallet ──────────────────────────────────────────────────────────────
+  // addEarningLocally: optimistic update after delivery (before server confirms)
+  // refreshWallet:     re-reads driver doc and syncs wallet fields from Firestore
+  addEarningLocally: (amount: number) => void;
+  refreshWallet:     () => Promise<void>;
+
   acceptRide: () => Promise<AcceptOrderResult>;
   rejectRide: () => void;
   // Removes one specific order from activeOrders by ID.
@@ -286,9 +292,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const [incomingRide, setIncomingRide] = useState<IncomingRide | null>(null);
   const [rideHistory,  setHistory]      = useState<ActiveRide[]>([]);
 
-  const [walletBalance,  setBalance]      = useState(8420.5);
-  const [todayEarnings,  setTodayEarnings]= useState(1248);
-  const [tripsToday,     setTripsToday]   = useState(14);
+  const [walletBalance,  setBalance]      = useState(0);
+  const [todayEarnings,  setTodayEarnings]= useState(0);
+  const [tripsToday,     setTripsToday]   = useState(0);
   const [transactions,   setTxns]         = useState<Txn[]>(SEED_TXNS);
 
   const [overlayPermissionGranted, setOverlayPermissionGranted] = useState(false);
@@ -330,6 +336,14 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             }
             if (driverDoc.subscriptionExpiresAt) {
               setSubExp(driverDoc.subscriptionExpiresAt);
+            }
+            // Restore wallet — apply daily reset if todayDate has changed
+            {
+              const today     = new Date().toISOString().slice(0, 10);
+              const sameDay   = driverDoc.todayDate === today;
+              setBalance(driverDoc.walletBalance ?? 0);
+              setTodayEarnings(sameDay ? (driverDoc.todayEarnings ?? 0) : 0);
+              setTripsToday   (sameDay ? (driverDoc.tripsToday    ?? 0) : 0);
             }
           }
           // Restore up to 3 active orders if driver app was restarted mid-delivery.
@@ -468,6 +482,14 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         setOnlineState(driverDoc.isOnline ?? false);
         if (driverDoc.subscriptionPlan)      setSubPlan(driverDoc.subscriptionPlan as SubPlan);
         if (driverDoc.subscriptionExpiresAt) setSubExp(driverDoc.subscriptionExpiresAt);
+        // Restore wallet
+        {
+          const today   = new Date().toISOString().slice(0, 10);
+          const sameDay = driverDoc.todayDate === today;
+          setBalance(driverDoc.walletBalance ?? 0);
+          setTodayEarnings(sameDay ? (driverDoc.todayEarnings ?? 0) : 0);
+          setTripsToday   (sameDay ? (driverDoc.tripsToday    ?? 0) : 0);
+        }
       }
 
       const profileComplete = !!(driverDoc.name && driverDoc.vehicleId);
@@ -573,6 +595,37 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       if (doc.subscriptionExpiresAt) setSubExp(doc.subscriptionExpiresAt);
     } catch {
       // silent — stale state is preferable to an uncaught error
+    }
+  };
+
+  // ── Wallet helpers ─────────────────────────────────────────────────────────
+
+  /**
+   * Optimistic local credit — called immediately after delivery so the
+   * dashboard reflects the new balance before the Firestore write confirms.
+   */
+  const addEarningLocally = (amount: number): void => {
+    setBalance((b) => b + amount);
+    setTodayEarnings((e) => e + amount);
+    setTripsToday((t) => t + 1);
+  };
+
+  /**
+   * Reconcile local wallet state with Firestore (called after the server
+   * transaction confirms).  Silently no-ops on network errors.
+   */
+  const refreshWallet = async (): Promise<void> => {
+    if (!driverUid) return;
+    try {
+      const d = await getDriverDoc(driverUid);
+      if (!d) return;
+      const today   = new Date().toISOString().slice(0, 10);
+      const sameDay = d.todayDate === today;
+      setBalance(d.walletBalance ?? 0);
+      setTodayEarnings(sameDay ? (d.todayEarnings ?? 0) : 0);
+      setTripsToday   (sameDay ? (d.tripsToday    ?? 0) : 0);
+    } catch {
+      // silent — optimistic values remain until next successful refresh
     }
   };
 
@@ -950,6 +1003,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         todayEarnings,
         tripsToday,
         transactions,
+        addEarningLocally,
+        refreshWallet,
         setPhone,
         confirmOtp,
         setProfile,
