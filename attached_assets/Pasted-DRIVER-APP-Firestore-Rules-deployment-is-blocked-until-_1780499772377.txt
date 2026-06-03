@@ -1,0 +1,98 @@
+DRIVER APP
+
+Firestore Rules deployment is blocked until driver app Firestore collection usage is fully audited.
+
+Audit only. Do not modify code yet.
+
+Goal:
+Find every Firestore collection/path the driver app reads or writes so we can update firestore.rules safely before deployment.
+
+Search the entire driver app codebase for all Firestore operations:
+- collection(
+- doc(
+- getDoc
+- getDocs
+- onSnapshot
+- query
+- where
+- addDoc
+- setDoc
+- updateDoc
+- deleteDoc
+- writeBatch
+- runTransaction
+- increment
+- serverTimestamp
+
+For each Firestore operation, report:
+
+1. File/function
+2. Collection/path
+3. Operation type:
+   - get
+   - list/query
+   - onSnapshot listener
+   - create
+   - update
+   - delete
+   - transaction
+4. Owner/auth field used:
+   - driverUid
+   - uid
+   - userId
+   - phone
+   - orderId
+   - other
+5. Whether the operation is driver-owned, customer-owned, public/read-only, or admin/server-only
+6. Required Firestore rule condition
+7. Whether the current proposed firestore.rules file would allow or block it
+
+Must include at minimum:
+- drivers collection
+- orders collection
+- driver_transactions collection
+- withdrawal_requests collection
+- subscription / driver_plans / plan-related collections
+- document upload/status collections
+- wallet balance fields
+- notifications if used
+- any storage metadata docs if used
+- any test/dev collections if present
+
+Special checks:
+1. Wallet:
+- Where wallet balance is read
+- Where wallet balance is written
+- Whether writes are now server-side only or still client-side anywhere
+
+2. Driver transactions:
+- Where driver_transactions are read
+- Whether driver app writes driver_transactions anywhere after OTP server migration
+
+3. Withdrawals:
+- Where withdrawal_requests are created
+- Owner field used
+- Required rule to allow driver to create/read own requests
+
+4. Documents:
+- Where driver documents are uploaded/status written
+- Collection/path and owner field
+
+5. Subscriptions/plans:
+- Where subscription status is read
+- Whether driver app writes anything plan-related or only reads
+
+6. Orders:
+- Available order listener query
+- Accept transaction
+- Active order listener
+- Stage update writes
+- Cancellation handling
+- Completion path after server-side OTP migration
+
+Report:
+- Complete compatibility table
+- Unknown/ambiguous paths
+- Proposed Firestore rules needed for driver app
+- Any rules that must NOT be deployed yet
+- Final verdict: safe to deploy rules or not
