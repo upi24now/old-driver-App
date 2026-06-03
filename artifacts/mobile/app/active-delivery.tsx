@@ -14,6 +14,7 @@
 
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as Network from "expo-network";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useDriver } from "@/contexts/DriverContext";
@@ -644,7 +645,7 @@ export default function ActiveDeliveryScreen() {
   };
   const meta = stageMeta[stage];
 
-  function advance() {
+  async function advance() {
     // Guard: if activeRide was cleared externally (customer cancellation), do
     // not write any stage to Firestore. The cancellation useEffect handles exit.
     // Exception: at delivered stage the DriverContext listener may have already
@@ -670,6 +671,21 @@ export default function ActiveDeliveryScreen() {
     setOtpError(null);
     const next = nextStage(stage);
     if (!next) {
+      // ── Network guard ───────────────────────────────────────────────────────
+      // creditOrderEarning uses runTransaction which requires a live server
+      // connection. Simple updateDoc writes queue offline, but Firestore
+      // transactions cannot. Block completion if the device has no connectivity
+      // so the wallet credit is never silently dropped.
+      const netState = await Network.getNetworkStateAsync();
+      if (netState.isConnected === false) {
+        Alert.alert(
+          "No Internet Connection",
+          "Internet required to complete delivery and credit earnings. Please reconnect and try again.",
+          [{ text: "OK" }],
+        );
+        return;
+      }
+
       // Delivery complete — mark that WE initiated the clear so the cancellation
       // useEffect does not fire an alert when activeRide becomes null.
       didEndSelf.current = true;
