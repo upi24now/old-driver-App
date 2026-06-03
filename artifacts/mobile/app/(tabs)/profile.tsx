@@ -140,6 +140,32 @@ export default function SettingsScreen() {
   const darkMode = isDark;
   const setDarkMode = setDark;
 
+  // ── Plan mock data (UI model only — replace with real data when backend ready) ──
+  const planName = "Weekly Pro";
+  const planStartDate = new Date("2026-05-30");
+  const planExpiryDate = new Date("2026-06-08");
+  const isPlanActive = true;
+  const msPerDay = 86_400_000;
+  const today = new Date();
+  const remainingDays = Math.max(
+    0,
+    Math.ceil((planExpiryDate.getTime() - today.getTime()) / msPerDay),
+  );
+  const totalPlanDays = Math.round(
+    (planExpiryDate.getTime() - planStartDate.getTime()) / msPerDay,
+  );
+  const remainingPercent =
+    totalPlanDays > 0
+      ? Math.min(100, Math.round((remainingDays / totalPlanDays) * 100))
+      : 0;
+  const planExpired = isPlanActive && remainingDays === 0;
+  const planExpiryStr = planExpiryDate.toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+  });
+  const planBarColor =
+    remainingPercent >= 70 ? "#00C853" : remainingPercent >= 30 ? "#FF8F00" : "#FF3B30";
+
   function confirmLogout() {
     confirmAction(
       "Sign out?",
@@ -179,11 +205,12 @@ export default function SettingsScreen() {
 
         {/* PROFILE HERO */}
         <LinearGradient
-          colors={["#0d2818", "#0a0a0a"]}
+          colors={["#122847", "#1B3155", "#24406B"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.profileHero}
         >
+          {/* Identity row */}
           <View style={styles.profileRow}>
             <View style={styles.profileAvatarWrap}>
               <View style={styles.profileAvatar}>
@@ -202,7 +229,7 @@ export default function SettingsScreen() {
                 <View style={styles.metaDotDark} />
                 <Text style={styles.profileMetaText}>1,284 trips</Text>
                 <View style={styles.metaDotDark} />
-                <Text style={styles.profileMetaText}>3y · DR4827</Text>
+                <Text style={styles.profileMetaText}>DR4827</Text>
               </View>
             </View>
             <TouchableOpacity style={styles.editProfileBtn} activeOpacity={0.7}>
@@ -210,44 +237,82 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.statsStrip}>
-            {[
-              { label: "Tier", value: "Gold" },
-              { label: "Acceptance", value: "94%" },
-              { label: "Completion", value: "98%" },
-            ].map((s, i) => (
-              <View key={s.label} style={styles.statBox}>
-                <Text style={styles.statValue}>{s.value}</Text>
-                <Text style={styles.statLabel}>{s.label}</Text>
-                {i < 2 && <View style={styles.statDivider} />}
-              </View>
-            ))}
+          {/* Plan panel */}
+          <View style={styles.planPanel}>
+            {isPlanActive && !planExpired ? (
+              <>
+                <View style={styles.planTopRow}>
+                  <View style={styles.planBadge}>
+                    <View style={[styles.planDot, { backgroundColor: "#00C853" }]} />
+                    <Text style={styles.planName}>{planName}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.planCta}
+                    onPress={() => router.push("/subscription")}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.planCtaText}>Manage Plan</Text>
+                    <Feather name="chevron-right" size={12} color="rgba(255,255,255,0.8)" />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.planInfoRow}>
+                  <Text style={styles.planDaysLeft}>
+                    {remainingDays} day{remainingDays !== 1 ? "s" : ""} left
+                  </Text>
+                  <Text style={styles.planExpiry}>Expires {planExpiryStr}</Text>
+                </View>
+                <View style={styles.planBarTrack}>
+                  <View
+                    style={[
+                      styles.planBarFill,
+                      { width: `${remainingPercent}%`, backgroundColor: planBarColor },
+                    ]}
+                  />
+                </View>
+              </>
+            ) : planExpired ? (
+              <>
+                <View style={styles.planTopRow}>
+                  <View style={styles.planBadge}>
+                    <View style={[styles.planDot, { backgroundColor: "#FF3B30" }]} />
+                    <Text style={[styles.planName, { color: "#FF8080" }]}>Plan expired</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.planCta, { borderColor: "rgba(255,59,48,0.35)" }]}
+                    onPress={() => router.push("/subscription")}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.planCtaText, { color: "#FF8080" }]}>Renew Plan</Text>
+                    <Feather name="chevron-right" size={12} color="#FF8080" />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.planBarTrack}>
+                  <View style={[styles.planBarFill, { width: "3%", backgroundColor: "#FF3B30" }]} />
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={styles.planTopRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.planName}>No Active Plan</Text>
+                    <Text style={styles.planSubtext}>Activate plan to receive orders</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.planCta}
+                    onPress={() => router.push("/subscription")}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.planCtaText}>Choose Plan</Text>
+                    <Feather name="chevron-right" size={12} color="rgba(255,255,255,0.8)" />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.planBarTrack}>
+                  <View style={[styles.planBarFill, { width: "3%", backgroundColor: "#FF3B30" }]} />
+                </View>
+              </>
+            )}
           </View>
         </LinearGradient>
-
-        {/* VEHICLE STRIP */}
-        <TouchableOpacity
-          style={[styles.vehicleCard, { borderColor: colors.border }]}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.vehicleIcon, { backgroundColor: "#fff5e6" }]}>
-            <Feather name="truck" size={18} color="#b75d00" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.vehicleTitle, { color: colors.foreground }]}>
-              Honda Activa 6G
-            </Text>
-            <Text style={[styles.vehicleSub, { color: colors.mutedForeground }]}>
-              KA 05 MN 4827 · White · Bike
-            </Text>
-          </View>
-          <View style={[styles.vehiclePill, { backgroundColor: "#f0fdf4" }]}>
-            <View style={[styles.vehiclePillDot, { backgroundColor: colors.primary }]} />
-            <Text style={[styles.vehiclePillText, { color: colors.primary }]}>
-              Active
-            </Text>
-          </View>
-        </TouchableOpacity>
 
         {/* DOCUMENTS & VERIFICATION */}
         <View>
@@ -491,7 +556,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
 
-  profileHero: { borderRadius: 20, padding: 16, gap: 14 },
+  profileHero: {
+    borderRadius: 20,
+    padding: 16,
+    gap: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 6,
+  },
   profileRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   profileAvatarWrap: { position: "relative" },
   profileAvatar: {
@@ -515,7 +591,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
-    borderColor: "#0a0a0a",
+    borderColor: "#122847",
   },
   profileName: { fontSize: 18, fontWeight: "800", color: "#fff", letterSpacing: -0.3 },
   profilePhone: { fontSize: 12, color: "rgba(255,255,255,0.6)", fontWeight: "600" },
@@ -630,6 +706,52 @@ const styles = StyleSheet.create({
     borderRadius: 7,
   },
   statusPillText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.3 },
+
+  // Plan panel
+  planPanel: {
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderRadius: 13,
+    padding: 12,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  planTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  planBadge: { flexDirection: "row", alignItems: "center", gap: 6 },
+  planDot: { width: 7, height: 7, borderRadius: 3.5 },
+  planName: { fontSize: 13, fontWeight: "800", color: "#fff", letterSpacing: -0.2 },
+  planSubtext: { fontSize: 11, color: "rgba(255,255,255,0.55)", fontWeight: "500", marginTop: 2 },
+  planCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
+  planCtaText: { fontSize: 11, fontWeight: "700", color: "rgba(255,255,255,0.85)" },
+  planInfoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  planDaysLeft: { fontSize: 12, fontWeight: "700", color: "rgba(255,255,255,0.9)" },
+  planExpiry: { fontSize: 11, fontWeight: "500", color: "rgba(255,255,255,0.55)" },
+  planBarTrack: {
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    overflow: "hidden",
+  },
+  planBarFill: { height: "100%", borderRadius: 3 },
 
   appInfoBlock: { alignItems: "center", gap: 4, marginTop: 4 },
   appInfoIcon: {
