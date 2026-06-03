@@ -731,6 +731,14 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       const remaining = activeOrdersRef.current.filter((o) => o.id !== orderId);
       return remaining[0]?.id ?? null;
     });
+
+    // Clean up the removal-reason entry for this order now that it is fully
+    // ended locally. Prevents unbounded map growth over a long driver session.
+    setOrderRemovalReasons((prev) => {
+      const next = { ...prev };
+      delete next[orderId];
+      return next;
+    });
   };
 
   // ─── Phase 2: active-order listener registry ──────────────────────────────
