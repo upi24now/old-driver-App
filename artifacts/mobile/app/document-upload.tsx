@@ -146,9 +146,15 @@ type DocState = {
    * Leave undefined / null until real data is available.
    */
   status?: RawDocStatus;
+  /**
+   * true only when the driver picks a NEW replacement file in the current
+   * session. Stays false for old rejected files pre-loaded from Firestore.
+   * A rejected document is not ready until freshUpload is true.
+   */
+  freshUpload?: boolean;
 };
 
-const blankDoc = (): DocState => ({ uri: null, uploadedAt: null, loading: false });
+const blankDoc = (): DocState => ({ uri: null, uploadedAt: null, loading: false, freshUpload: false });
 
 // ─── Permission helpers ───────────────────────────────────────────────────────
 
@@ -528,7 +534,10 @@ export default function DocumentUploadScreen() {
   }
 
   function removeDoc(id: DocId) {
-    setDocs((prev) => ({ ...prev, [id]: { ...blankDoc(), status: prev[id].status } }));
+    setDocs((prev) => ({
+      ...prev,
+      [id]: { ...blankDoc(), status: prev[id].status, freshUpload: false },
+    }));
   }
 
   /**
@@ -541,7 +550,7 @@ export default function DocumentUploadScreen() {
     try {
       const uri = await pickFn();
       if (uri) {
-        patch(id, { uri, uploadedAt: Date.now(), loading: false });
+        patch(id, { uri, uploadedAt: Date.now(), loading: false, freshUpload: true });
       } else {
         patch(id, { loading: false });
       }
@@ -565,26 +574,34 @@ export default function DocumentUploadScreen() {
   // ── Derived ──
 
   /**
-   * A doc counts toward progress if it has a file OR is already locked
-   * (approved) or waiting (pending review with a file already submitted).
+   * Readiness helper — returns true when a single doc requires no further
+   * action from the driver:
+   *
+   *   locked   — admin approved/verified, no action needed
+   *   waiting  — file exists and is under review
+   *   reupload — driver MUST provide a fresh file this session (old rejected
+   *              file does NOT satisfy this — freshUpload must be true)
+   *   upload   — driver has uploaded a file in this or a previous session
    */
-  const uploadedCount = DOCS.filter((d) => {
-    const st = docs[d.id];
+  function isDocReady(st: DocState): boolean {
     const lock = normalizeLock(st.status, !!st.uri);
-    return lock === "locked" || lock === "waiting" || !!st.uri;
-  }).length;
+    if (lock === "locked") return true;
+    if (lock === "waiting") return true;
+    if (lock === "reupload") return !!st.freshUpload;
+    return !!st.uri;
+  }
+
+  /**
+   * Progress bar: count docs that are ready (approved, waiting, or have a
+   * valid file). Rejected docs with only an old file do NOT contribute.
+   */
+  const uploadedCount = DOCS.filter((d) => isDocReady(docs[d.id])).length;
 
   const total = DOCS.length;
   const progress = uploadedCount / total;
 
-  /**
-   * Submit is enabled when every doc either has a local file ready
-   * OR is already approved (locked) — meaning no action needed from driver.
-   */
-  const allReady = DOCS.every((d) => {
-    const st = docs[d.id];
-    return normalizeLock(st.status, !!st.uri) === "locked" || !!st.uri;
-  });
+  /** Submit enabled only when every document is ready. */
+  const allReady = DOCS.every((d) => isDocReady(docs[d.id]));
 
   async function handleSubmit() {
     if (!allReady || submitting) return;
