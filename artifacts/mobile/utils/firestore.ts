@@ -4,7 +4,9 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
   onSnapshot,
+  orderBy,
   query,
   runTransaction,
   serverTimestamp,
@@ -37,6 +39,72 @@ export type DriverDoc = {
   tripsToday?:       number;  // completed deliveries on todayDate
   todayDate?:        string;  // "YYYY-MM-DD" sentinel for daily reset
 };
+
+// ─── Completed trips ──────────────────────────────────────────────────────────
+
+export type CompletedTrip = {
+  orderId:       string;
+  customerName:  string;
+  pickupAddress: string;
+  dropAddress:   string;
+  fareEstimate:  number;
+  paymentMode:   string;
+  deliveredAt:   number | null;  // ms epoch, null if field absent
+  distanceKm?:   number;
+  status:        string;
+};
+
+/**
+ * Fetch the most recent delivered orders for a driver.
+ *
+ * Query: orders WHERE driverUid == uid AND status == "delivered"
+ *        ORDER BY deliveredAt DESC LIMIT limitCount
+ *
+ * Composite index required (Firestore will throw FAILED_PRECONDITION if absent):
+ *   Collection : orders
+ *   Fields     : driverUid ASC, status ASC, deliveredAt DESC
+ */
+export async function getDriverCompletedTrips(
+  driverUid:  string,
+  limitCount  = 20,
+): Promise<CompletedTrip[]> {
+  const q = query(
+    collection(db, "orders"),
+    where("driverUid", "==", driverUid),
+    where("status", "==", "delivered"),
+    orderBy("deliveredAt", "desc"),
+    limit(limitCount),
+  );
+
+  const snap = await getDocs(q);
+
+  return snap.docs.map((d) => {
+    const data = d.data() as Record<string, unknown>;
+
+    // deliveredAt may be a Firestore Timestamp, a number, or absent
+    let deliveredAt: number | null = null;
+    const raw = data["deliveredAt"];
+    if (raw != null) {
+      if (typeof raw === "object" && typeof (raw as { toMillis?: () => number }).toMillis === "function") {
+        deliveredAt = (raw as { toMillis: () => number }).toMillis();
+      } else if (typeof raw === "number") {
+        deliveredAt = raw;
+      }
+    }
+
+    return {
+      orderId:       d.id,
+      customerName:  (data["customerName"]  as string  | undefined) ?? "",
+      pickupAddress: (data["pickupAddress"] as string  | undefined) ?? "",
+      dropAddress:   (data["dropAddress"]   as string  | undefined) ?? "",
+      fareEstimate:  (data["fareEstimate"]  as number  | undefined) ?? 0,
+      paymentMode:   (data["paymentMode"]   as string  | undefined) ?? "Cash",
+      distanceKm:    (data["distanceKm"]    as number  | undefined),
+      status:        (data["status"]        as string  | undefined) ?? "delivered",
+      deliveredAt,
+    };
+  });
+}
 
 export async function getDriverDoc(uid: string): Promise<DriverDoc | null> {
   const snap = await getDoc(doc(db, "drivers", uid));
