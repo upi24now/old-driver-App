@@ -9,7 +9,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TouchableOpacity,
   View,
@@ -204,6 +203,48 @@ function StatusPulseDot({ color }: { color: string }) {
   );
 }
 
+// ─── Custom online/offline toggle ────────────────────────────────────────────
+const TRACK_W    = 68;
+const TRACK_H    = 36;
+const THUMB_D    = 30;
+const THUMB_EDGE = (TRACK_H - THUMB_D) / 2; // 3 — gap between thumb and track edge
+
+function OnlineSwitch({
+  value,
+  onValueChange,
+}: {
+  value: boolean;
+  onValueChange: (v: boolean) => void;
+}) {
+  const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.spring(anim, {
+      toValue:         value ? 1 : 0,
+      useNativeDriver: false,
+      tension:         100,
+      friction:        11,
+    }).start();
+  }, [value]);
+
+  const thumbLeft  = anim.interpolate({
+    inputRange:  [0, 1],
+    outputRange: [THUMB_EDGE, TRACK_W - THUMB_D - THUMB_EDGE],
+  });
+  const trackColor = anim.interpolate({
+    inputRange:  [0, 1],
+    outputRange: ["#EF4444", "#16A34A"],
+  });
+
+  return (
+    <TouchableOpacity onPress={() => onValueChange(!value)} activeOpacity={0.85}>
+      <Animated.View style={[styles.onlineTrack, { backgroundColor: trackColor }]}>
+        <Animated.View style={[styles.onlineThumb, { left: thumbLeft }]} />
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
+
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -324,14 +365,7 @@ export default function HomeScreen() {
                 </LinearGradient>
               </TouchableOpacity>
             )}
-            <Switch
-              value={online}
-              onValueChange={setOnline}
-              trackColor={{ false: "#E0E0E0", true: colors.primary }}
-              thumbColor="#fff"
-              ios_backgroundColor="#E0E0E0"
-              style={{ transform: [{ scaleX: 1.05 }, { scaleY: 1.05 }] }}
-            />
+            <OnlineSwitch value={online} onValueChange={setOnline} />
             <TouchableOpacity
               style={[styles.iconBtn, { backgroundColor: "#fff", borderColor: colors.border }]}
               activeOpacity={0.7}
@@ -699,7 +733,32 @@ const styles = StyleSheet.create({
   avatarText: { color: "#fff", fontSize: 14, fontWeight: "800" },
   greeting: { fontSize: 11, fontWeight: "500", letterSpacing: 0.3 },
   driverName: { fontSize: 16, fontWeight: "800", marginTop: 1 },
-  topActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  topActions: { flexDirection: "row", alignItems: "center", gap: 9 },
+
+  // Custom online/offline toggle
+  onlineTrack: {
+    width:        TRACK_W,
+    height:       TRACK_H,
+    borderRadius: TRACK_H / 2,
+    shadowColor:  "#000",
+    shadowOpacity: 0.14,
+    shadowRadius:  5,
+    shadowOffset:  { width: 0, height: 2 },
+    elevation:     4,
+  },
+  onlineThumb: {
+    position:        "absolute",
+    width:           THUMB_D,
+    height:          THUMB_D,
+    borderRadius:    THUMB_D / 2,
+    backgroundColor: "#fff",
+    top:             THUMB_EDGE,
+    shadowColor:     "#000",
+    shadowOpacity:   0.20,
+    shadowRadius:    4,
+    shadowOffset:    { width: 0, height: 2 },
+    elevation:       5,
+  },
 
   // Active plan pill — sits in the header next to the online toggle
   planPill: {
