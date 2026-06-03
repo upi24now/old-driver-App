@@ -92,29 +92,47 @@ export async function getDriverCompletedTrips(
       }
     }
 
-    // Build pickup/drop display strings from the OrderDoc fields that actually
-    // exist: pickup + pickupSub? + pickupCity  /  drop + dropSub? + dropCity
-    const pickupMain = (data["pickup"]    as string | undefined) ?? "";
-    const pickupSub  = (data["pickupSub"] as string | undefined) ?? "";
-    const pickupCity = (data["pickupCity"] as string | undefined) ?? "";
-    const pickupAddress =
-      [pickupMain, pickupSub, pickupCity].filter(Boolean).join(", ")
-      || "Pickup location not available";
+    // ── Pickup address ────────────────────────────────────────────────────────
+    // Confirmed field names from live Firestore audit (order 0n31uZHUZFrlDM0ZIWlj):
+    //   "pickupAddress"  → full string already set by customer app  (preferred)
+    //   "pickup"         → same value, always present
+    //   "pickupSub"      → optional landmark/floor, already embedded in pickupAddress
+    const strOf = (v: unknown): string =>
+      typeof v === "string" ? v.trim() : "";
 
-    const dropMain = (data["drop"]    as string | undefined) ?? "";
-    const dropSub  = (data["dropSub"] as string | undefined) ?? "";
-    const dropCity = (data["dropCity"] as string | undefined) ?? "";
+    const pickupAddress =
+      strOf(data["pickupAddress"]) ||
+      strOf(data["pickup"])        ||
+      "Pickup location not available";
+
+    // ── Drop address ──────────────────────────────────────────────────────────
+    // Confirmed field names from live Firestore audit:
+    //   "deliveryAddress" → full drop string set by customer app  (preferred)
+    //   "drop"            → same value, always present
+    //   "dropAddress"     → NOT present in any inspected document
+    //   "dropCity"        → city only — already embedded in "drop" string
     const dropAddress =
-      [dropMain, dropSub, dropCity].filter(Boolean).join(", ")
-      || "Drop location not available";
+      strOf(data["deliveryAddress"]) ||
+      strOf(data["drop"])            ||
+      "Drop location not available";
+
+    // ── Payment mode ──────────────────────────────────────────────────────────
+    // Stored as lowercase "cash"/"upi"/"card" by customer app — normalise to
+    // the display capitalisation used throughout the driver app.
+    const rawMode = strOf(data["paymentMode"]).toLowerCase();
+    const paymentMode =
+      rawMode === "upi"  ? "UPI"  :
+      rawMode === "card" ? "Card" :
+      rawMode === "cash" ? "Cash" :
+      "Cash";
 
     return {
       orderId:       d.id,
-      customerName:  (data["customerName"]  as string  | undefined) ?? "",
+      customerName:  strOf(data["customerName"]) || "Customer",
       pickupAddress,
       dropAddress,
       fareEstimate:  (data["fareEstimate"]  as number  | undefined) ?? 0,
-      paymentMode:   (data["paymentMode"]   as string  | undefined) ?? "Cash",
+      paymentMode,
       distanceKm:    (data["distanceKm"]    as number  | undefined),
       status:        (data["status"]        as string  | undefined) ?? "delivered",
       deliveredAt,
