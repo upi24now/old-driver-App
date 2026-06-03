@@ -49,27 +49,6 @@ function infoAlert(title: string, message: string) {
   Alert.alert(title, message);
 }
 
-type DocStatus = "verified" | "pending" | "expiring" | "rejected";
-
-const DOCS: {
-  id: string;
-  title: string;
-  sub: string;
-  status: DocStatus;
-  icon: string;
-}[] = [
-  { id: "aadhaar", title: "Aadhaar Card", sub: "Verified · Jan 12, 2026", status: "verified", icon: "credit-card" },
-  { id: "license", title: "Driving License", sub: "Expires in 45 days", status: "expiring", icon: "file-text" },
-  { id: "rc", title: "Vehicle RC", sub: "Verified · Feb 04, 2026", status: "verified", icon: "truck" },
-  { id: "insurance", title: "Insurance", sub: "Under review", status: "pending", icon: "shield" },
-];
-
-const STATUS_META: Record<DocStatus, { label: string; color: string; bg: string }> = {
-  verified: { label: "Verified", color: "#00C853", bg: "#f0fdf4" },
-  pending: { label: "Pending", color: "#b75d00", bg: "#fff5e6" },
-  expiring: { label: "Expiring", color: "#FF6F00", bg: "#fff3e0" },
-  rejected: { label: "Rejected", color: "#FF3B30", bg: "#ffebee" },
-};
 
 function SectionCard({ children }: { children: React.ReactNode }) {
   const colors = useColors();
@@ -160,9 +139,6 @@ export default function SettingsScreen() {
   const [vibration, setVibration] = useState(true);
   const darkMode = isDark;
   const setDarkMode = setDark;
-
-  const verifiedCount = DOCS.filter((d) => d.status === "verified").length;
-  const needsAttention = DOCS.length - verifiedCount;
 
   function confirmLogout() {
     confirmAction(
@@ -273,56 +249,20 @@ export default function SettingsScreen() {
           </View>
         </TouchableOpacity>
 
-        {/* DOCUMENTS */}
+        {/* DOCUMENTS & VERIFICATION */}
         <View>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-              Documents
-            </Text>
-            <View style={styles.sectionMeta}>
-              <View
-                style={[
-                  styles.sectionBadge,
-                  { backgroundColor: needsAttention > 0 ? "#fff5e6" : "#f0fdf4" },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.sectionBadgeText,
-                    { color: needsAttention > 0 ? "#b75d00" : colors.primary },
-                  ]}
-                >
-                  {verifiedCount}/{DOCS.length} verified
-                </Text>
-              </View>
-            </View>
-          </View>
+          <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 8, paddingHorizontal: 2 }]}>
+            Documents & Verification
+          </Text>
           <SectionCard>
-            {DOCS.map((d, i) => {
-              const meta = STATUS_META[d.status];
-              return (
-                <Row
-                  key={d.id}
-                  icon={d.icon}
-                  iconBg={meta.bg}
-                  iconColor={meta.color}
-                  title={d.title}
-                  sub={d.sub}
-                  divider={i < DOCS.length - 1}
-                  onPress={() => router.push("/document-upload")}
-                  right={
-                    <View style={styles.docRight}>
-                      <View style={[styles.statusPill, { backgroundColor: meta.bg }]}>
-                        <Text style={[styles.statusPillText, { color: meta.color }]}>
-                          {meta.label}
-                        </Text>
-                      </View>
-                      <Feather name="chevron-right" size={15} color={colors.mutedForeground} />
-                    </View>
-                  }
-                />
-              );
-            })}
+            <Row
+              icon="file-text"
+              iconBg="#e8f5e9"
+              iconColor="#00C853"
+              title="Driver Documents"
+              sub="Selfie, Aadhaar, DL, PAN, RC, Insurance"
+              onPress={() => router.push("/document-upload")}
+            />
           </SectionCard>
         </View>
 

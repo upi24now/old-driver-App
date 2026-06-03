@@ -38,7 +38,7 @@ import { submitDriverDocuments } from "@/utils/firestore";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type DocId = "selfie" | "aadhaar" | "pan" | "license" | "rc";
+type DocId = "selfie" | "aadhaar" | "pan" | "license" | "rc" | "insurance";
 
 type DocSpec = {
   id: DocId;
@@ -86,6 +86,13 @@ const DOCS: DocSpec[] = [
     description: "Registration Certificate of your vehicle",
     emoji: "📄",
     hint: "RC book / smart card — all details clearly visible",
+  },
+  {
+    id: "insurance",
+    title: "Insurance",
+    description: "Valid vehicle insurance certificate",
+    emoji: "🛡️",
+    hint: "Policy number and expiry date must be visible",
   },
 ];
 
@@ -359,11 +366,12 @@ export default function DocumentUploadScreen() {
   const [submitting, setSubmitting] = useState(false);
 
   const [docs, setDocs] = useState<Record<DocId, DocState>>(() => ({
-    selfie:  blankDoc(),
-    aadhaar: blankDoc(),
-    pan:     blankDoc(),
-    license: blankDoc(),
-    rc:      blankDoc(),
+    selfie:    blankDoc(),
+    aadhaar:   blankDoc(),
+    pan:       blankDoc(),
+    license:   blankDoc(),
+    rc:        blankDoc(),
+    insurance: blankDoc(),
   }));
 
   // ── Helpers ──
