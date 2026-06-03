@@ -676,7 +676,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       if (prev.some((o) => o.id === accepted.id)) return prev;       // dedup
       return [...prev, accepted].slice(0, MAX_ACTIVE_ORDERS);        // cap
     });
-    setCurrentActiveOrderId(ride.id);
+    // Only shift focus to the newly accepted order if nothing is currently focused.
+    // If the driver is already working on Order A, focus stays on Order A so that
+    // active-delivery, the cancellation guard, advance(), and OTP all continue to
+    // operate on the order the screen was opened for.  The new order is still
+    // added to activeOrders and reachable from the Command Center.
+    setCurrentActiveOrderId((prev) => prev ?? ride.id);
     setIncomingRide(null);
     lastSeenOrderId.current = ride.id; // prevent re-trigger
 
@@ -913,7 +918,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             if (prev.some((o) => o.id === accepted.id)) return prev;   // dedup
             return [...prev, accepted].slice(0, MAX_ACTIVE_ORDERS);    // cap
           });
-          setCurrentActiveOrderId(ride.id);
+          // Only shift focus to the newly accepted order if nothing is currently focused.
+    // If the driver is already working on Order A, focus stays on Order A so that
+    // active-delivery, the cancellation guard, advance(), and OTP all continue to
+    // operate on the order the screen was opened for.  The new order is still
+    // added to activeOrders and reachable from the Command Center.
+    setCurrentActiveOrderId((prev) => prev ?? ride.id);
           setIncomingRide(null);
           lastSeenOrderId.current = ride.id;
 
