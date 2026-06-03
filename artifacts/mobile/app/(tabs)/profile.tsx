@@ -62,6 +62,7 @@ function Row({
   icon,
   iconColor,
   iconBg,
+  iconSet = "Feather",
   title,
   sub,
   right,
@@ -72,6 +73,7 @@ function Row({
   icon: string;
   iconColor?: string;
   iconBg?: string;
+  iconSet?: "Feather" | "MCIcons";
   title: string;
   sub?: string;
   right?: React.ReactNode;
@@ -81,6 +83,7 @@ function Row({
 }) {
   const colors = useColors();
   const Wrap: any = onPress ? TouchableOpacity : View;
+  const iconTint = iconColor ?? (destructive ? "#FF3B30" : "#0a0a0a");
   return (
     <>
       <Wrap
@@ -94,11 +97,11 @@ function Row({
             { backgroundColor: iconBg ?? "#f5f5f5" },
           ]}
         >
-          <Feather
-            name={icon as any}
-            size={15}
-            color={iconColor ?? (destructive ? "#FF3B30" : "#0a0a0a")}
-          />
+          {iconSet === "MCIcons" ? (
+            <MaterialCommunityIcons name={icon as any} size={16} color={iconTint} />
+          ) : (
+            <Feather name={icon as any} size={15} color={iconTint} />
+          )}
         </View>
         <View style={{ flex: 1 }}>
           <Text
@@ -363,7 +366,7 @@ export default function SettingsScreen() {
           </Text>
           <SectionCard>
             <Row
-              icon="volume-2"
+              icon="bell"
               iconBg="#e3f2fd"
               iconColor="#1976D2"
               title="Sound alerts"
@@ -374,13 +377,14 @@ export default function SettingsScreen() {
                   onValueChange={setSoundAlerts}
                   trackColor={{ true: "#22C55E", false: "#EF4444" }}
                   thumbColor="#fff"
-                  style={{ transform: [{ scaleX: 1.12 }, { scaleY: 1.12 }] }}
+                  style={{ transform: [{ scaleX: 1.3 }, { scaleY: 1.3 }] }}
                 />
               }
               divider
             />
             <Row
-              icon="smartphone"
+              icon="vibrate"
+              iconSet="MCIcons"
               iconBg="#f3e5f5"
               iconColor="#9C27B0"
               title="Vibration"
@@ -390,13 +394,14 @@ export default function SettingsScreen() {
                   onValueChange={setVibration}
                   trackColor={{ true: "#22C55E", false: "#EF4444" }}
                   thumbColor="#fff"
-                  style={{ transform: [{ scaleX: 1.12 }, { scaleY: 1.12 }] }}
+                  style={{ transform: [{ scaleX: 1.3 }, { scaleY: 1.3 }] }}
                 />
               }
               divider
             />
             <Row
-              icon="layers"
+              icon="picture-in-picture-top-right"
+              iconSet="MCIcons"
               iconBg="#e8f5e9"
               iconColor="#00C853"
               title="Allow Ride Overlay Popup"
@@ -417,7 +422,7 @@ export default function SettingsScreen() {
                   }}
                   trackColor={{ true: "#22C55E", false: "#EF4444" }}
                   thumbColor="#fff"
-                  style={{ transform: [{ scaleX: 1.12 }, { scaleY: 1.12 }] }}
+                  style={{ transform: [{ scaleX: 1.3 }, { scaleY: 1.3 }] }}
                 />
               }
             />
