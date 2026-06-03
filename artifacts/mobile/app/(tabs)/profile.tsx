@@ -155,12 +155,9 @@ export default function SettingsScreen() {
   const router = useRouter();
 
   const { isDark, setDark } = useTheme();
-  const [autoAccept, setAutoAccept] = useState(false);
   const [language, setLanguage] = useState<"English" | "हिन्दी" | "ಕನ್ನಡ">("English");
   const [soundAlerts, setSoundAlerts] = useState(true);
   const [vibration, setVibration] = useState(true);
-  const [longTrips, setLongTrips] = useState(true);
-  const [navVoice, setNavVoice] = useState(true);
   const darkMode = isDark;
   const setDarkMode = setDark;
 
@@ -336,22 +333,6 @@ export default function SettingsScreen() {
           </Text>
           <SectionCard>
             <Row
-              icon="zap"
-              iconBg="#fff3e0"
-              iconColor="#FF6F00"
-              title="Auto-accept requests"
-              sub="Accept rides within 15s automatically"
-              right={
-                <Switch
-                  value={autoAccept}
-                  onValueChange={setAutoAccept}
-                  trackColor={{ true: colors.primary, false: "#e5e5e5" }}
-                  thumbColor="#fff"
-                />
-              }
-              divider
-            />
-            <Row
               icon="volume-2"
               iconBg="#e3f2fd"
               iconColor="#1976D2"
@@ -376,38 +357,6 @@ export default function SettingsScreen() {
                 <Switch
                   value={vibration}
                   onValueChange={setVibration}
-                  trackColor={{ true: colors.primary, false: "#e5e5e5" }}
-                  thumbColor="#fff"
-                />
-              }
-              divider
-            />
-            <Row
-              icon="navigation"
-              iconBg="#f0fdf4"
-              iconColor="#00C853"
-              title="Voice navigation"
-              sub="Spoken turn-by-turn directions"
-              right={
-                <Switch
-                  value={navVoice}
-                  onValueChange={setNavVoice}
-                  trackColor={{ true: colors.primary, false: "#e5e5e5" }}
-                  thumbColor="#fff"
-                />
-              }
-              divider
-            />
-            <Row
-              icon="trending-up"
-              iconBg="#fce4ec"
-              iconColor="#E91E63"
-              title="Long trips only"
-              sub="Show requests over 5 km only"
-              right={
-                <Switch
-                  value={longTrips}
-                  onValueChange={setLongTrips}
                   trackColor={{ true: colors.primary, false: "#e5e5e5" }}
                   thumbColor="#fff"
                 />
@@ -504,27 +453,6 @@ export default function SettingsScreen() {
                 const next = order[(order.indexOf(language) + 1) % order.length];
                 setLanguage(next);
               }}
-              divider
-            />
-            <Row
-              icon="map-pin"
-              iconBg="#fce4ec"
-              iconColor="#E91E63"
-              title="Service area"
-              right={
-                <View style={styles.rowValue}>
-                  <Text style={[styles.rowValueText, { color: colors.mutedForeground }]}>
-                    Bengaluru
-                  </Text>
-                  <Feather name="chevron-right" size={15} color={colors.mutedForeground} />
-                </View>
-              }
-              onPress={() =>
-                infoAlert(
-                  "Service area",
-                  "You're currently operating in Bengaluru. Contact support to change your city.",
-                )
-              }
             />
           </SectionCard>
         </View>
