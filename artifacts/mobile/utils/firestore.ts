@@ -92,11 +92,27 @@ export async function getDriverCompletedTrips(
       }
     }
 
+    // Build pickup/drop display strings from the OrderDoc fields that actually
+    // exist: pickup + pickupSub? + pickupCity  /  drop + dropSub? + dropCity
+    const pickupMain = (data["pickup"]    as string | undefined) ?? "";
+    const pickupSub  = (data["pickupSub"] as string | undefined) ?? "";
+    const pickupCity = (data["pickupCity"] as string | undefined) ?? "";
+    const pickupAddress =
+      [pickupMain, pickupSub, pickupCity].filter(Boolean).join(", ")
+      || "Pickup location not available";
+
+    const dropMain = (data["drop"]    as string | undefined) ?? "";
+    const dropSub  = (data["dropSub"] as string | undefined) ?? "";
+    const dropCity = (data["dropCity"] as string | undefined) ?? "";
+    const dropAddress =
+      [dropMain, dropSub, dropCity].filter(Boolean).join(", ")
+      || "Drop location not available";
+
     return {
       orderId:       d.id,
       customerName:  (data["customerName"]  as string  | undefined) ?? "",
-      pickupAddress: (data["pickupAddress"] as string  | undefined) ?? "",
-      dropAddress:   (data["dropAddress"]   as string  | undefined) ?? "",
+      pickupAddress,
+      dropAddress,
       fareEstimate:  (data["fareEstimate"]  as number  | undefined) ?? 0,
       paymentMode:   (data["paymentMode"]   as string  | undefined) ?? "Cash",
       distanceKm:    (data["distanceKm"]    as number  | undefined),

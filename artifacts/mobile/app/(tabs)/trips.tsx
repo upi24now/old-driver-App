@@ -69,14 +69,14 @@ function TripCard({ trip }: { trip: CompletedTrip }) {
         <View style={styles.routeRow}>
           <View style={styles.routeDotGreen} />
           <Text style={[styles.routeText, { color: colors.foreground }]} numberOfLines={1}>
-            {typeof trip.pickupAddress === "string" && trip.pickupAddress.trim() ? trip.pickupAddress : "Pickup"}
+            {typeof trip.pickupAddress === "string" && trip.pickupAddress.trim() ? trip.pickupAddress : "Pickup location not available"}
           </Text>
         </View>
         <View style={[styles.routeConnector, { backgroundColor: colors.border }]} />
         <View style={styles.routeRow}>
           <View style={styles.routeDotRed} />
           <Text style={[styles.routeText, { color: colors.foreground }]} numberOfLines={1}>
-            {typeof trip.dropAddress === "string" && trip.dropAddress.trim() ? trip.dropAddress : "Drop"}
+            {typeof trip.dropAddress === "string" && trip.dropAddress.trim() ? trip.dropAddress : "Drop location not available"}
           </Text>
         </View>
       </View>
