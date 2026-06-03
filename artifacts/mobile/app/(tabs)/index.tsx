@@ -215,7 +215,6 @@ export default function HomeScreen() {
     subscriptionPlan,
     planExpiredNoOrders,
     planExpiredWithOrders,
-    expirePlanNow,
     todayEarnings,
     tripsToday,
     activeRide,
@@ -376,17 +375,6 @@ export default function HomeScreen() {
             </View>
           </TouchableOpacity>
         ) : null}
-
-        {/* DEV: Instant expiry button — never visible in production builds */}
-        {__DEV__ && !!expirePlanNow && (
-          <TouchableOpacity
-            style={styles.devExpireBtn}
-            onPress={expirePlanNow}
-            activeOpacity={0.75}
-          >
-            <Text style={styles.devExpireBtnText}>⚠ DEV: Expire Plan Now</Text>
-          </TouchableOpacity>
-        )}
 
         {/* ACTION CARDS — always visible; orange = availability, blue = command center */}
         <View style={styles.actionCardsRow}>
@@ -1150,19 +1138,6 @@ const styles = StyleSheet.create({
     fontWeight: "700" as const,
     color:      "#fff",
     letterSpacing: -0.1,
-  },
-  // DEV-only test button
-  devExpireBtn: {
-    backgroundColor:  "#1E1E1E",
-    borderRadius:     8,
-    paddingHorizontal: 14,
-    paddingVertical:  8,
-    alignItems:       "center" as const,
-  },
-  devExpireBtnText: {
-    fontSize:   12,
-    fontWeight: "600" as const,
-    color:      "#FCD34D",
   },
   // Frosted glass top-highlight (absolute overlay)
   actionCardGlass: {

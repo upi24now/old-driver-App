@@ -47,13 +47,13 @@ type Plan = {
   id: PlanId;
   name: string;
   price: number;
-  period: string;
+  period: string;       // human-readable: "/ 12 hours", "/ 7 days", "/ 30 days"
   pricePerDay: number;
-  badge?: string;
+  badge?: string;       // "Save 10%", "Long Validity" — shown inline
   badgeColor?: string;
-  highlight?: boolean;
-  features: string[];
-  description: string;
+  recommended?: boolean; // shows pink "Recommended" badge
+  subtitle: string;     // one-line beneath price
+  mainFeature: string;  // single feature line at bottom of card
 };
 
 const PLANS: Plan[] = [
@@ -61,145 +61,122 @@ const PLANS: Plan[] = [
     id: "daily",
     name: "Daily",
     price: 3,
-    period: "/ day",
+    period: "/ 12 hours",
     pricePerDay: 3,
-    description: "Try it for a day — perfect for occasional drivers",
-    features: [
-      "0% commission on every ride",
-      "Unlimited rides for 12 hours",
-      "Standard driver support",
-    ],
+    recommended: true,
+    subtitle: "Best for short working shifts",
+    mainFeature: "Unlimited rides for 12 hours",
   },
   {
     id: "weekly",
     name: "Weekly",
     price: 19,
-    period: "/ week",
+    period: "/ 7 days",
     pricePerDay: 2.71,
     badge: "Save 10%",
     badgeColor: "#1976D2",
-    description: "Most flexible for part-time drivers",
-    features: [
-      "0% commission on every ride",
-      "Unlimited rides for 7 days",
-      "Priority support · WhatsApp",
-      "Free in-app ride insurance",
-    ],
+    subtitle: "Best for part-time drivers",
+    mainFeature: "Unlimited rides for 7 days",
   },
   {
     id: "monthly",
     name: "Monthly",
     price: 100,
-    period: "/ month",
+    period: "/ 30 days",
     pricePerDay: 3.33,
-    badge: "Best Value",
-    badgeColor: "#00C853",
-    highlight: true,
-    description: "Best value for full-time drivers",
-    features: [
-      "0% commission on every ride",
-      "Unlimited rides for 30 days",
-      "Priority support · phone + WhatsApp",
-      "Free in-app ride insurance",
-      "Fuel rewards up to ₹500/month",
-      "Free vehicle health checkup",
-    ],
+    badge: "Long Validity",
+    badgeColor: "#059669",
+    subtitle: "Best for regular drivers",
+    mainFeature: "Unlimited rides for 30 days",
   },
 ];
+
+const PLAN_ACCENT = "#7C3AED"; // violet-600 — selected / recommended highlight
 
 function PlanCard({
   plan,
   selected,
   onSelect,
+  isCurrentPlan,
 }: {
   plan: Plan;
   selected: boolean;
   onSelect: () => void;
+  isCurrentPlan: boolean;
 }) {
-  const colors = useColors();
-  const highlight = plan.highlight;
-
   return (
     <TouchableOpacity
       onPress={onSelect}
-      activeOpacity={0.9}
+      activeOpacity={0.88}
       style={[
         styles.planCard,
         {
-          borderColor: selected ? colors.primary : highlight ? colors.primary : colors.border,
-          borderWidth: selected ? 2 : highlight ? 2 : 1,
-          backgroundColor: "#fff",
+          backgroundColor: selected ? "#FAF5FF" : "#fff",
+          borderColor: selected ? PLAN_ACCENT : "#E5E7EB",
+          borderWidth: selected ? 2 : 1.5,
         },
       ]}
     >
-      {highlight && (
-        <View style={[styles.recommendedTag, { backgroundColor: colors.primary }]}>
-          <Feather name="star" size={10} color="#fff" />
-          <Text style={styles.recommendedText}>RECOMMENDED</Text>
+      {/* Badges */}
+      {(isCurrentPlan || plan.recommended || plan.badge) && (
+        <View style={styles.badgeRow}>
+          {isCurrentPlan ? (
+            <View style={styles.currentBadge}>
+              <Feather name="check-circle" size={10} color="#fff" />
+              <Text style={styles.currentBadgeText}>Current Plan</Text>
+            </View>
+          ) : plan.recommended ? (
+            <View style={styles.recommendedBadge}>
+              <Text style={styles.recommendedBadgeText}>Recommended</Text>
+            </View>
+          ) : null}
+          {plan.badge && (
+            <View style={[styles.saveBadge, { backgroundColor: (plan.badgeColor ?? "#666") + "22" }]}>
+              <Text style={[styles.saveBadgeText, { color: plan.badgeColor ?? "#666" }]}>
+                {plan.badge}
+              </Text>
+            </View>
+          )}
         </View>
       )}
 
-      <View style={styles.planTopRow}>
-        <View style={{ flex: 1, gap: 4 }}>
-          <View style={styles.planNameRow}>
-            <Text style={[styles.planName, { color: colors.foreground }]}>
-              {plan.name}
+      {/* Main row: name + price + subtitle | radio */}
+      <View style={styles.planMainRow}>
+        <View style={{ flex: 1, gap: 3 }}>
+          <Text style={styles.planName}>{plan.name}</Text>
+          <View style={styles.priceRow}>
+            <Text style={[styles.priceCurrency, { color: selected ? PLAN_ACCENT : "#0A0A0A" }]}>
+              ₹
             </Text>
-            {plan.badge && (
-              <View style={[styles.savePill, { backgroundColor: (plan.badgeColor ?? colors.primary) + "1a" }]}>
-                <Text style={[styles.savePillText, { color: plan.badgeColor ?? colors.primary }]}>
-                  {plan.badge}
-                </Text>
-              </View>
-            )}
+            <Text style={[styles.priceValue, { color: selected ? PLAN_ACCENT : "#0A0A0A" }]}>
+              {plan.price}
+            </Text>
+            <Text style={styles.pricePeriod}>{plan.period}</Text>
           </View>
-          <Text style={[styles.planDescription, { color: colors.mutedForeground }]}>
-            {plan.description}
-          </Text>
+          <Text style={styles.planSubtitle}>{plan.subtitle}</Text>
         </View>
         <View
           style={[
             styles.radio,
             {
-              borderColor: selected ? colors.primary : colors.border,
-              backgroundColor: selected ? colors.primary : "transparent",
+              borderColor: selected ? PLAN_ACCENT : "#D1D5DB",
+              backgroundColor: selected ? PLAN_ACCENT : "transparent",
             },
           ]}
         >
-          {selected && <Feather name="check" size={13} color="#fff" />}
+          {selected && <Feather name="check" size={12} color="#fff" />}
         </View>
       </View>
 
-      <View style={styles.priceRow}>
-        <Text style={[styles.priceCurrency, { color: colors.foreground }]}>₹</Text>
-        <Text style={[styles.priceValue, { color: colors.foreground }]}>
-          {plan.price}
-        </Text>
-        <Text style={[styles.pricePeriod, { color: colors.mutedForeground }]}>
-          {plan.period}
-        </Text>
-        {plan.id !== "daily" && (
-          <View style={styles.perDayPill}>
-            <Text style={[styles.perDayText, { color: colors.mutedForeground }]}>
-              ≈ ₹{plan.pricePerDay.toFixed(2)} / day
-            </Text>
-          </View>
-        )}
-      </View>
+      {/* Divider */}
+      <View style={[styles.divider, { backgroundColor: selected ? "#DDD6FE" : "#F3F4F6" }]} />
 
-      <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-      <View style={styles.featuresList}>
-        {plan.features.map((f) => (
-          <View key={f} style={styles.featureRow}>
-            <View style={[styles.featureCheck, { backgroundColor: "#f0fdf4" }]}>
-              <Feather name="check" size={10} color={colors.primary} />
-            </View>
-            <Text style={[styles.featureText, { color: colors.foreground }]}>
-              {f}
-            </Text>
-          </View>
-        ))}
+      {/* Single feature line */}
+      <View style={styles.featureRow}>
+        <View style={[styles.featureCheck, { backgroundColor: selected ? "#EDE9FE" : "#F0FDF4" }]}>
+          <Feather name="check" size={10} color={selected ? PLAN_ACCENT : "#16A34A"} />
+        </View>
+        <Text style={styles.featureText}>{plan.mainFeature}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -224,7 +201,8 @@ export default function SubscriptionScreen() {
     visible: false, planName: "", expiryText: "",
   });
 
-  const selectedPlan = PLANS.find((p) => p.id === selected)!;
+  const selectedPlan          = PLANS.find((p) => p.id === selected)!;
+  const isSelectedCurrentPlan = subscriptionPlan === selected && subscriptionActive;
 
   const PLAN_LABEL: Record<string, string> = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
   const MS_PER_DAY  = 86_400_000;
@@ -463,13 +441,14 @@ export default function SubscriptionScreen() {
         </View>
 
         {/* PLAN CARDS */}
-        <View style={{ gap: 12 }}>
+        <View style={{ gap: 14 }}>
           {PLANS.map((p) => (
             <PlanCard
               key={p.id}
               plan={p}
               selected={selected === p.id}
               onSelect={() => setSelected(p.id)}
+              isCurrentPlan={subscriptionPlan === p.id && subscriptionActive}
             />
           ))}
         </View>
@@ -550,14 +529,22 @@ export default function SubscriptionScreen() {
         <TouchableOpacity
           style={[
             styles.cta,
-            { backgroundColor: colors.primary, opacity: isActivating ? 0.6 : 1 },
+            {
+              backgroundColor: isSelectedCurrentPlan ? "#9CA3AF" : colors.primary,
+              opacity: isActivating ? 0.6 : 1,
+            },
           ]}
           activeOpacity={0.85}
           onPress={handleActivate}
-          disabled={isActivating}
+          disabled={isActivating || isSelectedCurrentPlan}
         >
           {isActivating ? (
             <ActivityIndicator size="small" color="#fff" />
+          ) : isSelectedCurrentPlan ? (
+            <>
+              <Feather name="check-circle" size={16} color="#fff" />
+              <Text style={styles.ctaText}>Current Plan Active</Text>
+            </>
           ) : (
             <>
               <Text style={styles.ctaText}>Activate Plan</Text>
@@ -729,35 +716,53 @@ const styles = StyleSheet.create({
   sectionSub: { fontSize: 12, fontWeight: "500" },
 
   planCard: {
-    borderRadius: 18,
+    borderRadius: 22,
     padding: 16,
     gap: 12,
-    position: "relative",
+    shadowColor: "#000",
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
-  recommendedTag: {
-    position: "absolute",
-    top: -10,
-    left: 16,
+
+  // Badge row — floats at the top of the card
+  badgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    flexWrap: "wrap",
+  },
+  currentBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
+    backgroundColor: "#16A34A",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 7,
   },
-  recommendedText: { color: "#fff", fontSize: 9, fontWeight: "800", letterSpacing: 0.5 },
-
-  planTopRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
-  planNameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  planName: { fontSize: 17, fontWeight: "800", letterSpacing: -0.3 },
-  planDescription: { fontSize: 12, fontWeight: "500", lineHeight: 16 },
-
-  savePill: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 6,
+  currentBadgeText: { color: "#fff", fontSize: 10, fontWeight: "800", letterSpacing: 0.2 },
+  recommendedBadge: {
+    backgroundColor: "#FDF2F8",
+    borderWidth: 1,
+    borderColor: "#F9A8D4",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 7,
   },
-  savePillText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.3 },
+  recommendedBadgeText: { color: "#BE185D", fontSize: 10, fontWeight: "800", letterSpacing: 0.2 },
+  saveBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 7,
+  },
+  saveBadgeText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.2 },
+
+  // Main content row
+  planMainRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  planName: { fontSize: 16, fontWeight: "800", color: "#0A0A0A", letterSpacing: -0.2 },
+  planSubtitle: { fontSize: 11.5, fontWeight: "500", color: "#6B7280", marginTop: 2 },
 
   radio: {
     width: 24,
@@ -766,39 +771,16 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     alignItems: "center",
     justifyContent: "center",
+    marginTop: 4,
   },
 
-  priceRow: { flexDirection: "row", alignItems: "flex-end", gap: 3 },
-  priceCurrency: {
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 5,
-  },
-  priceValue: {
-    fontSize: 36,
-    fontWeight: "800",
-    letterSpacing: -1.5,
-    lineHeight: 40,
-  },
-  pricePeriod: {
-    fontSize: 13,
-    fontWeight: "600",
-    marginBottom: 6,
-    marginLeft: 3,
-  },
-  perDayPill: {
-    marginLeft: "auto",
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 7,
-    backgroundColor: "#f5f5f5",
-    marginBottom: 4,
-  },
-  perDayText: { fontSize: 10, fontWeight: "700" },
+  priceRow: { flexDirection: "row", alignItems: "flex-end", gap: 2, marginTop: 4 },
+  priceCurrency: { fontSize: 16, fontWeight: "700", marginBottom: 4 },
+  priceValue: { fontSize: 32, fontWeight: "800", letterSpacing: -1.5, lineHeight: 38 },
+  pricePeriod: { fontSize: 12, fontWeight: "600", color: "#9CA3AF", marginBottom: 5, marginLeft: 2 },
 
   divider: { height: 1 },
 
-  featuresList: { gap: 8 },
   featureRow: { flexDirection: "row", alignItems: "center", gap: 9 },
   featureCheck: {
     width: 18,
@@ -807,7 +789,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  featureText: { flex: 1, fontSize: 12.5, fontWeight: "600" },
+  featureText: { flex: 1, fontSize: 12.5, fontWeight: "600", color: "#374151" },
 
   paymentCard: {
     backgroundColor: "#fff",

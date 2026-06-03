@@ -150,9 +150,6 @@ type DriverState = {
   planExpiredNoOrders:   boolean;  // plan was active, now expired, zero active orders
   planExpiredWithOrders: boolean;  // plan was active, now expired, ≥1 active order remains
 
-  // DEV only — instantly expires the current plan for testing. null in production.
-  expirePlanNow: (() => void) | null;
-
   incomingRide: IncomingRide | null;
   rideHistory:  ActiveRide[];
 
@@ -579,17 +576,6 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // ─── DEV: Instant plan expiry helper ─────────────────────────────────────
-  // Sets subscriptionExpiresAt 1 second into the past so subscriptionActive
-  // immediately becomes false.  Only compiled in __DEV__ builds — never runs
-  // in production.
-  const expirePlanNow = __DEV__
-    ? (): void => {
-        setSubExp(Date.now() - 1_000);
-        setNowTick(Date.now()); // force subscriptionActive recompute
-      }
-    : null;
-
   // ─── Ride actions ─────────────────────────────────────────────────────────
   const acceptRide = async (): Promise<AcceptOrderResult> => {
     const ride = incomingRide;
@@ -958,7 +944,6 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         subscriptionActive,
         planExpiredNoOrders,
         planExpiredWithOrders,
-        expirePlanNow,
         incomingRide,
         rideHistory,
         walletBalance,
