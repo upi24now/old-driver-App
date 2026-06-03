@@ -125,6 +125,8 @@ type DriverState = {
   isAuthenticated:  boolean;
   profile:          Profile | null;
   vehicle:          Vehicle | null;
+  verificationStatus: string | null;  // "pending" | "verified" | "rejected" | null
+  documentsSubmitted: boolean;
 
   isOnline:         boolean;
 
@@ -262,6 +264,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const [phone,       setPhoneState]  = useState<string | null>(null);
   const [profile,     setProfileState]= useState<Profile | null>(null);
   const [vehicle,     setVehicleState]= useState<Vehicle | null>(null);
+  const [verificationStatus, setVerifStatus]  = useState<string | null>(null);
+  const [documentsSubmitted, setDocsSubmitted] = useState<boolean>(false);
 
   const [isOnline, setOnlineState] = useState(false);
 
@@ -346,6 +350,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
               setTodayEarnings(sameDay ? (driverDoc.todayEarnings ?? 0) : 0);
               setTripsToday   (sameDay ? (driverDoc.tripsToday    ?? 0) : 0);
             }
+            // Document verification status
+            setVerifStatus(driverDoc.verificationStatus ?? null);
+            setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
           }
           // Restore up to 3 active orders if driver app was restarted mid-delivery.
           // getActiveOrdersForDriver returns newest-first, capped at MAX_ACTIVE_ORDERS.
@@ -539,6 +546,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     setTodayEarnings(0);
     setTripsToday(0);
     setTxns([]);
+    setVerifStatus(null);
+    setDocsSubmitted(false);
     lastSeenOrderId.current = null;
   };
 
@@ -979,6 +988,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         isAuthenticated,
         profile,
         vehicle,
+        verificationStatus,
+        documentsSubmitted,
         isOnline,
         // Multi-order foundation
         activeOrders,

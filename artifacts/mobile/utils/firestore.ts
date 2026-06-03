@@ -32,6 +32,10 @@ export type DriverDoc = {
   subscriptionExpiresAt?: number;
   createdAt:              unknown;
 
+  // ── Documents ─────────────────────────────────────────────────────────────
+  documentsSubmitted?:   boolean;  // true after submitDriverDocuments()
+  verificationStatus?:   string;   // "pending" | "verified" | "rejected"
+
   // ── Wallet ────────────────────────────────────────────────────────────────
   walletBalance?:    number;  // running total, authoritative balance
   lifetimeEarnings?: number;  // cumulative all-time earnings

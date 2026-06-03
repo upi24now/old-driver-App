@@ -138,6 +138,11 @@ export default function SettingsScreen() {
     subscriptionPlan,
     subscriptionExpiresAt,
     subscriptionActive,
+    profile,
+    vehicle,
+    phone,
+    verificationStatus,
+    documentsSubmitted,
   } = useDriver();
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -147,21 +152,35 @@ export default function SettingsScreen() {
   const [soundAlerts, setSoundAlerts] = useState(true);
   const [vibration, setVibration] = useState(true);
 
-  // ── Document verification mock (UI model only — replace with real data) ──
-  const verifiedDocCount: number = 5;
-  const totalDocCount: number = 6;
+  // ── Driver identity derived from context ──────────────────────────────────
+  const displayName    = profile?.name?.trim() || "Driver";
+  const displayPhone   = phone
+    ? `+91 ${phone.slice(0, 5)} ${phone.slice(5)}`
+    : "Phone not available";
+  const displayVehicle = vehicle?.name?.trim() || "Vehicle not added";
+  const avatarInitials = displayName === "Driver"
+    ? "DR"
+    : displayName.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
+
+  // ── Document verification status from DriverContext ────────────────────────
   const docSubtitle =
-    verifiedDocCount === totalDocCount
-      ? "All Documents Verified"
-      : verifiedDocCount === 0
-        ? "Documents Required"
-        : `${verifiedDocCount}/${totalDocCount} Verified`;
+    verificationStatus === "verified"  ? "All Verified" :
+    verificationStatus === "rejected"  ? "Action Required" :
+    verificationStatus === "pending"   ? "Pending Review" :
+    documentsSubmitted                 ? "Under Review" :
+                                         "Documents Required";
   const docSubColor =
-    verifiedDocCount === totalDocCount
-      ? "#00C853"
-      : verifiedDocCount === 0
-        ? "#EF4444"
-        : "#FF8F00";
+    verificationStatus === "verified"  ? "#00C853" :
+    verificationStatus === "rejected"  ? "#EF4444" :
+    verificationStatus === "pending"   ? "#FF8F00" :
+    documentsSubmitted                 ? "#FF8F00" :
+                                         "#EF4444";
+  const docBadgeBg =
+    verificationStatus === "verified"  ? "#f0fdf4" :
+    verificationStatus === "rejected"  ? "#ffebee" :
+    verificationStatus === "pending"   ? "#fff8e1" :
+    documentsSubmitted                 ? "#fff8e1" :
+                                         "#ffebee";
 
   // ── Plan data from DriverContext ──
   const PLAN_LABEL: Record<string, string>  = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
@@ -248,22 +267,15 @@ export default function SettingsScreen() {
           <View style={styles.profileRow}>
             <View style={styles.profileAvatarWrap}>
               <View style={styles.profileAvatar}>
-                <Text style={styles.profileAvatarText}>AK</Text>
+                <Text style={styles.profileAvatarText}>{avatarInitials}</Text>
               </View>
             </View>
             <View style={{ flex: 1, gap: 2 }}>
-              <Text style={styles.profileName}>Arjun Kumar</Text>
-              <Text style={styles.profilePhone}>+91 98765 43210</Text>
-              <View style={styles.profileMetaRow}>
-                <Feather name="star" size={11} color="#FFD166" />
-                <Text style={styles.profileMetaText}>4.92</Text>
-                <View style={styles.metaDotDark} />
-                <Feather name="package" size={11} color="rgba(255,255,255,0.72)" />
-                <Text style={styles.profileMetaText}>1,284 Deliveries</Text>
-              </View>
+              <Text style={styles.profileName}>{displayName}</Text>
+              <Text style={styles.profilePhone}>{displayPhone}</Text>
               <View style={styles.profileVehicleRow}>
                 <MaterialCommunityIcons name="motorbike" size={13} color="rgba(255,255,255,0.5)" />
-                <Text style={styles.profileVehicleText}>KA 05 MN 4827</Text>
+                <Text style={styles.profileVehicleText}>{displayVehicle}</Text>
               </View>
             </View>
           </View>
@@ -358,7 +370,7 @@ export default function SettingsScreen() {
               title="Driver Documents"
               right={
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <View style={[styles.docStatusBadge, { backgroundColor: verifiedDocCount === totalDocCount ? "#f0fdf4" : verifiedDocCount === 0 ? "#ffebee" : "#fff8e1" }]}>
+                  <View style={[styles.docStatusBadge, { backgroundColor: docBadgeBg }]}>
                     <Text style={[styles.docStatusText, { color: docSubColor }]}>{docSubtitle}</Text>
                   </View>
                   <Feather name="chevron-right" size={15} color={colors.mutedForeground} />
@@ -450,7 +462,7 @@ export default function SettingsScreen() {
               iconBg="#f0fdf4"
               iconColor="#00C853"
               title="Wallet & Payouts"
-              sub="HDFC Bank ••2841"
+              sub="View balance & withdrawals"
               onPress={() => router.push("/wallet")}
               divider
             />
