@@ -102,7 +102,7 @@ export type Txn = {
   date:     string;
 };
 
-const PLAN_DAYS:  Record<SubPlan, number> = { daily: 1,  weekly: 7,   monthly: 30  };
+const PLAN_DAYS:  Record<SubPlan, number> = { daily: 0.5, weekly: 7,   monthly: 30  };
 const PLAN_PRICE: Record<SubPlan, number> = { daily: 3,  weekly: 19,  monthly: 100 };
 
 // Phase H-3: seed transactions will be replaced by Firestore reads.
