@@ -508,6 +508,85 @@ export async function creditOrderEarning(
   });
 }
 
+// Locked balance that can never be withdrawn
+const WALLET_LOCK_AMOUNT = 50;
+
+/**
+ * Create a UPI withdrawal request.
+ *
+ * Business rules:
+ *   • locked balance = ₹50 — driver can never withdraw that amount
+ *   • max withdrawable = walletBalance - 50
+ *   • amount must be > 0 and ≤ max withdrawable
+ *
+ * Firestore writes (all in one transaction):
+ *   1. drivers/{uid}                            — debit walletBalance
+ *   2. withdrawal_requests/{autoId}             — request document
+ *   3. driver_transactions/{autoId}_withdraw    — matching ledger entry
+ *
+ * The auto-ID is generated locally via doc(collection(...)) so it can be
+ * referenced inside the same transaction without needing addDoc.
+ *
+ * Throws with a human-readable `.message` on validation failure so callers
+ * can surface the reason to the driver.
+ */
+export async function requestWithdrawal(
+  driverUid: string,
+  amount:    number,
+  upiId:     string,
+): Promise<void> {
+  const withdrawalRef = doc(collection(db, "withdrawal_requests")); // auto-ID
+  const withdrawalId  = withdrawalRef.id;
+  const txnRef        = doc(db, "driver_transactions", `${withdrawalId}_withdraw`);
+  const driverRef     = doc(db, "drivers", driverUid);
+
+  await runTransaction(db, async (tx) => {
+    const driverSnap = await tx.get(driverRef);
+    const d          = driverSnap.exists() ? (driverSnap.data() as Record<string, unknown>) : {};
+    const balance    = (d["walletBalance"] as number | undefined) ?? 0;
+    const maxWithdrawable = balance - WALLET_LOCK_AMOUNT;
+
+    if (amount <= 0) {
+      throw new Error("Withdrawal amount must be greater than ₹0");
+    }
+    if (maxWithdrawable <= 0) {
+      throw new Error("Insufficient balance — ₹50 minimum must remain in wallet");
+    }
+    if (amount > maxWithdrawable) {
+      throw new Error(
+        `Maximum withdrawable is ₹${maxWithdrawable.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`,
+      );
+    }
+
+    // Debit wallet immediately
+    tx.set(
+      driverRef,
+      { walletBalance: balance - amount, updatedAt: serverTimestamp() },
+      { merge: true },
+    );
+
+    // Withdrawal request document
+    tx.set(withdrawalRef, {
+      driverUid,
+      amount,
+      upiId,
+      status:      "pending",
+      requestedAt: serverTimestamp(),
+      createdAt:   serverTimestamp(),
+    });
+
+    // Ledger entry
+    tx.set(txnRef, {
+      driverUid,
+      type:   "withdrawal",
+      amount: -amount,
+      status: "pending",
+      note:   "UPI withdrawal request",
+      createdAt: serverTimestamp(),
+    });
+  });
+}
+
 /**
  * Driver-initiated pre-pickup cancellation.
  *

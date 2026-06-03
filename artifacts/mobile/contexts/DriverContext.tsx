@@ -29,6 +29,7 @@ import {
   listenToActiveOrder,
   acceptOrder,
   rejectOrder,
+  requestWithdrawal as fsRequestWithdrawal,
   type OrderDoc,
   type OrderStatus,
   type AcceptOrderResult,
@@ -193,7 +194,7 @@ type DriverState = {
   // a false alert on the active-delivery screen for Order B.
   orderRemovalReasons: Record<string, RemovalReason>;
 
-  withdraw: (amount: number) => boolean;
+  requestWithdrawal: (amount: number, upiId: string) => Promise<{ ok: boolean; reason?: string }>;
 
   overlayPermissionGranted: boolean;
   requestOverlayPermission: () => Promise<{ ok: boolean; reason?: string }>;
@@ -931,23 +932,21 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const withdraw = (amount: number) => {
-    if (amount <= 0 || amount > walletBalance) return false;
-    setBalance((b) => b - amount);
-    setTxns((t) => [
-      {
-        id:       `tx${Date.now()}`,
-        type:     "withdraw",
-        title:    "Withdrawal to HDFC ••2841",
-        subtitle: "Instant transfer",
-        amount:   -amount,
-        status:   "completed",
-        time:     new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
-        date:     "Today",
-      },
-      ...t,
-    ]);
-    return true;
+  const requestWithdrawal = async (
+    amount: number,
+    upiId:  string,
+  ): Promise<{ ok: boolean; reason?: string }> => {
+    if (!driverUid) return { ok: false, reason: "Not logged in" };
+    try {
+      await fsRequestWithdrawal(driverUid, amount, upiId);
+      // Optimistic debit already applied by Firestore transaction —
+      // refresh to get the server-confirmed balance.
+      await refreshWallet();
+      return { ok: true };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : "Withdrawal failed";
+      return { ok: false, reason };
+    }
   };
 
   // ─── Overlay permission ───────────────────────────────────────────────────
@@ -1018,7 +1017,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         endRide,
         focusOrder,
         orderRemovalReasons,
-        withdraw,
+        requestWithdrawal,
         overlayPermissionGranted,
         requestOverlayPermission,
         setOverlayPermission: setOverlayPermissionGranted,
