@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import { callSupport } from "@/utils/support";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -564,7 +565,12 @@ export default function RideRequestScreen() {
                 </Text>
               )}
             </View>
-            <UrgencyRing progress={ring} seconds={seconds} urgent={urgent} />
+            <View style={{ alignItems: "center", gap: 6 }}>
+              <TouchableOpacity onPress={callSupport} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <Feather name="help-circle" size={16} color="rgba(0,0,0,0.35)" />
+              </TouchableOpacity>
+              <UrgencyRing progress={ring} seconds={seconds} urgent={urgent} />
+            </View>
           </View>
 
           {/* RIDER */}

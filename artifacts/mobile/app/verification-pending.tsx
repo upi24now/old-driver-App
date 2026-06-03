@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import { callSupport } from "@/utils/support";
 import { useEffect, useRef } from "react";
 import {
   Alert,
@@ -205,7 +206,7 @@ export default function VerificationPendingScreen() {
           onPress={() =>
             Alert.alert("Application options", undefined, [
               { text: "Refresh status" },
-              { text: "Contact support" },
+              { text: "Contact support", onPress: callSupport },
               { text: "Cancel", style: "cancel" },
             ])
           }
@@ -349,12 +350,7 @@ export default function VerificationPendingScreen() {
         <TouchableOpacity
           style={[styles.supportRow, { borderColor: colors.border }]}
           activeOpacity={0.7}
-          onPress={() =>
-            Alert.alert(
-              "Contact support",
-              "Our team is available 24×7 at support@driver.app or +91 80000 00000.",
-            )
-          }
+          onPress={callSupport}
         >
           <View
             style={[styles.supportIcon, { backgroundColor: "#fff5e6" }]}

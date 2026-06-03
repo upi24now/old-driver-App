@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
+import { callSupport } from "@/utils/support";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const LOCKED_BALANCE = 50;
@@ -168,6 +169,7 @@ export default function WalletScreen() {
         <TouchableOpacity
           style={[styles.iconBtn, { backgroundColor: "#f5f5f5" }]}
           activeOpacity={0.7}
+          onPress={callSupport}
         >
           <Feather name="help-circle" size={18} color="#0a0a0a" />
         </TouchableOpacity>

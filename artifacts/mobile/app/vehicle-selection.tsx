@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import { callSupport } from "@/utils/support";
 import { useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -334,7 +335,7 @@ export default function VehicleSelectionScreen() {
           <Text style={styles.headerSub}>Step 2 of 3</Text>
         </View>
 
-        <TouchableOpacity style={styles.helpBtn} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.helpBtn} activeOpacity={0.7} onPress={callSupport}>
           <Feather name="help-circle" size={15} color={PINK} />
           <Text style={styles.helpText}>Help</Text>
         </TouchableOpacity>

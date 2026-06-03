@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import { callSupport } from "@/utils/support";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -351,6 +352,7 @@ export default function SubscriptionScreen() {
         <TouchableOpacity
           style={[styles.iconBtn, { backgroundColor: "#f5f5f5" }]}
           activeOpacity={0.7}
+          onPress={callSupport}
         >
           <Feather name="help-circle" size={18} color="#0a0a0a" />
         </TouchableOpacity>

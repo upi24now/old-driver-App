@@ -21,6 +21,7 @@ import { useDriver } from "@/contexts/DriverContext";
 import { useEffect, useRef, useState } from "react";
 import { driverCancelOrder, updateOrderStage, type DeliveryStage } from "@/utils/firestore";
 import { completeDelivery } from "@/utils/delivery-api";
+import { callSupport } from "@/utils/support";
 import {
   Alert,
   Animated,
@@ -846,7 +847,10 @@ export default function ActiveDeliveryScreen() {
           {!isDelivered && <LiveDot color="#fff" size={10} />}
           <Text style={st.topBarTitle} numberOfLines={1}>{meta.topLabel}</Text>
         </View>
-        <View style={st.topBarRight}>
+        <View style={[st.topBarRight, { flexDirection: "row", alignItems: "center", gap: 12 }]}>
+          <TouchableOpacity onPress={callSupport} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Feather name="help-circle" size={18} color="rgba(255,255,255,0.85)" />
+          </TouchableOpacity>
           {!isDelivered && (
             <ElapsedTimer
               startSec={activeRide?.acceptedAt

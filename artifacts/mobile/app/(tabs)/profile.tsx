@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
+import { callSupport } from "@/utils/support";
 
 function confirmAction(
   title: string,
@@ -503,29 +504,8 @@ export default function SettingsScreen() {
             <Row
               icon="help-circle"
               title="Help & support"
-              onPress={() =>
-                infoAlert(
-                  "Help & support",
-                  "Our team is available 24×7 at support@driver.app or +91 80000 00000.",
-                )
-              }
-              divider
-            />
-            <Row
-              icon="alert-triangle"
-              iconBg="#ffebee"
-              iconColor="#FF3B30"
-              title="Emergency SOS"
-              sub="Quick contact for safety"
-              onPress={() =>
-                confirmAction(
-                  "Emergency SOS",
-                  "This will alert police, your emergency contact, and our safety team.",
-                  "Send alert",
-                  () => infoAlert("Alert sent", "Help is on the way."),
-                  true,
-                )
-              }
+              sub="Tap to call our support team"
+              onPress={callSupport}
               divider
             />
             <Row
