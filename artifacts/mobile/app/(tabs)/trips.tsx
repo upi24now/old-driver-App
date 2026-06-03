@@ -32,7 +32,8 @@ function formatDeliveredAt(ms: number | null): string {
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" }) + `, ${time}`;
 }
 
-function fmt(n: number): string {
+function fmt(n: number | undefined | null): string {
+  if (typeof n !== "number" || !isFinite(n)) return "0";
   return n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
 }
 
@@ -50,10 +51,10 @@ function TripCard({ trip }: { trip: CompletedTrip }) {
           </View>
           <View>
             <Text style={[styles.customerName, { color: colors.foreground }]} numberOfLines={1}>
-              {trip.customerName || "Customer"}
+              {typeof trip.customerName === "string" && trip.customerName.trim() ? trip.customerName : "Customer"}
             </Text>
             <Text style={[styles.deliveredAt, { color: colors.mutedForeground }]}>
-              {formatDeliveredAt(trip.deliveredAt)}
+              {formatDeliveredAt(typeof trip.deliveredAt === "number" ? trip.deliveredAt : null)}
             </Text>
           </View>
         </View>
@@ -68,14 +69,14 @@ function TripCard({ trip }: { trip: CompletedTrip }) {
         <View style={styles.routeRow}>
           <View style={styles.routeDotGreen} />
           <Text style={[styles.routeText, { color: colors.foreground }]} numberOfLines={1}>
-            {trip.pickupAddress || "Pickup"}
+            {typeof trip.pickupAddress === "string" && trip.pickupAddress.trim() ? trip.pickupAddress : "Pickup"}
           </Text>
         </View>
         <View style={[styles.routeConnector, { backgroundColor: colors.border }]} />
         <View style={styles.routeRow}>
           <View style={styles.routeDotRed} />
           <Text style={[styles.routeText, { color: colors.foreground }]} numberOfLines={1}>
-            {trip.dropAddress || "Drop"}
+            {typeof trip.dropAddress === "string" && trip.dropAddress.trim() ? trip.dropAddress : "Drop"}
           </Text>
         </View>
       </View>
@@ -83,18 +84,16 @@ function TripCard({ trip }: { trip: CompletedTrip }) {
       {/* Footer row: fare + payment mode + distance */}
       <View style={styles.cardFooter}>
         <Text style={[styles.fare, { color: colors.foreground }]}>
-          ₹{fmt(trip.fareEstimate)}
+          ₹{fmt(typeof trip.fareEstimate === "number" ? trip.fareEstimate : 0)}
         </Text>
         <View style={styles.footerMeta}>
-          {trip.distanceKm != null && (
-            <>
-              <View style={[styles.metaPill, { backgroundColor: "#f5f5f5" }]}>
-                <Feather name="map" size={10} color={colors.mutedForeground} />
-                <Text style={[styles.metaPillText, { color: colors.mutedForeground }]}>
-                  {trip.distanceKm.toFixed(1)} km
-                </Text>
-              </View>
-            </>
+          {typeof trip.distanceKm === "number" && isFinite(trip.distanceKm) && (
+            <View style={[styles.metaPill, { backgroundColor: "#f5f5f5" }]}>
+              <Feather name="map" size={10} color={colors.mutedForeground} />
+              <Text style={[styles.metaPillText, { color: colors.mutedForeground }]}>
+                {trip.distanceKm.toFixed(1)} km
+              </Text>
+            </View>
           )}
           <View style={[
             styles.metaPill,
@@ -109,7 +108,7 @@ function TripCard({ trip }: { trip: CompletedTrip }) {
               styles.metaPillText,
               { color: trip.paymentMode === "Cash" ? "#b75d00" : "#1976D2" },
             ]}>
-              {trip.paymentMode || "Cash"}
+              {typeof trip.paymentMode === "string" && trip.paymentMode.trim() ? trip.paymentMode : "Cash"}
             </Text>
           </View>
         </View>
