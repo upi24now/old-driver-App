@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "815076390745",
+    "project_id": "bike-1-wap",
+    "storage_bucket": "bike-1-wap.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:815076390745:android:2af7ce53d29eea965fbe48",
+        "android_client_info": {
+          "package_name": "in.bikecourierservice.driver"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB5JYnL2Rz_2y1N7yq1KlAxEr8FegSUMC0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
