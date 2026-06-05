@@ -54,7 +54,7 @@ router.post("/dev/test-fcm", devGuard, async (req, res) => {
       android: {
         priority: "high",
         notification: {
-          channelId: "incoming_orders",
+          channelId: "incoming_orders_v2",
           sound: "ringtone",
         },
       },
