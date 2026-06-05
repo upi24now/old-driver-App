@@ -14,7 +14,7 @@
 
 import type * as NotificationsType from "expo-notifications";
 import { useEffect, useRef } from "react";
-import { Alert, Platform } from "react-native";
+import { Alert, Linking, Platform } from "react-native";
 
 import {
   clearBadge,
@@ -47,9 +47,15 @@ export function useNotifications(): void {
         if (!permissionGranted && !permissionAlertShown.current) {
           permissionAlertShown.current = true;
           Alert.alert(
-            "Notifications Disabled",
-            "Please enable notifications to receive delivery requests.",
-            [{ text: "OK" }],
+            "Enable Notifications",
+            "Order alerts are disabled. Please enable notifications to receive delivery requests.",
+            [
+              {
+                text: "Open Settings",
+                onPress: () => Linking.openSettings().catch(() => {}),
+              },
+              { text: "Later", style: "cancel" },
+            ],
             { cancelable: true }
           );
         }
