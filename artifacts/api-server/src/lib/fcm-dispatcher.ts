@@ -59,8 +59,19 @@ export async function startFcmDispatcher(): Promise<void> {
           continue;
         }
 
+        const orderPayload: OrderPayload = {
+          customer:    typeof data["customerName"]  === "string" ? data["customerName"]  : "",
+          pickup:      typeof data["pickup"]        === "string" ? data["pickup"]        : "",
+          pickupCity:  typeof data["pickupCity"]    === "string" ? data["pickupCity"]    : "",
+          drop:        typeof data["drop"]          === "string" ? data["drop"]          : "",
+          dropCity:    typeof data["dropCity"]      === "string" ? data["dropCity"]      : "",
+          earning:     typeof data["fareEstimate"]  === "number" ? String(data["fareEstimate"]) : "0",
+          distanceKm:  typeof data["distanceKm"]   === "number" ? String(data["distanceKm"])   : "0",
+          durationMin: typeof data["durationMin"]  === "number" ? String(data["durationMin"])  : "0",
+        };
+
         // Fire-and-forget per order; errors are logged individually
-        void sendOrderFcm(db, orderId, driverUid);
+        void sendOrderFcm(db, orderId, driverUid, orderPayload);
       }
     },
     (err) => {
@@ -71,10 +82,22 @@ export async function startFcmDispatcher(): Promise<void> {
   logger.info("[FCM dispatcher] Listening for dispatched orders");
 }
 
+type OrderPayload = {
+  customer:    string;
+  pickup:      string;
+  pickupCity:  string;
+  drop:        string;
+  dropCity:    string;
+  earning:     string;
+  distanceKm:  string;
+  durationMin: string;
+};
+
 async function sendOrderFcm(
   db: FirebaseFirestore.Firestore,
   orderId: string,
   driverUid: string,
+  order: OrderPayload,
 ): Promise<void> {
   // ── 1. Read driver fcmToken ───────────────────────────────────────────────
   let fcmToken: string | null = null;
@@ -103,9 +126,17 @@ async function sendOrderFcm(
         body:  "You have a new delivery request",
       },
       data: {
-        type:      "incoming_order",
+        type:        "incoming_order",
         orderId,
         driverUid,
+        customer:    order.customer,
+        pickup:      order.pickup,
+        pickupCity:  order.pickupCity,
+        drop:        order.drop,
+        dropCity:    order.dropCity,
+        earning:     order.earning,
+        distanceKm:  order.distanceKm,
+        durationMin: order.durationMin,
       },
       android: {
         priority: "high",

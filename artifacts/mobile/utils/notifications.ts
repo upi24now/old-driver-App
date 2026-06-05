@@ -378,14 +378,35 @@ export function handleNotificationResponse(
 
   } else {
     // ── Plain notification tap ─────────────────────────────────────────────
-    // Opens the in-app slider order UI so the driver can review & swipe.
-    const dest = screen ?? "/ride-request";
-    console.log("[Notifications] → Default tap →", dest);
+    // Navigate to ride-request, passing orderId + order fields so the screen
+    // can fetch the order directly if incomingRide is not yet set (background
+    // or killed-app scenario — Firestore listener may not have fired yet).
+    const orderId    = (data?.orderId    as string | undefined) ?? "";
+    const customer   = (data?.customer   as string | undefined) ?? "";
+    const pickup     = (data?.pickup     as string | undefined) ?? "";
+    const pickupCity = (data?.pickupCity as string | undefined) ?? "";
+    const drop       = (data?.drop       as string | undefined) ?? "";
+    const dropCity   = (data?.dropCity   as string | undefined) ?? "";
+    const earning    = (data?.earning    as string | undefined) ?? "";
+    const distanceKm = (data?.distanceKm as string | undefined) ?? "";
+    const durationMin = (data?.durationMin as string | undefined) ?? "";
+
+    console.log("[Notifications] → Default tap, orderId:", orderId || "(none)");
     setTimeout(() => {
       try {
-        router.push(dest as Parameters<typeof router.push>[0]);
+        if (orderId) {
+          router.push({
+            pathname: "/ride-request",
+            params: {
+              orderId, customer, pickup, pickupCity,
+              drop, dropCity, earning, distanceKm, durationMin,
+            },
+          });
+        } else {
+          router.push(screen ? (screen as Parameters<typeof router.push>[0]) : "/ride-request");
+        }
       } catch (err) {
-        console.error("[Notifications] Navigate (tap) failed:", dest, err);
+        console.error("[Notifications] Navigate (tap) failed:", err);
       }
     }, 600);
   }

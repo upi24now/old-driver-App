@@ -351,6 +351,16 @@ export type OrderDoc = {
  * The customer app sets { status: "dispatched", driverUid: uid } to trigger this.
  * Returns an unsubscribe function; call it on cleanup.
  */
+export async function fetchOrderById(orderId: string): Promise<OrderDoc | null> {
+  try {
+    const snap = await getDoc(doc(db, "orders", orderId));
+    if (!snap.exists()) return null;
+    return { id: snap.id, ...snap.data() } as OrderDoc;
+  } catch {
+    return null;
+  }
+}
+
 export function listenToDispatchedOrder(
   uid:     string,
   onOrder: (order: OrderDoc | null) => void,

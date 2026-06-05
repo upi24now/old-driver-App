@@ -193,6 +193,10 @@ type DriverState = {
 
   acceptRide: () => Promise<AcceptOrderResult>;
   rejectRide: () => void;
+  // Injects an IncomingRide fetched from outside the Firestore listener —
+  // used by ride-request.tsx when the app was backgrounded/killed and the
+  // Firestore listener didn't fire before the screen opened.
+  recoverIncomingRide: (ride: IncomingRide) => void;
   // Removes one specific order from activeOrders by ID.
   // If the removed order was focused, focus shifts to the next remaining order
   // (or null when the last order is removed).  Replaces the Phase-3 endActiveRide()
@@ -680,6 +684,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   };
 
   // ─── Ride actions ─────────────────────────────────────────────────────────
+  const recoverIncomingRide = (ride: IncomingRide) => {
+    setIncomingRide(ride);
+  };
+
   const acceptRide = async (): Promise<AcceptOrderResult> => {
     const ride = incomingRide;
     const uid  = driverUid;
@@ -1090,6 +1098,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         refreshSubscription,
         acceptRide,
         rejectRide,
+        recoverIncomingRide,
         endRide,
         focusOrder,
         orderRemovalReasons,

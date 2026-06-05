@@ -1,6 +1,9 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { fetchOrderById } from "@/utils/firestore";
+import type { OrderDoc } from "@/utils/firestore";
+import type { IncomingRide } from "@/contexts/DriverContext";
 import { cancelIncomingOrderNotification } from "@/utils/notifications";
 import { callSupport } from "@/utils/support";
 import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
@@ -213,12 +216,29 @@ export default function RideRequestScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { incomingRide, acceptRide, rejectRide } = useDriver();
+  const { incomingRide, acceptRide, rejectRide, recoverIncomingRide } = useDriver();
 
-  // No fallback — ride-request must only render with a real live order.
-  // When incomingRide is null (stale nav, cold-start before context hydrates)
-  // the null-on-mount guard below dismisses the screen immediately.
-  const ride = incomingRide;
+  // FCM tap recovery — orderId + order fields forwarded from handleNotificationResponse
+  // so the screen can fetch the order from Firestore if incomingRide is not yet set.
+  const params = useLocalSearchParams<{
+    orderId?:     string;
+    customer?:    string;
+    pickup?:      string;
+    pickupCity?:  string;
+    drop?:        string;
+    dropCity?:    string;
+    earning?:     string;
+    distanceKm?:  string;
+    durationMin?: string;
+  }>();
+
+  const [fetchedRide,  setFetchedRide]  = useState<IncomingRide | null>(null);
+  const [fetchLoading, setFetchLoading] = useState(false);
+  const [fetchFailed,  setFetchFailed]  = useState(false);
+
+  // Primary source: Firestore listener via DriverContext.
+  // Fallback:       Firestore one-time fetch triggered by notification tap params.
+  const ride = incomingRide ?? fetchedRide;
   const riderInitials = ride
     ? (ride.passengerName || "Customer")
         .split(" ")
@@ -247,11 +267,15 @@ export default function RideRequestScreen() {
 
   const urgent = seconds <= 5;
 
+  // Prevents the animation/ringtone/timer block from firing more than once
+  // (guard needed because we now watch `ride !== null` instead of `[]`).
+  const animStartedRef = useRef(false);
+
   useEffect(() => {
-    // No live order on mount — the null-on-mount guard will dismiss this screen.
-    // Do not start animations, timer, or vibration; they serve no purpose and
-    // the dismiss path runs immediately without them.
-    if (!incomingRide) return;
+    // No live order yet — either incomingRide is null and fetch hasn't completed,
+    // or we're still waiting on the Firestore listener.  Do not start animations.
+    if (!ride || animStartedRef.current) return;
+    animStartedRef.current = true;
 
     Animated.parallel([
       Animated.timing(backdrop, {
@@ -310,7 +334,7 @@ export default function RideRequestScreen() {
       Vibration.cancel();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ride !== null]);   // fires once when ride transitions null → non-null
 
   // urgency pulse — gets faster as time drops
   useEffect(() => {
@@ -372,24 +396,95 @@ export default function RideRequestScreen() {
   const hadRideRef    = useRef(incomingRide !== null);
   const didAcceptRef  = useRef(false);
 
-  // null-on-mount guard: if the screen is opened with no live order (e.g. stale
-  // navigation stack, cold-start notification tap before DriverContext hydrates,
-  // or any deep-link path) dismiss immediately so the driver never sees a blank
-  // or fake order card.  hadRideRef starts false here, so the existing
-  // incomingRide→null watcher below does NOT overlap (it only fires when
-  // hadRideRef.current is true — i.e. a real order was shown first).
+  // null-on-mount guard: dismiss immediately when there is no live order AND no
+  // orderId param to fetch.  If params.orderId is present we skip this — the
+  // fetch effect below will either deliver the order or dismiss on failure.
   useEffect(() => {
+    if (params.orderId) return;
     if (!incomingRide && !hadRideRef.current && !didAcceptRef.current) {
       dismiss();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Watch both incomingRide (Firestore listener) and fetchedRide (FCM tap fetch)
+  // so dismiss fires correctly whichever source delivers the order.
   useEffect(() => {
-    if (incomingRide !== null) { hadRideRef.current = true; return; }
-    if (didAcceptRef.current) return;   // driver accepted — handleAccept handles nav
+    if (ride !== null) { hadRideRef.current = true; return; }
+    if (didAcceptRef.current) return;
     if (hadRideRef.current) dismiss();
+  }, [incomingRide, fetchedRide]);
+
+  // ─── Local OrderDoc → IncomingRide mapping (mirrors DriverContext.orderDocToRide)
+  function orderDocToIncomingRide(order: OrderDoc): IncomingRide {
+    return {
+      id:               order.id,
+      pickup:           order.pickup,
+      pickupSub:        order.pickupSub         ?? "",
+      pickupCity:       order.pickupCity,
+      drop:             order.drop,
+      dropSub:          order.dropSub           ?? "",
+      dropCity:         order.dropCity,
+      distanceKm:       order.distanceKm        ?? 0,
+      pickupDistanceKm: order.pickupDistanceKm  ?? 0,
+      durationMin:      order.durationMin       ?? 0,
+      fareEstimate:     order.fareEstimate      ?? 0,
+      paymentMode:      order.paymentMode,
+      surge:            order.surge             ?? false,
+      surgeMultiplier:  order.surgeMultiplier   ?? 1,
+      passengerName:    order.customerName    ?? "Customer",
+      customerPhone:    order.customerPhone   ?? "",
+      passengerRating:  order.customerRating  ?? 5,
+      parcelType:       order.parcelType      ?? "Parcel",
+      parcelEmoji:      order.parcelEmoji     ?? "📦",
+      parcelWeight:     order.parcelWeight    ?? "Package",
+    };
+  }
+
+  // FCM tap recovery: fetch the order from Firestore when the screen was opened
+  // from a notification tap and the Firestore listener hasn't delivered incomingRide
+  // yet (backgrounded or killed app).  Once fetched, injects into DriverContext via
+  // recoverIncomingRide so acceptRide() / rejectRide() work normally.
+  useEffect(() => {
+    if (incomingRide) return;            // listener already delivered the ride
+    if (!params.orderId) return;         // no orderId from notification tap
+    if (fetchedRide || fetchLoading) return; // already in progress or done
+
+    let cancelled = false;
+    setFetchLoading(true);
+
+    fetchOrderById(params.orderId)
+      .then((order) => {
+        if (cancelled) return;
+        if (!order || order.status !== "dispatched") {
+          setFetchFailed(true);
+          setFetchLoading(false);
+          return;
+        }
+        const recovered = orderDocToIncomingRide(order);
+        setFetchedRide(recovered);
+        recoverIncomingRide(recovered); // inject into context so acceptRide() works
+        setFetchLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setFetchFailed(true);
+        setFetchLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  // Re-evaluates if the Firestore listener delivers incomingRide first — in that
+  // case incomingRide is non-null and the effect exits immediately.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [incomingRide]);
+
+  // Auto-dismiss after a brief pause when the order is no longer available.
+  useEffect(() => {
+    if (!fetchFailed) return;
+    const t = setTimeout(() => dismiss(), 2500);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchFailed]);
 
   // Stop ringtone + vibration immediately on any exit path.
   function stopAlert() {
@@ -452,7 +547,7 @@ export default function RideRequestScreen() {
 
   async function handleAccept() {
     Vibration.vibrate(50);
-    const ride = incomingRide;
+    const ride = incomingRide ?? fetchedRide;
     if (!ride) return;
 
     // Show accepting spinner immediately so the driver gets visual feedback.
@@ -551,9 +646,29 @@ export default function RideRequestScreen() {
           },
         ]}
       >
-        {/* Order card — only rendered when a live order exists.
-            When incomingRide is null the null-on-mount guard dismisses the
-            screen; the sheetWrap stays empty so nothing fake is ever shown. */}
+        {/* Loading state — shown while fetching order from Firestore via FCM tap params */}
+        {fetchLoading && !ride && (
+          <View style={styles.fetchStateBox}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[styles.fetchStateText, { color: colors.mutedForeground }]}>
+              Loading order…
+            </Text>
+          </View>
+        )}
+
+        {/* Error state — order no longer dispatched or fetch failed; auto-dismisses */}
+        {fetchFailed && !ride && (
+          <View style={styles.fetchStateBox}>
+            <Text style={[styles.fetchStateHeading, { color: "#FF3B30" }]}>
+              Order unavailable
+            </Text>
+            <Text style={[styles.fetchStateText, { color: colors.mutedForeground }]}>
+              This order is no longer available.
+            </Text>
+          </View>
+        )}
+
+        {/* Order card — only rendered when a live order exists. */}
         {ride && (<>
         {/* pulsing glow halo */}
         <Animated.View
@@ -1023,4 +1138,22 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+
+  fetchStateBox: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 36,
+    paddingHorizontal: 24,
+    backgroundColor: "#fff",
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: "#eaeaea",
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  fetchStateHeading: { fontSize: 16, fontWeight: "700" },
+  fetchStateText:    { fontSize: 13, fontWeight: "500", marginTop: 10, textAlign: "center" },
 });
