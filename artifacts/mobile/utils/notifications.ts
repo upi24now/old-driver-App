@@ -134,11 +134,11 @@ export async function setupAndroidChannels(): Promise<void> {
   if (!Notif || Platform.OS !== "android") return;
 
   await Notif.setNotificationChannelAsync(CHANNEL_ORDERS, {
-    name: "Incoming Orders",
+    name: "Urgent Order Alerts",
     description: "High-priority alerts for new delivery requests",
     importance: Notif.AndroidImportance.MAX,
-    sound: "default",
-    vibrationPattern: [0, 400, 200, 400, 200, 400],
+    sound: "ringtone",
+    vibrationPattern: [0, 800, 400, 800, 400],
     enableLights: true,
     lightColor: "#FF4D8D",
     enableVibrate: true,
@@ -240,14 +240,14 @@ export async function sendIncomingOrderNotification(
           orderId: params.orderId,
           screen:  "/ride-request",
         },
-        sound: "default",
+        sound: "ringtone.wav",
         badge:    1,
         priority: "max",
         categoryIdentifier: CATEGORY_ORDERS,
         ...(Platform.OS === "android" && {
           channelId:   CHANNEL_ORDERS,
           color:       "#FF4D8D",
-          vibrate:     [0, 400, 200, 400, 200, 400],
+          vibrate:     [0, 800, 400, 800, 400],
           sticky:      false,
           autoDismiss: true,
         }),
