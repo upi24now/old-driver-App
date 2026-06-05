@@ -12,7 +12,7 @@
  * In a development build or production APK everything works normally.
  *
  * Channels (Android):
- *   incoming_orders  — MAX importance, sound + vibration, bypass DnD
+ *   incoming_orders_v2 — MAX importance, sound + vibration, bypass DnD (v2: forced fresh channel)
  *   order_updates    — HIGH importance, sound + vibration
  *   driver_alerts    — DEFAULT importance
  */
@@ -40,7 +40,7 @@ const Notif: typeof NotificationsType | null = (() => {
 })();
 
 // ─── Channel IDs ──────────────────────────────────────────────────────────────
-export const CHANNEL_ORDERS  = "incoming_orders";
+export const CHANNEL_ORDERS  = "incoming_orders_v2";
 export const CHANNEL_UPDATES = "order_updates";
 export const CHANNEL_ALERTS  = "driver_alerts";
 
@@ -100,6 +100,16 @@ if (Notif) {
       };
     },
   });
+}
+
+// ─── Eager channel bootstrap ──────────────────────────────────────────────────
+// Create Android channels at module-import time so they exist even if the React
+// component tree hasn't mounted yet (e.g. the app was backgrounded and woken by
+// FCM before any useEffect fires).  initNotifications() calls setupAndroidChannels()
+// too — the second call is a no-op for the importance/sound settings on a channel
+// that already exists, so calling twice is safe.
+if (Notif && Platform.OS === "android") {
+  void setupAndroidChannels();
 }
 
 // ─── Deduplication tracker ────────────────────────────────────────────────────

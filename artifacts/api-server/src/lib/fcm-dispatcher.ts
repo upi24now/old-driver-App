@@ -22,7 +22,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminFirestore, adminMessaging } from "./firebase-admin";
 import { logger } from "./logger";
 
-const CHANNEL_ORDERS = "incoming_orders";
+const CHANNEL_ORDERS = "incoming_orders_v2";
 
 export async function startFcmDispatcher(): Promise<void> {
   let db: Awaited<ReturnType<typeof adminFirestore>>;
