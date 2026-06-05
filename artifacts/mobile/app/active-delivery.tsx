@@ -111,11 +111,18 @@ function callNumber(raw: string) {
 }
 
 function openGoogleMaps(address: string, city: string) {
-  const dest = encodeURIComponent(`${address}, ${city}, India`);
-  const url  = `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=two-wheeler`;
-  Linking.canOpenURL(url)
-    .then((ok) => { if (ok) Linking.openURL(url); else Alert.alert("Maps unavailable"); })
-    .catch(() => Alert.alert("Maps unavailable"));
+  const dest       = encodeURIComponent(`${address}, ${city}, India`);
+  const nativeUrl  = `comgooglemaps://?daddr=${dest}&directionsmode=driving`;
+  const browserUrl = `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`;
+
+  // Try native Google Maps app first; fall back to browser URL.
+  // IMPORTANT: never call canOpenURL() on an https:// URL — on Android 11+
+  // it returns false due to package visibility restrictions even when a
+  // browser is present.  canOpenURL is safe only for custom URI schemes.
+  Linking.canOpenURL(nativeUrl)
+    .then((hasNativeApp) => Linking.openURL(hasNativeApp ? nativeUrl : browserUrl))
+    .catch(() => Linking.openURL(browserUrl))
+    .catch(() => Alert.alert("Maps unavailable", "Could not open maps. Please navigate manually."));
 }
 
 // ─── Live dot ─────────────────────────────────────────────────────────────────
