@@ -25,7 +25,7 @@ import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -40,7 +40,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
-import { submitDriverDocuments } from "@/utils/firestore";
+import { getDriverDoc, submitDriverDocuments } from "@/utils/firestore";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -507,25 +507,40 @@ export default function DocumentUploadScreen() {
   const { driverUid } = useDriver();
   const [submitting, setSubmitting] = useState(false);
 
-  /**
-   * Mock initial state demonstrating all four lock states.
-   * Replace `status` values with data from Firestore when wiring up the
-   * backend — e.g. read from driverDoc.documents[id].status.
-   *
-   * Status mapping:
-   *   approved / verified  → locked   (no upload)
-   *   pending / submitted  → waiting  (no replace, under review)
-   *   rejected             → reupload (must upload again)
-   *   null / undefined     → upload   (free to upload)
-   */
-  const [docs, setDocs] = useState<Record<DocId, DocState>>(() => ({
-    selfie:    { ...blankDoc(), status: "approved"  },  // locked
-    aadhaar:   { ...blankDoc(), status: "verified"  },  // locked (synonym)
-    pan:       { ...blankDoc(), status: "rejected"  },  // re-upload allowed
-    license:   { ...blankDoc(), status: "pending"   },  // waiting (pending review)
-    rc:        blankDoc(),                              // upload allowed
-    insurance: blankDoc(),                              // upload allowed
-  }));
+  const [docsLoading, setDocsLoading] = useState(true);
+  const [docs, setDocs] = useState<Record<DocId, DocState>>(() =>
+    Object.fromEntries(DOCS.map((d) => [d.id, blankDoc()])) as Record<DocId, DocState>,
+  );
+
+  // ── Load persisted document state from Firestore on mount ──
+  useEffect(() => {
+    if (!driverUid) { setDocsLoading(false); return; }
+    getDriverDoc(driverUid)
+      .then((driverDoc) => {
+        if (driverDoc?.documents) {
+          setDocs((prev) => {
+            const next = { ...prev };
+            const stored = driverDoc.documents as Record<string, { uri?: string | null; status?: string | null } | undefined>;
+            for (const d of DOCS) {
+              const entry = stored[d.id];
+              if (entry) {
+                next[d.id] = {
+                  ...blankDoc(),
+                  uri:         entry.uri    ?? null,
+                  status:      (entry.status as RawDocStatus) ?? null,
+                  // freshUpload stays false — driver must re-pick in this session
+                  // if the doc was rejected, to prove they have the new file.
+                  freshUpload: false,
+                };
+              }
+            }
+            return next;
+          });
+        }
+        setDocsLoading(false);
+      })
+      .catch(() => setDocsLoading(false));
+  }, [driverUid]);
 
   // ── Helpers ──
 
@@ -604,14 +619,24 @@ export default function DocumentUploadScreen() {
   const allReady = DOCS.every((d) => isDocReady(docs[d.id]));
 
   async function handleSubmit() {
-    if (!allReady || submitting) return;
+    if (!allReady || submitting || docsLoading) return;
     if (!driverUid) {
       console.error("[document-upload] handleSubmit: driverUid is null");
       return;
     }
     setSubmitting(true);
     try {
-      await submitDriverDocuments(driverUid);
+      // Collect URIs for every non-locked doc (locked = already admin-verified;
+      // skip to avoid overwriting their admin-set status with "pending").
+      const docUris: Record<string, string | null> = {};
+      for (const d of DOCS) {
+        const st   = docs[d.id];
+        const lock = normalizeLock(st.status, !!st.uri);
+        if (lock !== "locked") {
+          docUris[d.id] = st.uri;
+        }
+      }
+      await submitDriverDocuments(driverUid, docUris);
       router.replace("/verification-pending");
     } catch (err) {
       console.error("[document-upload] Firestore write failed:", err);

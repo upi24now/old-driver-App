@@ -30,6 +30,7 @@ import {
   acceptOrder,
   rejectOrder,
   requestWithdrawal as fsRequestWithdrawal,
+  type DriverDoc,
   type OrderDoc,
   type OrderStatus,
   type AcceptOrderResult,
@@ -117,7 +118,19 @@ const SEED_TXNS: Txn[] = [
   { id: "s6", type: "earning",  title: "Trip · Airport → MG Road",         subtitle: "32 km · UPI",          amount:  478,   status: "completed", time: "8:02 PM",  date: "Yesterday" },
 ];
 
-type ConfirmOtpResult = { ok: boolean; profileComplete: boolean; error?: string };
+type OnboardingRoute =
+  | "/(tabs)"
+  | "/vehicle-selection"
+  | "/profile-setup"
+  | "/document-upload"
+  | "/verification-pending";
+
+type ConfirmOtpResult = {
+  ok:              boolean;
+  profileComplete: boolean;
+  error?:          string;
+  nextRoute?:      OnboardingRoute;
+};
 
 type DriverState = {
   driverUid:        string | null;
@@ -464,6 +477,25 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // ─── Auth actions ─────────────────────────────────────────────────────────
   const setPhone = (p: string) => setPhoneState(p);
 
+  /**
+   * Derive the correct next screen based on the driver's onboarding state.
+   * Applied consistently after OTP verify and after auth restore.
+   *
+   * Priority order:
+   *   1. No vehicleId         → pick a vehicle
+   *   2. No name              → complete profile
+   *   3. Docs not submitted   → upload documents
+   *   4. Not yet approved     → await verification
+   *   5. Approved             → main app
+   */
+  function deriveNextRoute(d: DriverDoc): OnboardingRoute {
+    if (!d.vehicleId)          return "/vehicle-selection";
+    if (!d.name)               return "/profile-setup";
+    if (!d.documentsSubmitted) return "/document-upload";
+    if (d.verificationStatus !== "approved") return "/verification-pending";
+    return "/(tabs)";
+  }
+
   const confirmOtp = async (
     phone: string,
     otp:   string,
@@ -502,10 +534,14 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           setTodayEarnings(sameDay ? (driverDoc.todayEarnings ?? 0) : 0);
           setTripsToday   (sameDay ? (driverDoc.tripsToday    ?? 0) : 0);
         }
+        // Restore verification/document state (needed for routing below)
+        setVerifStatus(driverDoc.verificationStatus ?? null);
+        setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
       }
 
       const profileComplete = !!(driverDoc.name && driverDoc.vehicleId);
-      return { ok: true, profileComplete };
+      const nextRoute       = deriveNextRoute(driverDoc);
+      return { ok: true, profileComplete, nextRoute };
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Sign-in failed.";
       return { ok: false, profileComplete: false, error: msg };

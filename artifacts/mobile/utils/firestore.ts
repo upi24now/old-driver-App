@@ -19,6 +19,12 @@ import type { Profile, Vehicle } from "@/contexts/DriverContext";
 
 // ─── Driver doc ───────────────────────────────────────────────────────────────
 
+/** Per-document entry stored under drivers/{uid}.documents.{docId} */
+export type DriverDocEntry = {
+  uri?:    string | null;
+  status?: string | null;  // "pending" | "approved" | "verified" | "rejected" | null
+};
+
 export type DriverDoc = {
   uid:                    string;
   phone:                  string;
@@ -35,6 +41,14 @@ export type DriverDoc = {
   // ── Documents ─────────────────────────────────────────────────────────────
   documentsSubmitted?:   boolean;  // true after submitDriverDocuments()
   verificationStatus?:   string;   // "pending" | "verified" | "rejected"
+  documents?: {
+    selfie?:    DriverDocEntry;
+    aadhaar?:   DriverDocEntry;
+    pan?:       DriverDocEntry;
+    license?:   DriverDocEntry;
+    rc?:        DriverDocEntry;
+    insurance?: DriverDocEntry;
+  };
 
   // ── Wallet ────────────────────────────────────────────────────────────────
   walletBalance?:    number;  // running total, authoritative balance
@@ -194,17 +208,28 @@ export async function updateDriverSubscription(
 }
 
 /**
- * Mark the driver's document submission in Firestore.
- * Does NOT upload images — only writes submission metadata.
- * Called by document-upload.tsx after all 5 docs are selected locally.
+ * Mark the driver's document submission in Firestore and persist each doc's
+ * URI alongside a "pending" status. Uses dot-notation field paths so that
+ * existing admin-set fields on sibling docs are not overwritten.
+ *
+ * @param uid     - Driver UID
+ * @param docUris - Map of docId → local URI (null if doc was locked/skipped)
  */
-export async function submitDriverDocuments(uid: string): Promise<void> {
-  await setDoc(doc(db, "drivers", uid), {
+export async function submitDriverDocuments(
+  uid:     string,
+  docUris: Record<string, string | null>,
+): Promise<void> {
+  const updates: Record<string, unknown> = {
     documentsSubmitted:   true,
     verificationStatus:   "pending",
     documentsSubmittedAt: serverTimestamp(),
     updatedAt:            serverTimestamp(),
-  }, { merge: true });
+  };
+  for (const [id, uri] of Object.entries(docUris)) {
+    updates[`documents.${id}.uri`]    = uri ?? null;
+    updates[`documents.${id}.status`] = "pending";
+  }
+  await updateDoc(doc(db, "drivers", uid), updates);
 }
 
 /**

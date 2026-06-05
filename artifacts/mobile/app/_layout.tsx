@@ -7,16 +7,16 @@ import {
 import { useFonts } from "expo-font";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { AnimatedSplash } from "@/components/AnimatedSplash";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { DriverProvider } from "@/contexts/DriverContext";
+import { DriverProvider, useDriver } from "@/contexts/DriverContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { useNotifications } from "@/hooks/useNotifications";
 
@@ -28,6 +28,32 @@ function RootLayoutNav() {
   // Initialize notification channels, request permission, attach listeners.
   // Must be inside DriverProvider so notifications can access router context.
   useNotifications();
+
+  const router = useRouter();
+  const { authLoading, driverUid, profile, vehicle, documentsSubmitted, verificationStatus } =
+    useDriver();
+
+  // ── Auth-restore navigation ───────────────────────────────────────────────
+  // Fires once per app session when Firebase finishes restoring a persisted
+  // session. If the driver is already authenticated (no OTP needed), route
+  // them to the correct onboarding step. The `hasNavigated` ref prevents this
+  // effect from re-running after post-OTP navigation changes driverUid.
+  const hasNavigated = useRef(false);
+  useEffect(() => {
+    if (authLoading)               return;
+    if (hasNavigated.current)      return;
+    hasNavigated.current = true;
+    if (!driverUid)                return; // no session — stay on login
+
+    if (!vehicle?.id)                            { router.replace("/vehicle-selection"); return; }
+    if (!profile?.name)                          { router.replace("/profile-setup");     return; }
+    if (!documentsSubmitted)                     { router.replace("/document-upload");   return; }
+    if (verificationStatus !== "approved")       { router.replace("/verification-pending"); return; }
+    router.replace("/(tabs)");
+  // Deps: only the values that determine when auth loading is done and who is logged in.
+  // All other values (profile, vehicle, …) are read at the moment the effect runs.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, driverUid]);
 
   return (
     <Stack

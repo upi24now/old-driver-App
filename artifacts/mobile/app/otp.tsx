@@ -226,11 +226,9 @@ export default function OtpScreen() {
       return;
     }
 
-    if (result.profileComplete) {
-      router.replace("/(tabs)");
-    } else {
-      router.replace("/vehicle-selection");
-    }
+    router.replace(
+      result.nextRoute ?? (result.profileComplete ? "/(tabs)" : "/vehicle-selection"),
+    );
   }
 
   async function handleResend() {
