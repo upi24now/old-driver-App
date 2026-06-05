@@ -10,18 +10,45 @@
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleDebug"
+      },
+      "env": {
+        "EXPO_PUBLIC_DOMAIN": "driver-app-upi24now.replit.app",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyCZkidCyuTtSdQfX612b3aKshPp4TfCuP4",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "bike-1-wap.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "bike-1-wap",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "1:815076390745:web:d30617a9c2f2dc2a5fbe48",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "bike-1-wap.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "bike-1-wap"
       }
     },
     "preview": {
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_DOMAIN": "driver-app-upi24now.replit.app",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyCZkidCyuTtSdQfX612b3aKshPp4TfCuP4",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "bike-1-wap.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "bike-1-wap",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "1:815076390745:web:d30617a9c2f2dc2a5fbe48",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "bike-1-wap.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "bike-1-wap"
       }
     },
     "production": {
       "autoIncrement": true,
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_DOMAIN": "driver-app-upi24now.replit.app",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyCZkidCyuTtSdQfX612b3aKshPp4TfCuP4",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "bike-1-wap.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "bike-1-wap",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "1:815076390745:web:d30617a9c2f2dc2a5fbe48",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "bike-1-wap.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "bike-1-wap"
       }
     }
   },
