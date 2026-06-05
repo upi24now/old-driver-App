@@ -58,10 +58,10 @@
   },
   "dependencies": {
     "expo-audio": "^1.1.1",
-    "expo-device": "^56.0.4",
-    "expo-intent-launcher": "^56.0.4",
-    "expo-network": "^56.0.4",
-    "expo-notifications": "^56.0.14",
+    "expo-device": "~8.0.10",
+    "expo-intent-launcher": "~13.0.8",
+    "expo-network": "~8.0.8",
+    "expo-notifications": "~0.32.17",
     "firebase": "^12.14.0",
     "react-native-webview": "^13.16.1"
   }
