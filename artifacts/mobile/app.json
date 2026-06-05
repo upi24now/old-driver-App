@@ -7,7 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "mobile",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/images/icon.png",
       "resizeMode": "contain",
@@ -29,12 +29,7 @@
       "favicon": "./assets/images/icon.png"
     },
     "plugins": [
-      [
-        "expo-router",
-        {
-          "origin": "https://replit.com/"
-        }
-      ],
+      "expo-router",
       "expo-font",
       "expo-web-browser",
       [
