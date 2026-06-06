@@ -15,24 +15,8 @@
  *   incoming_orders_v2 — MAX importance, sound + vibration, bypass DnD (v2: forced fresh channel)
  *   order_updates    — HIGH importance, sound + vibration
  *   driver_alerts    — DEFAULT importance
- *
- * Background notification task (BACKGROUND_NOTIFICATION_TASK):
- *   Registered via expo-task-manager + Notifications.registerTaskAsync.
- *   Fires when a notification arrives while the app is backgrounded.
- *   Dismisses the raw FCM notification (no action buttons) and re-posts it
- *   as a local notification with CATEGORY_ORDERS so Accept / Reject buttons
- *   appear on the heads-up and lock-screen notification.
- *
- *   LIMITATION: In Expo managed workflow, this task runs when the app is
- *   backgrounded (suspended by Android). For a fully KILLED app, Android
- *   delivers FCM notification-messages directly via the system — the JS
- *   runtime is not woken for the task. The driver can still tap the
- *   notification to open the app (cold-start handler takes over).
- *   fullScreenIntent (screen-wake-up on kill) is NOT implemented here —
- *   it requires a custom Expo config plugin and Play Store policy review.
  */
 
-import * as TaskManager from "expo-task-manager";
 import * as Device from "expo-device";
 import type * as NotificationsType from "expo-notifications";
 import { router } from "expo-router";
@@ -65,10 +49,6 @@ export const CHANNEL_ALERTS  = "driver_alerts";
 export const ACTION_ACCEPT   = "accept_order";
 export const ACTION_REJECT   = "reject_order";
 export const CATEGORY_ORDERS = "incoming_order_actions";
-
-// ─── Background task name ─────────────────────────────────────────────────────
-// Must match the string passed to TaskManager.defineTask below.
-export const BACKGROUND_NOTIFICATION_TASK = "BACKGROUND_NOTIFICATION_TASK";
 
 // ─── Order action handler registry ───────────────────────────────────────────
 // DriverContext registers these so notification button taps can call
@@ -504,96 +484,6 @@ export async function registerDriverPushToken(uid: string): Promise<void> {
   }
 }
 
-// ─── Background notification task ─────────────────────────────────────────────
-//
-// MUST be defined at module level (synchronous evaluation), outside any React
-// component or hook.  expo-task-manager requires this for task registration.
-//
-// What it does (app is BACKGROUNDED — not killed):
-//   1. Receives the incoming FCM notification payload via expo-notifications.
-//   2. Dismisses the raw FCM notification (shown by the system, no buttons).
-//   3. Re-posts it as a LOCAL notification with CATEGORY_ORDERS so the
-//      Accept / Reject action buttons appear on the heads-up and in the drawer.
-//
-// What it does NOT do:
-//   - Does not fire when the app is fully KILLED (Android system handles
-//     notification-message delivery without waking the JS runtime in managed
-//     workflow).
-//   - Does not implement fullScreenIntent (not safe for Play Store).
-//
-TaskManager.defineTask<{ notification: NotificationsType.Notification }>(
-  BACKGROUND_NOTIFICATION_TASK,
-  async ({ data, error }) => {
-    if (error) {
-      console.error("[Notifications] Background task error:", error);
-      return;
-    }
-
-    const notification = data?.notification;
-    if (!notification) return;
-
-    const content  = notification.request.content;
-    const notifData = content.data as Record<string, unknown> | null | undefined;
-    const type = notifData?.type as string | undefined;
-
-    if (type !== "incoming_order") return;
-
-    const orderId    = (notifData?.orderId    as string | undefined) ?? "";
-    const customer   = (notifData?.customer   as string | undefined) ?? "";
-    const pickup     = (notifData?.pickup      as string | undefined) ?? "";
-    const drop       = (notifData?.drop        as string | undefined) ?? "";
-    const earning    = (notifData?.earning     as string | undefined) ?? "0";
-    const distanceKm = (notifData?.distanceKm  as string | undefined) ?? "0";
-
-    if (!orderId) return;
-
-    console.log("[Notifications] Background task: incoming order", orderId);
-
-    // Dismiss the raw FCM notification (no action buttons) before re-posting.
-    try {
-      await Notif!.dismissNotificationAsync(notification.request.identifier);
-    } catch {
-      // Already dismissed or not found — harmless.
-    }
-
-    // Re-post as a local notification with CATEGORY_ORDERS (action buttons).
-    await sendIncomingOrderNotification({
-      orderId,
-      customer,
-      pickup,
-      drop,
-      earning:    Number(earning),
-      distanceKm: Number(distanceKm),
-    });
-  }
-);
-
-/**
- * Register the background notification task with expo-notifications.
- * Call once after notification permission is granted (inside initNotifications).
- * Safe to call multiple times — isTaskRegisteredAsync guards double-registration.
- *
- * Requires a development build or production APK (not Expo Go).
- */
-export async function registerBackgroundNotificationTask(): Promise<void> {
-  if (!Notif || Platform.OS !== "android") return;
-  try {
-    const isRegistered = await TaskManager.isTaskRegisteredAsync(
-      BACKGROUND_NOTIFICATION_TASK
-    );
-    if (isRegistered) {
-      console.log("[Notifications] Background task already registered");
-      return;
-    }
-    await Notif.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK);
-    console.log("[Notifications] Background task registered:", BACKGROUND_NOTIFICATION_TASK);
-  } catch (err) {
-    // Fails in Expo Go and on first cold start before permissions are granted.
-    // Non-fatal: foreground path and cold-start tap handler still work.
-    console.warn("[Notifications] Background task registration failed:", err);
-  }
-}
-
 // ─── Full initialization ──────────────────────────────────────────────────────
 export async function initNotifications(): Promise<{
   permissionGranted: boolean;
@@ -618,9 +508,6 @@ export async function initNotifications(): Promise<{
       );
       return { permissionGranted: false };
     }
-
-    // Background task registration temporarily disabled for startup stability.
-    // await registerBackgroundNotificationTask();
 
     console.log("[Notifications] Initialization complete");
     return { permissionGranted: true };
