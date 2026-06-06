@@ -47,7 +47,7 @@ function UrgencyRing({
   urgent: boolean;
 }) {
   const colors = useColors();
-  const ringColor = urgent ? "#FF3B30" : colors.primary;
+  const ringColor = urgent ? "#DC2626" : colors.primary;
   const dashOffset = progress.interpolate({
     inputRange: [0, 1],
     outputRange: [0, RING_CIRC],
@@ -78,7 +78,7 @@ function UrgencyRing({
         />
       </Svg>
       <View style={styles.ringCenter}>
-        <Text style={[styles.ringNum, { color: urgent ? "#FF3B30" : colors.foreground }]}>
+        <Text style={[styles.ringNum, { color: urgent ? "#DC2626" : colors.foreground }]}>
           {seconds}
         </Text>
         <Text style={[styles.ringUnit, { color: colors.mutedForeground }]}>sec</Text>
@@ -165,7 +165,7 @@ function SlideToAccept({ onAccept, disabled = false }: { onAccept: () => void; d
     return (
       <View style={[styles.slideTrack, { overflow: "hidden" }]}>
         <LinearGradient
-          colors={["#00E060", "#00A847"]}
+          colors={["#059669", "#047857"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFillObject}
@@ -206,7 +206,7 @@ function SlideToAccept({ onAccept, disabled = false }: { onAccept: () => void; d
           { transform: [{ translateX: x }] },
         ]}
       >
-        <Feather name="chevrons-right" size={22} color="#00A847" />
+        <Feather name="chevrons-right" size={22} color="#059669" />
       </Animated.View>
     </View>
   );
@@ -704,13 +704,13 @@ export default function RideRequestScreen() {
                 <View
                   style={[
                     styles.liveBadgeDot,
-                    { backgroundColor: urgent ? "#FF3B30" : colors.primary },
+                    { backgroundColor: urgent ? "#DC2626" : colors.primary },
                   ]}
                 />
                 <Text
                   style={[
                     styles.liveBadgeText,
-                    { color: urgent ? "#FF3B30" : colors.primary },
+                    { color: urgent ? "#DC2626" : colors.primary },
                   ]}
                 >
                   {urgent ? "HURRY" : "NEW REQUEST"}
@@ -882,7 +882,7 @@ export default function RideRequestScreen() {
                   style={[
                     StyleSheet.absoluteFillObject,
                     {
-                      backgroundColor: "#FF3B30",
+                      backgroundColor: "#DC2626",
                       opacity: rejectFill.interpolate({
                         inputRange: [0, 1],
                         outputRange: [0, 0.14],
@@ -1028,7 +1028,7 @@ const styles = StyleSheet.create({
     borderRadius: 5.5,
     borderWidth: 2.5,
     borderColor: "#fff",
-    shadowColor: "#00C853",
+    shadowColor: "#059669",
     shadowOpacity: 0.5,
     shadowRadius: 3,
     shadowOffset: { width: 0, height: 0 },
@@ -1109,16 +1109,16 @@ const styles = StyleSheet.create({
   slideTrack: {
     height: SLIDE_HEIGHT,
     borderRadius: 16,
-    backgroundColor: "#E8F5E9",
+    backgroundColor: "#D1FAE5",
     borderWidth: 1.5,
-    borderColor: "#00C853",
+    borderColor: "#059669",
     overflow: "hidden",
     justifyContent: "center",
   },
   slideLabel: {
     position: "absolute",
     alignSelf: "center",
-    color: "#00A847",
+    color: "#059669",
     fontSize: 14,
     fontWeight: "800",
     letterSpacing: 0.3,

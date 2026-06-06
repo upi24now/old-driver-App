@@ -405,7 +405,7 @@ export default function LockAlertScreen() {
                   activeOpacity={0.8}
                 >
                   <LinearGradient
-                    colors={["#FF3B30", "#B80016"]}
+                    colors={["#059669", "#047857"]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={[StyleSheet.absoluteFill, { borderRadius: 14 }]}
@@ -525,8 +525,8 @@ const styles = StyleSheet.create({
     borderRadius: 26,
     backgroundColor: "transparent",
     borderWidth: 3,
-    borderColor: "#FF3B30",
-    shadowColor: "#FF3B30",
+    borderColor: "#059669",
+    shadowColor: "#059669",
     shadowOpacity: 0.9,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 0 },
@@ -643,13 +643,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 7,
   },
-  rejectBtn: { backgroundColor: "#FF3B30" },
+  rejectBtn: { backgroundColor: "#DC2626" },
 
-  // Accept button — red gradient with pulsing glow
+  // Accept button — green gradient with pulsing glow
   acceptOuter: {
     flex: 1,
     borderRadius: 14,
-    shadowColor: "#FF3B30",
+    shadowColor: "#059669",
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 0 },
     elevation: 10,

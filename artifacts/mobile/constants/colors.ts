@@ -1,68 +1,154 @@
 const colors = {
   light: {
-    text: "#111111",
-    tint: "#FF4D8D",
+    // ── Core text ──────────────────────────────────────────────────────────
+    text:             "#111111",
+    textPrimary:      "#111111",
+    textSecondary:    "#374151",
+    textMuted:        "#6B7280",
+    textPlaceholder:  "#9CA3AF",
 
-    background: "#F7F3F2",
-    foreground: "#111111",
+    // ── Brand ──────────────────────────────────────────────────────────────
+    tint:                "#E8336C",
+    primary:             "#E8336C",
+    primaryPressed:      "#C4195A",
+    primarySoft:         "#FFF0F5",
+    primaryForeground:   "#FFFFFF",
 
-    card: "#FFFFFF",
-    cardForeground: "#111111",
+    // ── Surfaces ───────────────────────────────────────────────────────────
+    background:      "#F5F4F2",
+    foreground:      "#111111",
 
-    primary: "#FF4D8D",
-    primaryForeground: "#FFFFFF",
+    card:            "#FFFFFF",
+    cardForeground:  "#111111",
+    surface:         "#FFFFFF",
+    surfaceElevated: "#FAFAFA",
+    surfacePressed:  "#F0EEF0",
 
-    secondary: "#F3F4F6",
-    secondaryForeground: "#111111",
+    secondary:            "#F3F4F6",
+    secondaryForeground:  "#111111",
 
-    muted: "#F3F4F6",
-    mutedForeground: "#6B7280",
+    muted:            "#F3F4F6",
+    mutedForeground:  "#6B7280",
 
-    accent: "#F3F4F6",
-    accentForeground: "#111111",
+    accent:            "#F3F4F6",
+    accentForeground:  "#111111",
 
-    destructive: "#D32F2F",
-    destructiveForeground: "#FFFFFF",
+    // ── Status — success ───────────────────────────────────────────────────
+    success:      "#059669",
+    successSoft:  "#D1FAE5",
+    successText:  "#065F46",
 
-    border: "#E5E7EB",
-    input: "#E5E7EB",
+    // ── Status — warning ───────────────────────────────────────────────────
+    warning:      "#D97706",
+    warningSoft:  "#FEF3C7",
+    warningText:  "#92400E",
 
-    online: "#22C55E",
-    offline: "#9E9E9E",
-    warning: "#FF7A3D",
+    // ── Status — error / destructive ───────────────────────────────────────
+    destructive:            "#DC2626",
+    destructiveForeground:  "#FFFFFF",
+    error:      "#DC2626",
+    errorSoft:  "#FEE2E2",
+    errorText:  "#991B1B",
+
+    // ── Status — info ──────────────────────────────────────────────────────
+    info:      "#2563EB",
+    infoSoft:  "#DBEAFE",
+    infoText:  "#1E40AF",
+
+    // ── Status — pending ───────────────────────────────────────────────────
+    pending:      "#7C3AED",
+    pendingSoft:  "#EDE9FE",
+    pendingText:  "#4C1D95",
+
+    // ── Functional ────────────────────────────────────────────────────────
+    money:           "#059669",
+    moneySoft:       "#D1FAE5",
+    navigation:      "#0284C7",
+    navigationSoft:  "#E0F2FE",
+    online:          "#059669",
+    offline:         "#6B7280",
+
+    // ── Borders ───────────────────────────────────────────────────────────
+    border:       "#E5E7EB",
+    borderFocus:  "#E8336C",
+    borderStrong: "#D1D5DB",
+    input:        "#E5E7EB",
   },
 
   dark: {
-    text: "#F5F5F5",
-    tint: "#FF4D8D",
+    // ── Core text ──────────────────────────────────────────────────────────
+    text:             "#F5F5F5",
+    textPrimary:      "#F5F5F5",
+    textSecondary:    "#D1D5DB",
+    textMuted:        "#9E9E9E",
+    textPlaceholder:  "#6B7280",
 
-    background: "#0F0F0F",
-    foreground: "#F5F5F5",
+    // ── Brand ──────────────────────────────────────────────────────────────
+    tint:                "#E8336C",
+    primary:             "#E8336C",
+    primaryPressed:      "#FF4D8D",
+    primarySoft:         "rgba(232,51,108,0.15)",
+    primaryForeground:   "#FFFFFF",
 
-    card: "#1A1A1A",
-    cardForeground: "#F5F5F5",
+    // ── Surfaces ───────────────────────────────────────────────────────────
+    background:      "#0F0F0F",
+    foreground:      "#F5F5F5",
 
-    primary: "#FF4D8D",
-    primaryForeground: "#FFFFFF",
+    card:            "#1A1A1A",
+    cardForeground:  "#F5F5F5",
+    surface:         "#1E1E1E",
+    surfaceElevated: "#252525",
+    surfacePressed:  "#2A2A2A",
 
-    secondary: "#262626",
-    secondaryForeground: "#D1D5DB",
+    secondary:            "#262626",
+    secondaryForeground:  "#D1D5DB",
 
-    muted: "#1F1F1F",
-    mutedForeground: "#9E9E9E",
+    muted:            "#1F1F1F",
+    mutedForeground:  "#9E9E9E",
 
-    accent: "#262626",
-    accentForeground: "#D1D5DB",
+    accent:            "#262626",
+    accentForeground:  "#D1D5DB",
 
-    destructive: "#FF5252",
-    destructiveForeground: "#FFFFFF",
+    // ── Status — success ───────────────────────────────────────────────────
+    success:      "#34D399",
+    successSoft:  "rgba(5,150,105,0.18)",
+    successText:  "#6EE7B7",
 
-    border: "#2A2A2A",
-    input: "#2A2A2A",
+    // ── Status — warning ───────────────────────────────────────────────────
+    warning:      "#FBBF24",
+    warningSoft:  "rgba(217,119,6,0.18)",
+    warningText:  "#FDE68A",
 
-    online: "#22C55E",
-    offline: "#616161",
-    warning: "#FF7A3D",
+    // ── Status — error / destructive ───────────────────────────────────────
+    destructive:            "#F87171",
+    destructiveForeground:  "#FFFFFF",
+    error:      "#F87171",
+    errorSoft:  "rgba(220,38,38,0.18)",
+    errorText:  "#FECACA",
+
+    // ── Status — info ──────────────────────────────────────────────────────
+    info:      "#60A5FA",
+    infoSoft:  "rgba(37,99,235,0.18)",
+    infoText:  "#BFDBFE",
+
+    // ── Status — pending ───────────────────────────────────────────────────
+    pending:      "#A78BFA",
+    pendingSoft:  "rgba(124,58,237,0.18)",
+    pendingText:  "#DDD6FE",
+
+    // ── Functional ────────────────────────────────────────────────────────
+    money:           "#34D399",
+    moneySoft:       "rgba(5,150,105,0.18)",
+    navigation:      "#38BDF8",
+    navigationSoft:  "rgba(2,132,199,0.18)",
+    online:          "#34D399",
+    offline:         "#616161",
+
+    // ── Borders ───────────────────────────────────────────────────────────
+    border:       "#2A2A2A",
+    borderFocus:  "#E8336C",
+    borderStrong: "#3A3A3A",
+    input:        "#2A2A2A",
   },
 
   radius: 12,
