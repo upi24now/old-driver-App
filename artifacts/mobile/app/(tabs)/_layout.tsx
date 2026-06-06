@@ -18,10 +18,10 @@ type TabBarProps = {
 
 // ─── Per-tab accent config ────────────────────────────────────────────────────
 const TAB_CFG: Record<string, { icon: string; color: string; label: string }> = {
-  index:   { icon: "home",  color: "#FF4D8D", label: "Home"    },
-  trips:   { icon: "list",  color: "#4A90E2", label: "Trips"   },
-  map:     { icon: "map",   color: "#00BCD4", label: "Map"     },
-  profile: { icon: "user",  color: "#9C27B0", label: "Profile" },
+  index:   { icon: "home",  color: "#E8336C", label: "Home"    },   // primary
+  trips:   { icon: "list",  color: "#2563EB", label: "Trips"   },   // info
+  map:     { icon: "map",   color: "#0284C7", label: "Map"     },   // navigation
+  profile: { icon: "user",  color: "#7C3AED", label: "Profile" },   // pending
 };
 
 const BAR_H = 62;
