@@ -553,30 +553,6 @@ export default function HomeScreen() {
           </View>
         </LinearGradient>
 
-        {/* QUICK STATS ROW */}
-        <View style={styles.quickStats}>
-          {[
-            { icon: "star", value: "4.92", label: "Rating", color: "#FFB300" },
-            { icon: "check-circle", value: "96%", label: "Acceptance", color: colors.primary },
-            { icon: "award", value: "Gold", label: "Tier", color: "#9C27B0" },
-          ].map((s) => (
-            <View
-              key={s.label}
-              style={[styles.qStatCard, { borderColor: colors.border }]}
-            >
-              <View style={[styles.qStatIcon, { backgroundColor: s.color + "1a" }]}>
-                <Feather name={s.icon as any} size={14} color={s.color} />
-              </View>
-              <Text style={[styles.qStatValue, { color: colors.foreground }]}>
-                {s.value}
-              </Text>
-              <Text style={[styles.qStatLabel, { color: colors.mutedForeground }]}>
-                {s.label}
-              </Text>
-            </View>
-          ))}
-        </View>
-
         {/* RIDE REQUEST AREA */}
         <View
           style={[
@@ -870,8 +846,8 @@ const styles = StyleSheet.create({
 
   earningsCard: {
     borderRadius: 20,
-    padding: 18,
-    gap: 16,
+    padding: 12,
+    gap: 10,
     shadowColor: "#00C853",
     shadowOpacity: 0.25,
     shadowRadius: 14,
@@ -879,9 +855,9 @@ const styles = StyleSheet.create({
   },
   earningsTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   earningsLabel: { fontSize: 10, fontWeight: "700", color: "rgba(255,255,255,0.8)", letterSpacing: 0.6 },
-  earningsAmountRow: { flexDirection: "row", alignItems: "flex-end", gap: 4, marginTop: 4 },
-  earningsCurrency: { fontSize: 20, fontWeight: "700", color: "#fff", marginBottom: 4 },
-  earningsAmount: { fontSize: 36, fontWeight: "800", color: "#fff", letterSpacing: -1, lineHeight: 40 },
+  earningsAmountRow: { flexDirection: "row", alignItems: "flex-end", gap: 4, marginTop: 2 },
+  earningsCurrency: { fontSize: 15, fontWeight: "700", color: "#fff", marginBottom: 3 },
+  earningsAmount: { fontSize: 28, fontWeight: "800", color: "#fff", letterSpacing: -1, lineHeight: 33 },
   earningsDelta: {
     flexDirection: "row",
     alignItems: "center",
@@ -909,32 +885,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(255,255,255,0.12)",
     borderRadius: 12,
-    padding: 12,
+    padding: 8,
   },
   breakdownItem: { flex: 1, alignItems: "center", gap: 2 },
-  breakdownValue: { fontSize: 15, fontWeight: "800", color: "#fff" },
+  breakdownValue: { fontSize: 13, fontWeight: "800", color: "#fff" },
   breakdownLabel: { fontSize: 10, color: "rgba(255,255,255,0.75)", fontWeight: "500" },
-  breakdownDivider: { width: 1, height: 28, backgroundColor: "rgba(255,255,255,0.2)" },
-
-  quickStats: { flexDirection: "row", gap: 10 },
-  qStatCard: {
-    flex: 1,
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 12,
-    alignItems: "flex-start",
-    gap: 6,
-  },
-  qStatIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  qStatValue: { fontSize: 18, fontWeight: "800", letterSpacing: -0.2 },
-  qStatLabel: { fontSize: 11, fontWeight: "500" },
+  breakdownDivider: { width: 1, height: 24, backgroundColor: "rgba(255,255,255,0.2)" },
 
   requestCard: {
     borderRadius: 18,
