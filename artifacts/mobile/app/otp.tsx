@@ -1,5 +1,4 @@
 import { Feather } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -17,17 +16,12 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
+import { useColors } from "@/hooks/useColors";
 import { sendOtp } from "@/utils/auth-api";
+import { TS } from "@/constants/typography";
 
 const OTP_LENGTH = 6;
 const RESEND_SECONDS = 30;
-
-const GRADIENT_FROM = "#FF4D8D";
-const GRADIENT_TO = "#FF7A3D";
-const PAGE_BG = "#F7F3F2";
-const TEXT_PRIMARY = "#111111";
-const TEXT_MUTED = "#6B7280";
-const BORDER = "#E5E7EB";
 
 // ─── Subtle pop on digit entry ────────────────────────────────────────────────
 function CellPop({
@@ -120,6 +114,7 @@ function VerifyButton({
   digitCount: number;
   onPress: () => void;
 }) {
+  const colors = useColors();
   const scale = useRef(new Animated.Value(1)).current;
   const isActive = state === "ready" || state === "verifying";
 
@@ -135,8 +130,12 @@ function VerifyButton({
     <Animated.View
       style={[
         styles.ctaWrap,
-        !isActive && styles.ctaWrapDisabled,
-        { transform: [{ scale }] },
+        {
+          transform:     [{ scale }],
+          shadowColor:   isActive ? colors.primary : "transparent",
+          shadowOpacity: isActive ? 0.28 : 0,
+          elevation:     isActive ? 6    : 0,
+        },
       ]}
     >
       <Pressable
@@ -146,14 +145,14 @@ function VerifyButton({
         disabled={!isActive}
         style={styles.ctaPressable}
       >
-        {isActive ? (
-          <LinearGradient
-            colors={[GRADIENT_FROM, GRADIENT_TO]}
-            start={{ x: 0, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
-            style={styles.ctaButton}
-          >
-            {state === "verifying" ? (
+        <View
+          style={[
+            styles.ctaButton,
+            { backgroundColor: isActive ? colors.primary : colors.muted },
+          ]}
+        >
+          {isActive ? (
+            state === "verifying" ? (
               <>
                 <VerifyingDots />
                 <Text style={styles.ctaText}>Verifying</Text>
@@ -165,17 +164,17 @@ function VerifyButton({
                 <Text style={styles.ctaText}>Verify</Text>
                 <Feather name="arrow-right" size={18} color="#fff" />
               </>
-            )}
-          </LinearGradient>
-        ) : (
-          <View style={[styles.ctaButton, styles.ctaButtonDisabled]}>
-            <View style={{ width: 28 }} />
-            <Text style={[styles.ctaText, styles.ctaTextDisabled]}>
-              Enter code ({digitCount}/{OTP_LENGTH})
-            </Text>
-            <View style={{ width: 28 }} />
-          </View>
-        )}
+            )
+          ) : (
+            <>
+              <View style={{ width: 28 }} />
+              <Text style={[styles.ctaText, { color: colors.mutedForeground }]}>
+                Enter code ({digitCount}/{OTP_LENGTH})
+              </Text>
+              <View style={{ width: 28 }} />
+            </>
+          )}
+        </View>
       </Pressable>
     </Animated.View>
   );
@@ -183,6 +182,7 @@ function VerifyButton({
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
 export default function OtpScreen() {
+  const colors = useColors();
   const { confirmOtp } = useDriver();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -254,7 +254,7 @@ export default function OtpScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.root, { backgroundColor: PAGE_BG }]}
+      style={[styles.root, { backgroundColor: colors.background }]}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <View
@@ -265,23 +265,37 @@ export default function OtpScreen() {
       >
         <TouchableOpacity
           onPress={() => router.back()}
-          style={styles.backBtn}
+          style={[styles.backBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
           activeOpacity={0.7}
         >
-          <Feather name="arrow-left" size={20} color={TEXT_PRIMARY} />
+          <Feather name="arrow-left" size={20} color={colors.foreground} />
         </TouchableOpacity>
 
         <View style={styles.headerSection}>
-          <View style={styles.iconWrap}>
-            <Feather name="shield" size={22} color={GRADIENT_FROM} />
+          {/* Shield icon tile */}
+          <View
+            style={[
+              styles.iconWrap,
+              { backgroundColor: colors.primarySoft, borderColor: colors.primary },
+            ]}
+          >
+            <Feather name="shield" size={22} color={colors.primary} />
           </View>
-          <Text style={styles.headline}>Verify your number</Text>
+
+          <Text style={[styles.headline, { color: colors.foreground }]}>
+            Verify your number
+          </Text>
           <View style={styles.codeSentRow}>
-            <Text style={styles.codeSentText}>Code sent to </Text>
-            <Text style={styles.codeSentPhone}>{formattedPhone}</Text>
+            <Text style={[styles.codeSentText, { color: colors.mutedForeground }]}>
+              Code sent to{" "}
+            </Text>
+            <Text style={[styles.codeSentPhone, { color: colors.foreground }]}>
+              {formattedPhone}
+            </Text>
           </View>
         </View>
 
+        {/* ── OTP cells ── */}
         <View style={styles.otpSection}>
           <Pressable
             onPress={() => inputRef.current?.focus()}
@@ -291,40 +305,32 @@ export default function OtpScreen() {
               const isFilled = i < otp.length;
               const isActive = i === otp.length && !verifying;
 
-              const cellContent = (
-                <View style={styles.cellInner}>
-                  <Text
-                    style={[
-                      styles.cellText,
-                      isFilled && styles.cellTextFilled,
-                    ]}
-                  >
-                    {isFilled ? d : ""}
-                  </Text>
-                </View>
-              );
-
               return (
                 <CellPop key={i} trigger={isFilled}>
-                  {isActive ? (
-                    <LinearGradient
-                      colors={[GRADIENT_FROM, GRADIENT_TO]}
-                      start={{ x: 0, y: 0.5 }}
-                      end={{ x: 1, y: 0.5 }}
-                      style={styles.cellShellActive}
-                    >
-                      {cellContent}
-                    </LinearGradient>
-                  ) : (
-                    <View
+                  <View
+                    style={[
+                      styles.cellShell,
+                      {
+                        borderColor:     isActive  ? colors.primary      : isFilled ? colors.borderStrong : colors.border,
+                        borderWidth:     isActive  ? 2                   : 1,
+                        backgroundColor: isActive  ? colors.primarySoft  : colors.surfaceElevated,
+                        shadowColor:     isActive  ? colors.primary      : "#000",
+                        shadowOpacity:   isActive  ? 0.14                : 0.04,
+                        shadowRadius:    isActive  ? 10                  : 4,
+                        shadowOffset:    { width: 0, height: isActive ? 4 : 2 },
+                        elevation:       isActive  ? 4                   : 1,
+                      },
+                    ]}
+                  >
+                    <Text
                       style={[
-                        styles.cellShellIdle,
-                        isFilled && styles.cellShellFilled,
+                        styles.cellText,
+                        { color: isActive ? colors.primary : colors.foreground },
                       ]}
                     >
-                      {cellContent}
-                    </View>
-                  )}
+                      {isFilled ? d : ""}
+                    </Text>
+                  </View>
                 </CellPop>
               );
             })}
@@ -352,13 +358,15 @@ export default function OtpScreen() {
 
           {!!error && (
             <View style={styles.errorRow}>
-              <Feather name="alert-circle" size={13} color="#EF4444" />
-              <Text style={styles.errorText}>{error}</Text>
+              <Feather name="alert-circle" size={13} color={colors.error} />
+              <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
             </View>
           )}
 
           {!!currentDevOtp && (
-            <Text style={styles.devHint}>Dev — code: {currentDevOtp}</Text>
+            <Text style={[styles.devHint, { color: colors.mutedForeground }]}>
+              Dev — code: {currentDevOtp}
+            </Text>
           )}
         </View>
 
@@ -373,15 +381,15 @@ export default function OtpScreen() {
         <View style={styles.resendRow}>
           {canResend ? (
             <TouchableOpacity onPress={() => void handleResend()} activeOpacity={0.6}>
-              <Text style={styles.resendText}>
+              <Text style={[styles.resendText, { color: colors.mutedForeground }]}>
                 Didn't receive it?{" "}
-                <Text style={styles.resendLink}>Resend code</Text>
+                <Text style={[styles.resendLink, { color: colors.primary }]}>Resend code</Text>
               </Text>
             </TouchableOpacity>
           ) : (
-            <Text style={styles.resendText}>
+            <Text style={[styles.resendText, { color: colors.mutedForeground }]}>
               Resend in{" "}
-              <Text style={styles.resendTimer}>{timer}s</Text>
+              <Text style={[styles.resendTimer, { color: colors.foreground }]}>{timer}s</Text>
             </Text>
           )}
         </View>
@@ -393,8 +401,9 @@ export default function OtpScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root:      { flex: 1 },
   container: { flex: 1, paddingHorizontal: 24 },
+
   backBtn: {
     width: 42,
     height: 42,
@@ -402,31 +411,32 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     alignSelf: "flex-start",
-    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: BORDER,
-    shadowColor: "#0F172A",
+    shadowColor: "#000",
     shadowOpacity: 0.05,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
     elevation: 2,
   },
+
   headerSection: { marginTop: 32, gap: 8 },
   iconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: "#FFF0F6",
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#FFD6E8",
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
   headline: {
     fontSize: 30,
-    fontWeight: "700",
-    color: TEXT_PRIMARY,
+    fontWeight: "800",
     letterSpacing: -0.5,
   },
   codeSentRow: {
@@ -435,53 +445,67 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     marginTop: 2,
   },
-  codeSentText:  { fontSize: 15, color: TEXT_MUTED, fontWeight: "400" },
-  codeSentPhone: { fontSize: 15, fontWeight: "700", color: TEXT_PRIMARY },
-  otpSection: { alignItems: "center", marginTop: 40, gap: 14 },
+  codeSentText:  { ...TS.bodyLg },
+  codeSentPhone: { ...TS.bodyLg, fontWeight: "700" },
+
+  // OTP grid
+  otpSection: { alignItems: "center", marginTop: 40, gap: 16 },
   cellsRow:   { flexDirection: "row", gap: 10, alignItems: "center" },
-  cellShellActive: {
-    width: 50, height: 62, borderRadius: 17.5, padding: 1.5,
-    shadowColor: GRADIENT_FROM, shadowOpacity: 0.12, shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 }, elevation: 3,
+
+  // Single merged cell — bg/border/shadow all injected inline
+  cellShell: {
+    width: 50,
+    height: 62,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  cellShellIdle: {
-    width: 50, height: 62, borderRadius: 17.5, borderWidth: 1, borderColor: BORDER,
-    shadowColor: "#0F172A", shadowOpacity: 0.03, shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 }, elevation: 1,
+  cellText: {
+    fontSize: 24,
+    fontWeight: "700",
+    letterSpacing: 0,
   },
-  cellShellFilled: { borderColor: "#D1D5DB", shadowOpacity: 0.05 },
-  cellInner: {
-    flex: 1, borderRadius: 16, backgroundColor: "#FFFFFF",
-    alignItems: "center", justifyContent: "center",
-  },
-  cellText:       { fontSize: 22, fontWeight: "700", color: TEXT_PRIMARY, letterSpacing: 0 },
-  cellTextFilled: { color: TEXT_PRIMARY },
-  hiddenInput:    { position: "absolute", width: 1, height: 1, opacity: 0 },
+
+  hiddenInput: { position: "absolute", width: 1, height: 1, opacity: 0 },
+
   errorRow: {
-    flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 4,
   },
-  errorText: { fontSize: 13, color: "#EF4444", fontWeight: "500", flex: 1 },
-  devHint:   { fontSize: 12, color: TEXT_MUTED },
+  errorText: { ...TS.bodySm, fontWeight: "500", flex: 1 },
+  devHint:   { ...TS.bodySm },
+
   ctaSection: { marginTop: 32 },
   ctaWrap: {
     borderRadius: 20,
-    shadowColor: GRADIENT_FROM, shadowOpacity: 0.13, shadowRadius: 16,
-    shadowOffset: { width: 0, height: 7 }, elevation: 4,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 7 },
   },
-  ctaWrapDisabled: { shadowOpacity: 0, elevation: 0 },
-  ctaPressable:    { borderRadius: 20, overflow: "hidden" },
+  ctaPressable: { borderRadius: 20, overflow: "hidden" },
   ctaButton: {
-    height: 58, borderRadius: 20, flexDirection: "row",
-    alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 20, width: "100%",
+    height: 58,
+    borderRadius: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    width: "100%",
   },
-  ctaButtonDisabled: { backgroundColor: "#F1F5F9", borderWidth: 1, borderColor: BORDER },
-  ctaText:         { fontSize: 18, fontWeight: "700", color: "#FFFFFF", letterSpacing: 0.2 },
-  ctaTextDisabled: { color: "#9CA3AF", fontWeight: "600" },
-  dotsRow:         { flexDirection: "row", alignItems: "center", gap: 4, width: 28 },
-  loadDot:         { width: 6, height: 6, borderRadius: 3, backgroundColor: "#FFFFFF" },
-  resendRow:       { alignItems: "center", marginTop: 20 },
-  resendText:      { fontSize: 14, color: TEXT_MUTED, fontWeight: "400" },
-  resendTimer:     { color: TEXT_PRIMARY, fontWeight: "700" },
-  resendLink:      { color: GRADIENT_FROM, fontWeight: "700" },
+  ctaText: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#fff",
+    letterSpacing: 0.2,
+  },
+
+  // Verifying dots — always white on primary bg
+  dotsRow: { flexDirection: "row", alignItems: "center", gap: 4, width: 28 },
+  loadDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#fff" },
+
+  resendRow:   { alignItems: "center", marginTop: 22 },
+  resendText:  { ...TS.body },
+  resendTimer: { fontWeight: "700" },
+  resendLink:  { fontWeight: "700" },
 });
