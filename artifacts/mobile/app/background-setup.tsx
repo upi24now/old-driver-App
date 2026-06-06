@@ -28,6 +28,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   AppState,
   type AppStateStatus,
   Linking,
@@ -172,6 +173,14 @@ export default function BackgroundSetupScreen() {
   }
 
   async function handleContinue() {
+    if (!criticalReady) {
+      Alert.alert(
+        "Permissions Required",
+        "Notifications and GPS Location must be granted before you can continue. These are required to receive delivery orders.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
     setSaving(true);
     try {
       await markBackgroundSetupShown();
@@ -467,7 +476,7 @@ export default function BackgroundSetupScreen() {
             <>
               <Feather name="check-circle" size={18} color="#fff" />
               <Text style={styles.continueBtnText}>
-                {criticalReady ? "All set — Continue" : "Skip for now — Continue"}
+                {criticalReady ? "All set — Continue" : "Grant Permissions First"}
               </Text>
             </>
           )}

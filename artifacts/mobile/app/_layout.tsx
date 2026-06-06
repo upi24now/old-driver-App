@@ -7,6 +7,7 @@ import {
 import { useFonts } from "expo-font";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import * as Location from "expo-location";
 import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef, useState } from "react";
@@ -19,6 +20,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { DriverProvider, useDriver } from "@/contexts/DriverContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { useNotifications } from "@/hooks/useNotifications";
+import { checkNotificationPermissions } from "@/utils/notifications";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -56,8 +58,22 @@ function RootLayoutNav() {
     if (onboardingFeeApplies && onboardingFeeStatus !== "paid" && verificationStatus !== "approved") {
                                                    router.replace("/onboarding-fee");       return; }
     if (verificationStatus !== "approved")       { router.replace("/verification-pending"); return; }
-    if (!backgroundSetupShown)                   { router.replace("/background-setup");     return; }
-    router.replace("/(tabs)");
+
+    // Check real runtime permissions — backgroundSetupShown alone is not
+    // sufficient because the driver may have tapped "Skip" on first visit.
+    // Both notification AND GPS must be granted before the dashboard is shown.
+    void (async () => {
+      const [notifOk, locStatus] = await Promise.all([
+        checkNotificationPermissions().catch(() => false),
+        Location.getForegroundPermissionsAsync().catch(() => ({ granted: false })),
+      ]);
+      const permsGranted = notifOk && locStatus.granted;
+      if (!permsGranted || !backgroundSetupShown) {
+        router.replace("/background-setup");
+      } else {
+        router.replace("/(tabs)");
+      }
+    })();
   // Deps: only the values that determine when auth loading is done and who is logged in.
   // All other values (profile, vehicle, …) are read at the moment the effect runs.
   // eslint-disable-next-line react-hooks/exhaustive-deps

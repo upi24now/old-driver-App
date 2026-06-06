@@ -1,0 +1,100 @@
+DRIVER APP – ONE-TIME PERMISSIONS SETUP AUDIT + FIX
+
+Budget rule:
+This is one-time permission fix.
+Do not do full app audit.
+Do not touch Razorpay/onboarding fee.
+Do not touch FCM dispatcher.
+Do not touch wallet/plans/trips/UI redesign.
+Do not run EAS build.
+
+Problem:
+Latest APK login ke baad direct Home Dashboard khol raha hai. Permission setup nahi aa raha. User ko chahiye:
+1. Notification permission
+2. GPS/location permission
+3. Background running setup
+4. Battery optimization setup
+
+Goal:
+After approved driver login, driver must see Permission Setup screen until required setup is completed.
+
+Allowed files:
+- artifacts/mobile/app/background-setup.tsx
+- artifacts/mobile/app/_layout.tsx
+- artifacts/mobile/app/(tabs)/index.tsx
+- artifacts/mobile/app/profile.tsx or profile tab file only if link missing
+- artifacts/mobile/utils/notifications.ts
+- artifacts/mobile/app.json
+- artifacts/mobile/package.json only if expo-location missing
+
+Audit + Fix requirements:
+
+1. Notification permission
+- Check app.json has POST_NOTIFICATIONS.
+- Check runtime request uses expo-notifications requestPermissionsAsync.
+- Background Setup must show notification card.
+- Button must request permission.
+- Status must refresh after request.
+- If denied, show Open App Settings button.
+- Dashboard Go Online must block if notification permission missing.
+
+2. GPS/location permission
+- Check app.json has ACCESS_FINE_LOCATION and ACCESS_COARSE_LOCATION.
+- Check expo-location is installed and plugin configured.
+- Background Setup must show GPS card.
+- Button must request foreground location permission.
+- Status must refresh after request.
+- If denied, show Open App Settings button.
+- Dashboard Go Online must block if GPS permission missing.
+
+3. Background running setup
+- Do not add ACCESS_BACKGROUND_LOCATION yet unless real background location service is implemented.
+- Show Background Running card as REQUIRED SETUP/Manual Setup.
+- Explain: keep app allowed in background and enable auto-start where phone provides it.
+- Button should open App Info/App Settings using IntentLauncher or Linking.openSettings.
+- Mark status as “Manual setup required” or “Settings opened”.
+- Do not falsely claim app can verify this automatically.
+
+4. Battery optimization setup
+- Show Battery Optimization card.
+- Button should open Android battery optimization/settings if available.
+- Fallback to App Settings.
+- Explain Realme/Oppo/Vivo/Xiaomi/Samsung may require manual “Unrestricted / Don’t optimize”.
+- Mark status as “Manual setup required” or “Settings opened”.
+- Do not falsely claim app can verify this automatically.
+
+5. Route guard after login
+- Approved driver should NOT go directly to Home if notification OR GPS permission is missing.
+- Route to:
+  /background-setup?required=1
+- Do not rely only on backgroundSetupShown.
+- Real runtime permissions must be checked.
+- Only allow Home Dashboard after Notification + GPS permissions are granted.
+- Background running and battery optimization should be strongly required visually, but because Android cannot verify reliably, do not hard-block forever based only on unverifiable status.
+
+6. Background Setup Continue button
+- If notification/GPS missing: block continue and show alert.
+- If notification/GPS granted: allow continue to dashboard.
+- Show clear warning for battery/background manual setup.
+
+7. Profile link
+- Ensure Profile has visible link:
+  Permissions & Background Settings
+- It should open /background-setup?back=1
+
+8. Typecheck
+Run:
+pnpm typecheck
+
+Return:
+FILES MODIFIED:
+NOTIFICATION PERMISSION:
+GPS PERMISSION:
+BACKGROUND RUNNING:
+BATTERY OPTIMIZATION:
+ROUTE GUARD:
+GO ONLINE GUARD:
+PROFILE LINK:
+TYPECHECK RESULT:
+BUILD READY:
+LIMITATIONS:
