@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -327,20 +327,24 @@ export default function HomeScreen() {
       >
         {/* TOP BAR */}
         <View style={styles.topBar}>
-          <TouchableOpacity activeOpacity={0.8} style={styles.avatarRow}>
-            <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
-              <Text style={styles.avatarText}>RK</Text>
-              <View style={[styles.avatarRing, { borderColor: colors.primary }]} />
-            </View>
+          <View style={[styles.brandTile, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <LinearGradient
+              colors={["#FF4D8D", "#FF8C42"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.brandIconBadge}
+            >
+              <MaterialCommunityIcons name="motorbike" size={14} color="#fff" />
+            </LinearGradient>
             <View>
-              <Text style={[styles.greeting, { color: colors.mutedForeground }]}>
-                Good morning
+              <Text style={[styles.brandName, { color: colors.foreground }]}>
+                BIKE COURIER
               </Text>
-              <Text style={[styles.driverName, { color: colors.foreground }]}>
-                Rohit K. <Feather name="chevron-down" size={14} color="#999" />
+              <Text style={[styles.brandSub, { color: colors.mutedForeground }]}>
+                Driver Partner
               </Text>
             </View>
-          </TouchableOpacity>
+          </View>
           <View style={styles.topActions}>
             {/* Active plan pill — only when subscription is live */}
             {subscriptionActive && subscriptionPlan && (
@@ -728,24 +732,38 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingVertical: 4,
   },
-  avatarRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+  brandTile: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowColor: "#FF4D8D",
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 5,
+  },
+  brandIconBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarRing: {
-    position: "absolute",
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    borderWidth: 1.5,
+  brandName: {
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 1.5,
   },
-  avatarText: { color: "#fff", fontSize: 14, fontWeight: "800" },
-  greeting: { fontSize: 11, fontWeight: "500", letterSpacing: 0.3 },
-  driverName: { fontSize: 16, fontWeight: "800", marginTop: 1 },
+  brandSub: {
+    fontSize: 10,
+    fontFamily: "Inter_500Medium",
+    letterSpacing: 0.2,
+    marginTop: 1,
+  },
   topActions: { flexDirection: "row", alignItems: "center", gap: 9 },
 
   // Custom online/offline toggle
