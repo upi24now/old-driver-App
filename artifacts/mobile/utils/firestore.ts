@@ -57,6 +57,10 @@ export type DriverDoc = {
   tripsToday?:       number;  // completed deliveries on todayDate
   todayDate?:        string;  // "YYYY-MM-DD" sentinel for daily reset
 
+  // ── Driver stats (shown on customer app driver card) ─────────────────────
+  rating?:     number;  // driver rating; default 5.0 when absent
+  totalTrips?: number;  // all-time completed trip count; default 0 when absent
+
   // ── Background permission setup ───────────────────────────────────────────
   backgroundSetupShown?: boolean;  // true after driver has seen the setup screen once
 
@@ -426,6 +430,8 @@ export type OrderDoc = {
 
   // Written by driver on accept
   driverName?:    string;
+  driverRating?:  number | string;  // shown on customer driver card; fallback "5.0"
+  driverTrips?:   number;           // shown on customer driver card; fallback 0
 
 };
 
@@ -563,9 +569,11 @@ export type AcceptOrderResult =
  * local state.  Never set activeOrders until this returns { ok: true }.
  */
 export async function acceptOrder(
-  orderId:    string,
-  driverUid:  string,
-  driverName: string | null,
+  orderId:       string,
+  driverUid:     string,
+  driverName:    string | null,
+  driverRating?: number | string,
+  driverTrips?:  number,
 ): Promise<AcceptOrderResult> {
   try {
     await runTransaction(db, async (tx) => {
@@ -594,11 +602,13 @@ export async function acceptOrder(
       }
 
       tx.update(ref, {
-        status:     "accepted",
+        status:       "accepted",
         driverUid,
-        driverName: driverName ?? "",
-        acceptedAt: serverTimestamp(),
-        updatedAt:  serverTimestamp(),
+        driverName:   driverName  ?? "",
+        driverRating: driverRating ?? "5.0",
+        driverTrips:  driverTrips  ?? 0,
+        acceptedAt:   serverTimestamp(),
+        updatedAt:    serverTimestamp(),
       });
     });
 

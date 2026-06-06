@@ -335,6 +335,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const [todayEarnings,  setTodayEarnings]= useState(0);
   const [tripsToday,     setTripsToday]   = useState(0);
   const [transactions,   setTxns]         = useState<Txn[]>(SEED_TXNS);
+  const [driverRating,   setDriverRating] = useState<number | string>("5.0");
+  const [driverTrips,    setDriverTrips]  = useState<number>(0);
 
   const [overlayPermissionGranted,  setOverlayPermissionGranted]  = useState(false);
   const [backgroundSetupShown,      setBackgroundSetupShown]      = useState(false);
@@ -348,9 +350,13 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const incomingRideRef = useRef<IncomingRide | null>(null);
   const driverUidRef    = useRef<string | null>(null);
   const profileRef      = useRef<Profile | null>(null);
-  useEffect(() => { incomingRideRef.current = incomingRide;  }, [incomingRide]);
-  useEffect(() => { driverUidRef.current    = driverUid;     }, [driverUid]);
-  useEffect(() => { profileRef.current      = profile;       }, [profile]);
+  const driverRatingRef = useRef<number | string>("5.0");
+  const driverTripsRef  = useRef<number>(0);
+  useEffect(() => { incomingRideRef.current  = incomingRide;   }, [incomingRide]);
+  useEffect(() => { driverUidRef.current     = driverUid;      }, [driverUid]);
+  useEffect(() => { profileRef.current       = profile;        }, [profile]);
+  useEffect(() => { driverRatingRef.current  = driverRating;   }, [driverRating]);
+  useEffect(() => { driverTripsRef.current   = driverTrips;    }, [driverTrips]);
 
   // ─── Firebase Auth listener — restores session on app restart ──────────────
   useEffect(() => {
@@ -395,6 +401,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             setOnboardingFeeApplies(driverDoc.onboardingFeeApplies ?? false);
             setOnboardingFeeStatus(driverDoc.onboardingFeeStatus ?? null);
             setOnboardingFeeAmount(driverDoc.onboardingFeeAmount ?? null);
+            setDriverRating(driverDoc.rating ?? "5.0");
+            setDriverTrips(driverDoc.totalTrips ?? 0);
           }
           // Restore up to 3 active orders if driver app was restarted mid-delivery.
           // getActiveOrdersForDriver returns newest-first, capped at MAX_ACTIVE_ORDERS.
@@ -588,6 +596,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         setOnboardingFeeApplies(driverDoc.onboardingFeeApplies ?? false);
         setOnboardingFeeStatus(driverDoc.onboardingFeeStatus ?? null);
         setOnboardingFeeAmount(driverDoc.onboardingFeeAmount ?? null);
+        setDriverRating(driverDoc.rating ?? "5.0");
+        setDriverTrips(driverDoc.totalTrips ?? 0);
       }
 
       const profileComplete = !!(driverDoc.name && driverDoc.vehicleId);
@@ -767,7 +777,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     //    The transaction reads the order doc, verifies status==="dispatched" and
     //    driverUid===uid, then writes accepted fields in a single atomic operation.
     //    If another driver beat us, the transaction throws and we get ok:false.
-    const result = await acceptOrder(ride.id, uid, profile?.name ?? null);
+    const result = await acceptOrder(ride.id, uid, profile?.name ?? null, driverRating, driverTrips);
 
     if (!result.ok) {
       // Transaction failed — do not enter active-delivery.
@@ -1021,7 +1031,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           if (activeOrdersRef.current.some((o) => o.id === ride.id)) return;
 
           // Atomic Firestore transaction — same guard as in-app acceptRide().
-          const result = await acceptOrder(ride.id, uid, profileRef.current?.name ?? null);
+          const result = await acceptOrder(ride.id, uid, profileRef.current?.name ?? null, driverRatingRef.current, driverTripsRef.current);
 
           if (!result.ok) {
             // Another path beat us — clear the incoming ride and bail.
