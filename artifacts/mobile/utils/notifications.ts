@@ -619,8 +619,8 @@ export async function initNotifications(): Promise<{
       return { permissionGranted: false };
     }
 
-    // Register background task after permission is confirmed.
-    await registerBackgroundNotificationTask();
+    // Background task registration temporarily disabled for startup stability.
+    // await registerBackgroundNotificationTask();
 
     console.log("[Notifications] Initialization complete");
     return { permissionGranted: true };
