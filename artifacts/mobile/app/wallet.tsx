@@ -45,11 +45,12 @@ const SEED_YESTERDAY: Transaction[] = [
   { id: "t8", type: "withdraw", title: "Withdrawal via UPI",             subtitle: "Pending review", amount: -1200, status: "pending", time: "4:20 PM", date: "Yesterday" },
 ];
 
+// Semantic-token hex used at module level (no hook access here)
 const TYPE_META: Record<TxnType, { icon: string; color: string; bg: string }> = {
-  earning:  { icon: "navigation",    color: "#00C853", bg: "#f0fdf4" },
-  tip:      { icon: "heart",         color: "#E91E63", bg: "#fce4ec" },
-  bonus:    { icon: "gift",          color: "#9C27B0", bg: "#f3e5f5" },
-  withdraw: { icon: "arrow-up-right", color: "#1976D2", bg: "#e3f2fd" },
+  earning:  { icon: "navigation",     color: "#059669", bg: "#D1FAE5" },  // money / successSoft
+  tip:      { icon: "heart",          color: "#E8336C", bg: "#FFF0F5" },  // primary / primarySoft
+  bonus:    { icon: "gift",           color: "#7C3AED", bg: "#EDE9FE" },  // pending / pendingSoft
+  withdraw: { icon: "arrow-up-right", color: "#2563EB", bg: "#DBEAFE" },  // info / infoSoft
 };
 
 // ─── TransactionRow ───────────────────────────────────────────────────────────
@@ -78,12 +79,12 @@ function TransactionRow({ txn }: { txn: Transaction }) {
         </View>
       </View>
       <View style={{ alignItems: "flex-end", gap: 3 }}>
-        <Text style={[styles.txnAmount, { color: isDebit ? "#0a0a0a" : "#00C853" }]}>
+        <Text style={[styles.txnAmount, { color: isDebit ? colors.foreground : colors.money }]}>
           {isDebit ? "-" : "+"}₹{Math.abs(txn.amount).toLocaleString("en-IN")}
         </Text>
         {txn.status === "pending" && (
-          <View style={[styles.statusPill, { backgroundColor: "#fff5e6" }]}>
-            <Text style={[styles.statusPillText, { color: "#b75d00" }]}>Pending</Text>
+          <View style={[styles.statusPill, { backgroundColor: colors.warningSoft }]}>
+            <Text style={[styles.statusPillText, { color: colors.warningText }]}>Pending</Text>
           </View>
         )}
       </View>
@@ -157,21 +158,30 @@ export default function WalletScreen() {
       keyboardVerticalOffset={0}
     >
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 12, backgroundColor: "#fff" }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            paddingTop:        insets.top + 12,
+            backgroundColor:   colors.surface,
+            borderBottomColor: colors.border,
+          },
+        ]}
+      >
         <TouchableOpacity
           onPress={() => router.back()}
-          style={[styles.iconBtn, { backgroundColor: "#f5f5f5" }]}
+          style={[styles.iconBtn, { backgroundColor: colors.muted }]}
           activeOpacity={0.7}
         >
-          <Feather name="arrow-left" size={18} color="#0a0a0a" />
+          <Feather name="arrow-left" size={18} color={colors.foreground} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Wallet</Text>
+        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Wallet</Text>
         <TouchableOpacity
-          style={[styles.iconBtn, { backgroundColor: "#f5f5f5" }]}
+          style={[styles.iconBtn, { backgroundColor: colors.muted }]}
           activeOpacity={0.7}
           onPress={callSupport}
         >
-          <Feather name="help-circle" size={18} color="#0a0a0a" />
+          <Feather name="help-circle" size={18} color={colors.foreground} />
         </TouchableOpacity>
       </View>
 
@@ -182,7 +192,7 @@ export default function WalletScreen() {
       >
         {/* ── BALANCE HERO ──────────────────────────────────────────────────── */}
         <LinearGradient
-          colors={["#0d2818", "#0a0a0a"]}
+          colors={["#065F46", "#0F172A"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.balanceCard}
@@ -217,10 +227,10 @@ export default function WalletScreen() {
             </View>
             <View style={[styles.balanceSplitDivider]} />
             <View style={styles.balanceSplitItem}>
-              <View style={[styles.balanceSplitDot, { backgroundColor: "#00C853" }]} />
+              <View style={[styles.balanceSplitDot, { backgroundColor: colors.money }]} />
               <View>
                 <Text style={styles.balanceSplitLabel}>WITHDRAWABLE</Text>
-                <Text style={[styles.balanceSplitValue, { color: "#00C853" }]}>
+                <Text style={[styles.balanceSplitValue, { color: colors.money }]}>
                   ₹{withdrawable.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
                 </Text>
               </View>
@@ -230,8 +240,8 @@ export default function WalletScreen() {
           {/* Today's earnings chip */}
           {todayEarnings > 0 && (
             <View style={styles.todayChip}>
-              <Feather name="trending-up" size={11} color="#00C853" />
-              <Text style={styles.todayChipText}>
+              <Feather name="trending-up" size={11} color={colors.money} />
+              <Text style={[styles.todayChipText, { color: colors.money }]}>
                 +₹{todayEarnings.toLocaleString("en-IN", { maximumFractionDigits: 0 })} earned today
               </Text>
             </View>
@@ -239,10 +249,20 @@ export default function WalletScreen() {
         </LinearGradient>
 
         {/* ── UPI WITHDRAWAL CARD ───────────────────────────────────────────── */}
-        <View style={[styles.withdrawCard, { borderColor: colors.border }]}>
-          <View style={styles.withdrawCardHeader}>
-            <View style={[styles.withdrawCardIcon, { backgroundColor: "#e3f2fd" }]}>
-              <Feather name="smartphone" size={16} color="#1976D2" />
+        <View
+          style={[
+            styles.withdrawCard,
+            { borderColor: colors.border, backgroundColor: colors.surface },
+          ]}
+        >
+          <View
+            style={[
+              styles.withdrawCardHeader,
+              { borderBottomColor: colors.border },
+            ]}
+          >
+            <View style={[styles.withdrawCardIcon, { backgroundColor: colors.infoSoft }]}>
+              <Feather name="smartphone" size={16} color={colors.info} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.withdrawCardTitle, { color: colors.foreground }]}>
@@ -259,8 +279,8 @@ export default function WalletScreen() {
           {success ? (
             /* Success state */
             <View style={styles.successBox}>
-              <View style={styles.successIconWrap}>
-                <Feather name="check-circle" size={28} color="#00C853" />
+              <View style={[styles.successIconWrap, { backgroundColor: colors.moneySoft }]}>
+                <Feather name="check-circle" size={28} color={colors.money} />
               </View>
               <Text style={[styles.successTitle, { color: colors.foreground }]}>
                 Withdrawal request submitted
@@ -269,11 +289,11 @@ export default function WalletScreen() {
                 Amount will be processed to your UPI ID within 24 hours.
               </Text>
               <TouchableOpacity
-                style={styles.successNewBtn}
+                style={[styles.successNewBtn, { backgroundColor: colors.muted }]}
                 onPress={() => setSuccess(false)}
                 activeOpacity={0.75}
               >
-                <Text style={styles.successNewBtnText}>New request</Text>
+                <Text style={[styles.successNewBtnText, { color: colors.foreground }]}>New request</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -287,11 +307,12 @@ export default function WalletScreen() {
                 <View
                   style={[
                     styles.inputWrap,
+                    { backgroundColor: colors.surfaceElevated },
                     {
                       borderColor: upiId.length > 0 && !upiValid
-                        ? "#FF5252"
+                        ? colors.error
                         : upiValid
-                        ? "#00C853"
+                        ? colors.money
                         : colors.border,
                     },
                   ]}
@@ -310,11 +331,11 @@ export default function WalletScreen() {
                     onSubmitEditing={() => amountRef.current?.focus()}
                   />
                   {upiValid && (
-                    <Feather name="check-circle" size={14} color="#00C853" />
+                    <Feather name="check-circle" size={14} color={colors.money} />
                   )}
                 </View>
                 {upiId.length > 0 && !upiValid && (
-                  <Text style={styles.inputError}>
+                  <Text style={[styles.inputError, { color: colors.error }]}>
                     Enter a valid UPI ID (e.g. name@paytm)
                   </Text>
                 )}
@@ -328,11 +349,12 @@ export default function WalletScreen() {
                 <View
                   style={[
                     styles.inputWrap,
+                    { backgroundColor: colors.surfaceElevated },
                     {
                       borderColor: amountText.length > 0 && !amountValid
-                        ? "#FF5252"
+                        ? colors.error
                         : amountValid
-                        ? "#00C853"
+                        ? colors.money
                         : colors.border,
                     },
                   ]}
@@ -351,16 +373,16 @@ export default function WalletScreen() {
                     editable={canWithdraw}
                   />
                   {amountValid && (
-                    <Feather name="check-circle" size={14} color="#00C853" />
+                    <Feather name="check-circle" size={14} color={colors.money} />
                   )}
                 </View>
                 {amountText.length > 0 && parsedAmount > withdrawable && (
-                  <Text style={styles.inputError}>
+                  <Text style={[styles.inputError, { color: colors.error }]}>
                     Maximum withdrawable is ₹{withdrawable.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
                   </Text>
                 )}
                 {amountText.length > 0 && parsedAmount <= 0 && (
-                  <Text style={styles.inputError}>
+                  <Text style={[styles.inputError, { color: colors.error }]}>
                     Amount must be greater than ₹0
                   </Text>
                 )}
@@ -368,16 +390,21 @@ export default function WalletScreen() {
 
               {/* Server error */}
               {errorMsg && (
-                <View style={styles.errorBox}>
-                  <Feather name="alert-circle" size={13} color="#FF5252" />
-                  <Text style={styles.errorBoxText}>{errorMsg}</Text>
+                <View
+                  style={[
+                    styles.errorBox,
+                    { backgroundColor: colors.errorSoft, borderColor: colors.error },
+                  ]}
+                >
+                  <Feather name="alert-circle" size={13} color={colors.error} />
+                  <Text style={[styles.errorBoxText, { color: colors.errorText }]}>{errorMsg}</Text>
                 </View>
               )}
 
               {/* Locked balance note */}
-              <View style={styles.lockNote}>
-                <Feather name="lock" size={11} color="#b75d00" />
-                <Text style={[styles.lockNoteText, { color: "#b75d00" }]}>
+              <View style={[styles.lockNote, { backgroundColor: colors.warningSoft }]}>
+                <Feather name="lock" size={11} color={colors.warning} />
+                <Text style={[styles.lockNoteText, { color: colors.warning }]}>
                   ₹{LOCKED_BALANCE} minimum always stays in wallet
                 </Text>
               </View>
@@ -386,7 +413,7 @@ export default function WalletScreen() {
               <TouchableOpacity
                 style={[
                   styles.submitBtn,
-                  { backgroundColor: btnEnabled ? "#1976D2" : colors.border },
+                  { backgroundColor: btnEnabled ? colors.info : colors.border },
                 ]}
                 activeOpacity={0.85}
                 onPress={handleWithdraw}
@@ -414,7 +441,10 @@ export default function WalletScreen() {
           ].map((p) => (
             <TouchableOpacity
               key={p.label}
-              style={[styles.periodCard, { borderColor: colors.border }]}
+              style={[
+                styles.periodCard,
+                { borderColor: colors.border, backgroundColor: colors.surface },
+              ]}
               activeOpacity={0.7}
             >
               <View style={styles.periodTopRow}>
@@ -427,9 +457,9 @@ export default function WalletScreen() {
                 ₹{p.value}
               </Text>
               <View style={styles.periodBottom}>
-                <View style={[styles.deltaPill, { backgroundColor: "#f0fdf4" }]}>
-                  <Feather name="trending-up" size={9} color="#00C853" />
-                  <Text style={[styles.deltaText, { color: "#00C853" }]}>{p.delta}</Text>
+                <View style={[styles.deltaPill, { backgroundColor: colors.moneySoft }]}>
+                  <Feather name="trending-up" size={9} color={colors.money} />
+                  <Text style={[styles.deltaText, { color: colors.money }]}>{p.delta}</Text>
                 </View>
                 <Text style={[styles.periodDays, { color: colors.mutedForeground }]}>
                   {p.days}
@@ -446,7 +476,7 @@ export default function WalletScreen() {
               Transactions
             </Text>
             <TouchableOpacity activeOpacity={0.7}>
-              <Text style={[styles.txnSeeAll, { color: "#00C853" }]}>Export</Text>
+              <Text style={[styles.txnSeeAll, { color: colors.money }]}>Export</Text>
             </TouchableOpacity>
           </View>
 
@@ -470,7 +500,10 @@ export default function WalletScreen() {
                   activeOpacity={0.7}
                   style={[
                     styles.filterPill,
-                    { backgroundColor: active ? "#0a0a0a" : "#fff", borderColor: active ? "#0a0a0a" : colors.border },
+                    {
+                      backgroundColor: active ? colors.foreground : colors.surface,
+                      borderColor:     active ? colors.foreground : colors.border,
+                    },
                   ]}
                 >
                   <Text style={[styles.filterPillText, { color: active ? "#fff" : colors.foreground }]}>
@@ -492,7 +525,12 @@ export default function WalletScreen() {
                   {items.length} transaction{items.length > 1 ? "s" : ""}
                 </Text>
               </View>
-              <View style={[styles.txnList, { borderColor: colors.border }]}>
+              <View
+                style={[
+                  styles.txnList,
+                  { borderColor: colors.border, backgroundColor: colors.surface },
+                ]}
+              >
                 {items.map((t, i) => (
                   <View key={t.id}>
                     <TransactionRow txn={t} />
@@ -506,7 +544,12 @@ export default function WalletScreen() {
           ))}
 
           {filtered.length === 0 && (
-            <View style={[styles.emptyState, { borderColor: colors.border }]}>
+            <View
+              style={[
+                styles.emptyState,
+                { borderColor: colors.border, backgroundColor: colors.surface },
+              ]}
+            >
               <Feather name="inbox" size={28} color={colors.mutedForeground} />
               <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
                 No transactions in this category
@@ -528,9 +571,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
   },
-  headerTitle: { fontSize: 17, fontWeight: "800", color: "#0a0a0a", letterSpacing: -0.2 },
+  headerTitle: { fontSize: 17, fontWeight: "800", letterSpacing: -0.2 },
   iconBtn: {
     width: 38, height: 38, borderRadius: 11,
     alignItems: "center", justifyContent: "center",
@@ -576,18 +618,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     alignSelf: "flex-start",
-    backgroundColor: "rgba(0,200,83,0.12)",
+    backgroundColor: "rgba(5,150,105,0.14)",   // money token at 14% opacity
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "rgba(0,200,83,0.2)",
+    borderColor: "rgba(5,150,105,0.22)",
   },
-  todayChipText: { fontSize: 11, fontWeight: "700", color: "#00C853" },
+  todayChipText: { fontSize: 11, fontWeight: "700" },
 
   // Withdrawal card
   withdrawCard: {
-    backgroundColor: "#fff",
     borderRadius: 18,
     borderWidth: 1,
     overflow: "hidden",
@@ -598,7 +639,6 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
   },
   withdrawCardIcon: { width: 38, height: 38, borderRadius: 11, alignItems: "center", justifyContent: "center" },
   withdrawCardTitle: { fontSize: 14, fontWeight: "800" },
@@ -615,29 +655,25 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 12,
     height: 48,
-    backgroundColor: "#fafafa",
   },
   input: { flex: 1, fontSize: 15, fontWeight: "600" },
   rupeePfx: { fontSize: 16, fontWeight: "700" },
-  inputError: { fontSize: 11, fontWeight: "600", color: "#FF5252", marginTop: 5 },
+  inputError: { fontSize: 11, fontWeight: "600", marginTop: 5 },
 
   errorBox: {
     flexDirection: "row",
     alignItems: "center",
     gap: 7,
-    backgroundColor: "#fff5f5",
     borderRadius: 10,
     padding: 10,
     borderWidth: 1,
-    borderColor: "#ffcdd2",
   },
-  errorBoxText: { flex: 1, fontSize: 12, fontWeight: "600", color: "#c62828" },
+  errorBoxText: { flex: 1, fontSize: 12, fontWeight: "600" },
 
   lockNote: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "#fff8f0",
     borderRadius: 9,
     paddingHorizontal: 10,
     paddingVertical: 7,
@@ -658,7 +694,6 @@ const styles = StyleSheet.create({
   successBox: { padding: 24, alignItems: "center", gap: 10 },
   successIconWrap: {
     width: 60, height: 60, borderRadius: 30,
-    backgroundColor: "#f0fdf4",
     alignItems: "center", justifyContent: "center",
     marginBottom: 4,
   },
@@ -668,15 +703,14 @@ const styles = StyleSheet.create({
     marginTop: 6,
     paddingHorizontal: 20,
     paddingVertical: 9,
-    backgroundColor: "#f5f5f5",
     borderRadius: 20,
   },
-  successNewBtnText: { fontSize: 13, fontWeight: "700", color: "#0a0a0a" },
+  successNewBtnText: { fontSize: 13, fontWeight: "700" },
 
   // Period stats
   periodRow: { flexDirection: "row", gap: 10 },
   periodCard: {
-    flex: 1, backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, padding: 12, gap: 6,
+    flex: 1, borderRadius: 14, borderWidth: 1, padding: 12, gap: 6,
   },
   periodTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   periodLabel: { fontSize: 11, fontWeight: "700", letterSpacing: 0.3 },
@@ -703,7 +737,7 @@ const styles = StyleSheet.create({
   },
   txnGroupTitle: { fontSize: 11, fontWeight: "800", letterSpacing: 0.4, textTransform: "uppercase" },
   txnGroupCount: { fontSize: 10, fontWeight: "600" },
-  txnList: { backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, overflow: "hidden" },
+  txnList: { borderRadius: 14, borderWidth: 1, overflow: "hidden" },
   txnRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12 },
   txnIcon: { width: 36, height: 36, borderRadius: 11, alignItems: "center", justifyContent: "center" },
   txnTitle: { fontSize: 13, fontWeight: "700" },
@@ -715,7 +749,7 @@ const styles = StyleSheet.create({
   statusPill: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
   statusPillText: { fontSize: 9, fontWeight: "800", letterSpacing: 0.3 },
   emptyState: {
-    backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, paddingVertical: 30, alignItems: "center", gap: 8,
+    borderRadius: 14, borderWidth: 1, paddingVertical: 30, alignItems: "center", gap: 8,
   },
   emptyText: { fontSize: 12, fontWeight: "600" },
 });

@@ -2,6 +2,7 @@
  * Audit script — prints raw field names of the latest delivered order.
  * Run: pnpm --filter @workspace/scripts run audit-delivered-order
  */
+export {};
 
 const projectId   = process.env["FIREBASE_PROJECT_ID"];
 const clientEmail = process.env["FIREBASE_CLIENT_EMAIL"];
