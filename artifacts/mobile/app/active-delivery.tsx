@@ -14,12 +14,13 @@
 
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as Location from "expo-location";
 import * as Network from "expo-network";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useDriver } from "@/contexts/DriverContext";
 import { useEffect, useRef, useState } from "react";
-import { driverCancelOrder, updateOrderStage, type DeliveryStage } from "@/utils/firestore";
+import { driverCancelOrder, updateDriverLocation, updateOrderStage, type DeliveryStage } from "@/utils/firestore";
 import { completeDelivery } from "@/utils/delivery-api";
 import { callSupport } from "@/utils/support";
 import {
@@ -558,6 +559,10 @@ export default function ActiveDeliveryScreen() {
   // external cancellation occurred and we must exit with an alert.
   const didEndSelf = useRef(false);
 
+  // Holds the active expo-location subscription so it can be removed on
+  // unmount, delivery completion, or order cancellation.
+  const locationSubRef = useRef<Location.LocationSubscription | null>(null);
+
   // Restore delivery stage from Firestore status on app restart.
   // Uses thisOrder (not activeRide) so stage reflects THIS screen's order,
   // not whichever order currentActiveOrderId happens to point to at mount time.
@@ -697,6 +702,70 @@ export default function ActiveDeliveryScreen() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ─── Foreground location watcher ───────────────────────────────────────────
+  //
+  // Starts when the screen mounts with a valid orderId. Writes driverLat/driverLng
+  // to orders/{orderId} via updateDriverLocation on each GPS event so the customer
+  // app can power a live map via onSnapshot.
+  //
+  // Config: 10 s / 30 m — balances freshness against Firestore write cost.
+  //
+  // Safety rules:
+  //   • Checks foreground permission before starting; skips silently if denied.
+  //   • Never crashes the delivery flow — all errors are caught and logged.
+  //   • Cleanup on unmount removes the subscription regardless of how the
+  //     screen exits (completion, cancel, external cancel, back navigation).
+  useEffect(() => {
+    if (!orderId) return;
+
+    let removed = false; // guard against setting ref after unmount
+
+    void (async () => {
+      try {
+        const { granted } = await Location.getForegroundPermissionsAsync();
+        if (!granted) {
+          console.warn("[Location] Foreground permission not granted — live tracking disabled for this delivery");
+          return;
+        }
+        const sub = await Location.watchPositionAsync(
+          {
+            accuracy:          Location.Accuracy.High,
+            timeInterval:      10_000,
+            distanceInterval:  30,
+          },
+          (position) => {
+            updateDriverLocation(orderId, position).catch(console.error);
+          },
+        );
+        if (removed) {
+          sub.remove();
+        } else {
+          locationSubRef.current = sub;
+        }
+      } catch (e) {
+        console.warn("[Location] watchPositionAsync failed:", e);
+      }
+    })();
+
+    return () => {
+      removed = true;
+      locationSubRef.current?.remove();
+      locationSubRef.current = null;
+    };
+  // orderId is stable for the lifetime of this screen — intentional single-mount.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId]);
+
+  // Stop the location watcher as soon as the delivery is marked delivered.
+  // The cleanup above covers unmount, but stopping early on completion avoids
+  // writing location updates after the order is closed on the customer side.
+  useEffect(() => {
+    if (stage === "delivered") {
+      locationSubRef.current?.remove();
+      locationSubRef.current = null;
+    }
+  }, [stage]);
 
   const stageMeta: Record<Stage, { topLabel: string; topColor: [string, string]; pill: string }> = {
     to_pickup: { topLabel: "Navigating to Pickup", topColor: [NAVY, "#1E293B"],     pill: "🛵 En Route to Pickup"  },

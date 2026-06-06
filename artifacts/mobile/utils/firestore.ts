@@ -433,6 +433,12 @@ export type OrderDoc = {
   driverRating?:  number | string;  // shown on customer driver card; fallback "5.0"
   driverTrips?:   number;           // shown on customer driver card; fallback 0
 
+  // Live location — written by driver app during active delivery (~every 10 s / 30 m)
+  driverLat?:         number;
+  driverLng?:         number;
+  locationUpdatedAt?: unknown;  // Firestore server Timestamp
+  locationAccuracy?:  number;   // metres; omitted when platform returns null
+
 };
 
 /**
@@ -696,6 +702,37 @@ export async function updateOrderStage(
     status:          stage,
     [`${stage}At`]:  serverTimestamp(),
   });
+}
+
+/**
+ * Write the driver's current GPS position into the order document.
+ *
+ * Called by active-delivery.tsx on every watchPositionAsync callback so the
+ * customer app can power a live driver map via onSnapshot.
+ *
+ * Update rate: controlled by the caller's watcher config (10 s / 30 m).
+ * locationAccuracy is omitted when the platform returns null.
+ *
+ * Payload written to orders/{orderId}:
+ *   driverLat         — WGS-84 latitude
+ *   driverLng         — WGS-84 longitude
+ *   locationUpdatedAt — server Timestamp (freshness sentinel for customer app)
+ *   locationAccuracy  — estimated accuracy in metres (omitted when null)
+ */
+export async function updateDriverLocation(
+  orderId:  string,
+  position: { coords: { latitude: number; longitude: number; accuracy: number | null } },
+): Promise<void> {
+  const { latitude, longitude, accuracy } = position.coords;
+  const payload: Record<string, unknown> = {
+    driverLat:         latitude,
+    driverLng:         longitude,
+    locationUpdatedAt: serverTimestamp(),
+  };
+  if (accuracy !== null) {
+    payload["locationAccuracy"] = accuracy;
+  }
+  await updateDoc(doc(db, "orders", orderId), payload);
 }
 
 /**
