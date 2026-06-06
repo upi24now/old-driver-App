@@ -1,7 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
-import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import {
@@ -20,6 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
+import { TS } from "@/constants/typography";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -172,15 +172,15 @@ function TextFieldInput({
       style={[
         styles.textInput,
         {
-          borderColor: focused ? colors.primary : colors.border,
-          backgroundColor: focused ? "#f8fff8" : "#fafafa",
-          color: colors.foreground,
+          borderColor:     focused ? colors.primary         : colors.border,
+          backgroundColor: focused ? colors.primarySoft     : colors.surfaceElevated,
+          color:           colors.foreground,
         },
       ]}
       value={value}
       onChangeText={onChangeText}
       placeholder={placeholder}
-      placeholderTextColor={colors.mutedForeground}
+      placeholderTextColor={colors.textPlaceholder}
       keyboardType={keyboardType}
       autoCapitalize={autoCapitalize ?? "words"}
       maxLength={maxLength}
@@ -267,21 +267,30 @@ export default function ProfileSetupScreen() {
   // ── Render ──
   return (
     <KeyboardAvoidingView
-      style={[styles.root, { backgroundColor: "#fff" }]}
+      style={[styles.root, { backgroundColor: colors.background }]}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={0}
     >
       {/* ── Header ── */}
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            paddingTop:        insets.top + 12,
+            backgroundColor:   colors.surface,
+            borderBottomColor: colors.border,
+          },
+        ]}
+      >
         <View style={styles.headerTop}>
           <TouchableOpacity
             onPress={() => router.back()}
-            style={[styles.backBtn, { backgroundColor: "#f5f5f5" }]}
+            style={[styles.backBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}
           >
-            <Feather name="arrow-left" size={19} color="#0a0a0a" />
+            <Feather name="arrow-left" size={19} color={colors.foreground} />
           </TouchableOpacity>
           <View style={styles.headerTitle}>
-            <Text style={styles.headerLabel}>Profile Setup</Text>
+            <Text style={[styles.headerLabel, { color: colors.foreground }]}>Profile Setup</Text>
             <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
               Step 3 of 3
             </Text>
@@ -329,13 +338,13 @@ export default function ProfileSetupScreen() {
           {/* Source tags */}
           <View style={styles.photoTags}>
             <View style={styles.photoTag}>
-              <Feather name="camera" size={9} color="#9CA3AF" />
-              <Text style={styles.photoTagText}>Camera</Text>
+              <Feather name="camera" size={9} color={colors.mutedForeground} />
+              <Text style={[styles.photoTagText, { color: colors.mutedForeground }]}>Camera</Text>
             </View>
-            <View style={styles.photoTagDot} />
+            <View style={[styles.photoTagDot, { backgroundColor: colors.borderStrong }]} />
             <View style={styles.photoTag}>
-              <Feather name="image" size={9} color="#9CA3AF" />
-              <Text style={styles.photoTagText}>Gallery</Text>
+              <Feather name="image" size={9} color={colors.mutedForeground} />
+              <Text style={[styles.photoTagText, { color: colors.mutedForeground }]}>Gallery</Text>
             </View>
           </View>
         </View>
@@ -356,8 +365,8 @@ export default function ProfileSetupScreen() {
               style={[
                 styles.selectInput,
                 {
-                  borderColor: cityOpen ? colors.primary : colors.border,
-                  backgroundColor: cityOpen ? "#f8fff8" : "#fafafa",
+                  borderColor:     cityOpen ? colors.primary         : colors.border,
+                  backgroundColor: cityOpen ? colors.primarySoft     : colors.surfaceElevated,
                 },
               ]}
               onPress={() => setCityOpen((o) => !o)}
@@ -366,7 +375,7 @@ export default function ProfileSetupScreen() {
               <Text
                 style={[
                   styles.selectText,
-                  { color: fields.city ? colors.foreground : colors.mutedForeground },
+                  { color: fields.city ? colors.foreground : colors.textPlaceholder },
                 ]}
               >
                 {fields.city || "Select your city"}
@@ -380,7 +389,10 @@ export default function ProfileSetupScreen() {
 
             {cityOpen && (
               <View
-                style={[styles.dropdown, { borderColor: colors.border, backgroundColor: "#fff" }]}
+                style={[
+                  styles.dropdown,
+                  { borderColor: colors.border, backgroundColor: colors.surface },
+                ]}
               >
                 {CITIES.map((c) => (
                   <TouchableOpacity
@@ -388,7 +400,7 @@ export default function ProfileSetupScreen() {
                     style={[
                       styles.dropdownItem,
                       {
-                        backgroundColor: fields.city === c ? "#f0fdf4" : "transparent",
+                        backgroundColor:  fields.city === c ? colors.primarySoft : "transparent",
                         borderBottomColor: colors.border,
                       },
                     ]}
@@ -398,7 +410,7 @@ export default function ProfileSetupScreen() {
                       style={[
                         styles.dropdownText,
                         {
-                          color: fields.city === c ? colors.primary : colors.foreground,
+                          color:      fields.city === c ? colors.primary : colors.foreground,
                           fontWeight: fields.city === c ? "700" : "400",
                         },
                       ]}
@@ -434,8 +446,8 @@ export default function ProfileSetupScreen() {
                       style={[
                         styles.genderChip,
                         {
-                          borderColor: fields.gender === g ? colors.primary : colors.border,
-                          backgroundColor: fields.gender === g ? "#f0fdf4" : "#fafafa",
+                          borderColor:     fields.gender === g ? colors.primary         : colors.border,
+                          backgroundColor: fields.gender === g ? colors.primarySoft     : colors.surfaceElevated,
                         },
                       ]}
                       onPress={() => set("gender")(g)}
@@ -478,7 +490,7 @@ export default function ProfileSetupScreen() {
           <View
             style={[
               styles.infoBox,
-              { backgroundColor: "#f0fdf4", borderColor: colors.primary },
+              { backgroundColor: colors.primarySoft, borderColor: colors.primary },
             ]}
           >
             <Feather name="info" size={14} color={colors.primary} />
@@ -494,9 +506,9 @@ export default function ProfileSetupScreen() {
         style={[
           styles.footer,
           {
-            paddingBottom: insets.bottom + 16,
-            borderTopColor: colors.border,
-            backgroundColor: "#fff",
+            paddingBottom:   insets.bottom + 16,
+            borderTopColor:  colors.border,
+            backgroundColor: colors.surface,
           },
         ]}
       >
@@ -512,21 +524,25 @@ export default function ProfileSetupScreen() {
               : "Fill in your name and city to continue."}
           </Text>
         </View>
+
         <TouchableOpacity
-          style={[styles.continueBtn, { opacity: isValid ? 1 : 0.45 }]}
+          style={[
+            styles.continueBtn,
+            {
+              backgroundColor: isValid ? colors.primary : colors.muted,
+              shadowColor:     isValid ? colors.primary : "transparent",
+              shadowOpacity:   isValid ? 0.28 : 0,
+              elevation:       isValid ? 6    : 0,
+            },
+          ]}
           onPress={handleContinue}
           activeOpacity={0.85}
           disabled={!isValid}
         >
-          <LinearGradient
-            colors={[colors.primary, "#FF6FA8"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.continueGrad}
-          >
-            <Text style={styles.continueBtnText}>Continue to Dashboard</Text>
-            <Feather name="arrow-right" size={18} color="#fff" />
-          </LinearGradient>
+          <Text style={[styles.continueBtnText, !isValid && { color: colors.mutedForeground }]}>
+            Continue to Dashboard
+          </Text>
+          {isValid && <Feather name="arrow-right" size={18} color="#fff" />}
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -552,16 +568,16 @@ function DobInput({
       style={[
         styles.textInput,
         {
-          borderColor: focused ? colors.primary : colors.border,
-          backgroundColor: focused ? "#f8fff8" : "#fafafa",
-          color: colors.foreground,
-          letterSpacing: 0.5,
+          borderColor:     focused ? colors.primary     : colors.border,
+          backgroundColor: focused ? colors.primarySoft : colors.surfaceElevated,
+          color:           colors.foreground,
+          letterSpacing:   0.5,
         },
       ]}
       value={value}
       onChangeText={onChangeText}
       placeholder="DD / MM / YYYY"
-      placeholderTextColor={colors.mutedForeground}
+      placeholderTextColor={colors.textPlaceholder}
       keyboardType="numeric"
       autoCapitalize="none"
       maxLength={14}
@@ -576,14 +592,12 @@ function DobInput({
 const styles = StyleSheet.create({
   root: { flex: 1 },
 
-  // Header
+  // Header — bg/border injected inline
   header: {
     paddingHorizontal: 20,
     paddingBottom: 12,
     gap: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-    backgroundColor: "#fff",
     zIndex: 10,
   },
   headerTop: {
@@ -597,10 +611,11 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
   },
   headerTitle: { alignItems: "center" },
-  headerLabel: { fontSize: 16, fontWeight: "700", color: "#0a0a0a" },
-  headerSub:   { fontSize: 12 },
+  headerLabel: { ...TS.h3 },
+  headerSub:   { ...TS.bodySm, marginTop: 2 },
 
   stepBar: {
     flexDirection: "row",
@@ -616,8 +631,8 @@ const styles = StyleSheet.create({
 
   // Photo section
   photoSection: { alignItems: "center", gap: 8 },
-  photoWrap: { width: 100, height: 100, position: "relative" },
-  photoImg: { width: 100, height: 100, borderRadius: 50 },
+  photoWrap:    { width: 100, height: 100, position: "relative" },
+  photoImg:     { width: 100, height: 100, borderRadius: 50 },
   photoPlaceholder: {
     width: 100,
     height: 100,
@@ -637,41 +652,44 @@ const styles = StyleSheet.create({
     borderWidth: 2.5,
     borderColor: "#fff",
   },
-  photoHint: { fontSize: 13 },
+  photoHint: { ...TS.bodySm },
   photoTags: { flexDirection: "row", alignItems: "center", gap: 6 },
   photoTag:  { flexDirection: "row", alignItems: "center", gap: 3 },
-  photoTagText: { fontSize: 10, fontWeight: "500", color: "#9CA3AF" },
-  photoTagDot:  { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "#D1D5DB" },
+  photoTagText: { ...TS.label, fontSize: 10, textTransform: "none", letterSpacing: 0 },
+  photoTagDot:  { width: 3, height: 3, borderRadius: 1.5 },
 
   // Form
-  form: { gap: 18 },
-  fieldGroup: { gap: 7 },
+  form:          { gap: 18 },
+  fieldGroup:    { gap: 7 },
   fieldLabelRow: { flexDirection: "row", alignItems: "center", gap: 5 },
-  fieldLabel: { fontSize: 12, fontWeight: "600", letterSpacing: 0.2 },
+  fieldLabel:    { ...TS.bodySm, fontWeight: "600", letterSpacing: 0.2 },
 
+  // Text input — bg/border/color injected inline
   textInput: {
     height: 52,
     borderWidth: 1.5,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 14,
     fontSize: 15,
     fontWeight: "500",
   },
 
-  // City select
+  // City select — bg/border injected inline
   selectInput: {
     height: 52,
     borderWidth: 1.5,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
   selectText: { fontSize: 15, fontWeight: "500" },
+
+  // Dropdown — bg/border injected inline
   dropdown: {
     borderWidth: 1.5,
-    borderRadius: 12,
+    borderRadius: 14,
     marginTop: 4,
     overflow: "hidden",
     maxHeight: 220,
@@ -692,46 +710,53 @@ const styles = StyleSheet.create({
   dropdownText: { fontSize: 14 },
 
   // Row (DOB + Gender)
-  row: { flexDirection: "row", gap: 12 },
+  row:       { flexDirection: "row", gap: 12 },
   genderRow: { flexDirection: "column", gap: 6 },
   genderChip: {
     height: 36,
     borderWidth: 1.5,
-    borderRadius: 8,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 10,
   },
-  genderText: { fontSize: 12, fontWeight: "600" },
+  genderText: { ...TS.bodySm, fontWeight: "600" },
 
-  // Info box
+  // Info box — bg/border injected inline
   infoBox: {
     flexDirection: "row",
     gap: 10,
     borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 14,
+    padding: 14,
     alignItems: "flex-start",
   },
-  infoText: { fontSize: 13, flex: 1, lineHeight: 19 },
+  infoText: { ...TS.bodySm, flex: 1, lineHeight: 19 },
 
-  // Footer
+  // Footer — bg/border injected inline
   footer: {
     paddingHorizontal: 20,
     paddingTop: 14,
     borderTopWidth: 1,
     gap: 10,
   },
-  footerMeta: { flexDirection: "row", alignItems: "center", gap: 6 },
-  footerMetaText: { fontSize: 12 },
-  continueBtn: { borderRadius: 15, overflow: "hidden" },
-  continueGrad: {
+  footerMeta:     { flexDirection: "row", alignItems: "center", gap: 6 },
+  footerMetaText: { ...TS.bodySm },
+
+  // Continue button — bg/shadow injected inline
+  continueBtn: {
     height: 56,
+    borderRadius: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    borderRadius: 15,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
   },
-  continueBtnText: { fontSize: 17, fontWeight: "700", color: "#fff" },
+  continueBtnText: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#fff",
+  },
 });

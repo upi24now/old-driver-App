@@ -1,5 +1,4 @@
 import { Feather } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { callSupport } from "@/utils/support";
 import { useEffect, useRef } from "react";
@@ -16,9 +15,10 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/useColors";
+import { TS } from "@/constants/typography";
 
 function PulseRing({ delay, color }: { delay: number; color: string }) {
-  const scale = useRef(new Animated.Value(0)).current;
+  const scale   = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(0.5)).current;
 
   useEffect(() => {
@@ -78,8 +78,8 @@ function SpinningRing({ color }: { color: string }) {
       style={[
         styles.spinRing,
         {
-          borderColor: color,
-          borderTopColor: "transparent",
+          borderColor:      color,
+          borderTopColor:   "transparent",
           borderRightColor: "transparent",
           transform: [
             { rotate: rot.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] }) },
@@ -104,7 +104,7 @@ function TimelineStep({
   isLast?: boolean;
 }) {
   const colors = useColors();
-  const pulse = useRef(new Animated.Value(1)).current;
+  const pulse  = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (status !== "active") return;
@@ -129,13 +129,14 @@ function TimelineStep({
   }, [status]);
 
   const dotColor =
-    status === "done" ? colors.primary : status === "active" ? colors.primary : colors.border;
+    status === "done"   ? colors.success :
+    status === "active" ? colors.pending  :
+    colors.border;
+
   const dotBg =
-    status === "done"
-      ? colors.primary
-      : status === "active"
-        ? "rgba(0, 200, 83, 0.18)"
-        : "#f5f5f5";
+    status === "done"   ? colors.success     :
+    status === "active" ? colors.pendingSoft  :
+    colors.muted;
 
   return (
     <View style={styles.tlRow}>
@@ -145,21 +146,21 @@ function TimelineStep({
             styles.tlDot,
             {
               backgroundColor: dotBg,
-              borderColor: dotColor,
+              borderColor:     dotColor,
               transform: [{ scale: status === "active" ? pulse : 1 }],
             },
           ]}
         >
           {status === "done" && <Feather name="check" size={13} color="#fff" />}
           {status === "active" && (
-            <View style={[styles.tlActiveCore, { backgroundColor: colors.primary }]} />
+            <View style={[styles.tlActiveCore, { backgroundColor: colors.pending }]} />
           )}
         </Animated.View>
         {!isLast && (
           <View
             style={[
               styles.tlLine,
-              { backgroundColor: status === "done" ? colors.primary : colors.border },
+              { backgroundColor: status === "done" ? colors.success : colors.border },
             ]}
           />
         )}
@@ -169,7 +170,7 @@ function TimelineStep({
           style={[
             styles.tlTitle,
             {
-              color: status === "pending" ? colors.mutedForeground : colors.foreground,
+              color:      status === "pending" ? colors.mutedForeground : colors.foreground,
               fontWeight: status === "active" ? "800" : "700",
             },
           ]}
@@ -180,9 +181,9 @@ function TimelineStep({
           {description}
         </Text>
         {status === "active" && (
-          <View style={[styles.tlBadge, { backgroundColor: "#fff5e6" }]}>
-            <View style={styles.tlBadgeDot} />
-            <Text style={styles.tlBadgeText}>In progress</Text>
+          <View style={[styles.tlBadge, { backgroundColor: colors.warningSoft }]}>
+            <View style={[styles.tlBadgeDot, { backgroundColor: colors.warning }]} />
+            <Text style={[styles.tlBadgeText, { color: colors.warningText }]}>In progress</Text>
           </View>
         )}
       </View>
@@ -197,11 +198,23 @@ export default function VerificationPendingScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+      {/* Header */}
+      <View
+        style={[
+          styles.header,
+          {
+            paddingTop:        insets.top + 12,
+            backgroundColor:   colors.surface,
+            borderBottomColor: colors.border,
+          },
+        ]}
+      >
         <View style={{ width: 38 }} />
-        <Text style={styles.headerTitle}>Application Status</Text>
+        <Text style={[styles.headerTitle, { color: colors.foreground }]}>
+          Application Status
+        </Text>
         <TouchableOpacity
-          style={[styles.headerBtn, { backgroundColor: "#f5f5f5" }]}
+          style={[styles.headerBtn, { backgroundColor: colors.muted }]}
           activeOpacity={0.7}
           onPress={() =>
             Alert.alert("Application options", undefined, [
@@ -211,7 +224,7 @@ export default function VerificationPendingScreen() {
             ])
           }
         >
-          <Feather name="more-horizontal" size={18} color="#0a0a0a" />
+          <Feather name="more-horizontal" size={18} color={colors.foreground} />
         </TouchableOpacity>
       </View>
 
@@ -219,20 +232,34 @@ export default function VerificationPendingScreen() {
         contentContainerStyle={[styles.scroll, { paddingBottom: 24 }]}
         showsVerticalScrollIndicator={false}
       >
-        <LinearGradient
-          colors={["#0d2818", "#0a0a0a"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.hero}
-        >
+        {/* ── Pending hero card ── */}
+        <View style={[styles.hero, { backgroundColor: colors.pending }]}>
+          {/* Decorative sheen */}
+          <View style={styles.heroSheen} />
+
           <View style={styles.heroAnimWrap}>
-            <PulseRing delay={0} color={colors.primary} />
-            <PulseRing delay={800} color={colors.primary} />
-            <PulseRing delay={1600} color={colors.primary} />
-            <SpinningRing color={colors.primary} />
-            <View style={[styles.heroIconCircle, { backgroundColor: colors.primary }]}>
+            <PulseRing delay={0}    color="rgba(255,255,255,0.6)" />
+            <PulseRing delay={800}  color="rgba(255,255,255,0.6)" />
+            <PulseRing delay={1600} color="rgba(255,255,255,0.6)" />
+            <SpinningRing color="rgba(255,255,255,0.7)" />
+            <View
+              style={[
+                styles.heroIconCircle,
+                {
+                  backgroundColor: "rgba(255,255,255,0.18)",
+                  borderColor:     "rgba(255,255,255,0.35)",
+                  shadowColor:     colors.pending,
+                },
+              ]}
+            >
               <Feather name="shield" size={28} color="#fff" />
             </View>
+          </View>
+
+          {/* Badge */}
+          <View style={styles.heroBadgePill}>
+            <View style={styles.heroBadgeDot} />
+            <Text style={styles.heroBadgeText}>Under Review</Text>
           </View>
 
           <Text style={styles.heroTitle}>Verification in Progress</Text>
@@ -242,11 +269,21 @@ export default function VerificationPendingScreen() {
 
           <View style={styles.heroEtaPill}>
             <Feather name="clock" size={12} color="#fff" />
-            <Text style={styles.heroEtaText}>Typically 24-48 hours</Text>
+            <Text style={styles.heroEtaText}>Typically 24–48 hours</Text>
           </View>
-        </LinearGradient>
+        </View>
 
-        <View style={[styles.card, { borderColor: colors.border }]}>
+        {/* ── Review timeline ── */}
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: colors.surface,
+              borderColor:     colors.border,
+              shadowColor:     colors.pending,
+            },
+          ]}
+        >
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>
             Review Timeline
           </Text>
@@ -270,22 +307,25 @@ export default function VerificationPendingScreen() {
           </View>
         </View>
 
-        <View style={[styles.messageCard, { borderColor: colors.border }]}>
+        {/* ── Message card ── */}
+        <View
+          style={[
+            styles.messageCard,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
           <View style={styles.messageHeader}>
             <View
-              style={[
-                styles.adminAvatar,
-                { backgroundColor: "rgba(0, 200, 83, 0.12)" },
-              ]}
+              style={[styles.adminAvatar, { backgroundColor: colors.pendingSoft }]}
             >
-              <Feather name="user-check" size={16} color={colors.primary} />
+              <Feather name="user-check" size={16} color={colors.pending} />
             </View>
             <View style={{ flex: 1 }}>
               <View style={styles.messageHeaderRow}>
                 <Text style={[styles.messageAuthor, { color: colors.foreground }]}>
                   Verification Team
                 </Text>
-                <View style={[styles.verifiedDot, { backgroundColor: colors.primary }]}>
+                <View style={[styles.verifiedDot, { backgroundColor: colors.pending }]}>
                   <Feather name="check" size={8} color="#fff" />
                 </View>
               </View>
@@ -297,7 +337,7 @@ export default function VerificationPendingScreen() {
           <Text style={[styles.messageBody, { color: colors.foreground }]}>
             "Thank you for your application! Your documents are now in our review
             queue. We'll get back to you within{" "}
-            <Text style={{ fontWeight: "700", color: colors.primary }}>
+            <Text style={{ fontWeight: "700", color: colors.pending }}>
               24-48 hours
             </Text>
             . Keep an eye on your notifications."
@@ -310,7 +350,10 @@ export default function VerificationPendingScreen() {
           </View>
         </View>
 
-        <View style={[styles.card, { borderColor: colors.border }]}>
+        {/* ── Tips card ── */}
+        <View
+          style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        >
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>
             What you can do meanwhile
           </Text>
@@ -332,7 +375,7 @@ export default function VerificationPendingScreen() {
             },
           ].map((tip) => (
             <View key={tip.title} style={styles.tipRow}>
-              <View style={[styles.tipIcon, { backgroundColor: "#f0fdf4" }]}>
+              <View style={[styles.tipIcon, { backgroundColor: colors.primarySoft }]}>
                 <Feather name={tip.icon as any} size={15} color={colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
@@ -347,15 +390,17 @@ export default function VerificationPendingScreen() {
           ))}
         </View>
 
+        {/* ── Support row ── */}
         <TouchableOpacity
-          style={[styles.supportRow, { borderColor: colors.border }]}
+          style={[
+            styles.supportRow,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
           activeOpacity={0.7}
           onPress={callSupport}
         >
-          <View
-            style={[styles.supportIcon, { backgroundColor: "#fff5e6" }]}
-          >
-            <Feather name="help-circle" size={16} color="#b75d00" />
+          <View style={[styles.supportIcon, { backgroundColor: colors.warningSoft }]}>
+            <Feather name="help-circle" size={16} color={colors.warning} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={[styles.supportTitle, { color: colors.foreground }]}>
@@ -369,12 +414,14 @@ export default function VerificationPendingScreen() {
         </TouchableOpacity>
       </ScrollView>
 
+      {/* ── Footer ── */}
       <View
         style={[
           styles.footer,
           {
-            paddingBottom: insets.bottom + 16,
-            borderTopColor: colors.border,
+            paddingBottom:   insets.bottom + 16,
+            borderTopColor:  colors.border,
+            backgroundColor: colors.surface,
           },
         ]}
       >
@@ -408,17 +455,17 @@ export default function VerificationPendingScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+
+  // Header — bg/border injected inline
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingBottom: 12,
-    backgroundColor: "#fff",
     borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
   },
-  headerTitle: { fontSize: 16, fontWeight: "700", color: "#0a0a0a" },
+  headerTitle: { ...TS.h3 },
   headerBtn: {
     width: 38,
     height: 38,
@@ -429,13 +476,27 @@ const styles = StyleSheet.create({
 
   scroll: { paddingHorizontal: 16, paddingTop: 16, gap: 14 },
 
+  // ── Hero card — bg injected inline (pending token) ──
   hero: {
-    borderRadius: 22,
+    borderRadius: 24,
     paddingVertical: 30,
     paddingHorizontal: 24,
     alignItems: "center",
     gap: 12,
     overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
+  heroSheen: {
+    position: "absolute",
+    top: 0,
+    left: 28,
+    right: 28,
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.3)",
   },
   heroAnimWrap: {
     width: 130,
@@ -464,10 +525,36 @@ const styles = StyleSheet.create({
     borderRadius: 34,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#00C853",
-    shadowOpacity: 0.6,
+    borderWidth: 1.5,
+    shadowOpacity: 0.5,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
+  },
+  // "Under Review" badge
+  heroBadgePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.3)",
+  },
+  heroBadgeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: "#fff",
+    opacity: 0.9,
+  },
+  heroBadgeText: {
+    ...TS.label,
+    color: "#fff",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
   },
   heroTitle: {
     fontSize: 22,
@@ -477,10 +564,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   heroSub: {
-    fontSize: 13,
-    color: "rgba(255,255,255,0.7)",
+    ...TS.bodySm,
+    color: "rgba(255,255,255,0.82)",
     textAlign: "center",
-    lineHeight: 19,
     paddingHorizontal: 8,
   },
   heroEtaPill: {
@@ -490,23 +576,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11,
     paddingVertical: 6,
     borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.14)",
     marginTop: 4,
   },
-  heroEtaText: { fontSize: 11, fontWeight: "600", color: "#fff", letterSpacing: 0.3 },
+  heroEtaText: {
+    ...TS.btnSm,
+    color: "#fff",
+    letterSpacing: 0.3,
+    fontWeight: "600",
+  },
 
+  // Cards — bg/border injected inline
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
     padding: 16,
     gap: 12,
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
   },
-  cardTitle: { fontSize: 15, fontWeight: "700" },
+  cardTitle: { ...TS.body, fontWeight: "700" },
 
-  timeline: { gap: 0 },
-  tlRow: { flexDirection: "row", gap: 12 },
-  tlIconCol: { alignItems: "center", width: 24 },
+  // Timeline
+  timeline:    { gap: 0 },
+  tlRow:       { flexDirection: "row", gap: 12 },
+  tlIconCol:   { alignItems: "center", width: 24 },
   tlDot: {
     width: 24,
     height: 24,
@@ -516,10 +612,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   tlActiveCore: { width: 8, height: 8, borderRadius: 4 },
-  tlLine: { flex: 1, width: 2, marginTop: 4, minHeight: 24 },
-  tlContent: { flex: 1, paddingTop: 1, gap: 3 },
-  tlTitle: { fontSize: 14 },
-  tlDesc: { fontSize: 12, lineHeight: 17 },
+  tlLine:       { flex: 1, width: 2, marginTop: 4, minHeight: 24 },
+  tlContent:    { flex: 1, paddingTop: 1, gap: 3 },
+  tlTitle:      { ...TS.body },
+  tlDesc:       { ...TS.bodySm, lineHeight: 17 },
   tlBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -530,22 +626,17 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     marginTop: 4,
   },
-  tlBadgeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#b75d00",
-  },
-  tlBadgeText: { fontSize: 10, fontWeight: "700", color: "#b75d00", letterSpacing: 0.3 },
+  tlBadgeDot:  { width: 6, height: 6, borderRadius: 3 },
+  tlBadgeText: { ...TS.label, fontSize: 10 },
 
+  // Message card — bg/border injected inline
   messageCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
     padding: 14,
     gap: 10,
   },
-  messageHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
+  messageHeader:    { flexDirection: "row", alignItems: "center", gap: 10 },
   adminAvatar: {
     width: 38,
     height: 38,
@@ -554,7 +645,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   messageHeaderRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  messageAuthor: { fontSize: 14, fontWeight: "700" },
+  messageAuthor:    { ...TS.body, fontWeight: "700" },
   verifiedDot: {
     width: 14,
     height: 14,
@@ -562,8 +653,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  messageMeta: { fontSize: 11, marginTop: 1 },
-  messageBody: { fontSize: 13, lineHeight: 19 },
+  messageMeta:       { fontSize: 11, marginTop: 1 },
+  messageBody:       { ...TS.bodySm, lineHeight: 20 },
   messageFooter: {
     flexDirection: "row",
     alignItems: "center",
@@ -573,22 +664,23 @@ const styles = StyleSheet.create({
   },
   messageFooterText: { fontSize: 11, fontWeight: "500" },
 
-  tipRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, paddingVertical: 4 },
+  // Tips
+  tipRow:  { flexDirection: "row", alignItems: "flex-start", gap: 10, paddingVertical: 4 },
   tipIcon: {
-    width: 32,
-    height: 32,
+    width: 34,
+    height: 34,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
-  tipTitle: { fontSize: 13, fontWeight: "700", marginBottom: 1 },
-  tipDesc: { fontSize: 12, lineHeight: 17 },
+  tipTitle: { ...TS.bodySm, fontWeight: "700", marginBottom: 1 },
+  tipDesc:  { ...TS.bodySm, lineHeight: 17 },
 
+  // Support row — bg/border injected inline
   supportRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "#fff",
     borderRadius: 14,
     borderWidth: 1,
     padding: 12,
@@ -600,13 +692,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  supportTitle: { fontSize: 13, fontWeight: "700" },
-  supportSub: { fontSize: 11, marginTop: 1 },
+  supportTitle: { ...TS.bodySm, fontWeight: "700" },
+  supportSub:   { fontSize: 11, marginTop: 1 },
 
+  // Footer — bg/border injected inline
   footer: {
     paddingHorizontal: 20,
     paddingTop: 12,
-    backgroundColor: "#fff",
     borderTopWidth: 1,
     gap: 10,
   },
@@ -617,6 +709,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 5,
   },
   primaryBtnText: { fontSize: 16, fontWeight: "700", color: "#fff" },
   ghostBtn: {
@@ -628,5 +725,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
   },
-  ghostBtnText: { fontSize: 14, fontWeight: "600" },
+  ghostBtnText: { ...TS.body, fontWeight: "600" },
 });
