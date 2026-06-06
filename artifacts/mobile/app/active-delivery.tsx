@@ -40,12 +40,12 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // ─── Brand ────────────────────────────────────────────────────────────────────
-const GREEN  = "#00C853";
-const PINK   = "#FF4D8D";
-const ORANGE = "#FF7A3D";
-const BLUE   = "#4285F4";
+const GREEN  = "#059669";
+const PINK   = "#E8336C";
+const ORANGE = "#D97706";
+const BLUE   = "#2563EB";
 const NAVY   = "#0F172A";
-const RED    = "#EF4444";
+const RED    = "#DC2626";
 
 // ─── Stage machine ────────────────────────────────────────────────────────────
 type Stage = "to_pickup" | "at_pickup" | "to_drop" | "at_drop" | "delivered";
@@ -163,7 +163,7 @@ function StepTracker({ stage }: { stage: Stage }) {
         return (
           <View key={step.id} style={st.stepItem}>
             {i > 0 && <View style={[st.stepLine, { backgroundColor: i <= active ? GREEN : "#E2E8F0" }]} />}
-            <View style={[st.stepCircle, { borderColor: col, backgroundColor: done ? GREEN : cur ? "#E8FFF0" : "#F8FAFC" }]}>
+            <View style={[st.stepCircle, { borderColor: col, backgroundColor: done ? GREEN : cur ? "#D1FAE5" : "#F8FAFC" }]}>
               {done
                 ? <Feather name="check" size={9} color="#fff" />
                 : <Feather name={step.icon} size={9} color={cur ? GREEN : "#CBD5E1"} />}
@@ -280,7 +280,7 @@ function ActionRow({ onCall, onNavigate, navigateLabel }: {
           style={st.navBtn}
         >
           <LinearGradient
-            colors={[BLUE, "#5B9BFF"]}
+            colors={[BLUE, "#60A5FA"]}
             start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
             style={st.navGrad}
           >
@@ -703,7 +703,7 @@ export default function ActiveDeliveryScreen() {
     at_pickup: { topLabel: "At Pickup Location",   topColor: ["#065F46", "#047857"], pill: "📦 Collect Parcel"      },
     to_drop:   { topLabel: "Navigating to Drop",   topColor: ["#7C2D12", "#92400E"], pill: "🚀 En Route to Drop"    },
     at_drop:   { topLabel: "At Drop Location",     topColor: ["#1E1B4B", "#312E81"], pill: "🏁 Complete Delivery"   },
-    delivered: { topLabel: "Order Delivered! 🎉",  topColor: [GREEN, "#00E676"],     pill: "✅ Earnings Credited"   },
+    delivered: { topLabel: "Order Delivered! 🎉",  topColor: [GREEN, "#047857"],     pill: "✅ Earnings Credited"   },
   };
   const meta = stageMeta[stage];
 
@@ -829,11 +829,11 @@ export default function ActiveDeliveryScreen() {
 
   type CtaCfg = { label: string; icon: string; color: [string, string] };
   const ctaCfg: Record<Stage, CtaCfg> = {
-    to_pickup: { label: "I've Arrived at Pickup", icon: "map-pin",     color: [GREEN,     "#00E676"] },
-    at_pickup: { label: "Parcel Picked Up  ✓",    icon: "package",     color: [GREEN,     "#00E676"] },
-    to_drop:   { label: "I've Arrived at Drop",   icon: "map-pin",     color: [ORANGE,    "#FF9F45"] },
+    to_pickup: { label: "I've Arrived at Pickup", icon: "map-pin",     color: [GREEN,     "#047857"] },
+    at_pickup: { label: "Parcel Picked Up  ✓",    icon: "package",     color: [GREEN,     "#047857"] },
+    to_drop:   { label: "I've Arrived at Drop",   icon: "map-pin",     color: [ORANGE,    "#B45309"] },
     at_drop:   { label: "Deliver Parcel  ✓",      icon: "check-circle",color: ["#8B5CF6", "#7C3AED"] },
-    delivered: { label: "Back to Home",            icon: "home",        color: [GREEN,     "#00E676"] },
+    delivered: { label: "Back to Home",            icon: "home",        color: [GREEN,     "#047857"] },
   };
   const cta = ctaCfg[stage];
 
@@ -999,7 +999,7 @@ export default function ActiveDeliveryScreen() {
                 return selected ? (
                   <LinearGradient
                     key={reason}
-                    colors={["#FF7A3D", "#FF4D8D"]}
+                    colors={[ORANGE, PINK]}
                     start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                     style={st.csReasonGradWrap}
                   >
@@ -1010,10 +1010,10 @@ export default function ActiveDeliveryScreen() {
                     >
                       <Text style={st.csReasonEmoji}>{emoji}</Text>
                       <View style={st.csReasonText}>
-                        <Text style={[st.csReasonLabel, { color: "#FF7A3D" }]}>{label}</Text>
+                        <Text style={[st.csReasonLabel, { color: ORANGE }]}>{label}</Text>
                         <Text style={st.csReasonDesc}>{desc}</Text>
                       </View>
-                      <Feather name="check-circle" size={20} color="#FF7A3D" />
+                      <Feather name="check-circle" size={20} color={ORANGE} />
                     </TouchableOpacity>
                   </LinearGradient>
                 ) : (
@@ -1051,7 +1051,7 @@ export default function ActiveDeliveryScreen() {
                 onPress={() => selectedReason && confirmCancel(selectedReason)}
               >
                 <LinearGradient
-                  colors={selectedReason ? ["#FF7A3D", "#EF4444"] : ["#CBD5E1", "#CBD5E1"]}
+                  colors={selectedReason ? [ORANGE, RED] : ["#CBD5E1", "#CBD5E1"]}
                   start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                   style={st.csConfirmBtn}
                 >
@@ -1071,7 +1071,7 @@ export default function ActiveDeliveryScreen() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const st = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F1F5F9" },
+  root: { flex: 1, backgroundColor: "#F5F4F2" },
 
   topBar:      { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 18, paddingVertical: 14 },
   topBarLeft:  { flexDirection: "row", alignItems: "center", gap: 8, flex: 1 },
@@ -1192,7 +1192,7 @@ const st = StyleSheet.create({
   ctaTxt:  { fontSize: 17, fontWeight: "900", color: "#fff" },
   ctaHint:       { textAlign: "center", fontSize: 11, color: "#94A3B8", fontWeight: "500" },
   cancelLink:    { alignItems: "center", paddingVertical: 2 },
-  cancelLinkTxt: { fontSize: 12, fontWeight: "600", color: "#EF4444", textDecorationLine: "underline" },
+  cancelLinkTxt: { fontSize: 12, fontWeight: "600", color: "#DC2626", textDecorationLine: "underline" },
 
   // Cancel modal
   csBackdrop:         { flex: 1, backgroundColor: "rgba(0,0,0,0.58)", justifyContent: "center", alignItems: "center" },

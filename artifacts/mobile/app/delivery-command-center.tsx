@@ -15,12 +15,12 @@ import { useDriver, type ActiveRide } from "@/contexts/DriverContext";
 
 // ─── Status metadata ──────────────────────────────────────────────────────────
 const STATUS_META: Record<string, { label: string; color: string; bg: string; icon: React.ComponentProps<typeof Feather>["name"] }> = {
-  accepted:  { label: "Accepted",  color: "#22C55E", bg: "#22C55E18", icon: "check-circle" },
-  to_pickup: { label: "To Pickup", color: "#F97316", bg: "#F9731618", icon: "navigation"   },
+  accepted:  { label: "Accepted",  color: "#059669", bg: "#05966918", icon: "check-circle" },
+  to_pickup: { label: "To Pickup", color: "#D97706", bg: "#D9770618", icon: "navigation"   },
   at_pickup: { label: "At Pickup", color: "#EAB308", bg: "#EAB30818", icon: "map-pin"      },
-  to_drop:   { label: "En Route",  color: "#3B82F6", bg: "#3B82F618", icon: "navigation"   },
-  at_drop:   { label: "At Drop",   color: "#A855F7", bg: "#A855F718", icon: "map-pin"      },
-  delivered: { label: "Delivered", color: "#22C55E", bg: "#22C55E18", icon: "check-circle" },
+  to_drop:   { label: "En Route",  color: "#2563EB", bg: "#2563EB18", icon: "navigation"   },
+  at_drop:   { label: "At Drop",   color: "#7C3AED", bg: "#7C3AED18", icon: "map-pin"      },
+  delivered: { label: "Delivered", color: "#059669", bg: "#05966918", icon: "check-circle" },
 };
 
 function statusMeta(status: string) {
@@ -68,7 +68,7 @@ function DetailCell({
   return (
     <View style={styles.detailCell}>
       <View style={styles.detailCellHead}>
-        <Feather name={icon} size={10} color="#6366F1" />
+        <Feather name={icon} size={10} color="#7C3AED" />
         <Text style={styles.detailLabel}>{label}</Text>
       </View>
       <Text style={styles.detailValue} numberOfLines={1}>{value}</Text>
@@ -97,7 +97,7 @@ function SlotChip({
         onPress={onPress}
       >
         <LinearGradient
-          colors={isFocused ? ["#FF4D8D", "#FF7A3D"] : ["#7C3AED", "#4F46E5"]}
+          colors={isFocused ? ["#E8336C", "#D97706"] : ["#7C3AED", "#4F46E5"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={{ flex: 1 }}
@@ -327,7 +327,7 @@ export default function DeliveryCommandCenter() {
 
                 {/* Card top accent stripe */}
                 <LinearGradient
-                  colors={["#FF4D8D", "#FF7A3D"]}
+                  colors={["#E8336C", "#D97706"]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                   style={styles.cardAccentStripe}
@@ -337,7 +337,7 @@ export default function DeliveryCommandCenter() {
                 <View style={styles.customerBlock}>
                   <View style={styles.avatarWrap}>
                     <LinearGradient
-                      colors={["#FF4D8D", "#FF7A3D"]}
+                      colors={["#E8336C", "#D97706"]}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 1 }}
                       style={styles.avatarRing}
@@ -357,7 +357,7 @@ export default function DeliveryCommandCenter() {
                   {/* 3D Earning price tile */}
                   <View style={styles.priceCard}>
                     <LinearGradient
-                      colors={["#22C55E", "#16A34A"]}
+                      colors={["#059669", "#047857"]}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 1 }}
                       style={styles.priceCardGrad}
@@ -418,7 +418,7 @@ export default function DeliveryCommandCenter() {
                   style={styles.ctaWrapper}
                 >
                   <LinearGradient
-                    colors={["#FF4D8D", "#FF7A3D"]}
+                    colors={["#E8336C", "#D97706"]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     style={styles.ctaBtn}
@@ -479,7 +479,7 @@ export default function DeliveryCommandCenter() {
                   <Feather
                     name={activeOrderCount >= maxActiveOrders ? "alert-circle" : "zap"}
                     size={11}
-                    color={activeOrderCount >= maxActiveOrders ? "#F59E0B" : "#6366F1"}
+                    color={activeOrderCount >= maxActiveOrders ? "#D97706" : "#7C3AED"}
                   />
                   <Text style={styles.capacityPillText}>
                     {activeOrderCount >= maxActiveOrders
@@ -510,7 +510,7 @@ const styles = StyleSheet.create({
     right:           "20%",
     height:          180,
     borderRadius:    90,
-    backgroundColor: "#6366F1",
+    backgroundColor: "#7C3AED",
     opacity:         0.07,
     transform:       [{ scaleX: 2.5 }],
   },
@@ -562,7 +562,7 @@ const styles = StyleSheet.create({
     width:           6,
     height:          6,
     borderRadius:    3,
-    backgroundColor: "#FF4D8D",
+    backgroundColor: "#E8336C",
   },
   countPillText: {
     fontSize:   17,
@@ -608,7 +608,7 @@ const styles = StyleSheet.create({
   slotChip: {
     borderRadius: 14,
     overflow:     "hidden",
-    shadowColor:  "#FF4D8D",
+    shadowColor:  "#E8336C",
     shadowOpacity: 0.28,
     shadowRadius:  8,
     shadowOffset:  { width: 0, height: 3 },
@@ -845,7 +845,7 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   avatarWrap: {
-    shadowColor:   "#FF4D8D",
+    shadowColor:   "#E8336C",
     shadowOpacity: 0.38,
     shadowRadius:  10,
     shadowOffset:  { width: 0, height: 4 },
@@ -930,15 +930,15 @@ const styles = StyleSheet.create({
     borderRadius: 5,
   },
   routeNodePickup: {
-    backgroundColor: "#FF4D8D",
-    shadowColor:   "#FF4D8D",
+    backgroundColor: "#E8336C",
+    shadowColor:   "#E8336C",
     shadowOpacity: 0.5,
     shadowRadius:  4,
     shadowOffset:  { width: 0, height: 0 },
   },
   routeNodeDrop: {
-    backgroundColor: "#3B82F6",
-    shadowColor:   "#3B82F6",
+    backgroundColor: "#2563EB",
+    shadowColor:   "#2563EB",
     shadowOpacity: 0.5,
     shadowRadius:  4,
     shadowOffset:  { width: 0, height: 0 },
@@ -1010,7 +1010,7 @@ const styles = StyleSheet.create({
 
   // 3D Earning price tile — green reward chip
   priceCard: {
-    shadowColor:   "#16A34A",
+    shadowColor:   "#059669",
     shadowOpacity: 0.5,
     shadowRadius:  14,
     shadowOffset:  { width: 0, height: 6 },
@@ -1084,7 +1084,7 @@ const styles = StyleSheet.create({
     marginTop:    2,
     borderRadius: 14,
     overflow:     "hidden",
-    shadowColor:  "#FF4D8D",
+    shadowColor:  "#E8336C",
     shadowOpacity: 0.45,
     shadowRadius:  16,
     shadowOffset:  { width: 0, height: 6 },

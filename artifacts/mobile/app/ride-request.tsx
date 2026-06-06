@@ -659,7 +659,7 @@ export default function RideRequestScreen() {
         {/* Error state — order no longer dispatched or fetch failed; auto-dismisses */}
         {fetchFailed && !ride && (
           <View style={styles.fetchStateBox}>
-            <Text style={[styles.fetchStateHeading, { color: "#FF3B30" }]}>
+            <Text style={[styles.fetchStateHeading, { color: colors.error }]}>
               Order unavailable
             </Text>
             <Text style={[styles.fetchStateText, { color: colors.mutedForeground }]}>
@@ -676,7 +676,7 @@ export default function RideRequestScreen() {
           style={[
             styles.glow,
             {
-              backgroundColor: urgent ? "#FF3B30" : colors.primary,
+              backgroundColor: urgent ? "#DC2626" : colors.primary,
               opacity: pulseOpacity,
               transform: [{ scale: pulseScale }],
             },
@@ -687,7 +687,7 @@ export default function RideRequestScreen() {
           style={[
             styles.card,
             {
-              borderColor: urgent ? "#FF3B30" : colors.primary,
+              borderColor: urgent ? "#DC2626" : colors.primary,
               transform: [{ scale: pulseScale }],
             },
           ]}
@@ -698,7 +698,7 @@ export default function RideRequestScreen() {
               <View
                 style={[
                   styles.liveBadge,
-                  { backgroundColor: urgent ? "#FFEBEE" : "#f0fdf4" },
+                  { backgroundColor: urgent ? "#FEE2E2" : "#f0fdf4" },
                 ]}
               >
                 <View
@@ -1062,7 +1062,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 2,
-    backgroundColor: "#FF6F00",
+    backgroundColor: "#D97706",
     paddingHorizontal: 6,
     paddingVertical: 3,
     borderRadius: 7,

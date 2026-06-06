@@ -313,7 +313,7 @@ export default function LockAlertScreen() {
             <View style={styles.notifHeader}>
               <View style={styles.appIcon}>
                 <LinearGradient
-                  colors={["#00C853", "#00897B"]}
+                  colors={["#059669", "#047857"]}
                   style={StyleSheet.absoluteFill}
                 />
                 <Feather name="navigation" size={14} color="#fff" />
@@ -352,7 +352,7 @@ export default function LockAlertScreen() {
                   <Text style={styles.riderRating}>{(ride?.passengerRating ?? 4.87).toFixed(2)}</Text>
                 </View>
                 <View style={styles.routeRow}>
-                  <View style={[styles.routeDot, { backgroundColor: "#00C853" }]} />
+                  <View style={[styles.routeDot, { backgroundColor: "#059669" }]} />
                   <Text style={styles.routeText} numberOfLines={1}>
                     {ride?.pickup ?? "Indiranagar Metro"}
                   </Text>
@@ -566,7 +566,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    backgroundColor: "#FF3B30",
+    backgroundColor: "#DC2626",
     paddingHorizontal: 7,
     paddingVertical: 3,
     borderRadius: 6,
@@ -589,7 +589,7 @@ const styles = StyleSheet.create({
 
   countdownRow: { gap: 5, marginTop: 2 },
   countdownLabel: {
-    color: "#FF3B30",
+    color: "#DC2626",
     fontSize: 9,
     fontWeight: "800",
     letterSpacing: 0.6,
@@ -602,7 +602,7 @@ const styles = StyleSheet.create({
   },
   countdownFill: {
     height: "100%",
-    backgroundColor: "#FF3B30",
+    backgroundColor: "#DC2626",
     borderRadius: 2,
   },
 
@@ -630,7 +630,7 @@ const styles = StyleSheet.create({
   routeDot: { width: 6, height: 6, borderRadius: 3 },
   routeText: { color: "rgba(255,255,255,0.8)", fontSize: 11, fontWeight: "600", flex: 1 },
   fareBlock: { alignItems: "flex-end" },
-  fareValue: { color: "#00C853", fontSize: 16, fontWeight: "800", letterSpacing: -0.3 },
+  fareValue: { color: "#059669", fontSize: 16, fontWeight: "800", letterSpacing: -0.3 },
   fareLabel: { color: "rgba(255,255,255,0.5)", fontSize: 9, fontWeight: "700", letterSpacing: 0.4 },
 
   actionsRow: { flexDirection: "row", gap: 8, marginTop: 2 },
