@@ -53,7 +53,12 @@ function infoAlert(title: string, message: string) {
 function SectionCard({ children }: { children: React.ReactNode }) {
   const colors = useColors();
   return (
-    <View style={[styles.sectionCard, { borderColor: colors.border }]}>
+    <View
+      style={[
+        styles.sectionCard,
+        { borderColor: colors.border, backgroundColor: colors.surface },
+      ]}
+    >
       {children}
     </View>
   );
@@ -84,7 +89,7 @@ function Row({
 }) {
   const colors = useColors();
   const Wrap: any = onPress ? TouchableOpacity : View;
-  const iconTint = iconColor ?? (destructive ? "#FF3B30" : "#0a0a0a");
+  const iconTint = iconColor ?? (destructive ? colors.error : colors.foreground);
   return (
     <>
       <Wrap
@@ -95,7 +100,7 @@ function Row({
         <View
           style={[
             styles.rowIcon,
-            { backgroundColor: iconBg ?? "#f5f5f5" },
+            { backgroundColor: iconBg ?? colors.muted },
           ]}
         >
           {iconSet === "MCIcons" ? (
@@ -108,7 +113,7 @@ function Row({
           <Text
             style={[
               styles.rowTitle,
-              { color: destructive ? "#FF3B30" : colors.foreground },
+              { color: destructive ? colors.error : colors.foreground },
             ]}
           >
             {title}
@@ -170,17 +175,17 @@ export default function SettingsScreen() {
     documentsSubmitted                 ? "Under Review" :
                                          "Documents Required";
   const docSubColor =
-    verificationStatus === "verified"  ? "#00C853" :
-    verificationStatus === "rejected"  ? "#EF4444" :
-    verificationStatus === "pending"   ? "#FF8F00" :
-    documentsSubmitted                 ? "#FF8F00" :
-                                         "#EF4444";
+    verificationStatus === "verified"  ? colors.success :
+    verificationStatus === "rejected"  ? colors.error :
+    verificationStatus === "pending"   ? colors.warning :
+    documentsSubmitted                 ? colors.warning :
+                                         colors.error;
   const docBadgeBg =
-    verificationStatus === "verified"  ? "#f0fdf4" :
-    verificationStatus === "rejected"  ? "#ffebee" :
-    verificationStatus === "pending"   ? "#fff8e1" :
-    documentsSubmitted                 ? "#fff8e1" :
-                                         "#ffebee";
+    verificationStatus === "verified"  ? colors.successSoft :
+    verificationStatus === "rejected"  ? colors.errorSoft :
+    verificationStatus === "pending"   ? colors.warningSoft :
+    documentsSubmitted                 ? colors.warningSoft :
+                                         colors.errorSoft;
 
   // ── Plan data from DriverContext ──
   const PLAN_LABEL: Record<string, string>  = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
@@ -208,7 +213,9 @@ export default function SettingsScreen() {
     ? planExpiryDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })
     : "";
   const planBarColor =
-    remainingPercent >= 70 ? "#00C853" : remainingPercent >= 30 ? "#FF8F00" : "#FF3B30";
+    remainingPercent >= 70 ? colors.success :
+    remainingPercent >= 30 ? colors.warning :
+                             colors.error;
 
   function confirmLogout() {
     confirmAction(
@@ -240,23 +247,23 @@ export default function SettingsScreen() {
             Settings
           </Text>
           <TouchableOpacity
-            style={[styles.iconBtn, { backgroundColor: "#fff", borderColor: colors.border }]}
+            style={[styles.iconBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
             activeOpacity={0.7}
           >
-            <Feather name="search" size={17} color="#0a0a0a" />
+            <Feather name="search" size={17} color={colors.foreground} />
           </TouchableOpacity>
         </View>
 
         {/* PROFILE HERO */}
         <LinearGradient
-          colors={["#3A0A50", "#5E1675", "#A32CC4"]}
+          colors={["#1A0612", "#8B1040", "#E8336C"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.profileHero}
         >
           {/* Glass shimmer highlight */}
           <LinearGradient
-            colors={["rgba(216,107,255,0.18)", "rgba(255,255,255,0)"]}
+            colors={["rgba(232,51,108,0.22)", "rgba(255,255,255,0)"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 0.65, y: 1 }}
             style={StyleSheet.absoluteFillObject}
@@ -286,7 +293,7 @@ export default function SettingsScreen() {
               <>
                 <View style={styles.planTopRow}>
                   <View style={styles.planBadge}>
-                    <View style={[styles.planDot, { backgroundColor: "#00C853" }]} />
+                    <View style={[styles.planDot, { backgroundColor: colors.success }]} />
                     <Text style={styles.planName}>{planName}</Text>
                   </View>
                   <TouchableOpacity
@@ -317,20 +324,20 @@ export default function SettingsScreen() {
               <>
                 <View style={styles.planTopRow}>
                   <View style={styles.planBadge}>
-                    <View style={[styles.planDot, { backgroundColor: "#FF3B30" }]} />
-                    <Text style={[styles.planName, { color: "#FF8080" }]}>Plan expired</Text>
+                    <View style={[styles.planDot, { backgroundColor: colors.error }]} />
+                    <Text style={[styles.planName, { color: colors.error }]}>Plan expired</Text>
                   </View>
                   <TouchableOpacity
-                    style={[styles.planCta, { borderColor: "rgba(255,59,48,0.35)" }]}
+                    style={[styles.planCta, { borderColor: "rgba(220,38,38,0.35)" }]}
                     onPress={() => router.push("/subscription")}
                     activeOpacity={0.8}
                   >
-                    <Text style={[styles.planCtaText, { color: "#FF8080" }]}>Renew Plan</Text>
-                    <Feather name="chevron-right" size={12} color="#FF8080" />
+                    <Text style={[styles.planCtaText, { color: colors.error }]}>Renew Plan</Text>
+                    <Feather name="chevron-right" size={12} color={colors.error} />
                   </TouchableOpacity>
                 </View>
                 <View style={styles.planBarTrack}>
-                  <View style={[styles.planBarFill, { width: "3%", backgroundColor: "#FF3B30" }]} />
+                  <View style={[styles.planBarFill, { width: "3%", backgroundColor: colors.error }]} />
                 </View>
               </>
             ) : (
@@ -350,7 +357,7 @@ export default function SettingsScreen() {
                   </TouchableOpacity>
                 </View>
                 <View style={styles.planBarTrack}>
-                  <View style={[styles.planBarFill, { width: "3%", backgroundColor: "#FF3B30" }]} />
+                  <View style={[styles.planBarFill, { width: "3%", backgroundColor: colors.error }]} />
                 </View>
               </>
             )}
@@ -365,8 +372,8 @@ export default function SettingsScreen() {
           <SectionCard>
             <Row
               icon="file-text"
-              iconBg="#e8f5e9"
-              iconColor="#00C853"
+              iconBg={colors.successSoft}
+              iconColor={colors.success}
               title="Driver Documents"
               right={
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -389,15 +396,15 @@ export default function SettingsScreen() {
           <SectionCard>
             <Row
               icon="bell"
-              iconBg="#e3f2fd"
-              iconColor="#1976D2"
+              iconBg={colors.infoSoft}
+              iconColor={colors.info}
               title="Sound alerts"
               sub="Ringtone on new ride requests"
               right={
                 <Switch
                   value={soundAlerts}
                   onValueChange={setSoundAlerts}
-                  trackColor={{ true: "#22C55E", false: "#EF4444" }}
+                  trackColor={{ true: colors.success, false: colors.error }}
                   thumbColor="#fff"
                   style={{ transform: [{ scaleX: 1.3 }, { scaleY: 1.3 }] }}
                 />
@@ -407,14 +414,14 @@ export default function SettingsScreen() {
             <Row
               icon="vibrate"
               iconSet="MCIcons"
-              iconBg="#f3e5f5"
-              iconColor="#9C27B0"
+              iconBg={colors.pendingSoft}
+              iconColor={colors.pending}
               title="Vibration"
               right={
                 <Switch
                   value={vibration}
                   onValueChange={setVibration}
-                  trackColor={{ true: "#22C55E", false: "#EF4444" }}
+                  trackColor={{ true: colors.success, false: colors.error }}
                   thumbColor="#fff"
                   style={{ transform: [{ scaleX: 1.3 }, { scaleY: 1.3 }] }}
                 />
@@ -424,8 +431,8 @@ export default function SettingsScreen() {
             <Row
               icon="picture-in-picture-top-right"
               iconSet="MCIcons"
-              iconBg="#e8f5e9"
-              iconColor="#00C853"
+              iconBg={colors.successSoft}
+              iconColor={colors.success}
               title="Allow Ride Overlay Popup"
               sub="Coming soon — requires production Android build"
               onPress={() => {
@@ -445,7 +452,7 @@ export default function SettingsScreen() {
                       [{ text: "OK" }],
                     );
                   }}
-                  trackColor={{ true: "#22C55E", false: "#EF4444" }}
+                  trackColor={{ true: colors.success, false: colors.error }}
                   thumbColor="#fff"
                   style={{ transform: [{ scaleX: 1.3 }, { scaleY: 1.3 }], opacity: 0.45 }}
                 />
@@ -454,8 +461,8 @@ export default function SettingsScreen() {
             />
             <Row
               icon="sliders"
-              iconBg="#fff0f5"
-              iconColor="#FF4D8D"
+              iconBg={colors.primarySoft}
+              iconColor={colors.primary}
               title="Notification & Background Settings"
               sub="Battery, auto-start & lock-screen alert setup"
               onPress={() => router.push("/background-setup?back=1")}
@@ -471,8 +478,8 @@ export default function SettingsScreen() {
           <SectionCard>
             <Row
               icon="credit-card"
-              iconBg="#f0fdf4"
-              iconColor="#00C853"
+              iconBg={colors.moneySoft}
+              iconColor={colors.money}
               title="Wallet & Payouts"
               sub="View balance & withdrawals"
               onPress={() => router.push("/wallet")}
@@ -480,8 +487,8 @@ export default function SettingsScreen() {
             />
             <Row
               icon="zap"
-              iconBg="#fff3e0"
-              iconColor="#FF6F00"
+              iconBg={colors.warningSoft}
+              iconColor={colors.warning}
               title="Driver Plans"
               sub="Activate to keep 100% of fares"
               onPress={() => router.push("/subscription")}
@@ -489,8 +496,8 @@ export default function SettingsScreen() {
             />
             <Row
               icon="globe"
-              iconBg="#e3f2fd"
-              iconColor="#1976D2"
+              iconBg={colors.infoSoft}
+              iconColor={colors.info}
               title="Language"
               sub="App currently supports English only."
               right={
@@ -535,8 +542,8 @@ export default function SettingsScreen() {
         <SectionCard>
           <Row
             icon="log-out"
-            iconBg="#ffebee"
-            iconColor="#FF3B30"
+            iconBg={colors.errorSoft}
+            iconColor={colors.error}
             title="Sign out"
             destructive
             onPress={confirmLogout}
@@ -584,9 +591,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.14)",
-    shadowColor: "#5E1675",
+    shadowColor: "#E8336C",
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.45,
+    shadowOpacity: 0.40,
     shadowRadius: 18,
     elevation: 8,
   },
@@ -600,134 +607,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
-    borderColor: "rgba(216,107,255,0.45)",
+    borderColor: "rgba(232,51,108,0.50)",
   },
   profileAvatarText: { fontSize: 19, fontWeight: "800", color: "#fff" },
-  profileVerified: {
-    position: "absolute",
-    bottom: -1,
-    right: -1,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "#122847",
-  },
   profileName: { fontSize: 18, fontWeight: "800", color: "#fff", letterSpacing: -0.3 },
-  profilePhone: { fontSize: 12, color: "rgba(255,255,255,0.6)", fontWeight: "600" },
-  profileMetaRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
-  profileMetaText: { fontSize: 11, color: "rgba(255,255,255,0.75)", fontWeight: "600" },
-  metaDotDark: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.3)" },
-  editProfileBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
+  profilePhone: { fontSize: 12, color: "rgba(255,255,255,0.65)", fontWeight: "600" },
+  profileVehicleRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
+  profileVehicleText: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.72)",
+    fontWeight: "700",
+    letterSpacing: 0.5,
   },
-
-  statsStrip: {
-    flexDirection: "row",
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderRadius: 13,
-    padding: 12,
-  },
-  statBox: { flex: 1, alignItems: "center", position: "relative", gap: 2 },
-  statValue: { color: "#fff", fontSize: 17, fontWeight: "800", letterSpacing: -0.3 },
-  statLabel: { color: "rgba(255,255,255,0.55)", fontSize: 10, fontWeight: "700", letterSpacing: 0.4 },
-  statDivider: {
-    position: "absolute",
-    right: 0,
-    top: 4,
-    bottom: 4,
-    width: 1,
-    backgroundColor: "rgba(255,255,255,0.1)",
-  },
-
-  vehicleCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: "#fff",
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  vehicleIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  vehicleTitle: { fontSize: 14, fontWeight: "800" },
-  vehicleSub: { fontSize: 11, fontWeight: "600", marginTop: 1 },
-  vehiclePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 8,
-  },
-  vehiclePillDot: { width: 6, height: 6, borderRadius: 3 },
-  vehiclePillText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.3 },
-
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 8,
-    paddingHorizontal: 2,
-  },
-  sectionTitle: { fontSize: 13, fontWeight: "800", letterSpacing: -0.1, textTransform: "uppercase", color: "#0a0a0a" },
-  sectionMeta: { flexDirection: "row", alignItems: "center", gap: 6 },
-  sectionBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 7,
-  },
-  sectionBadgeText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.3 },
-
-  sectionCard: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    borderWidth: 1,
-    overflow: "hidden",
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 11,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-  },
-  rowIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  rowTitle: { fontSize: 14, fontWeight: "700" },
-  rowSub: { fontSize: 11, fontWeight: "500", marginTop: 1 },
-  divider: { height: 1, marginLeft: 57 },
-
-  rowValue: { flexDirection: "row", alignItems: "center", gap: 4 },
-  rowValueText: { fontSize: 12, fontWeight: "600" },
-
-  docRight: { flexDirection: "row", alignItems: "center", gap: 6 },
-  statusPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 7,
-  },
-  statusPillText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.3 },
 
   // Plan panel
   planPanel: {
@@ -737,13 +628,6 @@ const styles = StyleSheet.create({
     gap: 8,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.14)",
-  },
-  profileVehicleRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
-  profileVehicleText: {
-    fontSize: 11,
-    color: "rgba(255,255,255,0.72)",
-    fontWeight: "700",
-    letterSpacing: 0.5,
   },
   planTopRow: {
     flexDirection: "row",
@@ -781,6 +665,34 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   planBarFill: { height: "100%", borderRadius: 3 },
+
+  sectionTitle: { fontSize: 13, fontWeight: "800", letterSpacing: -0.1, textTransform: "uppercase" },
+
+  sectionCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  rowIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rowTitle: { fontSize: 14, fontWeight: "700" },
+  rowSub: { fontSize: 11, fontWeight: "500", marginTop: 1 },
+  divider: { height: 1, marginLeft: 57 },
+
+  rowValue: { flexDirection: "row", alignItems: "center", gap: 4 },
+  rowValueText: { fontSize: 12, fontWeight: "600" },
 
   docStatusBadge: {
     paddingHorizontal: 9,
