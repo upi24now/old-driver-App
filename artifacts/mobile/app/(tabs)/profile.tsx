@@ -450,6 +450,15 @@ export default function SettingsScreen() {
                   style={{ transform: [{ scaleX: 1.3 }, { scaleY: 1.3 }], opacity: 0.45 }}
                 />
               }
+              divider
+            />
+            <Row
+              icon="sliders"
+              iconBg="#fff0f5"
+              iconColor="#FF4D8D"
+              title="Notification & Background Settings"
+              sub="Battery, auto-start & lock-screen alert setup"
+              onPress={() => router.push("/background-setup?back=1")}
             />
           </SectionCard>
         </View>
