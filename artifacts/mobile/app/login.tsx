@@ -359,12 +359,30 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
 
-        <Text style={[styles.termsText, { color: colors.mutedForeground }]}>
-          By continuing you agree to{" "}
-          <Text style={[styles.termsLink, { color: colors.foreground }]}>Terms</Text>
-          {" & "}
-          <Text style={[styles.termsLink, { color: colors.foreground }]}>Privacy Policy</Text>
-        </Text>
+        <View style={styles.termsRow}>
+          <Text style={[styles.termsText, { color: colors.mutedForeground }]}>
+            By continuing, you agree to our{" "}
+          </Text>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            hitSlop={6}
+            onPress={() => router.push("/terms-and-conditions")}
+          >
+            <Text style={[styles.termsLink, { color: colors.primary }]}>
+              Terms & Conditions
+            </Text>
+          </TouchableOpacity>
+          <Text style={[styles.termsText, { color: colors.mutedForeground }]}>{" and "}</Text>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            hitSlop={6}
+            onPress={() => router.push("/privacy-policy")}
+          >
+            <Text style={[styles.termsLink, { color: colors.primary }]}>
+              Privacy Policy
+            </Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
       <Modal
@@ -672,14 +690,21 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0.2,
   },
-  termsText: {
-    ...TS.bodySm,
-    textAlign: "center",
+  termsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "center",
     marginTop: 16,
     marginBottom: 8,
+    paddingHorizontal: 16,
+  },
+  termsText: {
+    ...TS.bodySm,
   },
   termsLink: {
-    fontWeight: "600",
+    ...TS.bodySm,
+    fontWeight: "700",
   },
 
   // Country picker modal

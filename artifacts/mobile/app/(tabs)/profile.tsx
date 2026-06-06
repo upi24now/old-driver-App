@@ -526,14 +526,14 @@ export default function SettingsScreen() {
             />
             <Row
               icon="shield"
-              title="Privacy policy"
-              onPress={() => infoAlert("Privacy policy", "Opens the privacy policy in your browser.")}
+              title="Privacy Policy"
+              onPress={() => router.push("/privacy-policy")}
               divider
             />
             <Row
               icon="file-text"
-              title="Terms of service"
-              onPress={() => infoAlert("Terms of service", "Opens the terms in your browser.")}
+              title="Terms & Conditions"
+              onPress={() => router.push("/terms-and-conditions")}
             />
           </SectionCard>
         </View>

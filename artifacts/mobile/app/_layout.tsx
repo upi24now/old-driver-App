@@ -76,6 +76,8 @@ function RootLayoutNav() {
       <Stack.Screen name="wallet" />
       <Stack.Screen name="subscription" />
       <Stack.Screen name="notifications" />
+      <Stack.Screen name="privacy-policy" />
+      <Stack.Screen name="terms-and-conditions" />
       <Stack.Screen
         name="lock-alert"
         options={{
