@@ -23,7 +23,6 @@
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
-import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -249,11 +248,12 @@ function showSourceSheet(
 // ─── Status chip ──────────────────────────────────────────────────────────────
 
 function DocStatusChip({ lock }: { lock: NormalizedDocLock }) {
+  const colors = useColors();
   const cfg = {
-    locked:  { bg: "#f0fdf4", color: "#00C853", label: "Verified",  icon: "lock"         } as const,
-    waiting: { bg: "#fff8e1", color: "#FF8F00", label: "Pending",   icon: "clock"        } as const,
-    reupload:{ bg: "#ffebee", color: "#EF4444", label: "Rejected",  icon: "alert-circle" } as const,
-    upload:  { bg: "#f5f5f5", color: "#6B7280", label: "Required",  icon: null           } as const,
+    locked:   { bg: colors.successSoft,  color: colors.success,         label: "Verified",  icon: "lock"         } as const,
+    waiting:  { bg: colors.warningSoft,  color: colors.warning,         label: "Pending",   icon: "clock"        } as const,
+    reupload: { bg: colors.errorSoft,    color: colors.error,           label: "Rejected",  icon: "alert-circle" } as const,
+    upload:   { bg: colors.muted,        color: colors.mutedForeground, label: "Required",  icon: null           } as const,
   }[lock];
 
   return (
@@ -283,21 +283,36 @@ function DocumentCard({
   const uploaded = !!state.uri;
 
   const cardBorderColor = {
-    locked:  "#00C853",
-    waiting: "#FF8F00",
-    reupload:"#EF4444",
-    upload:  uploaded ? "#00C853" : colors.border,
+    locked:   colors.success,
+    waiting:  colors.warning,
+    reupload: colors.error,
+    upload:   uploaded ? colors.success : colors.border,
   }[lockState];
 
   const iconBg = {
-    locked:  "#f0fdf4",
-    waiting: "#fff8e1",
-    reupload:"#ffebee",
-    upload:  uploaded ? "#f0fdf4" : "#f5f5f5",
+    locked:   colors.successSoft,
+    waiting:  colors.warningSoft,
+    reupload: colors.errorSoft,
+    upload:   uploaded ? colors.successSoft : colors.muted,
   }[lockState];
 
+  const isActive = lockState === "locked" || (lockState === "upload" && uploaded);
+
   return (
-    <View style={[styles.card, { borderColor: cardBorderColor }]}>
+    <View
+      style={[
+        styles.card,
+        {
+          borderColor:   cardBorderColor,
+          backgroundColor: colors.surfaceElevated,
+          shadowColor:   cardBorderColor,
+          shadowOpacity: isActive ? 0.18 : 0.07,
+          shadowRadius:  isActive ? 14   : 6,
+          shadowOffset:  { width: 0, height: isActive ? 5 : 2 },
+          elevation:     isActive ? 6    : 2,
+        },
+      ]}
+    >
 
       {/* ── Header row ── */}
       <View style={styles.cardHeader}>
@@ -319,8 +334,8 @@ function DocumentCard({
       {state.loading ? (
 
         /* Loading spinner */
-        <View style={styles.loadingBox}>
-          <ActivityIndicator size="small" color="#00C853" />
+        <View style={[styles.loadingBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+          <ActivityIndicator size="small" color={colors.primary} />
           <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
             Opening picker…
           </Text>
@@ -337,15 +352,20 @@ function DocumentCard({
               contentFit="cover"
               transition={250}
             />
-            <View style={[styles.previewBar, { backgroundColor: "rgba(0,160,55,0.88)" }]}>
+            <View style={[styles.previewBar, { backgroundColor: "rgba(5,150,105,0.90)" }]}>
               <Feather name="lock" size={13} color="#fff" />
               <Text style={styles.previewBarText}>Verified — changes locked</Text>
             </View>
           </View>
         ) : (
-          <View style={styles.lockedEmptyBox}>
-            <Feather name="lock" size={22} color="#00C853" />
-            <Text style={[styles.lockedLabel, { color: "#00C853" }]}>
+          <View
+            style={[
+              styles.lockedEmptyBox,
+              { borderColor: colors.success, backgroundColor: colors.successSoft },
+            ]}
+          >
+            <Feather name="lock" size={22} color={colors.success} />
+            <Text style={[styles.lockedLabel, { color: colors.successText }]}>
               Verified — changes locked
             </Text>
           </View>
@@ -362,15 +382,20 @@ function DocumentCard({
               contentFit="cover"
               transition={250}
             />
-            <View style={[styles.previewBar, { backgroundColor: "rgba(160,90,0,0.82)" }]}>
+            <View style={[styles.previewBar, { backgroundColor: "rgba(217,119,6,0.90)" }]}>
               <Feather name="clock" size={13} color="#fff" />
               <Text style={styles.previewBarText}>Pending verification</Text>
             </View>
           </View>
         ) : (
-          <View style={[styles.lockedEmptyBox, { borderColor: "#FFE0B2", backgroundColor: "#fff8e1" }]}>
-            <Feather name="clock" size={22} color="#FF8F00" />
-            <Text style={[styles.lockedLabel, { color: "#FF8F00" }]}>
+          <View
+            style={[
+              styles.lockedEmptyBox,
+              { borderColor: colors.warning, backgroundColor: colors.warningSoft },
+            ]}
+          >
+            <Feather name="clock" size={22} color={colors.warning} />
+            <Text style={[styles.lockedLabel, { color: colors.warningText }]}>
               Pending verification
             </Text>
           </View>
@@ -380,9 +405,14 @@ function DocumentCard({
 
         /* ── REUPLOAD — rejected by admin ── */
         <>
-          <View style={styles.rejectedBanner}>
-            <Feather name="alert-circle" size={14} color="#EF4444" />
-            <Text style={styles.rejectedBannerText}>
+          <View
+            style={[
+              styles.rejectedBanner,
+              { backgroundColor: colors.errorSoft, borderColor: colors.error },
+            ]}
+          >
+            <Feather name="alert-circle" size={14} color={colors.error} />
+            <Text style={[styles.rejectedBannerText, { color: colors.error }]}>
               Rejected — upload again
             </Text>
           </View>
@@ -394,7 +424,7 @@ function DocumentCard({
                 contentFit="cover"
                 transition={250}
               />
-              <View style={[styles.previewBar, { backgroundColor: "rgba(160,0,0,0.80)" }]}>
+              <View style={[styles.previewBar, { backgroundColor: "rgba(220,38,38,0.88)" }]}>
                 <Text style={styles.previewBarText}>Previous upload (rejected)</Text>
                 <View style={{ flex: 1 }} />
                 <TouchableOpacity style={styles.barBtn} onPress={onUpload} activeOpacity={0.8}>
@@ -404,19 +434,19 @@ function DocumentCard({
               </View>
             </View>
           ) : (
-            <View style={styles.uploadZone}>
+            <View
+              style={[
+                styles.uploadZone,
+                { borderColor: colors.error, backgroundColor: colors.errorSoft },
+              ]}
+            >
               <TouchableOpacity style={styles.uploadBtn} onPress={onUpload} activeOpacity={0.82}>
-                <LinearGradient
-                  colors={["#EF4444", "#FF6B6B"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.uploadBtnGrad}
-                >
+                <View style={[styles.uploadBtnSolid, { backgroundColor: colors.error }]}>
                   <Feather name="upload" size={17} color="#fff" />
                   <Text style={styles.uploadBtnText}>
                     {doc.isSelfie ? "Upload Selfie Again" : "Upload Again"}
                   </Text>
-                </LinearGradient>
+                </View>
               </TouchableOpacity>
               <Text style={[styles.uploadHint, { color: colors.mutedForeground }]}>
                 {doc.hint}
@@ -446,11 +476,11 @@ function DocumentCard({
               <Text style={styles.barBtnText}>Retake</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.barBtn, styles.barBtnDanger]}
+              style={[styles.barBtn, { backgroundColor: "rgba(220,38,38,0.22)" }]}
               onPress={onRemove}
               activeOpacity={0.8}
             >
-              <Feather name="trash-2" size={11} color="#FF3B30" />
+              <Feather name="trash-2" size={11} color={colors.error} />
             </TouchableOpacity>
           </View>
         </View>
@@ -458,37 +488,37 @@ function DocumentCard({
       ) : (
 
         /* ── EMPTY — no file, upload allowed ── */
-        <View style={styles.uploadZone}>
+        <View
+          style={[
+            styles.uploadZone,
+            { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+          ]}
+        >
           <TouchableOpacity style={styles.uploadBtn} onPress={onUpload} activeOpacity={0.82}>
-            <LinearGradient
-              colors={["#00C853", "#00E676"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.uploadBtnGrad}
-            >
+            <View style={[styles.uploadBtnSolid, { backgroundColor: colors.primary }]}>
               <Feather name="camera" size={17} color="#fff" />
               <Text style={styles.uploadBtnText}>
                 {doc.isSelfie ? "Take Selfie" : "Take Photo / Upload"}
               </Text>
-            </LinearGradient>
+            </View>
           </TouchableOpacity>
           <Text style={[styles.uploadHint, { color: colors.mutedForeground }]}>
             {doc.hint}
           </Text>
           <View style={styles.tagsRow}>
             <View style={styles.tag}>
-              <Feather name="camera" size={9} color="#9CA3AF" />
-              <Text style={styles.tagText}>Camera</Text>
+              <Feather name="camera" size={9} color={colors.mutedForeground} />
+              <Text style={[styles.tagText, { color: colors.mutedForeground }]}>Camera</Text>
             </View>
-            <View style={styles.tagDot} />
+            <View style={[styles.tagDot, { backgroundColor: colors.border }]} />
             <View style={styles.tag}>
-              <Feather name="image" size={9} color="#9CA3AF" />
-              <Text style={styles.tagText}>Gallery</Text>
+              <Feather name="image" size={9} color={colors.mutedForeground} />
+              <Text style={[styles.tagText, { color: colors.mutedForeground }]}>Gallery</Text>
             </View>
-            <View style={styles.tagDot} />
+            <View style={[styles.tagDot, { backgroundColor: colors.border }]} />
             <View style={styles.tag}>
-              <Feather name="lock" size={9} color="#9CA3AF" />
-              <Text style={styles.tagText}>Encrypted</Text>
+              <Feather name="lock" size={9} color={colors.mutedForeground} />
+              <Text style={[styles.tagText, { color: colors.mutedForeground }]}>Encrypted</Text>
             </View>
           </View>
         </View>
@@ -653,19 +683,25 @@ export default function DocumentUploadScreen() {
       <View
         style={[
           styles.header,
-          { paddingTop: insets.top + 12, backgroundColor: "#fff" },
+          {
+            paddingTop:        insets.top + 12,
+            backgroundColor:   colors.surface,
+            borderBottomColor: colors.border,
+          },
         ]}
       >
         <View style={styles.headerRow}>
           <TouchableOpacity
             onPress={() => router.back()}
-            style={styles.backBtn}
+            style={[styles.backBtn, { backgroundColor: colors.muted }]}
             activeOpacity={0.7}
           >
-            <Feather name="arrow-left" size={19} color="#0a0a0a" />
+            <Feather name="arrow-left" size={19} color={colors.foreground} />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Text style={styles.headerTitle}>Upload Documents</Text>
+            <Text style={[styles.headerTitle, { color: colors.foreground }]}>
+              Upload Documents
+            </Text>
             <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
               Step 4 · Verification
             </Text>
@@ -679,7 +715,10 @@ export default function DocumentUploadScreen() {
             <View
               style={[
                 styles.progressFill,
-                { width: `${Math.max(progress * 100, 3)}%` },
+                {
+                  width:           `${Math.max(progress * 100, 3)}%`,
+                  backgroundColor: progress >= 1 ? colors.success : colors.primary,
+                },
               ]}
             />
           </View>
@@ -699,9 +738,14 @@ export default function DocumentUploadScreen() {
         keyboardShouldPersistTaps="handled"
       >
         {/* Security banner */}
-        <View style={styles.banner}>
-          <View style={styles.bannerIcon}>
-            <Feather name="shield" size={16} color="#00C853" />
+        <View
+          style={[
+            styles.banner,
+            { borderColor: colors.success, backgroundColor: colors.successSoft },
+          ]}
+        >
+          <View style={[styles.bannerIcon, { backgroundColor: colors.moneySoft }]}>
+            <Feather name="shield" size={16} color={colors.success} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={[styles.bannerTitle, { color: colors.foreground }]}>
@@ -734,7 +778,7 @@ export default function DocumentUploadScreen() {
         <View
           style={[
             styles.tipBox,
-            { backgroundColor: "#fff", borderColor: colors.border },
+            { backgroundColor: colors.surface, borderColor: colors.border },
           ]}
         >
           <View style={styles.tipHeader}>
@@ -750,7 +794,7 @@ export default function DocumentUploadScreen() {
             "Every digit and letter must be readable",
           ].map((tip) => (
             <View key={tip} style={styles.tipRow}>
-              <View style={styles.tipDot} />
+              <View style={[styles.tipDot, { backgroundColor: colors.success }]} />
               <Text style={[styles.tipText, { color: colors.mutedForeground }]}>
                 {tip}
               </Text>
@@ -760,9 +804,9 @@ export default function DocumentUploadScreen() {
 
         {/* Platform notice (development helper) */}
         {Platform.OS === "android" && (
-          <View style={styles.platformNote}>
-            <Feather name="smartphone" size={12} color="#6B7280" />
-            <Text style={styles.platformNoteText}>
+          <View style={[styles.platformNote, { backgroundColor: colors.muted }]}>
+            <Feather name="smartphone" size={12} color={colors.mutedForeground} />
+            <Text style={[styles.platformNoteText, { color: colors.mutedForeground }]}>
               After selecting a photo, tap the checkmark / Done button to confirm.
             </Text>
           </View>
@@ -774,9 +818,9 @@ export default function DocumentUploadScreen() {
         style={[
           styles.footer,
           {
-            paddingBottom: insets.bottom + 16,
-            backgroundColor: "#fff",
-            borderTopColor: colors.border,
+            paddingBottom:   insets.bottom + 16,
+            backgroundColor: colors.surface,
+            borderTopColor:  colors.border,
           },
         ]}
       >
@@ -784,7 +828,7 @@ export default function DocumentUploadScreen() {
           <Feather
             name={allReady ? "check-circle" : "info"}
             size={13}
-            color={allReady ? "#00C853" : colors.mutedForeground}
+            color={allReady ? colors.success : colors.mutedForeground}
           />
           <Text style={[styles.hintText, { color: colors.mutedForeground }]}>
             {allReady
@@ -799,12 +843,7 @@ export default function DocumentUploadScreen() {
           activeOpacity={0.85}
           disabled={!allReady || submitting}
         >
-          <LinearGradient
-            colors={["#00C853", "#00E676"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.submitGrad}
-          >
+          <View style={[styles.submitGrad, { backgroundColor: colors.primary }]}>
             {submitting ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
@@ -813,7 +852,7 @@ export default function DocumentUploadScreen() {
                 <Feather name="arrow-right" size={18} color="#fff" />
               </>
             )}
-          </LinearGradient>
+          </View>
         </TouchableOpacity>
       </View>
     </View>
@@ -831,7 +870,6 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     gap: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
   },
   headerRow: {
     flexDirection: "row",
@@ -842,17 +880,16 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 11,
-    backgroundColor: "#f5f5f5",
     alignItems: "center",
     justifyContent: "center",
   },
   headerCenter: { alignItems: "center" },
-  headerTitle: { fontSize: 16, fontWeight: "700", color: "#0a0a0a" },
-  headerSub: { fontSize: 12, marginTop: 1 },
+  headerTitle:  { fontSize: 16, fontWeight: "700" },
+  headerSub:    { fontSize: 12, marginTop: 1 },
 
-  progressRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  progressRow:  { flexDirection: "row", alignItems: "center", gap: 10 },
   progressTrack: { flex: 1, height: 6, borderRadius: 3, overflow: "hidden" },
-  progressFill: { height: "100%", borderRadius: 3, backgroundColor: "#00C853" },
+  progressFill: { height: "100%", borderRadius: 3 },
   progressLabel: { fontSize: 12, fontWeight: "700" },
 
   // Scroll
@@ -866,14 +903,11 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#b9f6ca",
-    backgroundColor: "#f0fdf4",
   },
   bannerIcon: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "rgba(0,200,83,0.15)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -883,19 +917,18 @@ const styles = StyleSheet.create({
   // Doc list
   docList: { gap: 12 },
 
-  // Card
+  // Card — shadow/border/bg injected inline via useColors()
   card: {
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1.5,
     padding: 14,
     gap: 12,
-    backgroundColor: "#fff",
   },
   cardHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
   docIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -914,7 +947,7 @@ const styles = StyleSheet.create({
   },
   badgeText: { fontSize: 10, fontWeight: "700", letterSpacing: 0.2 },
 
-  // Loading
+  // Loading — bg/border injected inline
   loadingBox: {
     height: 72,
     flexDirection: "row",
@@ -922,13 +955,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
     borderRadius: 12,
-    backgroundColor: "#f9fafb",
     borderWidth: 1,
-    borderColor: "#f0f0f0",
   },
   loadingText: { fontSize: 13, fontWeight: "500" },
 
-  // Locked / waiting empty box
+  // Locked / waiting empty box — bg/border injected inline
   lockedEmptyBox: {
     flexDirection: "row",
     alignItems: "center",
@@ -937,12 +968,10 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#b9f6ca",
-    backgroundColor: "#f0fdf4",
   },
   lockedLabel: { fontSize: 13, fontWeight: "700" },
 
-  // Rejected banner
+  // Rejected banner — bg/border injected inline
   rejectedBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -950,26 +979,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 9,
     borderRadius: 10,
-    backgroundColor: "#ffebee",
     borderWidth: 1,
-    borderColor: "#FFCDD2",
   },
-  rejectedBannerText: { fontSize: 13, fontWeight: "700", color: "#EF4444" },
+  rejectedBannerText: { fontSize: 13, fontWeight: "700" },
 
-  // Upload zone
+  // Upload zone — bg/border injected inline
   uploadZone: {
     borderWidth: 1.5,
     borderStyle: "dashed",
     borderRadius: 14,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#fafafa",
     paddingVertical: 16,
     paddingHorizontal: 14,
     alignItems: "center",
     gap: 10,
   },
-  uploadBtn:     { width: "100%", borderRadius: 12, overflow: "hidden" },
-  uploadBtnGrad: {
+  uploadBtn:      { width: "100%", borderRadius: 12, overflow: "hidden" },
+  uploadBtnSolid: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -981,15 +1006,15 @@ const styles = StyleSheet.create({
   uploadHint:    { fontSize: 12, textAlign: "center" },
   tagsRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   tag:     { flexDirection: "row", alignItems: "center", gap: 3 },
-  tagText: { fontSize: 10, fontWeight: "500", color: "#9CA3AF" },
-  tagDot:  { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "#D1D5DB" },
+  tagText: { fontSize: 10, fontWeight: "500" },
+  tagDot:  { width: 3, height: 3, borderRadius: 1.5 },
 
   // Preview
   previewWrap: {
     borderRadius: 12,
     overflow: "hidden",
     aspectRatio: 16 / 9,
-    backgroundColor: "#f0f0f0",
+    backgroundColor: "#1a1a1a",
   },
   previewWrapSquare: { aspectRatio: 1 },
   previewImg:        { width: "100%", height: "100%" },
@@ -1015,8 +1040,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 7,
   },
-  barBtnDanger: { backgroundColor: "rgba(255,59,48,0.18)" },
-  barBtnText:   { fontSize: 11, fontWeight: "700", color: "#fff" },
+  barBtnText: { fontSize: 11, fontWeight: "700", color: "#fff" },
 
   // Tips
   tipBox: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 8 },
@@ -1028,19 +1052,18 @@ const styles = StyleSheet.create({
   },
   tipTitle: { fontSize: 13, fontWeight: "700" },
   tipRow:   { flexDirection: "row", alignItems: "center", gap: 8 },
-  tipDot:   { width: 4, height: 4, borderRadius: 2, backgroundColor: "#00C853" },
+  tipDot:   { width: 4, height: 4, borderRadius: 2 },
   tipText:  { fontSize: 12 },
 
-  // Platform note (Android)
+  // Platform note (Android) — bg/text injected inline
   platformNote: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     padding: 10,
     borderRadius: 10,
-    backgroundColor: "#f3f4f6",
   },
-  platformNoteText: { fontSize: 11, color: "#6B7280", flex: 1 },
+  platformNoteText: { fontSize: 11, flex: 1 },
 
   // Footer
   footer: {
@@ -1054,8 +1077,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   footerHint: { flexDirection: "row", alignItems: "center", gap: 7 },
-  hintText: { fontSize: 12, flex: 1 },
-  submitBtn: { borderRadius: 14, overflow: "hidden" },
+  hintText:   { fontSize: 12, flex: 1 },
+  submitBtn:  { borderRadius: 14, overflow: "hidden" },
   submitGrad: {
     flexDirection: "row",
     alignItems: "center",
