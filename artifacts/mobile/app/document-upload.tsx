@@ -38,6 +38,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
+// onboardingFeeApplies is true only for brand-new signup drivers.
 import { useColors } from "@/hooks/useColors";
 import { getDriverDoc, submitDriverDocuments } from "@/utils/firestore";
 
@@ -534,7 +535,7 @@ export default function DocumentUploadScreen() {
   const colors     = useColors();
   const insets     = useSafeAreaInsets();
   const router     = useRouter();
-  const { driverUid } = useDriver();
+  const { driverUid, onboardingFeeApplies } = useDriver();
   const [submitting, setSubmitting] = useState(false);
 
   const [docsLoading, setDocsLoading] = useState(true);
@@ -667,7 +668,9 @@ export default function DocumentUploadScreen() {
         }
       }
       await submitDriverDocuments(driverUid, docUris);
-      router.replace("/onboarding-fee");
+      // Route new signup drivers (onboardingFeeApplies = true) to the fee screen.
+      // Existing drivers who re-upload docs (e.g. rejected) go straight to pending.
+      router.replace(onboardingFeeApplies ? "/onboarding-fee" : "/verification-pending");
     } catch (err) {
       console.error("[document-upload] Firestore write failed:", err);
       setSubmitting(false);

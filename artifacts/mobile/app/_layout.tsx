@@ -33,7 +33,7 @@ function RootLayoutNav() {
   const {
     authLoading, driverUid, profile, vehicle,
     documentsSubmitted, verificationStatus,
-    backgroundSetupShown, onboardingFeeStatus,
+    backgroundSetupShown, onboardingFeeApplies, onboardingFeeStatus,
   } = useDriver();
 
   // ── Auth-restore navigation ───────────────────────────────────────────────
@@ -51,10 +51,9 @@ function RootLayoutNav() {
     if (!vehicle?.id)                            { router.replace("/vehicle-selection");    return; }
     if (!profile?.name)                          { router.replace("/profile-setup");        return; }
     if (!documentsSubmitted)                     { router.replace("/document-upload");      return; }
-    // Show onboarding fee ONLY to new signup drivers:
-    //   docs submitted + not yet approved (still pending) + fee not yet paid.
-    // Existing approved drivers have verificationStatus === "approved" and skip this.
-    if (onboardingFeeStatus !== "paid" && verificationStatus !== "approved") {
+    // Fee screen: only when onboardingFeeApplies is explicitly true (brand-new signup).
+    // Existing drivers never have this field set, so they always skip this branch.
+    if (onboardingFeeApplies && onboardingFeeStatus !== "paid" && verificationStatus !== "approved") {
                                                    router.replace("/onboarding-fee");       return; }
     if (verificationStatus !== "approved")       { router.replace("/verification-pending"); return; }
     if (!backgroundSetupShown)                   { router.replace("/background-setup");     return; }

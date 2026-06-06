@@ -19,6 +19,7 @@ import { firebaseAuth } from "@/utils/firebase";
 import {
   getDriverDoc,
   createDriverDoc,
+  getOnboardingFeeConfig,
   updateDriverProfile,
   updateDriverVehicle,
   updateDriverOnlineStatus,
@@ -31,7 +32,6 @@ import {
   rejectOrder,
   requestWithdrawal as fsRequestWithdrawal,
   updateDriverBackgroundSetup,
-  markOnboardingFeePaid as fsMarkOnboardingFeePaid,
   type DriverDoc,
   type OrderDoc,
   type OrderStatus,
@@ -224,9 +224,14 @@ type DriverState = {
   markBackgroundSetupShown: () => Promise<void>;
 
   // ── Onboarding fee ────────────────────────────────────────────────────────
-  // Only present for new signup drivers. Undefined/null for existing drivers.
-  onboardingFeeStatus:    string | null;
-  markOnboardingFeePaid:  () => Promise<void>;
+  // onboardingFeeApplies is ONLY true for brand-new signup drivers.
+  // Absent on existing drivers — they are never routed to the fee screen.
+  onboardingFeeApplies:         boolean;
+  onboardingFeeStatus:          string | null;   // "pending" | "paid" | null
+  onboardingFeeAmount:          number | null;   // INR from config at signup time
+  // Called by onboarding-fee.tsx after the server has verified Razorpay payment
+  // and written onboardingFeeStatus="paid" to Firestore. Updates local state only.
+  markOnboardingFeePaidLocally: () => void;
 
   overlayPermissionGranted: boolean;
   requestOverlayPermission: () => Promise<{ ok: boolean; reason?: string }>;
@@ -333,7 +338,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
   const [overlayPermissionGranted,  setOverlayPermissionGranted]  = useState(false);
   const [backgroundSetupShown,      setBackgroundSetupShown]      = useState(false);
+  const [onboardingFeeApplies,      setOnboardingFeeApplies]      = useState(false);
   const [onboardingFeeStatus,       setOnboardingFeeStatus]       = useState<string | null>(null);
+  const [onboardingFeeAmount,       setOnboardingFeeAmount]       = useState<number | null>(null);
 
   const isAuthenticated = !!driverUid;
 
@@ -385,7 +392,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             setVerifStatus(driverDoc.verificationStatus ?? null);
             setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
             setBackgroundSetupShown(driverDoc.backgroundSetupShown ?? false);
+            setOnboardingFeeApplies(driverDoc.onboardingFeeApplies ?? false);
             setOnboardingFeeStatus(driverDoc.onboardingFeeStatus ?? null);
+            setOnboardingFeeAmount(driverDoc.onboardingFeeAmount ?? null);
           }
           // Restore up to 3 active orders if driver app was restarted mid-delivery.
           // getActiveOrdersForDriver returns newest-first, capped at MAX_ACTIVE_ORDERS.
@@ -512,11 +521,14 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     if (!d.vehicleId)          return "/vehicle-selection";
     if (!d.name)               return "/profile-setup";
     if (!d.documentsSubmitted) return "/document-upload";
-    // Show the onboarding fee screen ONLY for new signup drivers:
-    //   - docs submitted but not yet approved (they just signed up), AND
-    //   - fee not yet paid.
-    // Existing approved drivers skip this entirely because verificationStatus === "approved".
-    if (d.onboardingFeeStatus !== "paid" && d.verificationStatus !== "approved") return "/onboarding-fee";
+    // Show the fee screen ONLY when ALL three conditions are true:
+    //   1. onboardingFeeApplies is explicitly true (set at createDriverDoc time)
+    //   2. fee has not been paid yet
+    //   3. driver is not yet approved (approved = already past onboarding)
+    // Existing drivers NEVER have onboardingFeeApplies set, so they skip entirely.
+    if (d.onboardingFeeApplies === true && d.onboardingFeeStatus !== "paid" && d.verificationStatus !== "approved") {
+      return "/onboarding-fee";
+    }
     if (d.verificationStatus !== "approved") return "/verification-pending";
     if (!d.backgroundSetupShown)             return "/background-setup";
     return "/(tabs)";
@@ -537,7 +549,15 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
       let driverDoc = await getDriverDoc(uid);
       if (!driverDoc) {
-        driverDoc = await createDriverDoc(uid, phone);
+        // Brand-new driver: fetch onboarding fee config, stamp onto new driver doc.
+        const feeConfig = await getOnboardingFeeConfig();
+        driverDoc = await createDriverDoc(uid, phone, feeConfig);
+        // Update local state for the fee fields stamped on the new doc.
+        if (feeConfig.enabled) {
+          setOnboardingFeeApplies(true);
+          setOnboardingFeeStatus("pending");
+          setOnboardingFeeAmount(feeConfig.amount);
+        }
       } else {
         if (driverDoc.name) {
           setProfileState({
@@ -564,7 +584,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         setVerifStatus(driverDoc.verificationStatus ?? null);
         setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
         setBackgroundSetupShown(driverDoc.backgroundSetupShown ?? false);
+        // Restore onboarding fee state — absent on existing/old drivers (defaults to false/null).
+        setOnboardingFeeApplies(driverDoc.onboardingFeeApplies ?? false);
         setOnboardingFeeStatus(driverDoc.onboardingFeeStatus ?? null);
+        setOnboardingFeeAmount(driverDoc.onboardingFeeAmount ?? null);
       }
 
       const profileComplete = !!(driverDoc.name && driverDoc.vehicleId);
@@ -593,11 +616,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const markOnboardingFeePaid = async (): Promise<void> => {
+  // Updates local state only. Server has already written onboardingFeeStatus="paid"
+  // to Firestore during the verify-payment API call. No client-side Firestore write needed.
+  const markOnboardingFeePaidLocally = (): void => {
     setOnboardingFeeStatus("paid");
-    if (driverUid) {
-      await fsMarkOnboardingFeePaid(driverUid);
-    }
   };
 
   const signOut = () => {
@@ -631,7 +653,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     setVerifStatus(null);
     setDocsSubmitted(false);
     setBackgroundSetupShown(false);
+    setOnboardingFeeApplies(false);
     setOnboardingFeeStatus(null);
+    setOnboardingFeeAmount(null);
     lastSeenOrderId.current = null;
   };
 
@@ -1145,8 +1169,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         requestWithdrawal,
         backgroundSetupShown,
         markBackgroundSetupShown,
+        onboardingFeeApplies,
         onboardingFeeStatus,
-        markOnboardingFeePaid,
+        onboardingFeeAmount,
+        markOnboardingFeePaidLocally,
         overlayPermissionGranted,
         requestOverlayPermission,
         setOverlayPermission: setOverlayPermissionGranted,

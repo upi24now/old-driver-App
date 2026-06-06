@@ -61,9 +61,13 @@ export type DriverDoc = {
   backgroundSetupShown?: boolean;  // true after driver has seen the setup screen once
 
   // ── Onboarding fee ────────────────────────────────────────────────────────
-  // Only ever set for new signup drivers who went through the onboarding flow.
-  // Absent (undefined) on existing drivers who predate the fee screen.
-  onboardingFeeStatus?: "pending" | "paid";
+  // These fields are ONLY set for brand-new drivers during createDriverDoc().
+  // They are intentionally absent on existing/old driver docs.
+  // onboardingFeeApplies must be explicitly true to show the fee screen.
+  onboardingFeeApplies?:  boolean;              // true for new signups when config.enabled = true
+  onboardingFeeStatus?:   "pending" | "paid";   // updated to "paid" by server after Razorpay verify
+  onboardingFeeAmount?:   number;               // INR amount stamped at signup time
+  onboardingFeeCurrency?: string;               // "INR"
 };
 
 // ─── Completed trips ──────────────────────────────────────────────────────────
@@ -166,20 +170,79 @@ export async function getDriverCompletedTrips(
   });
 }
 
+// ─── Onboarding fee config ────────────────────────────────────────────────────
+//
+// Read from Firestore: app_config/driver_onboarding
+// Fields: enabled (bool), amount (number INR), currency (string), title (string), description (string)
+// Falls back to defaults when the document is absent or a field is missing.
+
+export type OnboardingFeeConfig = {
+  enabled:      boolean;
+  amount:       number;   // INR
+  currency:     string;
+  title:        string;
+  description?: string;
+};
+
+const DEFAULT_FEE_CONFIG: OnboardingFeeConfig = {
+  enabled:  true,
+  amount:   5,
+  currency: "INR",
+  title:    "One-time onboarding fee",
+};
+
+export async function getOnboardingFeeConfig(): Promise<OnboardingFeeConfig> {
+  try {
+    const snap = await getDoc(doc(db, "app_config", "driver_onboarding"));
+    if (!snap.exists()) return DEFAULT_FEE_CONFIG;
+    const d = snap.data();
+    return {
+      enabled:     typeof d["enabled"]     === "boolean" ? d["enabled"]     : DEFAULT_FEE_CONFIG.enabled,
+      amount:      typeof d["amount"]      === "number"  ? d["amount"]      : DEFAULT_FEE_CONFIG.amount,
+      currency:    typeof d["currency"]    === "string"  ? d["currency"]    : DEFAULT_FEE_CONFIG.currency,
+      title:       typeof d["title"]       === "string"  ? d["title"]       : DEFAULT_FEE_CONFIG.title,
+      description: typeof d["description"] === "string"  ? d["description"] : undefined,
+    };
+  } catch {
+    return DEFAULT_FEE_CONFIG;
+  }
+}
+
 export async function getDriverDoc(uid: string): Promise<DriverDoc | null> {
   const snap = await getDoc(doc(db, "drivers", uid));
   return snap.exists() ? (snap.data() as DriverDoc) : null;
 }
 
-export async function createDriverDoc(uid: string, phone: string): Promise<DriverDoc> {
+/**
+ * Create a new driver document.
+ * Accepts an optional OnboardingFeeConfig — when provided and enabled,
+ * stamps onboardingFeeApplies/Status/Amount onto the doc so the routing
+ * guard can gate new drivers through the fee screen.
+ * These fields are intentionally absent on existing driver docs.
+ */
+export async function createDriverDoc(
+  uid:        string,
+  phone:      string,
+  feeConfig?: OnboardingFeeConfig,
+): Promise<DriverDoc> {
+  const feeFields: Partial<DriverDoc> = feeConfig?.enabled
+    ? {
+        onboardingFeeApplies:  true,
+        onboardingFeeStatus:   "pending",
+        onboardingFeeAmount:   feeConfig.amount,
+        onboardingFeeCurrency: feeConfig.currency,
+      }
+    : {};
+
   const data: Omit<DriverDoc, "createdAt"> & { createdAt: unknown } = {
     uid,
     phone,
     isOnline:  false,
     createdAt: serverTimestamp(),
+    ...feeFields,
   };
   await setDoc(doc(db, "drivers", uid), data, { merge: true });
-  return { ...data, createdAt: Date.now() };
+  return { ...data, createdAt: Date.now() } as DriverDoc;
 }
 
 export async function updateDriverProfile(uid: string, p: Profile): Promise<void> {
@@ -283,18 +346,6 @@ export async function updateDriverBackgroundSetup(uid: string): Promise<void> {
   }, { merge: true });
 }
 
-/**
- * Mark the one-time onboarding registration fee as paid.
- * Only called from the onboarding-fee screen during first signup.
- * Never called retroactively for existing drivers.
- */
-export async function markOnboardingFeePaid(uid: string): Promise<void> {
-  await setDoc(doc(db, "drivers", uid), {
-    onboardingFeeStatus: "paid",
-    onboardingFeePaidAt: serverTimestamp(),
-    updatedAt:           serverTimestamp(),
-  }, { merge: true });
-}
 
 // ─── Order doc ────────────────────────────────────────────────────────────────
 //

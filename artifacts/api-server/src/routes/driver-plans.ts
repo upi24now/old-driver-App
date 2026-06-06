@@ -240,4 +240,187 @@ router.post("/driver-plans/verify-payment", async (req, res) => {
   }
 });
 
+// ─── POST /api/driver-plans/onboarding-fee/create-order ──────────────────────
+//
+// Creates a Razorpay order for the one-time onboarding registration fee.
+// Amount is read from Firestore app_config/driver_onboarding (fallback: ₹5).
+// Validates that the driver's onboardingFeeApplies = true and fee is unpaid.
+
+router.post("/driver-plans/onboarding-fee/create-order", async (req, res) => {
+  const tokenUid = await requireAuth(req, res);
+  if (!tokenUid) return;
+
+  const { driverUid } = req.body as { driverUid?: string };
+
+  if (!driverUid || typeof driverUid !== "string") {
+    res.status(400).json({ error: "driverUid is required" });
+    return;
+  }
+  if (tokenUid !== driverUid) {
+    res.status(403).json({ error: "Token UID does not match driverUid" });
+    return;
+  }
+
+  const db = await adminFirestore();
+
+  // ── Read fee config from Firestore, fall back to ₹5 ──────────────────────
+  let amountInr = 5;
+  let currency  = "INR";
+  try {
+    const configSnap = await db.doc("app_config/driver_onboarding").get();
+    if (configSnap.exists) {
+      const c = configSnap.data() as Record<string, unknown>;
+      if (typeof c["amount"] === "number" && (c["amount"] as number) > 0) {
+        amountInr = c["amount"] as number;
+      }
+      if (typeof c["currency"] === "string") {
+        currency = c["currency"] as string;
+      }
+    }
+  } catch (err) {
+    req.log.warn({ err }, "Failed to read onboarding fee config, using default ₹5");
+  }
+
+  // ── Validate driver eligibility ────────────────────────────────────────────
+  try {
+    const driverSnap = await db.doc(`drivers/${driverUid}`).get();
+    if (driverSnap.exists) {
+      const d = driverSnap.data() as Record<string, unknown>;
+      if (d["onboardingFeeApplies"] !== true) {
+        res.status(403).json({ error: "Onboarding fee does not apply to this account" });
+        return;
+      }
+      if (d["onboardingFeeStatus"] === "paid") {
+        res.status(409).json({ error: "Onboarding fee already paid" });
+        return;
+      }
+    }
+  } catch (err) {
+    req.log.warn({ err }, "Could not validate driver fee eligibility — continuing");
+  }
+
+  // ── Create Razorpay order ──────────────────────────────────────────────────
+  let rzp: { client: Razorpay; keyId: string };
+  try {
+    rzp = getRazorpay();
+  } catch (err) {
+    req.log.error({ err }, "Razorpay not configured");
+    res.status(503).json({ error: "Payment service not configured" });
+    return;
+  }
+
+  const amountPaise = Math.round(amountInr * 100);
+  const receipt     = `onboarding-${driverUid}-${Date.now()}`;
+
+  try {
+    const order = await rzp.client.orders.create({ amount: amountPaise, currency, receipt });
+    req.log.info({ driverUid, amountInr, orderId: order.id }, "Onboarding fee Razorpay order created");
+    res.json({ razorpayOrderId: order.id, amount: amountPaise, currency, keyId: rzp.keyId });
+  } catch (err) {
+    req.log.error({ err }, "Razorpay onboarding-fee order creation failed");
+    res.status(502).json({ error: "Failed to create payment order" });
+  }
+});
+
+// ─── POST /api/driver-plans/onboarding-fee/verify-payment ────────────────────
+//
+// Verifies the Razorpay HMAC-SHA256 signature.
+// Valid signature only:
+//   1. Writes payment record to driver_payments/{auto-id}
+//   2. Sets drivers/{uid}.onboardingFeeStatus = "paid" with audit fields
+// Invalid signature → 400, nothing written.
+
+router.post("/driver-plans/onboarding-fee/verify-payment", async (req, res) => {
+  const tokenUid = await requireAuth(req, res);
+  if (!tokenUid) return;
+
+  const { driverUid, razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body as {
+    driverUid?:         string;
+    razorpayOrderId?:   string;
+    razorpayPaymentId?: string;
+    razorpaySignature?: string;
+  };
+
+  if (!driverUid || typeof driverUid !== "string") {
+    res.status(400).json({ error: "driverUid is required" });
+    return;
+  }
+  if (tokenUid !== driverUid) {
+    res.status(403).json({ error: "Token UID does not match driverUid" });
+    return;
+  }
+  if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+    res.status(400).json({
+      error: "razorpayOrderId, razorpayPaymentId, and razorpaySignature are all required",
+    });
+    return;
+  }
+
+  // ── HMAC-SHA256 signature verification ────────────────────────────────────
+  const keySecret = process.env["RAZORPAY_KEY_SECRET"];
+  if (!keySecret) {
+    req.log.error("RAZORPAY_KEY_SECRET is not set");
+    res.status(503).json({ error: "Payment service not configured" });
+    return;
+  }
+
+  const expectedSig = crypto
+    .createHmac("sha256", keySecret)
+    .update(`${razorpayOrderId}|${razorpayPaymentId}`)
+    .digest("hex");
+
+  let sigsMatch = false;
+  try {
+    sigsMatch = crypto.timingSafeEqual(
+      Buffer.from(expectedSig,       "hex"),
+      Buffer.from(razorpaySignature, "hex"),
+    );
+  } catch {
+    sigsMatch = false;  // Buffer length mismatch — malformed signature
+  }
+
+  if (!sigsMatch) {
+    req.log.warn({ driverUid, razorpayOrderId }, "Onboarding fee payment signature verification failed");
+    res.status(400).json({ error: "Payment verification failed — invalid signature" });
+    return;
+  }
+
+  // ── Signature valid: write records ────────────────────────────────────────
+  try {
+    const { FieldValue } = await import("firebase-admin/firestore");
+    const db  = await adminFirestore();
+    const now = FieldValue.serverTimestamp();
+
+    // 1. Immutable payment record
+    await db.collection("driver_payments").add({
+      uid:               driverUid,
+      type:              "onboarding_fee",
+      razorpayOrderId,
+      razorpayPaymentId,
+      status:            "paid",
+      createdAt:         now,
+    });
+
+    // 2. Mark driver doc paid — this is what the routing guard reads
+    await db.doc(`drivers/${driverUid}`).set(
+      {
+        onboardingFeeStatus:    "paid",
+        onboardingFeePaidAt:    now,
+        onboardingFeePaymentId: razorpayPaymentId,
+        onboardingFeeUpdatedAt: now,
+        updatedAt:              now,
+      },
+      { merge: true },
+    );
+
+    req.log.info({ driverUid, razorpayPaymentId }, "Onboarding fee paid and recorded");
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "Firestore write failed after onboarding fee signature verify");
+    res.status(500).json({
+      error: "Payment was verified but database update failed — please contact support",
+    });
+  }
+});
+
 export default router;
