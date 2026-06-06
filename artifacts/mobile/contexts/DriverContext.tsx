@@ -31,6 +31,7 @@ import {
   rejectOrder,
   requestWithdrawal as fsRequestWithdrawal,
   updateDriverBackgroundSetup,
+  markOnboardingFeePaid as fsMarkOnboardingFeePaid,
   type DriverDoc,
   type OrderDoc,
   type OrderStatus,
@@ -124,6 +125,7 @@ type OnboardingRoute =
   | "/vehicle-selection"
   | "/profile-setup"
   | "/document-upload"
+  | "/onboarding-fee"
   | "/verification-pending"
   | "/background-setup";
 
@@ -220,6 +222,11 @@ type DriverState = {
 
   backgroundSetupShown:     boolean;
   markBackgroundSetupShown: () => Promise<void>;
+
+  // ── Onboarding fee ────────────────────────────────────────────────────────
+  // Only present for new signup drivers. Undefined/null for existing drivers.
+  onboardingFeeStatus:    string | null;
+  markOnboardingFeePaid:  () => Promise<void>;
 
   overlayPermissionGranted: boolean;
   requestOverlayPermission: () => Promise<{ ok: boolean; reason?: string }>;
@@ -326,6 +333,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
   const [overlayPermissionGranted,  setOverlayPermissionGranted]  = useState(false);
   const [backgroundSetupShown,      setBackgroundSetupShown]      = useState(false);
+  const [onboardingFeeStatus,       setOnboardingFeeStatus]       = useState<string | null>(null);
 
   const isAuthenticated = !!driverUid;
 
@@ -377,6 +385,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             setVerifStatus(driverDoc.verificationStatus ?? null);
             setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
             setBackgroundSetupShown(driverDoc.backgroundSetupShown ?? false);
+            setOnboardingFeeStatus(driverDoc.onboardingFeeStatus ?? null);
           }
           // Restore up to 3 active orders if driver app was restarted mid-delivery.
           // getActiveOrdersForDriver returns newest-first, capped at MAX_ACTIVE_ORDERS.
@@ -503,8 +512,13 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     if (!d.vehicleId)          return "/vehicle-selection";
     if (!d.name)               return "/profile-setup";
     if (!d.documentsSubmitted) return "/document-upload";
+    // Show the onboarding fee screen ONLY for new signup drivers:
+    //   - docs submitted but not yet approved (they just signed up), AND
+    //   - fee not yet paid.
+    // Existing approved drivers skip this entirely because verificationStatus === "approved".
+    if (d.onboardingFeeStatus !== "paid" && d.verificationStatus !== "approved") return "/onboarding-fee";
     if (d.verificationStatus !== "approved") return "/verification-pending";
-    if (!d.backgroundSetupShown)           return "/background-setup";
+    if (!d.backgroundSetupShown)             return "/background-setup";
     return "/(tabs)";
   }
 
@@ -550,6 +564,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         setVerifStatus(driverDoc.verificationStatus ?? null);
         setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
         setBackgroundSetupShown(driverDoc.backgroundSetupShown ?? false);
+        setOnboardingFeeStatus(driverDoc.onboardingFeeStatus ?? null);
       }
 
       const profileComplete = !!(driverDoc.name && driverDoc.vehicleId);
@@ -575,6 +590,13 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     setBackgroundSetupShown(true);
     if (driverUid) {
       await updateDriverBackgroundSetup(driverUid);
+    }
+  };
+
+  const markOnboardingFeePaid = async (): Promise<void> => {
+    setOnboardingFeeStatus("paid");
+    if (driverUid) {
+      await fsMarkOnboardingFeePaid(driverUid);
     }
   };
 
@@ -609,6 +631,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     setVerifStatus(null);
     setDocsSubmitted(false);
     setBackgroundSetupShown(false);
+    setOnboardingFeeStatus(null);
     lastSeenOrderId.current = null;
   };
 
@@ -1122,6 +1145,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         requestWithdrawal,
         backgroundSetupShown,
         markBackgroundSetupShown,
+        onboardingFeeStatus,
+        markOnboardingFeePaid,
         overlayPermissionGranted,
         requestOverlayPermission,
         setOverlayPermission: setOverlayPermissionGranted,

@@ -33,7 +33,7 @@ function RootLayoutNav() {
   const {
     authLoading, driverUid, profile, vehicle,
     documentsSubmitted, verificationStatus,
-    backgroundSetupShown,
+    backgroundSetupShown, onboardingFeeStatus,
   } = useDriver();
 
   // ── Auth-restore navigation ───────────────────────────────────────────────
@@ -48,11 +48,16 @@ function RootLayoutNav() {
     hasNavigated.current = true;
     if (!driverUid)                return; // no session — stay on login
 
-    if (!vehicle?.id)                            { router.replace("/vehicle-selection"); return; }
-    if (!profile?.name)                          { router.replace("/profile-setup");     return; }
-    if (!documentsSubmitted)                     { router.replace("/document-upload");   return; }
+    if (!vehicle?.id)                            { router.replace("/vehicle-selection");    return; }
+    if (!profile?.name)                          { router.replace("/profile-setup");        return; }
+    if (!documentsSubmitted)                     { router.replace("/document-upload");      return; }
+    // Show onboarding fee ONLY to new signup drivers:
+    //   docs submitted + not yet approved (still pending) + fee not yet paid.
+    // Existing approved drivers have verificationStatus === "approved" and skip this.
+    if (onboardingFeeStatus !== "paid" && verificationStatus !== "approved") {
+                                                   router.replace("/onboarding-fee");       return; }
     if (verificationStatus !== "approved")       { router.replace("/verification-pending"); return; }
-    if (!backgroundSetupShown)                   { router.replace("/background-setup");    return; }
+    if (!backgroundSetupShown)                   { router.replace("/background-setup");     return; }
     router.replace("/(tabs)");
   // Deps: only the values that determine when auth loading is done and who is logged in.
   // All other values (profile, vehicle, …) are read at the moment the effect runs.
@@ -69,6 +74,7 @@ function RootLayoutNav() {
       <Stack.Screen name="vehicle-selection" />
       <Stack.Screen name="profile-setup" />
       <Stack.Screen name="document-upload" />
+      <Stack.Screen name="onboarding-fee" />
       <Stack.Screen name="verification-pending" />
       <Stack.Screen name="background-setup" />
       <Stack.Screen name="(tabs)" />

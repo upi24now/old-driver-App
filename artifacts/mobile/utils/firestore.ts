@@ -59,6 +59,11 @@ export type DriverDoc = {
 
   // ── Background permission setup ───────────────────────────────────────────
   backgroundSetupShown?: boolean;  // true after driver has seen the setup screen once
+
+  // ── Onboarding fee ────────────────────────────────────────────────────────
+  // Only ever set for new signup drivers who went through the onboarding flow.
+  // Absent (undefined) on existing drivers who predate the fee screen.
+  onboardingFeeStatus?: "pending" | "paid";
 };
 
 // ─── Completed trips ──────────────────────────────────────────────────────────
@@ -275,6 +280,19 @@ export async function updateDriverBackgroundSetup(uid: string): Promise<void> {
   await setDoc(doc(db, "drivers", uid), {
     backgroundSetupShown: true,
     updatedAt:            serverTimestamp(),
+  }, { merge: true });
+}
+
+/**
+ * Mark the one-time onboarding registration fee as paid.
+ * Only called from the onboarding-fee screen during first signup.
+ * Never called retroactively for existing drivers.
+ */
+export async function markOnboardingFeePaid(uid: string): Promise<void> {
+  await setDoc(doc(db, "drivers", uid), {
+    onboardingFeeStatus: "paid",
+    onboardingFeePaidAt: serverTimestamp(),
+    updatedAt:           serverTimestamp(),
   }, { merge: true });
 }
 

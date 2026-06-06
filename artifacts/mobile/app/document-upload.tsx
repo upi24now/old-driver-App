@@ -667,7 +667,7 @@ export default function DocumentUploadScreen() {
         }
       }
       await submitDriverDocuments(driverUid, docUris);
-      router.replace("/verification-pending");
+      router.replace("/onboarding-fee");
     } catch (err) {
       console.error("[document-upload] Firestore write failed:", err);
       setSubmitting(false);
