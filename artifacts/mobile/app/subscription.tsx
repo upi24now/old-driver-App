@@ -51,8 +51,7 @@ type Plan = {
   period: string;       // human-readable: "/ 12 hours", "/ 7 days", "/ 30 days"
   pricePerDay: number;
   badge?: string;       // "Save 10%", "Long Validity" — shown inline
-  badgeColor?: string;
-  recommended?: boolean; // shows pink "Recommended" badge
+  recommended?: boolean; // shows "Recommended" badge
   subtitle: string;     // one-line beneath price
   mainFeature: string;  // single feature line at bottom of card
 };
@@ -75,7 +74,6 @@ const PLANS: Plan[] = [
     period: "/ 7 days",
     pricePerDay: 2.71,
     badge: "Save 10%",
-    badgeColor: "#1976D2",
     subtitle: "Best for part-time drivers",
     mainFeature: "Unlimited rides for 7 days",
   },
@@ -86,14 +84,12 @@ const PLANS: Plan[] = [
     period: "/ 30 days",
     pricePerDay: 3.33,
     badge: "Long Validity",
-    badgeColor: "#059669",
     subtitle: "Best for regular drivers",
     mainFeature: "Unlimited rides for 30 days",
   },
 ];
 
-const PLAN_ACCENT = "#7C3AED"; // violet-600 — selected / recommended highlight
-
+// ─── PlanCard ─────────────────────────────────────────────────────────────────
 function PlanCard({
   plan,
   selected,
@@ -105,6 +101,16 @@ function PlanCard({
   onSelect: () => void;
   isCurrentPlan: boolean;
 }) {
+  const colors = useColors();
+
+  // Per-plan tier accent — daily=info (basic), weekly=primary (standard), monthly=money (premium)
+  const accent     = plan.id === "monthly" ? colors.money   : plan.id === "weekly" ? colors.primary   : colors.info;
+  const accentSoft = plan.id === "monthly" ? colors.moneySoft : plan.id === "weekly" ? colors.primarySoft : colors.infoSoft;
+
+  // Save-badge tint — "Save 10%" → warning, "Long Validity" → info
+  const badgeTint = plan.badge === "Save 10%" ? colors.warning  : colors.info;
+  const badgeSoft = plan.badge === "Save 10%" ? colors.warningSoft : colors.infoSoft;
+
   return (
     <TouchableOpacity
       onPress={onSelect}
@@ -112,9 +118,14 @@ function PlanCard({
       style={[
         styles.planCard,
         {
-          backgroundColor: selected ? "#FAF5FF" : "#fff",
-          borderColor: selected ? PLAN_ACCENT : "#E5E7EB",
-          borderWidth: selected ? 2 : 1.5,
+          backgroundColor: selected ? accentSoft : colors.surfaceElevated,
+          borderColor:     selected ? accent     : colors.border,
+          borderWidth:     selected ? 2          : 1.5,
+          shadowColor:     selected ? accent     : "#000",
+          shadowOpacity:   selected ? 0.22       : 0.06,
+          shadowRadius:    selected ? 18         : 8,
+          shadowOffset:    { width: 0, height: selected ? 6 : 3 },
+          elevation:       selected ? 10         : 3,
         },
       ]}
     >
@@ -122,20 +133,23 @@ function PlanCard({
       {(isCurrentPlan || plan.recommended || plan.badge) && (
         <View style={styles.badgeRow}>
           {isCurrentPlan ? (
-            <View style={styles.currentBadge}>
+            <View style={[styles.badge, { backgroundColor: colors.success }]}>
               <Feather name="check-circle" size={10} color="#fff" />
-              <Text style={styles.currentBadgeText}>Current Plan</Text>
+              <Text style={styles.badgeTextLight}>Current Plan</Text>
             </View>
           ) : plan.recommended ? (
-            <View style={styles.recommendedBadge}>
-              <Text style={styles.recommendedBadgeText}>Recommended</Text>
+            <View
+              style={[
+                styles.badge,
+                { backgroundColor: colors.successSoft, borderWidth: 1, borderColor: colors.success },
+              ]}
+            >
+              <Text style={[styles.badgeTextDark, { color: colors.successText }]}>Recommended</Text>
             </View>
           ) : null}
           {plan.badge && (
-            <View style={[styles.saveBadge, { backgroundColor: (plan.badgeColor ?? "#666") + "22" }]}>
-              <Text style={[styles.saveBadgeText, { color: plan.badgeColor ?? "#666" }]}>
-                {plan.badge}
-              </Text>
+            <View style={[styles.badge, { backgroundColor: badgeSoft }]}>
+              <Text style={[styles.badgeTextDark, { color: badgeTint }]}>{plan.badge}</Text>
             </View>
           )}
         </View>
@@ -144,24 +158,24 @@ function PlanCard({
       {/* Main row: name + price + subtitle | radio */}
       <View style={styles.planMainRow}>
         <View style={{ flex: 1, gap: 3 }}>
-          <Text style={styles.planName}>{plan.name}</Text>
+          <Text style={[styles.planName, { color: colors.foreground }]}>{plan.name}</Text>
           <View style={styles.priceRow}>
-            <Text style={[styles.priceCurrency, { color: selected ? PLAN_ACCENT : "#0A0A0A" }]}>
+            <Text style={[styles.priceCurrency, { color: selected ? accent : colors.foreground }]}>
               ₹
             </Text>
-            <Text style={[styles.priceValue, { color: selected ? PLAN_ACCENT : "#0A0A0A" }]}>
+            <Text style={[styles.priceValue, { color: selected ? accent : colors.foreground }]}>
               {plan.price}
             </Text>
-            <Text style={styles.pricePeriod}>{plan.period}</Text>
+            <Text style={[styles.pricePeriod, { color: colors.mutedForeground }]}>{plan.period}</Text>
           </View>
-          <Text style={styles.planSubtitle}>{plan.subtitle}</Text>
+          <Text style={[styles.planSubtitle, { color: colors.mutedForeground }]}>{plan.subtitle}</Text>
         </View>
         <View
           style={[
             styles.radio,
             {
-              borderColor: selected ? PLAN_ACCENT : "#D1D5DB",
-              backgroundColor: selected ? PLAN_ACCENT : "transparent",
+              borderColor:     selected ? accent       : colors.borderStrong,
+              backgroundColor: selected ? accent       : "transparent",
             },
           ]}
         >
@@ -170,19 +184,20 @@ function PlanCard({
       </View>
 
       {/* Divider */}
-      <View style={[styles.divider, { backgroundColor: selected ? "#DDD6FE" : "#F3F4F6" }]} />
+      <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
       {/* Single feature line */}
       <View style={styles.featureRow}>
-        <View style={[styles.featureCheck, { backgroundColor: selected ? "#EDE9FE" : "#F0FDF4" }]}>
-          <Feather name="check" size={10} color={selected ? PLAN_ACCENT : "#16A34A"} />
+        <View style={[styles.featureCheck, { backgroundColor: selected ? accentSoft : colors.successSoft }]}>
+          <Feather name="check" size={10} color={selected ? accent : colors.success} />
         </View>
-        <Text style={styles.featureText}>{plan.mainFeature}</Text>
+        <Text style={[styles.featureText, { color: colors.textSecondary }]}>{plan.mainFeature}</Text>
       </View>
     </TouchableOpacity>
   );
 }
 
+// ─── SubscriptionScreen ───────────────────────────────────────────────────────
 export default function SubscriptionScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -335,26 +350,31 @@ export default function SubscriptionScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
+      {/* HEADER */}
       <View
         style={[
           styles.header,
-          { paddingTop: insets.top + 12, backgroundColor: "#fff" },
+          {
+            paddingTop:        insets.top + 12,
+            backgroundColor:   colors.surface,
+            borderBottomColor: colors.border,
+          },
         ]}
       >
         <TouchableOpacity
           onPress={() => router.back()}
-          style={[styles.iconBtn, { backgroundColor: "#f5f5f5" }]}
+          style={[styles.iconBtn, { backgroundColor: colors.muted }]}
           activeOpacity={0.7}
         >
-          <Feather name="arrow-left" size={18} color="#0a0a0a" />
+          <Feather name="arrow-left" size={18} color={colors.foreground} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Driver Plans</Text>
+        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Driver Plans</Text>
         <TouchableOpacity
-          style={[styles.iconBtn, { backgroundColor: "#f5f5f5" }]}
+          style={[styles.iconBtn, { backgroundColor: colors.muted }]}
           activeOpacity={0.7}
           onPress={callSupport}
         >
-          <Feather name="help-circle" size={18} color="#0a0a0a" />
+          <Feather name="help-circle" size={18} color={colors.foreground} />
         </TouchableOpacity>
       </View>
 
@@ -364,12 +384,12 @@ export default function SubscriptionScreen() {
       >
         {/* HERO */}
         <LinearGradient
-          colors={["#0d2818", "#0a0a0a"]}
+          colors={["#110712", "#0A0A0A"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.hero}
         >
-          <View style={[styles.heroBadge, { backgroundColor: "rgba(0, 200, 83, 0.18)" }]}>
+          <View style={[styles.heroBadge, { backgroundColor: "rgba(232,51,108,0.15)" }]}>
             <Feather name="zap" size={11} color={colors.primary} />
             <Text style={[styles.heroBadgeText, { color: colors.primary }]}>
               ZERO COMMISSION
@@ -403,23 +423,33 @@ export default function SubscriptionScreen() {
 
         {/* PLAN STATUS */}
         {subscriptionActive ? (
-          <View style={[styles.statusCard, { borderColor: "#00C853", backgroundColor: "#f0fff5" }]}>
-            <View style={[styles.statusIcon, { backgroundColor: "#dcfce7" }]}>
-              <Feather name="check-circle" size={16} color="#16a34a" />
+          <View
+            style={[
+              styles.statusCard,
+              { borderColor: colors.success, backgroundColor: colors.successSoft },
+            ]}
+          >
+            <View style={[styles.statusIcon, { backgroundColor: colors.moneySoft }]}>
+              <Feather name="check-circle" size={16} color={colors.success} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.statusTitle, { color: "#15803d" }]}>
+              <Text style={[styles.statusTitle, { color: colors.successText }]}>
                 {activePlanName} Plan — Active
               </Text>
-              <Text style={[styles.statusSub, { color: "#166534" }]}>
+              <Text style={[styles.statusSub, { color: colors.successText }]}>
                 {activePlanTimeLeft} · Expires {activePlanExpiryStr}
               </Text>
             </View>
           </View>
         ) : (
-          <View style={[styles.statusCard, { borderColor: colors.border }]}>
-            <View style={[styles.statusIcon, { backgroundColor: "#fff5e6" }]}>
-              <Feather name="alert-circle" size={16} color="#b75d00" />
+          <View
+            style={[
+              styles.statusCard,
+              { borderColor: colors.border, backgroundColor: colors.surface },
+            ]}
+          >
+            <View style={[styles.statusIcon, { backgroundColor: colors.warningSoft }]}>
+              <Feather name="alert-circle" size={16} color={colors.warning} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.statusTitle, { color: colors.foreground }]}>
@@ -456,7 +486,12 @@ export default function SubscriptionScreen() {
         </View>
 
         {/* PAYMENT METHODS */}
-        <View style={[styles.paymentCard, { borderColor: colors.border }]}>
+        <View
+          style={[
+            styles.paymentCard,
+            { borderColor: colors.border, backgroundColor: colors.surface },
+          ]}
+        >
           <View style={styles.paymentHeader}>
             <Feather name="credit-card" size={14} color={colors.foreground} />
             <Text style={[styles.paymentTitle, { color: colors.foreground }]}>
@@ -482,11 +517,14 @@ export default function SubscriptionScreen() {
 
         {/* FAQ */}
         <TouchableOpacity
-          style={[styles.faqRow, { borderColor: colors.border }]}
+          style={[
+            styles.faqRow,
+            { borderColor: colors.border, backgroundColor: colors.surface },
+          ]}
           activeOpacity={0.7}
         >
-          <View style={[styles.faqIcon, { backgroundColor: "#f5f5f5" }]}>
-            <Feather name="help-circle" size={14} color="#0a0a0a" />
+          <View style={[styles.faqIcon, { backgroundColor: colors.muted }]}>
+            <Feather name="help-circle" size={14} color={colors.foreground} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={[styles.faqTitle, { color: colors.foreground }]}>
@@ -509,9 +547,9 @@ export default function SubscriptionScreen() {
         style={[
           styles.footer,
           {
-            paddingBottom: insets.bottom + 12,
-            backgroundColor: "#fff",
-            borderTopColor: colors.border,
+            paddingBottom:   insets.bottom + 12,
+            backgroundColor: colors.surface,
+            borderTopColor:  colors.border,
           },
         ]}
       >
@@ -532,7 +570,7 @@ export default function SubscriptionScreen() {
           style={[
             styles.cta,
             {
-              backgroundColor: isSelectedCurrentPlan ? "#9CA3AF" : colors.primary,
+              backgroundColor: isSelectedCurrentPlan ? colors.success : colors.primary,
               opacity: isActivating ? 0.6 : 1,
             },
           ]}
@@ -587,7 +625,7 @@ export default function SubscriptionScreen() {
         <View style={styles.successBackdrop}>
           <View style={styles.successCard}>
             <LinearGradient
-              colors={["#16A34A", "#22C55E"]}
+              colors={["#059669", "#047857"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.successGradient}
@@ -626,6 +664,7 @@ export default function SubscriptionScreen() {
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
@@ -634,9 +673,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
   },
-  headerTitle: { fontSize: 17, fontWeight: "800", color: "#0a0a0a", letterSpacing: -0.2 },
+  headerTitle: { fontSize: 17, fontWeight: "800", letterSpacing: -0.2 },
   iconBtn: {
     width: 38,
     height: 38,
@@ -645,6 +683,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
+  // Hero
   hero: {
     borderRadius: 20,
     padding: 18,
@@ -672,7 +711,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
-
   compareRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -694,11 +732,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
+  // Status card
   statusCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "#fff",
     padding: 12,
     borderRadius: 13,
     borderWidth: 1,
@@ -717,54 +755,35 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 18, fontWeight: "800", letterSpacing: -0.3 },
   sectionSub: { fontSize: 12, fontWeight: "500" },
 
+  // Plan card — colours all injected inline via useColors()
   planCard: {
     borderRadius: 22,
     padding: 16,
     gap: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.07,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
   },
 
-  // Badge row — floats at the top of the card
+  // Badge system
   badgeRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 7,
     flexWrap: "wrap",
   },
-  currentBadge: {
+  badge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "#16A34A",
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 7,
   },
-  currentBadgeText: { color: "#fff", fontSize: 10, fontWeight: "800", letterSpacing: 0.2 },
-  recommendedBadge: {
-    backgroundColor: "#FDF2F8",
-    borderWidth: 1,
-    borderColor: "#F9A8D4",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 7,
-  },
-  recommendedBadgeText: { color: "#BE185D", fontSize: 10, fontWeight: "800", letterSpacing: 0.2 },
-  saveBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 7,
-  },
-  saveBadgeText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.2 },
+  badgeTextLight: { color: "#fff", fontSize: 10, fontWeight: "800", letterSpacing: 0.2 },
+  badgeTextDark:  { fontSize: 10, fontWeight: "800", letterSpacing: 0.2 },
 
-  // Main content row
+  // Plan card content
   planMainRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-  planName: { fontSize: 16, fontWeight: "800", color: "#0A0A0A", letterSpacing: -0.2 },
-  planSubtitle: { fontSize: 11.5, fontWeight: "500", color: "#6B7280", marginTop: 2 },
+  planName:    { fontSize: 16, fontWeight: "800", letterSpacing: -0.2 },
+  planSubtitle: { fontSize: 11.5, fontWeight: "500", marginTop: 2 },
 
   radio: {
     width: 24,
@@ -776,10 +795,10 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
-  priceRow: { flexDirection: "row", alignItems: "flex-end", gap: 2, marginTop: 4 },
+  priceRow:     { flexDirection: "row", alignItems: "flex-end", gap: 2, marginTop: 4 },
   priceCurrency: { fontSize: 16, fontWeight: "700", marginBottom: 4 },
-  priceValue: { fontSize: 32, fontWeight: "800", letterSpacing: -1.5, lineHeight: 38 },
-  pricePeriod: { fontSize: 12, fontWeight: "600", color: "#9CA3AF", marginBottom: 5, marginLeft: 2 },
+  priceValue:   { fontSize: 32, fontWeight: "800", letterSpacing: -1.5, lineHeight: 38 },
+  pricePeriod:  { fontSize: 12, fontWeight: "600", marginBottom: 5, marginLeft: 2 },
 
   divider: { height: 1 },
 
@@ -791,10 +810,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  featureText: { flex: 1, fontSize: 12.5, fontWeight: "600", color: "#374151" },
+  featureText: { flex: 1, fontSize: 12.5, fontWeight: "600" },
 
+  // Payment card
   paymentCard: {
-    backgroundColor: "#fff",
     borderRadius: 14,
     borderWidth: 1,
     padding: 14,
@@ -814,11 +833,11 @@ const styles = StyleSheet.create({
   },
   payMethodText: { fontSize: 11, fontWeight: "700" },
 
+  // FAQ
   faqRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "#fff",
     padding: 12,
     borderRadius: 13,
     borderWidth: 1,
@@ -842,6 +861,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
+  // Footer / CTA
   footer: {
     position: "absolute",
     left: 0,
@@ -859,10 +879,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -4 },
     elevation: 8,
   },
-  footerLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 0.4, textTransform: "uppercase" },
+  footerLabel:    { fontSize: 10, fontWeight: "700", letterSpacing: 0.4, textTransform: "uppercase" },
   footerPriceRow: { flexDirection: "row", alignItems: "flex-end", gap: 3, marginTop: 2 },
-  footerPrice: { fontSize: 22, fontWeight: "800", letterSpacing: -0.5 },
-  footerPeriod: { fontSize: 12, fontWeight: "600", marginBottom: 3 },
+  footerPrice:    { fontSize: 22, fontWeight: "800", letterSpacing: -0.5 },
+  footerPeriod:   { fontSize: 12, fontWeight: "600", marginBottom: 3 },
   cta: {
     flexDirection: "row",
     alignItems: "center",
@@ -873,6 +893,7 @@ const styles = StyleSheet.create({
   },
   ctaText: { color: "#fff", fontSize: 15, fontWeight: "800" },
 
+  // Success modal
   successBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.52)",
@@ -889,9 +910,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 16,
   },
-  successGradient: {
-    borderRadius: 24,
-  },
+  successGradient: { borderRadius: 24 },
   successGlass: {
     backgroundColor: "rgba(255,255,255,0.10)",
     borderRadius: 24,
@@ -910,12 +929,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 6,
   },
-  successCheckMark: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: "#fff",
-    lineHeight: 30,
-  },
+  successCheckMark: { fontSize: 26, fontWeight: "800", color: "#fff", lineHeight: 30 },
   successTitle: {
     fontSize: 20,
     fontWeight: "800",
@@ -939,16 +953,8 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: 10,
   },
-  successExpiryLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "rgba(255,255,255,0.72)",
-  },
-  successExpiryValue: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#fff",
-  },
+  successExpiryLabel: { fontSize: 12, fontWeight: "600", color: "rgba(255,255,255,0.72)" },
+  successExpiryValue: { fontSize: 12, fontWeight: "800", color: "#fff" },
   successBtn: {
     marginTop: 18,
     width: "100%",
@@ -958,10 +964,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  successBtnText: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#16A34A",
-    letterSpacing: 0.2,
-  },
+  successBtnText: { fontSize: 15, fontWeight: "800", color: "#059669", letterSpacing: 0.2 },
 });
