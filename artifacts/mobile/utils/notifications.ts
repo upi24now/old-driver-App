@@ -182,6 +182,16 @@ export async function setupAndroidChannels(): Promise<void> {
 // inside this project. Cast via unknown to keep type-safety elsewhere.
 type PermStatus = { granted: boolean; canAskAgain: boolean };
 
+/**
+ * Check whether notification permission is currently granted without prompting.
+ * Returns false when expo-notifications is unavailable (Expo Go on Android).
+ */
+export async function checkNotificationPermissions(): Promise<boolean> {
+  if (!Notif) return false;
+  const status = (await Notif.getPermissionsAsync()) as unknown as PermStatus;
+  return status.granted;
+}
+
 export async function requestNotificationPermissions(): Promise<boolean> {
   if (!Notif) return false;
 

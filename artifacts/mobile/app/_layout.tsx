@@ -30,8 +30,11 @@ function RootLayoutNav() {
   useNotifications();
 
   const router = useRouter();
-  const { authLoading, driverUid, profile, vehicle, documentsSubmitted, verificationStatus } =
-    useDriver();
+  const {
+    authLoading, driverUid, profile, vehicle,
+    documentsSubmitted, verificationStatus,
+    backgroundSetupShown,
+  } = useDriver();
 
   // ── Auth-restore navigation ───────────────────────────────────────────────
   // Fires once per app session when Firebase finishes restoring a persisted
@@ -49,6 +52,7 @@ function RootLayoutNav() {
     if (!profile?.name)                          { router.replace("/profile-setup");     return; }
     if (!documentsSubmitted)                     { router.replace("/document-upload");   return; }
     if (verificationStatus !== "approved")       { router.replace("/verification-pending"); return; }
+    if (!backgroundSetupShown)                   { router.replace("/background-setup");    return; }
     router.replace("/(tabs)");
   // Deps: only the values that determine when auth loading is done and who is logged in.
   // All other values (profile, vehicle, …) are read at the moment the effect runs.
@@ -66,6 +70,7 @@ function RootLayoutNav() {
       <Stack.Screen name="profile-setup" />
       <Stack.Screen name="document-upload" />
       <Stack.Screen name="verification-pending" />
+      <Stack.Screen name="background-setup" />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="trip/[id]" />
       <Stack.Screen name="wallet" />

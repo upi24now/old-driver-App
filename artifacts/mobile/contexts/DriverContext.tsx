@@ -30,6 +30,7 @@ import {
   acceptOrder,
   rejectOrder,
   requestWithdrawal as fsRequestWithdrawal,
+  updateDriverBackgroundSetup,
   type DriverDoc,
   type OrderDoc,
   type OrderStatus,
@@ -123,7 +124,8 @@ type OnboardingRoute =
   | "/vehicle-selection"
   | "/profile-setup"
   | "/document-upload"
-  | "/verification-pending";
+  | "/verification-pending"
+  | "/background-setup";
 
 type ConfirmOtpResult = {
   ok:              boolean;
@@ -215,6 +217,9 @@ type DriverState = {
   orderRemovalReasons: Record<string, RemovalReason>;
 
   requestWithdrawal: (amount: number, upiId: string) => Promise<{ ok: boolean; reason?: string }>;
+
+  backgroundSetupShown:     boolean;
+  markBackgroundSetupShown: () => Promise<void>;
 
   overlayPermissionGranted: boolean;
   requestOverlayPermission: () => Promise<{ ok: boolean; reason?: string }>;
@@ -319,7 +324,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const [tripsToday,     setTripsToday]   = useState(0);
   const [transactions,   setTxns]         = useState<Txn[]>(SEED_TXNS);
 
-  const [overlayPermissionGranted, setOverlayPermissionGranted] = useState(false);
+  const [overlayPermissionGranted,  setOverlayPermissionGranted]  = useState(false);
+  const [backgroundSetupShown,      setBackgroundSetupShown]      = useState(false);
 
   const isAuthenticated = !!driverUid;
 
@@ -370,6 +376,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             // Document verification status
             setVerifStatus(driverDoc.verificationStatus ?? null);
             setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
+            setBackgroundSetupShown(driverDoc.backgroundSetupShown ?? false);
           }
           // Restore up to 3 active orders if driver app was restarted mid-delivery.
           // getActiveOrdersForDriver returns newest-first, capped at MAX_ACTIVE_ORDERS.
@@ -497,6 +504,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     if (!d.name)               return "/profile-setup";
     if (!d.documentsSubmitted) return "/document-upload";
     if (d.verificationStatus !== "approved") return "/verification-pending";
+    if (!d.backgroundSetupShown)           return "/background-setup";
     return "/(tabs)";
   }
 
@@ -541,6 +549,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         // Restore verification/document state (needed for routing below)
         setVerifStatus(driverDoc.verificationStatus ?? null);
         setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
+        setBackgroundSetupShown(driverDoc.backgroundSetupShown ?? false);
       }
 
       const profileComplete = !!(driverDoc.name && driverDoc.vehicleId);
@@ -560,6 +569,13 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const setVehicle = (v: Vehicle) => {
     setVehicleState(v);
     if (driverUid) updateDriverVehicle(driverUid, v).catch(console.error);
+  };
+
+  const markBackgroundSetupShown = async (): Promise<void> => {
+    setBackgroundSetupShown(true);
+    if (driverUid) {
+      await updateDriverBackgroundSetup(driverUid);
+    }
   };
 
   const signOut = () => {
@@ -592,6 +608,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     setTxns([]);
     setVerifStatus(null);
     setDocsSubmitted(false);
+    setBackgroundSetupShown(false);
     lastSeenOrderId.current = null;
   };
 
@@ -1103,6 +1120,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         focusOrder,
         orderRemovalReasons,
         requestWithdrawal,
+        backgroundSetupShown,
+        markBackgroundSetupShown,
         overlayPermissionGranted,
         requestOverlayPermission,
         setOverlayPermission: setOverlayPermissionGranted,

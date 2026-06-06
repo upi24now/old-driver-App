@@ -56,6 +56,9 @@ export type DriverDoc = {
   todayEarnings?:    number;  // earnings on todayDate (UTC)
   tripsToday?:       number;  // completed deliveries on todayDate
   todayDate?:        string;  // "YYYY-MM-DD" sentinel for daily reset
+
+  // ── Background permission setup ───────────────────────────────────────────
+  backgroundSetupShown?: boolean;  // true after driver has seen the setup screen once
 };
 
 // ─── Completed trips ──────────────────────────────────────────────────────────
@@ -261,6 +264,17 @@ export async function updateDriverPushToken(
   await setDoc(doc(db, "drivers", uid), {
     fcmToken:          token,
     fcmTokenUpdatedAt: serverTimestamp(),
+  }, { merge: true });
+}
+
+/**
+ * Mark that the driver has been shown the background-permission setup screen.
+ * Written once; checked on every app start to skip re-showing the screen.
+ */
+export async function updateDriverBackgroundSetup(uid: string): Promise<void> {
+  await setDoc(doc(db, "drivers", uid), {
+    backgroundSetupShown: true,
+    updatedAt:            serverTimestamp(),
   }, { merge: true });
 }
 
