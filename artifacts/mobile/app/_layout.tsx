@@ -75,6 +75,7 @@ function RootLayoutNav() {
       <Stack.Screen name="trip/[id]" />
       <Stack.Screen name="wallet" />
       <Stack.Screen name="subscription" />
+      <Stack.Screen name="notifications" />
       <Stack.Screen
         name="lock-alert"
         options={{

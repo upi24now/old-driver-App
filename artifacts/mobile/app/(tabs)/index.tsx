@@ -370,11 +370,9 @@ export default function HomeScreen() {
             <TouchableOpacity
               style={[styles.iconBtn, { backgroundColor: "#fff", borderColor: colors.border }]}
               activeOpacity={0.7}
+              onPress={() => router.push("/notifications")}
             >
               <Feather name="bell" size={17} color="#0a0a0a" />
-              <View style={[styles.notifBadge, { backgroundColor: "#FF3B30" }]}>
-                <Text style={styles.notifBadgeText}>3</Text>
-              </View>
             </TouchableOpacity>
           </View>
         </View>
