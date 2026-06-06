@@ -122,18 +122,6 @@ if (Notif) {
   });
 }
 
-// ─── Eager channel + category bootstrap ──────────────────────────────────────
-// Create Android channels AND register action categories at module-import time
-// so they exist even if the React component tree hasn't mounted yet (e.g. the
-// app was backgrounded and woken by FCM before any useEffect fires).
-// initNotifications() calls these again — the second call is a no-op because
-// Android ignores importance/sound changes on an existing channel and
-// setNotificationCategoryAsync is idempotent.
-if (Notif && Platform.OS === "android") {
-  void setupAndroidChannels();
-  void setupNotificationCategories();
-}
-
 // ─── Deduplication tracker ────────────────────────────────────────────────────
 let activeOrderNotifId: string | null = null;
 
