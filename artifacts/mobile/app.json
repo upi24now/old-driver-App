@@ -22,7 +22,9 @@
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECEIVE_BOOT_COMPLETED",
-        "android.permission.VIBRATE"
+        "android.permission.VIBRATE",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
       ]
     },
     "web": {
@@ -32,6 +34,13 @@
       "expo-router",
       "expo-font",
       "expo-web-browser",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Bike Courier uses your location for navigation to pickup and drop points.",
+          "locationWhenInUsePermission": "Bike Courier uses your location for navigation to pickup and drop points."
+        }
+      ],
       [
         "expo-notifications",
         {

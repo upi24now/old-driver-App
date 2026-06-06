@@ -2,26 +2,34 @@
  * Background Permission Setup Screen
  *
  * Shown once after onboarding approval, before the main dashboard.
- * Guides the driver to enable three Android settings required for
- * reliable background / lock-screen order-alert delivery:
+ * Guides the driver to enable four Android settings required for
+ * reliable order-alert delivery and GPS navigation:
  *
  *   1. POST_NOTIFICATIONS permission
- *   2. Battery optimization exemption
- *   3. Auto-start / background activity (manufacturer-specific)
+ *   2. GPS / Location (foreground only — no background location)
+ *   3. Battery optimization exemption
+ *   4. Auto-start / background activity (manufacturer-specific)
  *
  * After the driver taps "Continue", a Firestore flag (backgroundSetupShown)
  * is written so this screen is not shown again on subsequent logins.
  *
- * Profile entry point (future): router.push("/background-setup?back=1")
+ * Re-accessible from: Profile → Notification & Background Settings
+ *   router.push("/background-setup?back=1")
+ *
+ * AppState listener re-checks permissions automatically whenever the driver
+ * returns from the device settings screen.
  */
 
 import { Feather } from "@expo/vector-icons";
 import * as IntentLauncher from "expo-intent-launcher";
+import * as Location from "expo-location";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
+  type AppStateStatus,
   Linking,
   Platform,
   ScrollView,
@@ -87,21 +95,64 @@ export default function BackgroundSetupScreen() {
 
   const [notifGranted,    setNotifGranted]    = useState(false);
   const [notifLoading,    setNotifLoading]    = useState(false);
+  const [locationGranted, setLocationGranted] = useState(false);
+  const [locationLoading, setLocationLoading] = useState(false);
   const [batteryOpened,   setBatteryOpened]   = useState(false);
   const [autostartOpened, setAutostartOpened] = useState(false);
   const [saving,          setSaving]          = useState(false);
+  const [refreshing,      setRefreshing]      = useState(false);
+
+  // ── Permission refresh ─────────────────────────────────────────────────────
+  // Runs on mount and whenever the app returns to the foreground (after the
+  // driver has been to device settings). This keeps the status badges live.
+  async function refreshPermissions(): Promise<void> {
+    const [notif, loc] = await Promise.all([
+      checkNotificationPermissions().catch(() => false),
+      Location.getForegroundPermissionsAsync().catch(() => ({ granted: false })),
+    ]);
+    setNotifGranted(notif);
+    setLocationGranted(loc.granted);
+  }
 
   useEffect(() => {
-    checkNotificationPermissions()
-      .then(setNotifGranted)
-      .catch(() => setNotifGranted(false));
+    void refreshPermissions();
+
+    const handleAppState = (state: AppStateStatus) => {
+      if (state === "active") {
+        void refreshPermissions();
+      }
+    };
+    const sub = AppState.addEventListener("change", handleAppState);
+    return () => sub.remove();
   }, []);
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
 
   async function handleEnableNotifs() {
     setNotifLoading(true);
     const granted = await requestNotificationPermissions();
     setNotifGranted(granted);
     setNotifLoading(false);
+    if (!granted) {
+      // System denied — open settings so driver can enable manually
+      await Linking.openSettings();
+    }
+  }
+
+  async function handleEnableLocation() {
+    setLocationLoading(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      const granted = status === Location.PermissionStatus.GRANTED;
+      setLocationGranted(granted);
+      if (!granted) {
+        // System denied — open App Info so driver can grant manually
+        await openAppDetails();
+      }
+    } catch {
+      setLocationGranted(false);
+    }
+    setLocationLoading(false);
   }
 
   async function handleBattery() {
@@ -112,6 +163,12 @@ export default function BackgroundSetupScreen() {
   async function handleAutostart() {
     await openAppDetails();
     setAutostartOpened(true);
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await refreshPermissions();
+    setRefreshing(false);
   }
 
   async function handleContinue() {
@@ -129,6 +186,7 @@ export default function BackgroundSetupScreen() {
   }
 
   const scrollPaddingTop = fromProfile ? 16 : insets.top + 16;
+  const criticalReady = notifGranted && locationGranted;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -150,7 +208,7 @@ export default function BackgroundSetupScreen() {
             <Feather name="arrow-left" size={18} color={colors.foreground} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-            {"Notification & Background Settings"}
+            {"Permissions & Background Settings"}
           </Text>
           <View style={{ width: 38 }} />
         </View>
@@ -159,10 +217,11 @@ export default function BackgroundSetupScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
-          { paddingTop: scrollPaddingTop, paddingBottom: insets.bottom + 100 },
+          { paddingTop: scrollPaddingTop, paddingBottom: insets.bottom + 110 },
         ]}
         showsVerticalScrollIndicator={false}
       >
+        {/* ── Hero ─────────────────────────────────────────────────────────── */}
         <LinearGradient
           colors={["#0d2818", "#0a0a0a"]}
           start={{ x: 0, y: 0 }}
@@ -172,20 +231,23 @@ export default function BackgroundSetupScreen() {
           <View
             style={[styles.heroIconWrap, { backgroundColor: colors.primary }]}
           >
-            <Feather name="bell" size={30} color="#fff" />
+            <Feather name="shield" size={30} color="#fff" />
           </View>
-          <Text style={styles.heroTitle}>Enable Delivery Alerts</Text>
+          <Text style={styles.heroTitle}>Enable Delivery Permissions</Text>
           <Text style={styles.heroSub}>
-            {"To receive delivery requests reliably on lock screen and in background, please enable these settings. Takes less than a minute."}
+            {"GPS and notifications are required to receive orders reliably. Battery settings improve background delivery on Indian OEM phones."}
           </Text>
         </LinearGradient>
 
+        {/* ── Card 1: Notifications ──────────────────────────────────────── */}
         <StepCard
           num="1"
           icon="bell"
           title="Notifications"
+          required
+          statusLabel={notifGranted ? "Allowed" : "Not allowed"}
+          statusOk={notifGranted}
           body="Required to display order alerts and play the ringtone when a delivery is assigned to you."
-          done={notifGranted}
           colors={colors}
         >
           {notifGranted ? (
@@ -202,9 +264,7 @@ export default function BackgroundSetupScreen() {
               ) : (
                 <>
                   <Feather name="bell" size={14} color="#fff" />
-                  <Text style={styles.primaryBtnText}>
-                    Enable Notifications
-                  </Text>
+                  <Text style={styles.primaryBtnText}>Enable Notifications</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -215,26 +275,78 @@ export default function BackgroundSetupScreen() {
               onPress={() => Linking.openSettings()}
               activeOpacity={0.7}
             >
-              <Feather
-                name="external-link"
-                size={13}
-                color={colors.foreground}
-              />
-              <Text
-                style={[styles.ghostBtnText, { color: colors.foreground }]}
-              >
+              <Feather name="external-link" size={13} color={colors.foreground} />
+              <Text style={[styles.ghostBtnText, { color: colors.foreground }]}>
                 Open App Settings
               </Text>
             </TouchableOpacity>
           )}
         </StepCard>
 
+        {/* ── Card 2: GPS Location ───────────────────────────────────────── */}
         <StepCard
           num="2"
+          icon="map-pin"
+          title="GPS Location"
+          required
+          statusLabel={locationGranted ? "Allowed" : "Not allowed"}
+          statusOk={locationGranted}
+          body="Required for navigation to pickup and drop points. Only foreground (while-in-use) location is requested — no background tracking."
+          colors={colors}
+        >
+          {locationGranted ? (
+            <DoneBadge label="Location access granted" />
+          ) : (
+            <TouchableOpacity
+              style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
+              onPress={handleEnableLocation}
+              activeOpacity={0.85}
+              disabled={locationLoading}
+            >
+              {locationLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Feather name="map-pin" size={14} color="#fff" />
+                  <Text style={styles.primaryBtnText}>Enable GPS Location</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+          {!locationGranted && (
+            <TouchableOpacity
+              style={[styles.ghostBtn, { borderColor: colors.border }]}
+              onPress={openAppDetails}
+              activeOpacity={0.7}
+            >
+              <Feather name="external-link" size={13} color={colors.foreground} />
+              <Text style={[styles.ghostBtnText, { color: colors.foreground }]}>
+                Open App Settings
+              </Text>
+            </TouchableOpacity>
+          )}
+          <View style={[styles.infoBox, { backgroundColor: colors.muted }]}>
+            <Feather
+              name="info"
+              size={12}
+              color={colors.mutedForeground}
+              style={{ marginTop: 1 }}
+            />
+            <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
+              {"Only \"While Using the App\" location is used. Background location is NOT requested."}
+            </Text>
+          </View>
+        </StepCard>
+
+        {/* ── Card 3: Battery Optimization ──────────────────────────────── */}
+        <StepCard
+          num="3"
           icon="battery-charging"
-          title="Allow Background Running"
+          title="Unrestricted Battery"
+          required={false}
+          statusLabel={batteryOpened ? "Settings opened" : "Needs setup"}
+          statusOk={batteryOpened}
           body={"Open battery settings and set this app to \"Unrestricted\", \"Don't optimize\", or \"Allow background activity\"."}
-          done={batteryOpened}
           colors={colors}
         >
           {batteryOpened ? (
@@ -256,20 +368,21 @@ export default function BackgroundSetupScreen() {
               color={colors.mutedForeground}
               style={{ marginTop: 1 }}
             />
-            <Text
-              style={[styles.infoText, { color: colors.mutedForeground }]}
-            >
-              {"Without this, Android may delay or block delivery alerts when your phone is locked or idle for a few minutes."}
+            <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
+              {"Without this, Android may delay or block delivery alerts when your phone is locked or idle for a few minutes. Cannot be verified automatically."}
             </Text>
           </View>
         </StepCard>
 
+        {/* ── Card 4: Auto-start / Background Activity ───────────────────── */}
         <StepCard
-          num="3"
+          num="4"
           icon="smartphone"
           title={"Auto-start & Background Activity"}
-          body={"On Realme, Oppo, Vivo, Xiaomi, and Samsung, open App Info and enable Auto Start and Background Activity if available."}
-          done={autostartOpened}
+          required={false}
+          statusLabel={autostartOpened ? "Settings opened" : "Needs setup"}
+          statusOk={autostartOpened}
+          body={"On Realme, Oppo, Vivo, Xiaomi, and Samsung: open App Info and enable Auto Start and Background Activity if available."}
           colors={colors}
         >
           {autostartOpened ? (
@@ -291,19 +404,39 @@ export default function BackgroundSetupScreen() {
               color="#b75d00"
               style={{ marginTop: 1 }}
             />
-            <Text
-              style={[styles.infoText, { color: colors.mutedForeground }]}
-            >
-              {"Path varies by brand — look for Battery \u2192 Unrestricted, or a dedicated \"Auto Start\" toggle in App Info."}
+            <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
+              {"Path varies by brand — look for Battery \u2192 Unrestricted, or a dedicated \"Auto Start\" toggle in App Info. This cannot be enabled automatically."}
             </Text>
           </View>
         </StepCard>
 
+        {/* ── Refresh status ─────────────────────────────────────────────── */}
+        <TouchableOpacity
+          style={styles.refreshRow}
+          onPress={handleRefresh}
+          activeOpacity={0.7}
+          disabled={refreshing}
+        >
+          {refreshing ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Feather name="refresh-cw" size={13} color={colors.primary} />
+          )}
+          <Text style={[styles.refreshText, { color: colors.primary }]}>
+            {refreshing ? "Checking permissions…" : "Check permission status again"}
+          </Text>
+        </TouchableOpacity>
+
         <Text style={[styles.skipNote, { color: colors.mutedForeground }]}>
-          {"These settings can be changed later from Profile \u2192 Notification & Background Settings."}
+          {"Permission status updates automatically when you return from device settings.\nSettings 3 & 4 cannot be verified by the app — Android does not expose them to apps."}
+        </Text>
+
+        <Text style={[styles.profileNote, { color: colors.mutedForeground }]}>
+          {"These settings can be changed later from Profile \u2192 Permissions & Background Settings."}
         </Text>
       </ScrollView>
 
+      {/* ── Footer ─────────────────────────────────────────────────────────── */}
       <View
         style={[
           styles.footer,
@@ -314,8 +447,16 @@ export default function BackgroundSetupScreen() {
           },
         ]}
       >
+        {!criticalReady && (
+          <View style={[styles.warningBanner, { backgroundColor: "#FEF3C7", borderColor: "#FCD34D" }]}>
+            <Feather name="alert-triangle" size={13} color="#92400E" />
+            <Text style={styles.warningText}>
+              {"Notifications and GPS are required to receive delivery orders."}
+            </Text>
+          </View>
+        )}
         <TouchableOpacity
-          style={[styles.continueBtn, { backgroundColor: colors.primary }]}
+          style={[styles.continueBtn, { backgroundColor: criticalReady ? colors.primary : colors.mutedForeground }]}
           onPress={handleContinue}
           activeOpacity={0.85}
           disabled={saving}
@@ -326,7 +467,7 @@ export default function BackgroundSetupScreen() {
             <>
               <Feather name="check-circle" size={18} color="#fff" />
               <Text style={styles.continueBtnText}>
-                I have enabled these — Continue
+                {criticalReady ? "All set — Continue" : "Skip for now — Continue"}
               </Text>
             </>
           )}
@@ -343,7 +484,9 @@ function StepCard({
   icon,
   title,
   body,
-  done,
+  required,
+  statusLabel,
+  statusOk,
   colors,
   children,
 }: {
@@ -351,7 +494,9 @@ function StepCard({
   icon: string;
   title: string;
   body: string;
-  done: boolean;
+  required: boolean;
+  statusLabel: string;
+  statusOk: boolean;
   colors: ColorsShape;
   children: React.ReactNode;
 }) {
@@ -360,28 +505,41 @@ function StepCard({
       style={[
         styles.card,
         {
-          backgroundColor: "#fff",
-          borderColor: done ? "#00C853" : colors.border,
-          borderWidth: done ? 1.5 : 1,
+          backgroundColor: colors.surface,
+          borderColor: statusOk ? "#00C853" : required ? "#FCA5A5" : colors.border,
+          borderWidth: statusOk || required ? 1.5 : 1,
         },
       ]}
     >
+      {/* Card header row */}
       <View style={styles.cardRow}>
         <View
           style={[
             styles.numBadge,
-            { backgroundColor: done ? "#00C853" : "rgba(0,200,83,0.1)" },
+            { backgroundColor: statusOk ? "#00C853" : "rgba(0,200,83,0.1)" },
           ]}
         >
-          {done ? (
+          {statusOk ? (
             <Feather name="check" size={14} color="#fff" />
           ) : (
             <Text style={styles.numText}>{num}</Text>
           )}
         </View>
-        <Text style={[styles.cardTitle, { color: "#0a0a0a", flex: 1 }]}>
-          {title}
-        </Text>
+        <View style={{ flex: 1 }}>
+          <View style={styles.titleRow}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+              {title}
+            </Text>
+            {required && (
+              <View style={styles.requiredBadge}>
+                <Text style={styles.requiredText}>Required</Text>
+              </View>
+            )}
+          </View>
+          <Text style={[styles.statusLabel, { color: statusOk ? "#00C853" : required ? "#DC2626" : colors.mutedForeground }]}>
+            {statusLabel}
+          </Text>
+        </View>
         <View style={styles.iconCircle}>
           <Feather
             name={icon as React.ComponentProps<typeof Feather>["name"]}
@@ -390,6 +548,7 @@ function StepCard({
           />
         </View>
       </View>
+
       <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
         {body}
       </Text>
@@ -442,8 +601,8 @@ const styles = StyleSheet.create({
     borderRadius: 34,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#00C853",
-    shadowOpacity: 0.55,
+    shadowColor: "#000",
+    shadowOpacity: 0.3,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 0 },
     marginBottom: 4,
@@ -470,7 +629,7 @@ const styles = StyleSheet.create({
   },
   cardRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 10,
   },
   numBadge: {
@@ -479,9 +638,25 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
+    marginTop: 2,
+    flexShrink: 0,
   },
   numText: { fontSize: 13, fontWeight: "800", color: "#00C853" },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flexWrap: "wrap",
+  },
   cardTitle: { fontSize: 15, fontWeight: "700" },
+  requiredBadge: {
+    backgroundColor: "#FEE2E2",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
+  },
+  requiredText: { fontSize: 10, fontWeight: "700", color: "#DC2626" },
+  statusLabel: { fontSize: 11, fontWeight: "600", marginTop: 2 },
   iconCircle: {
     width: 34,
     height: 34,
@@ -489,6 +664,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,200,83,0.08)",
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
   },
   cardBody: { fontSize: 13, lineHeight: 18 },
   cardActions: { gap: 8 },
@@ -531,7 +707,22 @@ const styles = StyleSheet.create({
   },
   doneText: { fontSize: 13, fontWeight: "600", color: "#00C853" },
 
+  refreshRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    paddingVertical: 4,
+  },
+  refreshText: { fontSize: 13, fontWeight: "600" },
+
   skipNote: {
+    textAlign: "center",
+    fontSize: 11,
+    lineHeight: 16,
+    paddingHorizontal: 8,
+  },
+  profileNote: {
     textAlign: "center",
     fontSize: 12,
     lineHeight: 17,
@@ -546,7 +737,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 12,
     borderTopWidth: 1,
+    gap: 8,
   },
+
+  warningBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  warningText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#92400E",
+    flex: 1,
+    lineHeight: 16,
+  },
+
   continueBtn: {
     height: 54,
     borderRadius: 14,

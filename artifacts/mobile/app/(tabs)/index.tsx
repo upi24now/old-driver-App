@@ -1,7 +1,9 @@
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import * as Location from "expo-location";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
+import { checkNotificationPermissions } from "@/utils/notifications";
 import {
   Alert,
   Animated,
@@ -267,7 +269,46 @@ export default function HomeScreen() {
     incomingRide,
   } = useDriver();
 
-  function setOnline(v: boolean) {
+  async function setOnline(v: boolean) {
+    // Before going online, check critical permissions and warn if missing.
+    // Non-blocking: driver can still choose to go online anyway.
+    if (v) {
+      const [notifOk, locStatus] = await Promise.all([
+        checkNotificationPermissions().catch(() => false),
+        Location.getForegroundPermissionsAsync().catch(() => ({ granted: false })),
+      ]);
+      const locOk = locStatus.granted;
+
+      if (!notifOk || !locOk) {
+        const missing = [
+          !notifOk ? "Notifications" : null,
+          !locOk   ? "GPS Location"  : null,
+        ].filter(Boolean).join(" & ");
+
+        await new Promise<void>((resolve) => {
+          Alert.alert(
+            "Setup Incomplete",
+            `${missing} ${missing.includes("&") ? "permissions are" : "permission is"} not enabled. You may miss delivery requests without them.`,
+            [
+              {
+                text: "Fix Setup",
+                onPress: () => {
+                  router.push("/background-setup?back=1");
+                  resolve();
+                },
+              },
+              {
+                text: "Go Online Anyway",
+                style: "cancel",
+                onPress: () => resolve(),
+              },
+            ],
+            { cancelable: false }
+          );
+        });
+      }
+    }
+
     const r = setDriverOnline(v);
     if (!r.ok && r.reason) {
       Alert.alert("Can't go online", r.reason, [
