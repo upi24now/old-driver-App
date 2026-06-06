@@ -197,11 +197,18 @@ async function sendOrderFcm(
   let messageId: string;
   try {
     const messaging = await adminMessaging();
+    // Build a human-readable body from order data so drivers see the fare
+    // and distance immediately on the heads-up notification, even before the
+    // background task can re-post a local notification with action buttons.
+    const notifBody = order.earning !== "0" && order.distanceKm !== "0"
+      ? `₹${order.earning} • ${order.distanceKm} km — ${order.customer || "New order"}`
+      : order.customer || "You have a new delivery request";
+
     messageId = await messaging.send({
       token: fcmToken,
       notification: {
-        title: "New Delivery Request",
-        body:  "You have a new delivery request",
+        title: "🛵 New Delivery Request",
+        body:  notifBody,
       },
       data: {
         type:        "incoming_order",
@@ -219,10 +226,16 @@ async function sendOrderFcm(
       android: {
         priority: "high",
         notification: {
-          channelId:  CHANNEL_ORDERS,
-          sound:      "ringtone",
-          visibility: "public",
-          priority:   "max",
+          channelId:           CHANNEL_ORDERS,
+          sound:               "ringtone",
+          visibility:          "public",
+          priority:            "max",
+          // Vibration pattern (ms): 0 delay, 1200 on, 200 off × 2, 500 tail.
+          // This fires once at notification delivery — the JS-layer
+          // Vibration.vibrate(pattern, true) loop takes over when the
+          // foreground screen mounts (ride-request / lock-alert).
+          vibrateTimingsMillis: [0, 1200, 200, 1200, 200, 1200, 500],
+          defaultVibrateTimings: false,
         },
       },
     });
