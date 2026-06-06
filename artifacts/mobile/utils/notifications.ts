@@ -148,7 +148,7 @@ export async function setupAndroidChannels(): Promise<void> {
     description: "High-priority alerts for new delivery requests",
     importance: Notif.AndroidImportance.MAX,
     sound: "ringtone",
-    vibrationPattern: [0, 800, 400, 800, 400],
+    vibrationPattern: [0, 1200, 200, 1200, 200, 1200, 500],
     enableLights: true,
     lightColor: "#FF4D8D",
     enableVibrate: true,
@@ -267,7 +267,7 @@ export async function sendIncomingOrderNotification(
         ...(Platform.OS === "android" && {
           channelId:   CHANNEL_ORDERS,
           color:       "#FF4D8D",
-          vibrate:     [0, 800, 400, 800, 400],
+          vibrate:     [0, 1200, 200, 1200, 200, 1200, 500],
           sticky:      false,
           autoDismiss: true,
         }),

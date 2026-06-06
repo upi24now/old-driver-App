@@ -316,8 +316,8 @@ export default function RideRequestScreen() {
       })
       .catch(() => {});
 
-    // Continuous vibration: 800ms on, 400ms off, repeating for full alert duration.
-    Vibration.vibrate([0, 800, 400], true);
+    // Continuous vibration: 1200ms on, 200ms off, repeating for full alert duration.
+    Vibration.vibrate([0, 1200, 200, 1200, 200, 1200, 500], true);
 
     const t = setInterval(() => {
       setSeconds((s) => {

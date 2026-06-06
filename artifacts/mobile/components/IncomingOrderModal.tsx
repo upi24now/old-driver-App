@@ -51,7 +51,7 @@ const SNAP     = CARD_W + CARD_GAP;
 const SIDE_PAD = (SCREEN_W - CARD_W) / 2;
 
 const COUNTDOWN   = 15;
-const VIB_PATTERN = [0, 700, 200, 700, 200, 700, 1000];
+const VIB_PATTERN = [0, 1200, 200, 1200, 200, 1200, 500];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type TestOrder = {

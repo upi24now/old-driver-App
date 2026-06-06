@@ -194,8 +194,8 @@ export default function LockAlertScreen() {
     player.loop = true;
     try { player.play(); } catch { /* silently ignore if audio unavailable */ }
 
-    // Continuous vibration: 800 ms on, 400 ms off, repeat = true
-    Vibration.vibrate([0, 800, 400], true);
+    // Continuous vibration: 1200 ms on, 200 ms off, repeating burst, repeat = true
+    Vibration.vibrate([0, 1200, 200, 1200, 200, 1200, 500], true);
 
     // Pulse animation synced to ~the vibration cadence (1.2 s cycle)
     const pulseLoop = Animated.loop(
