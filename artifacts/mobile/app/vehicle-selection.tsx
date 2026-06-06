@@ -1,5 +1,4 @@
 import { Feather } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { callSupport } from "@/utils/support";
 import { useEffect, useRef, useState } from "react";
@@ -12,19 +11,13 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  useWindowDimensions,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
-
-// ─── Brand tokens ──────────────────────────────────────────────
-const PINK         = "#FF4D8D";
-const ORANGE       = "#FF7A3D";
-const TEXT_PRIMARY = "#111111";
-const TEXT_MUTED   = "#6B7280";
-const BORDER       = "#F0E6EC";
+import { useColors } from "@/hooks/useColors";
 
 // ─── Vehicle image assets ───────────────────────────────────────
 const IMAGES: Record<string, ImageSourcePropType> = {
@@ -41,14 +34,12 @@ type VehicleOption = {
   id: string;
   name: string;
   tagline: string;
-  cardBg: [string, string];
   seatLabel: string;
   seatIcon: "user" | "users" | "package";
   price: string;
-  badge?: { text: string; bg: string; fg: string };
+  badge?: string;      // display text only — colors come from tokens
   imageKey?: string;
   emoji?: string;
-  emojiBg?: string;
 };
 
 const VEHICLES: VehicleOption[] = [
@@ -56,18 +47,16 @@ const VEHICLES: VehicleOption[] = [
     id: "bike",
     name: "Bike",
     tagline: "Quick, agile rides",
-    cardBg: ["#F5F3FF", "#FAF5FF"],
     seatLabel: "1 Seat",
     seatIcon: "user",
     price: "₹6/km",
-    badge: { text: "⭐ Popular", bg: "#A855F7", fg: "#fff" },
+    badge: "⭐ Popular",
     imageKey: "bike",
   },
   {
     id: "auto",
     name: "Auto",
     tagline: "3-seater, in-city",
-    cardBg: ["#FFFBEB", "#FEFCE8"],
     seatLabel: "3 Seats",
     seatIcon: "users",
     price: "₹10/km",
@@ -77,7 +66,6 @@ const VEHICLES: VehicleOption[] = [
     id: "mini",
     name: "Mini Car",
     tagline: "Compact, economy",
-    cardBg: ["#EFF6FF", "#F0F9FF"],
     seatLabel: "4 Seats",
     seatIcon: "users",
     price: "₹14/km",
@@ -87,7 +75,6 @@ const VEHICLES: VehicleOption[] = [
     id: "sedan",
     name: "Sedan",
     tagline: "Premium comfort",
-    cardBg: ["#FDF2F8", "#FFF0F6"],
     seatLabel: "4 Seats",
     seatIcon: "users",
     price: "₹18/km",
@@ -97,18 +84,16 @@ const VEHICLES: VehicleOption[] = [
     id: "ev",
     name: "EV",
     tagline: "Electric, eco-friendly",
-    cardBg: ["#ECFDF5", "#F0FFF8"],
     seatLabel: "4 Seats",
     seatIcon: "users",
     price: "₹12/km",
-    badge: { text: "⚡ New", bg: "#10B981", fg: "#fff" },
+    badge: "⚡ New",
     imageKey: "ev",
   },
   {
     id: "truck",
     name: "Truck",
     tagline: "Goods delivery",
-    cardBg: ["#F1F5F9", "#F8FAFC"],
     seatLabel: "Up to 8 Ton",
     seatIcon: "package",
     price: "₹22/km",
@@ -118,47 +103,65 @@ const VEHICLES: VehicleOption[] = [
     id: "scooter",
     name: "Scooter",
     tagline: "Zippy city rides",
-    cardBg: ["#FFF1F2", "#FFF5F6"],
     seatLabel: "1 Seat",
     seatIcon: "user",
     price: "₹7/km",
     emoji: "🛵",
-    emojiBg: "#FFE4E6",
   },
   {
     id: "suv",
     name: "SUV",
     tagline: "Spacious, comfortable",
-    cardBg: ["#FFF7ED", "#FFFBF5"],
     seatLabel: "6 Seats",
     seatIcon: "users",
     price: "₹22/km",
     emoji: "🚙",
-    emojiBg: "#FFEDD5",
   },
   {
     id: "pickup",
     name: "Pickup",
     tagline: "Light freight",
-    cardBg: ["#F0FDF4", "#F0FFF4"],
     seatLabel: "500 kg",
     seatIcon: "package",
     price: "₹20/km",
     emoji: "🛻",
-    emojiBg: "#DCFCE7",
   },
   {
     id: "mini-truck",
     name: "Mini Truck",
     tagline: "Urban freight",
-    cardBg: ["#FFF8F0", "#FFFAF5"],
     seatLabel: "1 Ton",
     seatIcon: "package",
     price: "₹25/km",
     emoji: "🚚",
-    emojiBg: "#FEF3C7",
   },
 ];
+
+// ─── Per-vehicle token family ────────────────────────────────────
+// Bike/scooter = primary/info (two-wheelers)
+// Auto/pickup/mini-truck = warning (loaders)
+// Mini/sedan/suv = navigation/pending (four-wheelers)
+// EV = success (eco)
+// Truck = pending (heavy)
+
+type VehicleAccent = { accent: string; soft: string };
+
+function useVehicleAccent(id: string): VehicleAccent {
+  const colors = useColors();
+  switch (id) {
+    case "bike":       return { accent: colors.primary,    soft: colors.primarySoft };
+    case "scooter":    return { accent: colors.info,       soft: colors.infoSoft };
+    case "ev":         return { accent: colors.success,    soft: colors.successSoft };
+    case "auto":       return { accent: colors.warning,    soft: colors.warningSoft };
+    case "pickup":     return { accent: colors.warning,    soft: colors.warningSoft };
+    case "mini-truck": return { accent: colors.warning,    soft: colors.warningSoft };
+    case "mini":       return { accent: colors.navigation, soft: colors.navigationSoft };
+    case "sedan":      return { accent: colors.pending,    soft: colors.pendingSoft };
+    case "suv":        return { accent: colors.pending,    soft: colors.pendingSoft };
+    case "truck":      return { accent: colors.pending,    soft: colors.pendingSoft };
+    default:           return { accent: colors.primary,    soft: colors.primarySoft };
+  }
+}
 
 // ─── Vehicle Card ───────────────────────────────────────────────
 function VehicleCard({
@@ -170,6 +173,9 @@ function VehicleCard({
   selected: boolean;
   onPress: () => void;
 }) {
+  const colors = useColors();
+  const { accent, soft } = useVehicleAccent(vehicle.id);
+
   const scale = useRef(new Animated.Value(1)).current;
   const glow  = useRef(new Animated.Value(0)).current;
   const prev  = useRef(selected);
@@ -190,106 +196,126 @@ function VehicleCard({
     prev.current = selected;
   }, [selected]);
 
+  // Emoji circle / thumb bg per vehicle family
+  const emojiBg = (() => {
+    switch (vehicle.id) {
+      case "scooter":    return colors.infoSoft;
+      case "suv":        return colors.pendingSoft;
+      case "pickup":     return colors.successSoft;
+      case "mini-truck": return colors.warningSoft;
+      default:           return colors.muted;
+    }
+  })();
+
+  // Badge bg per vehicle (Popular → primary, New → success)
+  const badgeBg = vehicle.badge?.includes("Popular")
+    ? colors.primary
+    : vehicle.badge?.includes("New")
+    ? colors.success
+    : colors.primary;
+
   return (
-    <Animated.View style={[styles.cardWrap, { transform: [{ scale }] }]}>
-      <Animated.View style={[styles.cardGlow, { opacity: glow }]} pointerEvents="none" />
+    <Animated.View
+      style={[
+        styles.cardWrap,
+        {
+          shadowColor:   selected ? accent : "#000",
+          shadowOpacity: selected ? 0.22   : 0.08,
+          shadowRadius:  selected ? 18     : 10,
+          shadowOffset:  { width: 0, height: selected ? 7 : 3 },
+          elevation:     selected ? 10     : 4,
+          transform: [{ scale }],
+        },
+      ]}
+    >
+      {/* Glow layer — animates in when card is selected */}
+      <Animated.View
+        style={[styles.cardGlow, { opacity: glow, shadowColor: accent }]}
+        pointerEvents="none"
+      />
 
       <TouchableOpacity activeOpacity={0.88} onPress={onPress} style={styles.cardTouchable}>
-        <LinearGradient
-          colors={selected ? ["#FFF0F6", "#FDF2F8"] : vehicle.cardBg}
-          style={[styles.card, selected && styles.cardSelected]}
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: selected ? soft              : colors.surfaceElevated,
+              borderColor:     selected ? accent            : colors.border,
+              borderWidth:     selected ? 2                 : 1.5,
+            },
+          ]}
         >
-          <CardContent vehicle={vehicle} selected={selected} />
-        </LinearGradient>
+          {/* ── IMAGE ZONE ── */}
+          <View style={[styles.imageZone, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+            {vehicle.imageKey ? (
+              <Image
+                source={IMAGES[vehicle.imageKey]}
+                style={styles.vehicleImage}
+                resizeMode="contain"
+              />
+            ) : (
+              <View style={[styles.emojiCircle, { backgroundColor: emojiBg }]}>
+                <Text style={styles.emojiText}>{vehicle.emoji}</Text>
+              </View>
+            )}
+
+            {vehicle.badge && (
+              <View style={[styles.badge, { backgroundColor: badgeBg }]}>
+                <Text style={styles.badgeText}>{vehicle.badge}</Text>
+              </View>
+            )}
+
+            {selected && (
+              <View style={[styles.checkCircle, { backgroundColor: accent, shadowColor: accent }]}>
+                <Feather name="check" size={11} color="#fff" />
+              </View>
+            )}
+          </View>
+
+          {/* ── TEXT ZONE ── */}
+          <View style={styles.textZone}>
+            <Text style={[styles.cardName, { color: selected ? accent : colors.foreground }]} numberOfLines={1}>
+              {vehicle.name}
+            </Text>
+            <Text style={[styles.cardTagline, { color: colors.mutedForeground }]} numberOfLines={1}>
+              {vehicle.tagline}
+            </Text>
+
+            <View style={[
+              styles.infoRow,
+              {
+                backgroundColor: selected ? soft            : colors.surface,
+                borderColor:     selected ? accent          : colors.border,
+              },
+            ]}>
+              <Feather name={vehicle.seatIcon} size={11} color={selected ? accent : colors.mutedForeground} />
+              <Text
+                style={[styles.infoText, { color: selected ? accent : colors.mutedForeground }]}
+                numberOfLines={1}
+              >
+                {vehicle.seatLabel}
+              </Text>
+              <View style={[styles.infoDivider, { backgroundColor: colors.border }]} />
+              <Text style={[styles.priceText, { color: selected ? accent : colors.textSecondary }]}>
+                {vehicle.price}
+              </Text>
+            </View>
+          </View>
+        </View>
       </TouchableOpacity>
     </Animated.View>
   );
 }
 
-function CardContent({
-  vehicle,
-  selected,
-}: {
-  vehicle: VehicleOption;
-  selected: boolean;
-}) {
-  return (
-    <View style={styles.cardInner}>
-      {/* ── IMAGE ZONE ── */}
-      <View style={styles.imageZone}>
-        {vehicle.imageKey ? (
-          <Image
-            source={IMAGES[vehicle.imageKey]}
-            style={styles.vehicleImage}
-            resizeMode="contain"
-          />
-        ) : (
-          <View style={[styles.emojiCircle, { backgroundColor: vehicle.emojiBg ?? "#F3F4F6" }]}>
-            <Text style={styles.emojiText}>{vehicle.emoji}</Text>
-          </View>
-        )}
-
-        {vehicle.badge && (
-          <View style={[styles.badge, { backgroundColor: vehicle.badge.bg }]}>
-            <Text style={[styles.badgeText, { color: vehicle.badge.fg }]}>
-              {vehicle.badge.text}
-            </Text>
-          </View>
-        )}
-
-        {selected && (
-          <LinearGradient
-            colors={[PINK, ORANGE]}
-            style={styles.checkCircle}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <Feather name="check" size={11} color="#fff" />
-          </LinearGradient>
-        )}
-      </View>
-
-      {/* ── TEXT ZONE ── */}
-      <View style={styles.textZone}>
-        <Text style={[styles.cardName, selected && { color: PINK }]} numberOfLines={1}>
-          {vehicle.name}
-        </Text>
-        <Text style={styles.cardTagline} numberOfLines={1}>
-          {vehicle.tagline}
-        </Text>
-
-        <View style={[
-          styles.infoRow,
-          {
-            backgroundColor: selected ? "rgba(255,77,141,0.08)" : "rgba(255,255,255,0.8)",
-            borderColor:      selected ? "rgba(255,77,141,0.22)" : "rgba(0,0,0,0.07)",
-          },
-        ]}>
-          <Feather name={vehicle.seatIcon} size={11} color={selected ? PINK : TEXT_MUTED} />
-          <Text
-            style={[styles.infoText, { color: selected ? PINK : TEXT_MUTED }]}
-            numberOfLines={1}
-          >
-            {vehicle.seatLabel}
-          </Text>
-          <View style={styles.infoDivider} />
-          <Text style={[styles.priceText, { color: selected ? PINK : ORANGE }]}>
-            {vehicle.price}
-          </Text>
-        </View>
-      </View>
-    </View>
-  );
-}
-
 // ─── Progress Step Dot ──────────────────────────────────────────
 function StepDot({ filled }: { filled: boolean }) {
+  const colors = useColors();
   return (
     <View style={[
       styles.stepDot,
       filled
-        ? { backgroundColor: PINK }
-        : { backgroundColor: "#E5E7EB", borderWidth: 2, borderColor: "#D1D5DB" },
+        ? { backgroundColor: colors.primary }
+        : { backgroundColor: colors.border, borderWidth: 2, borderColor: colors.borderStrong },
     ]}>
       {filled && <Feather name="check" size={9} color="#fff" />}
     </View>
@@ -298,6 +324,7 @@ function StepDot({ filled }: { filled: boolean }) {
 
 // ─── Main Screen ────────────────────────────────────────────────
 export default function VehicleSelectionScreen() {
+  const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { setVehicle } = useDriver();
@@ -322,36 +349,52 @@ export default function VehicleSelectionScreen() {
     router.push({ pathname: "/profile-setup", params: { vehicle: selectedId } });
   }
 
+  // Summary thumb placeholder bg for when no vehicle selected yet
+  const summaryThumbBg = selectedVehicle
+    ? (() => {
+        switch (selectedVehicle.id) {
+          case "scooter":    return colors.infoSoft;
+          case "suv":        return colors.pendingSoft;
+          case "pickup":     return colors.successSoft;
+          case "mini-truck": return colors.warningSoft;
+          default:           return colors.primarySoft;
+        }
+      })()
+    : colors.primarySoft;
+
   return (
-    <LinearGradient colors={["#FFF5F8", "#FFFAF5", "#FFF8FC"]} style={styles.root}>
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
       {/* ── Header ── */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
-          <Feather name="arrow-left" size={18} color={TEXT_PRIMARY} />
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={[styles.backBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          activeOpacity={0.7}
+        >
+          <Feather name="arrow-left" size={18} color={colors.foreground} />
         </TouchableOpacity>
 
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Choose Vehicle 🚗</Text>
-          <Text style={styles.headerSub}>Step 2 of 3</Text>
+          <Text style={[styles.headerTitle, { color: colors.foreground }]}>Choose Vehicle 🚗</Text>
+          <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>Step 2 of 3</Text>
         </View>
 
-        <TouchableOpacity style={styles.helpBtn} activeOpacity={0.7} onPress={callSupport}>
-          <Feather name="help-circle" size={15} color={PINK} />
-          <Text style={styles.helpText}>Help</Text>
+        <TouchableOpacity
+          style={[styles.helpBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          activeOpacity={0.7}
+          onPress={callSupport}
+        >
+          <Feather name="help-circle" size={15} color={colors.primary} />
+          <Text style={[styles.helpText, { color: colors.primary }]}>Help</Text>
         </TouchableOpacity>
       </View>
 
       {/* ── Progress bar ── */}
       <View style={styles.progressRow}>
         <StepDot filled />
-        <LinearGradient
-          colors={[PINK, ORANGE]}
-          style={styles.progressLine}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-        />
+        <View style={[styles.progressLine, { backgroundColor: colors.primary }]} />
         <StepDot filled />
-        <View style={styles.progressLineEmpty} />
+        <View style={[styles.progressLineEmpty, { backgroundColor: colors.border }]} />
         <StepDot filled={false} />
       </View>
 
@@ -377,10 +420,20 @@ export default function VehicleSelectionScreen() {
       </ScrollView>
 
       {/* ── Sticky footer ── */}
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 14 }]}>
+      <View
+        style={[
+          styles.footer,
+          {
+            paddingBottom: insets.bottom + 14,
+            backgroundColor: colors.surface,
+            borderTopColor: colors.border,
+            shadowColor: selectedId ? colors.primary : "#000",
+          },
+        ]}
+      >
         {/* Selection summary */}
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryThumbWrap}>
+        <View style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.summaryThumbWrap, { backgroundColor: summaryThumbBg }]}>
             {selectedVehicle?.imageKey ? (
               <Image
                 source={IMAGES[selectedVehicle.imageKey]}
@@ -388,30 +441,31 @@ export default function VehicleSelectionScreen() {
                 resizeMode="contain"
               />
             ) : selectedVehicle?.emoji ? (
-              <View style={[styles.summaryEmojiWrap, { backgroundColor: selectedVehicle.emojiBg ?? "#F3F4F6" }]}>
+              <View style={styles.summaryEmojiWrap}>
                 <Text style={styles.summaryEmoji}>{selectedVehicle.emoji}</Text>
               </View>
             ) : (
-              <LinearGradient
-                colors={[PINK + "30", ORANGE + "18"]}
-                style={styles.summaryThumbPlaceholder}
-              >
-                <Feather name="truck" size={20} color={PINK} />
-              </LinearGradient>
+              <View style={[styles.summaryThumbPlaceholder, { backgroundColor: colors.primarySoft }]}>
+                <Feather name="truck" size={20} color={colors.primary} />
+              </View>
             )}
           </View>
 
           <View style={{ flex: 1 }}>
-            <Text style={styles.summaryLabel}>
+            <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>
               {selectedVehicle ? "You have selected" : "No vehicle selected"}
             </Text>
             {selectedVehicle && (
-              <Text style={styles.summaryName}>{selectedVehicle.name}</Text>
+              <Text style={[styles.summaryName, { color: colors.foreground }]}>
+                {selectedVehicle.name}
+              </Text>
             )}
           </View>
 
           {selectedVehicle && (
-            <Text style={styles.summaryPrice}>{selectedVehicle.price}</Text>
+            <Text style={[styles.summaryPrice, { color: colors.primary }]}>
+              {selectedVehicle.price}
+            </Text>
           )}
         </View>
 
@@ -420,22 +474,32 @@ export default function VehicleSelectionScreen() {
           activeOpacity={selectedId ? 0.82 : 1}
           onPress={handleContinue}
           disabled={!selectedId}
-          style={styles.ctaTouchable}
+          style={[
+            styles.ctaTouchable,
+            {
+              shadowColor:   selectedId ? colors.primary : "transparent",
+              shadowOpacity: selectedId ? 0.35 : 0,
+            },
+          ]}
         >
-          <LinearGradient
-            colors={selectedId ? [PINK, ORANGE] : ["#E5E7EB", "#E5E7EB"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.ctaBtn}
+          <View
+            style={[
+              styles.ctaBtn,
+              { backgroundColor: selectedId ? colors.primary : colors.muted },
+            ]}
           >
-            <Text style={[styles.ctaText, { color: selectedId ? "#fff" : TEXT_MUTED }]}>
+            <Text style={[styles.ctaText, { color: selectedId ? "#fff" : colors.mutedForeground }]}>
               Continue
             </Text>
-            <Feather name="arrow-right" size={20} color={selectedId ? "#fff" : TEXT_MUTED} />
-          </LinearGradient>
+            <Feather
+              name="arrow-right"
+              size={20}
+              color={selectedId ? "#fff" : colors.mutedForeground}
+            />
+          </View>
         </TouchableOpacity>
       </View>
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -454,7 +518,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 12,
-    backgroundColor: "#fff",
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
@@ -467,12 +531,10 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: "800",
-    color: TEXT_PRIMARY,
     letterSpacing: -0.3,
   },
   headerSub: {
     fontSize: 12,
-    color: TEXT_MUTED,
     fontWeight: "500",
     marginTop: 1,
   },
@@ -480,7 +542,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "#fff",
+    borderWidth: 1,
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 12,
@@ -490,7 +552,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  helpText: { fontSize: 12, fontWeight: "700", color: PINK },
+  helpText: { fontSize: 12, fontWeight: "700" },
 
   // Progress
   progressRow: {
@@ -517,7 +579,6 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 3,
     borderRadius: 2,
-    backgroundColor: "#E5E7EB",
     marginHorizontal: -2,
   },
 
@@ -529,17 +590,12 @@ const styles = StyleSheet.create({
   cardWrap: {
     flex: 1,
     borderRadius: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
   },
+  // Glow layer — shadowColor injected inline per-vehicle accent
   cardGlow: {
     position: "absolute",
     inset: -3,
     borderRadius: 23,
-    shadowColor: PINK,
     shadowOpacity: 0.38,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 6 },
@@ -551,33 +607,21 @@ const styles = StyleSheet.create({
     flex: 1,
     alignSelf: "stretch",
   },
+  // Card bg/border/borderWidth all injected inline
   card: {
     borderRadius: 20,
     overflow: "hidden",
     flex: 1,
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.9)",
-  },
-  cardSelected: {
-    borderColor: PINK,
-    borderWidth: 2,
-  },
-  cardInner: {
-    flexDirection: "column",
-    alignSelf: "stretch",
-    flex: 1,
   },
 
-  // ── IMAGE ZONE — white bg, fixed 120px, badges float inside ──
+  // IMAGE ZONE — bg + border injected inline
   imageZone: {
     width: "100%",
     height: 120,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
-    backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.05)",
   },
   vehicleImage: {
     width: "100%",
@@ -604,9 +648,9 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 8,
   },
-  badgeText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.2 },
+  badgeText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.2, color: "#fff" },
 
-  // Check circle — top-right inside imageZone
+  // Check circle — top-right inside imageZone, bg+shadow injected inline
   checkCircle: {
     position: "absolute",
     top: 8,
@@ -617,30 +661,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     zIndex: 4,
-    shadowColor: PINK,
     shadowOpacity: 0.45,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
   },
 
-  // ── TEXT ZONE — always below image, never overlaps ──
+  // TEXT ZONE
   textZone: {
     paddingHorizontal: 11,
     paddingTop: 9,
     paddingBottom: 11,
     gap: 4,
   },
-  cardName: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: TEXT_PRIMARY,
-    letterSpacing: -0.2,
-  },
-  cardTagline: {
-    fontSize: 11,
-    color: TEXT_MUTED,
-    fontWeight: "500",
-  },
+  cardName:    { fontSize: 15, fontWeight: "800", letterSpacing: -0.2 },
+  cardTagline: { fontSize: 11, fontWeight: "500" },
   infoRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -652,10 +686,10 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   infoText:    { fontSize: 10, fontWeight: "600", flex: 1 },
-  infoDivider: { width: 1, height: 10, backgroundColor: "#E5E7EB" },
+  infoDivider: { width: 1, height: 10 },
   priceText:   { fontSize: 11, fontWeight: "800" },
 
-  // Footer
+  // Footer — bg+border injected inline
   footer: {
     position: "absolute",
     bottom: 0,
@@ -664,30 +698,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 14,
     gap: 10,
-    backgroundColor: "rgba(255,248,252,0.97)",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderTopWidth: 1,
-    borderColor: BORDER,
-    shadowColor: PINK,
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.10,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: -6 },
     elevation: 12,
     ...Platform.select({ web: { backdropFilter: "blur(12px)" } }),
   },
 
-  // Summary card
+  // Summary card — bg+border injected inline
   summaryCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    backgroundColor: "#fff",
     borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 9,
     borderWidth: 1,
-    borderColor: BORDER,
     shadowColor: "#000",
     shadowOpacity: 0.05,
     shadowRadius: 8,
@@ -699,22 +728,19 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 10,
     overflow: "hidden",
-    backgroundColor: "#FFF0F6",
   },
   summaryThumb:            { width: "100%", height: "100%" },
   summaryEmojiWrap:        { width: "100%", height: "100%", alignItems: "center", justifyContent: "center" },
   summaryEmoji:            { fontSize: 24 },
   summaryThumbPlaceholder: { width: "100%", height: "100%", alignItems: "center", justifyContent: "center" },
-  summaryLabel: { fontSize: 11, color: TEXT_MUTED, fontWeight: "500" },
-  summaryName:  { fontSize: 16, fontWeight: "800", color: TEXT_PRIMARY, marginTop: 1 },
-  summaryPrice: { fontSize: 18, fontWeight: "800", color: PINK },
+  summaryLabel: { fontSize: 11, fontWeight: "500" },
+  summaryName:  { fontSize: 16, fontWeight: "800", marginTop: 1 },
+  summaryPrice: { fontSize: 18, fontWeight: "800" },
 
-  // CTA
+  // CTA — bg injected inline; shadowColor injected inline
   ctaTouchable: {
     borderRadius: 16,
     overflow: "hidden",
-    shadowColor: PINK,
-    shadowOpacity: 0.35,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 5 },
     elevation: 7,
