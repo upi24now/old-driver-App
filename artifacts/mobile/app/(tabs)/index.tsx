@@ -285,27 +285,18 @@ export default function HomeScreen() {
           !locOk   ? "GPS Location"  : null,
         ].filter(Boolean).join(" & ");
 
-        await new Promise<void>((resolve) => {
-          Alert.alert(
-            "Setup Incomplete",
-            `${missing} ${missing.includes("&") ? "permissions are" : "permission is"} not enabled. You may miss delivery requests without them.`,
-            [
-              {
-                text: "Fix Setup",
-                onPress: () => {
-                  router.push("/background-setup?back=1");
-                  resolve();
-                },
-              },
-              {
-                text: "Go Online Anyway",
-                style: "cancel",
-                onPress: () => resolve(),
-              },
-            ],
-            { cancelable: false }
-          );
-        });
+        Alert.alert(
+          "Permissions Required",
+          `${missing} ${missing.includes("&") ? "permissions are" : "permission is"} required to go online and receive delivery requests. Please enable them in setup.`,
+          [
+            {
+              text: "Fix Setup",
+              onPress: () => router.push("/background-setup?back=1"),
+            },
+          ],
+          { cancelable: false }
+        );
+        return; // Hard block — do not call setDriverOnline
       }
     }
 
