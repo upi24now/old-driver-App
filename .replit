@@ -1,4 +1,4 @@
-modules = ["nodejs-24", "python-3.11"]
+modules = ["nodejs-20", "nodejs-24", "python-3.11"]
 
 [deployment]
 router = "application"
@@ -46,3 +46,4 @@ EXPO_PUBLIC_DOMAIN = "8d87a5af-e82c-4a3b-9696-3ede901f26a1-00-1uvs4s41ult22.sisk
 TEST_OTP_PHONES = "8299013350:123456"
 
 [nix]
+packages = ["nano"]

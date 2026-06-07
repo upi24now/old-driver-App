@@ -348,27 +348,35 @@ export default function BackgroundSetupScreen() {
         </StepCard>
 
         {/* ── Card 3: Battery Optimization ──────────────────────────────── */}
+        {/* statusOk is always false — Android does not expose battery exemption  */}
+        {/* status to apps. Opening settings is not the same as applying the fix. */}
         <StepCard
           num="3"
           icon="battery-charging"
           title="Unrestricted Battery"
           required={false}
-          statusLabel={batteryOpened ? "Settings opened" : "Needs setup"}
-          statusOk={batteryOpened}
+          statusLabel={batteryOpened ? "Opened — verify manually" : "Recommended"}
+          statusOk={false}
           body={"Open battery settings and set this app to \"Unrestricted\", \"Don't optimize\", or \"Allow background activity\"."}
           colors={colors}
         >
-          {batteryOpened ? (
-            <DoneBadge label="Settings opened — select Unrestricted" />
-          ) : (
-            <TouchableOpacity
-              style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
-              onPress={handleBattery}
-              activeOpacity={0.85}
-            >
-              <Feather name="battery-charging" size={14} color="#fff" />
-              <Text style={styles.primaryBtnText}>Open Battery Settings</Text>
-            </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
+            onPress={handleBattery}
+            activeOpacity={0.85}
+          >
+            <Feather name="battery-charging" size={14} color="#fff" />
+            <Text style={styles.primaryBtnText}>
+              {batteryOpened ? "Open Battery Settings Again" : "Open Battery Settings"}
+            </Text>
+          </TouchableOpacity>
+          {batteryOpened && (
+            <View style={[styles.doneBadge, { backgroundColor: "transparent" }]}>
+              <Feather name="info" size={13} color={colors.mutedForeground} />
+              <Text style={[styles.doneText, { color: colors.mutedForeground }]}>
+                {"Select \"Unrestricted\" or \"Don't optimize\" in the settings page."}
+              </Text>
+            </View>
           )}
           <View style={[styles.infoBox, { backgroundColor: colors.muted }]}>
             <Feather
@@ -384,27 +392,35 @@ export default function BackgroundSetupScreen() {
         </StepCard>
 
         {/* ── Card 4: Auto-start / Background Activity ───────────────────── */}
+        {/* statusOk is always false — auto-start state is not queryable by apps  */}
+        {/* on any Android OEM. Opening App Info does not confirm the toggle is on. */}
         <StepCard
           num="4"
           icon="smartphone"
           title={"Auto-start & Background Activity"}
           required={false}
-          statusLabel={autostartOpened ? "Settings opened" : "Needs setup"}
-          statusOk={autostartOpened}
+          statusLabel={autostartOpened ? "Opened — verify manually" : "Recommended"}
+          statusOk={false}
           body={"On Realme, Oppo, Vivo, Xiaomi, and Samsung: open App Info and enable Auto Start and Background Activity if available."}
           colors={colors}
         >
-          {autostartOpened ? (
-            <DoneBadge label="App Info opened — enable Auto Start" />
-          ) : (
-            <TouchableOpacity
-              style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
-              onPress={handleAutostart}
-              activeOpacity={0.85}
-            >
-              <Feather name="settings" size={14} color="#fff" />
-              <Text style={styles.primaryBtnText}>Open App Info</Text>
-            </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
+            onPress={handleAutostart}
+            activeOpacity={0.85}
+          >
+            <Feather name="settings" size={14} color="#fff" />
+            <Text style={styles.primaryBtnText}>
+              {autostartOpened ? "Open App Info Again" : "Open App Info"}
+            </Text>
+          </TouchableOpacity>
+          {autostartOpened && (
+            <View style={[styles.doneBadge, { backgroundColor: "transparent" }]}>
+              <Feather name="info" size={13} color={colors.mutedForeground} />
+              <Text style={[styles.doneText, { color: colors.mutedForeground }]}>
+                {"Look for \"Auto Start\" or \"Background Activity\" and enable it."}
+              </Text>
+            </View>
           )}
           <View style={[styles.infoBox, { backgroundColor: colors.muted }]}>
             <Feather

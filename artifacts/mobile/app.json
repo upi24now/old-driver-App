@@ -46,7 +46,9 @@
         {
           "icon": "./assets/images/icon.png",
           "color": "#FF4D8D",
-          "sounds": ["./assets/ringtone.wav"],
+          "sounds": [
+            "./assets/ringtone.wav"
+          ],
           "mode": "production"
         }
       ]
@@ -57,8 +59,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": "5b4db21a-d392-45e3-bd79-e63924dfa18f"
+        "projectId": "3222bc75-37c6-45b2-a748-ca3a4a7f3a15"
       }
-    }
+    },
+    "owner": "bikeapp"
   }
 }

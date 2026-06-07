@@ -167,15 +167,6 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // ─── Auth restore redirect ────────────────────────────────────────────────
-  // Firebase Auth reads the persisted session from AsyncStorage asynchronously.
-  // Once authLoading settles (onAuthStateChanged has fired), redirect to the
-  // dashboard if the driver is already authenticated — no re-login needed.
-  useEffect(() => {
-    if (authLoading) return;
-    if (driverUid) router.replace("/(tabs)");
-  }, [driverUid, authLoading]);
-
   const isValid = phone.replace(/\D/g, "").length === 10;
 
   async function goToOtp() {
@@ -253,8 +244,19 @@ export default function LoginScreen() {
   );
 
   // Show blank screen while Firebase restores session from AsyncStorage.
-  // This prevents the login form from flashing before the redirect fires.
+  // This prevents the login form from flashing before _layout.tsx routes.
   if (authLoading) {
+    return (
+      <View style={[styles.root, styles.loadingRoot, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  // Session already active — _layout.tsx is the single source of truth for routing
+  // authenticated users to the correct screen (onboarding, permissions, or dashboard).
+  // Do NOT redirect here; doing so bypasses the onboarding and permission checks.
+  if (driverUid) {
     return (
       <View style={[styles.root, styles.loadingRoot, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.primary} />

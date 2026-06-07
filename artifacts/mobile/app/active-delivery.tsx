@@ -724,10 +724,12 @@ export default function ActiveDeliveryScreen() {
     void (async () => {
       try {
         const { granted } = await Location.getForegroundPermissionsAsync();
+        console.log("[Location] permission granted:", granted, "| orderId:", orderId);
         if (!granted) {
           console.warn("[Location] Foreground permission not granted — live tracking disabled for this delivery");
           return;
         }
+        console.log("[Location] Starting watchPositionAsync for order:", orderId);
         const sub = await Location.watchPositionAsync(
           {
             accuracy:          Location.Accuracy.High,
@@ -735,13 +737,19 @@ export default function ActiveDeliveryScreen() {
             distanceInterval:  30,
           },
           (position) => {
-            updateDriverLocation(orderId, position).catch(console.error);
+            const { latitude, longitude, accuracy } = position.coords;
+            console.log("[Location] GPS callback — lat:", latitude.toFixed(5), "lng:", longitude.toFixed(5), "accuracy:", accuracy, "m");
+            updateDriverLocation(orderId, position)
+              .then(() => console.log("[Location] Firestore write OK — orders/", orderId))
+              .catch((err: unknown) => console.error("[Location] Firestore write FAILED — orders/", orderId, err));
           },
         );
         if (removed) {
           sub.remove();
+          console.log("[Location] Watcher discarded (screen unmounted before start)");
         } else {
           locationSubRef.current = sub;
+          console.log("[Location] Watcher active for order:", orderId);
         }
       } catch (e) {
         console.warn("[Location] watchPositionAsync failed:", e);
@@ -752,6 +760,7 @@ export default function ActiveDeliveryScreen() {
       removed = true;
       locationSubRef.current?.remove();
       locationSubRef.current = null;
+      console.log("[Location] Watcher stopped for order:", orderId);
     };
   // orderId is stable for the lifetime of this screen — intentional single-mount.
   // eslint-disable-next-line react-hooks/exhaustive-deps

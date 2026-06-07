@@ -50,14 +50,20 @@ function RootLayoutNav() {
     hasNavigated.current = true;
     if (!driverUid)                return; // no session — stay on login
 
-    if (!vehicle?.id)                            { router.replace("/vehicle-selection");    return; }
-    if (!profile?.name)                          { router.replace("/profile-setup");        return; }
-    if (!documentsSubmitted)                     { router.replace("/document-upload");      return; }
+    console.log("[Auth] routing:", {
+      uid: driverUid.slice(-4),
+      vehicle: !!vehicle?.id, profile: !!profile?.name,
+      documentsSubmitted, verificationStatus, backgroundSetupShown,
+    });
+
+    if (!vehicle?.id)                            { console.log("[Auth] → vehicle-selection");    router.replace("/vehicle-selection");    return; }
+    if (!profile?.name)                          { console.log("[Auth] → profile-setup");        router.replace("/profile-setup");        return; }
+    if (!documentsSubmitted)                     { console.log("[Auth] → document-upload");      router.replace("/document-upload");      return; }
     // Fee screen: only when onboardingFeeApplies is explicitly true (brand-new signup).
     // Existing drivers never have this field set, so they always skip this branch.
     if (onboardingFeeApplies && onboardingFeeStatus !== "paid" && verificationStatus !== "approved") {
-                                                   router.replace("/onboarding-fee");       return; }
-    if (verificationStatus !== "approved")       { router.replace("/verification-pending"); return; }
+                                                   console.log("[Auth] → onboarding-fee");       router.replace("/onboarding-fee");       return; }
+    if (verificationStatus !== "approved")       { console.log("[Auth] → verification-pending"); router.replace("/verification-pending"); return; }
 
     // Check real runtime permissions — backgroundSetupShown alone is not
     // sufficient because the driver may have tapped "Skip" on first visit.
@@ -68,9 +74,12 @@ function RootLayoutNav() {
         Location.getForegroundPermissionsAsync().catch(() => ({ granted: false })),
       ]);
       const permsGranted = notifOk && locStatus.granted;
+      console.log("[Auth] perms:", { notifOk, locationGranted: locStatus.granted, backgroundSetupShown });
       if (!permsGranted || !backgroundSetupShown) {
+        console.log("[Auth] → background-setup");
         router.replace("/background-setup");
       } else {
+        console.log("[Auth] → (tabs)");
         router.replace("/(tabs)");
       }
     })();
