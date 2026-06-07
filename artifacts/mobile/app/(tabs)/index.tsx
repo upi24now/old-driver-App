@@ -1,10 +1,11 @@
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { checkNotificationPermissions } from "@/utils/notifications";
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   Easing,
@@ -255,6 +256,8 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const {
+    authLoading,
+    driverUid,
     isOnline: online,
     setOnline: setDriverOnline,
     subscriptionActive,
@@ -268,6 +271,18 @@ export default function HomeScreen() {
     activeOrderCount,
     incomingRide,
   } = useDriver();
+
+  if (authLoading) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (!driverUid) {
+    return <Redirect href="/login" />;
+  }
 
   async function setOnline(v: boolean) {
     // Before going online, check critical permissions and warn if missing.

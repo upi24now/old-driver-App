@@ -109,6 +109,7 @@ function RootLayoutNav() {
       initialRouteName="login"
       screenOptions={{ headerShown: false, animation: "slide_from_right" }}
     >
+      <Stack.Screen name="index" options={{ animation: "none" }} />
       <Stack.Screen name="login" />
       <Stack.Screen name="otp" />
       <Stack.Screen name="vehicle-selection" />
