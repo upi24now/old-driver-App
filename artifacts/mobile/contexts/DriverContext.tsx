@@ -32,6 +32,7 @@ import {
   rejectOrder,
   requestWithdrawal as fsRequestWithdrawal,
   updateDriverBackgroundSetup,
+  PERMISSION_SETUP_VERSION,
   type DriverDoc,
   type OrderDoc,
   type OrderStatus,
@@ -221,6 +222,7 @@ type DriverState = {
   requestWithdrawal: (amount: number, upiId: string) => Promise<{ ok: boolean; reason?: string }>;
 
   backgroundSetupShown:     boolean;
+  permissionSetupVersion:   number;   // version of setup flow completed; 0 = never done
   markBackgroundSetupShown: () => Promise<void>;
 
   // ── Onboarding fee ────────────────────────────────────────────────────────
@@ -340,6 +342,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
   const [overlayPermissionGranted,  setOverlayPermissionGranted]  = useState(false);
   const [backgroundSetupShown,      setBackgroundSetupShown]      = useState(false);
+  const [permissionSetupVersion,    setPermissionSetupVersion]    = useState(0);
   const [onboardingFeeApplies,      setOnboardingFeeApplies]      = useState(false);
   const [onboardingFeeStatus,       setOnboardingFeeStatus]       = useState<string | null>(null);
   const [onboardingFeeAmount,       setOnboardingFeeAmount]       = useState<number | null>(null);
@@ -398,6 +401,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             setVerifStatus(driverDoc.verificationStatus ?? null);
             setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
             setBackgroundSetupShown(driverDoc.backgroundSetupShown ?? false);
+            setPermissionSetupVersion(driverDoc.permissionSetupVersion ?? 0);
             setOnboardingFeeApplies(driverDoc.onboardingFeeApplies ?? false);
             setOnboardingFeeStatus(driverDoc.onboardingFeeStatus ?? null);
             setOnboardingFeeAmount(driverDoc.onboardingFeeAmount ?? null);
@@ -538,7 +542,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       return "/onboarding-fee";
     }
     if (d.verificationStatus !== "approved") return "/verification-pending";
-    if (!d.backgroundSetupShown)             return "/background-setup";
+    if ((d.permissionSetupVersion ?? 0) < PERMISSION_SETUP_VERSION) return "/background-setup";
     return "/(tabs)";
   }
 
@@ -592,6 +596,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         setVerifStatus(driverDoc.verificationStatus ?? null);
         setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
         setBackgroundSetupShown(driverDoc.backgroundSetupShown ?? false);
+        setPermissionSetupVersion(driverDoc.permissionSetupVersion ?? 0);
         // Restore onboarding fee state — absent on existing/old drivers (defaults to false/null).
         setOnboardingFeeApplies(driverDoc.onboardingFeeApplies ?? false);
         setOnboardingFeeStatus(driverDoc.onboardingFeeStatus ?? null);
@@ -621,6 +626,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
   const markBackgroundSetupShown = async (): Promise<void> => {
     setBackgroundSetupShown(true);
+    setPermissionSetupVersion(PERMISSION_SETUP_VERSION);
     if (driverUid) {
       await updateDriverBackgroundSetup(driverUid);
     }
@@ -663,6 +669,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     setVerifStatus(null);
     setDocsSubmitted(false);
     setBackgroundSetupShown(false);
+    setPermissionSetupVersion(0);
     setOnboardingFeeApplies(false);
     setOnboardingFeeStatus(null);
     setOnboardingFeeAmount(null);
@@ -1178,6 +1185,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         orderRemovalReasons,
         requestWithdrawal,
         backgroundSetupShown,
+        permissionSetupVersion,
         markBackgroundSetupShown,
         onboardingFeeApplies,
         onboardingFeeStatus,

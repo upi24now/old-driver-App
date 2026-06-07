@@ -21,6 +21,7 @@ import { DriverProvider, useDriver } from "@/contexts/DriverContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { useNotifications } from "@/hooks/useNotifications";
 import { checkNotificationPermissions } from "@/utils/notifications";
+import { PERMISSION_SETUP_VERSION } from "@/utils/firestore";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -35,7 +36,8 @@ function RootLayoutNav() {
   const {
     authLoading, driverUid, profile, vehicle,
     documentsSubmitted, verificationStatus,
-    backgroundSetupShown, onboardingFeeApplies, onboardingFeeStatus,
+    backgroundSetupShown, permissionSetupVersion,
+    onboardingFeeApplies, onboardingFeeStatus,
   } = useDriver();
 
   // ── Auth-restore navigation ───────────────────────────────────────────────
@@ -73,10 +75,17 @@ function RootLayoutNav() {
         checkNotificationPermissions().catch(() => false),
         Location.getForegroundPermissionsAsync().catch(() => ({ granted: false })),
       ]);
-      const permsGranted = notifOk && locStatus.granted;
-      console.log("[Auth] perms:", { notifOk, locationGranted: locStatus.granted, backgroundSetupShown });
-      if (!permsGranted || !backgroundSetupShown) {
-        console.log("[Auth] → background-setup");
+      const permsGranted     = notifOk && locStatus.granted;
+      const setupVersionOk   = permissionSetupVersion >= PERMISSION_SETUP_VERSION;
+      console.log("[Auth] perms:", {
+        notifOk,
+        locationGranted: locStatus.granted,
+        permissionSetupVersion,
+        required: PERMISSION_SETUP_VERSION,
+      });
+      if (!permsGranted || !setupVersionOk) {
+        console.log("[Auth] → background-setup",
+          !permsGranted ? "(perms missing)" : "(version outdated)");
         router.replace("/background-setup");
       } else {
         console.log("[Auth] → (tabs)");

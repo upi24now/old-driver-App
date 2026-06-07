@@ -62,7 +62,9 @@ export type DriverDoc = {
   totalTrips?: number;  // all-time completed trip count; default 0 when absent
 
   // ── Background permission setup ───────────────────────────────────────────
-  backgroundSetupShown?: boolean;  // true after driver has seen the setup screen once
+  backgroundSetupShown?:        boolean;  // true after driver has seen the setup screen once
+  permissionSetupVersion?:      number;   // version of the setup flow completed; see PERMISSION_SETUP_VERSION
+  permissionSetupCompletedAt?:  unknown;  // Firestore server Timestamp; set when version is written
 
   // ── Onboarding fee ────────────────────────────────────────────────────────
   // These fields are ONLY set for brand-new drivers during createDriverDoc().
@@ -340,13 +342,32 @@ export async function updateDriverPushToken(
 }
 
 /**
- * Mark that the driver has been shown the background-permission setup screen.
- * Written once; checked on every app start to skip re-showing the screen.
+ * Version sentinel for the permission setup flow.
+ * Increment this whenever the setup screen adds new required steps so that
+ * existing drivers (who have only completed an older version) are re-routed
+ * to the screen on their next app start.
+ *
+ * History:
+ *   1 — original boolean-only gate (backgroundSetupShown: true)
+ *   2 — versioned gate; notifications + foreground GPS required
+ */
+export const PERMISSION_SETUP_VERSION = 2;
+
+/**
+ * Mark that the driver has completed the background-permission setup screen
+ * at the current PERMISSION_SETUP_VERSION.
+ *
+ * Writes:
+ *   backgroundSetupShown:       true         (legacy compat — keeps old routing working)
+ *   permissionSetupVersion:     2            (version of the setup flow completed)
+ *   permissionSetupCompletedAt: Timestamp    (when the driver tapped "Continue")
  */
 export async function updateDriverBackgroundSetup(uid: string): Promise<void> {
   await setDoc(doc(db, "drivers", uid), {
-    backgroundSetupShown: true,
-    updatedAt:            serverTimestamp(),
+    backgroundSetupShown:       true,
+    permissionSetupVersion:     PERMISSION_SETUP_VERSION,
+    permissionSetupCompletedAt: serverTimestamp(),
+    updatedAt:                  serverTimestamp(),
   }, { merge: true });
 }
 
