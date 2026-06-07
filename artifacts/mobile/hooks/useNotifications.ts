@@ -70,12 +70,12 @@ export function useNotifications(): void {
     // Listener: notification received while app is foregrounded
     const foregroundSub = Notif.addNotificationReceivedListener(
       (notification) => {
+        const data = notification.request.content.data as Record<string, unknown> | null;
         console.log(
-          "[Notifications] Received in foreground:",
-          notification.request.identifier,
-          notification.request.content.title
+          "[FCM] notification received foreground type:", data?.type ?? "unknown",
+          "id:", notification.request.identifier,
         );
-        // The in-app ride-request screen already handles this visually;
+        // The in-app ride-request screen already handles incoming orders visually;
         // no extra action needed here.
       }
     );
@@ -91,17 +91,18 @@ export function useNotifications(): void {
     Notif.getLastNotificationResponseAsync()
       .then((response) => {
         if (response) {
+          const data = response.notification.request.content.data as Record<string, unknown> | null;
+          const orderId = (data?.orderId as string | undefined) ?? "(none)";
           console.log(
-            "[Notifications] App launched from notification:",
-            response.notification.request.identifier
+            "[FCM] notification tap orderId:", orderId,
+            "id:", response.notification.request.identifier,
           );
           handleNotificationResponse(response);
         }
       })
       .catch((err) =>
         console.error(
-          "[Notifications] getLastNotificationResponseAsync error:",
-          err
+          "[FCM] action failed (getLastNotificationResponseAsync):", err,
         )
       );
 

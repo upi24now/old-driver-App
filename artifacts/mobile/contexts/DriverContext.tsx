@@ -494,6 +494,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       if (order.id === lastSeenOrderId.current) return;
       lastSeenOrderId.current = order.id;
 
+      console.log("[FCM] notification received from Firestore orderId:", order.id);
+
       const ride = orderDocToRide(order);
       setIncomingRide(ride);
 

@@ -252,15 +252,27 @@ export async function sendIncomingOrderNotification(
 ): Promise<void> {
   if (!Notif) return;
 
-  // Cancel previous order notification first (prevent stacking)
+  console.log("[FCM] notification received orderId:", params.orderId);
+
+  // Cancel previous local order notification (prevent stacking).
   await cancelIncomingOrderNotification();
 
+  // Dismiss ALL system notifications before posting our local one.
+  // The server FCM carries a `notification` block so Android renders a
+  // system notification immediately (sound + vibration, NO action buttons).
+  // Clearing it first ensures only a single notification appears in the
+  // tray — our local one, which has the Accept / Reject action buttons.
+  try { await Notif.dismissAllNotificationsAsync(); } catch { /* ignore */ }
+
   try {
+    const earning    = params.earning > 0 ? ` • ₹${params.earning}` : "";
+    const distanceKm = params.distanceKm > 0 ? ` • ${params.distanceKm} km` : "";
+
     const id = await Notif.scheduleNotificationAsync({
       content: {
-        title: "🛵  New Delivery Request!",
-        body: `${params.customer} • ₹${params.earning} • ${params.distanceKm} km`,
-        subtitle: `${params.pickup} → ${params.drop}`,
+        title: "🛵  New Delivery Request",
+        body:  `${params.pickup} → ${params.drop}${earning}${distanceKm}`,
+        subtitle: params.customer,
         data: {
           type:        "incoming_order",
           orderId:     params.orderId,
@@ -277,22 +289,19 @@ export async function sendIncomingOrderNotification(
         categoryIdentifier: CATEGORY_ORDERS,
         ...(Platform.OS === "android" && {
           channelId:   CHANNEL_ORDERS,
-          color:       "#FF4D8D",
+          color:       "#059669",
           vibrate:     [0, 1200, 200, 1200, 200, 1200, 500],
           sticky:      false,
-          autoDismiss: true,
+          autoDismiss: false,   // stays in tray until explicitly dismissed or action taken
         }),
       },
       trigger: null, // fire immediately
     });
 
     activeOrderNotifId = id;
-    console.log("[Notifications] Incoming order notification sent:", id);
+    console.log("[FCM] local urgent notification shown notifId:", id);
   } catch (err) {
-    console.error(
-      "[Notifications] Failed to send incoming order notification:",
-      err
-    );
+    console.error("[FCM] action failed (sendIncomingOrderNotification):", err);
   }
 }
 
@@ -375,10 +384,11 @@ export function handleNotificationResponse(
     | null
     | undefined;
 
-  const type   = data?.type   as string | undefined;
-  const screen = data?.screen as string | undefined;
+  const type    = data?.type    as string | undefined;
+  const screen  = data?.screen  as string | undefined;
+  const orderId = (data?.orderId as string | undefined) ?? "";
 
-  console.log("[Notifications] Response:", actionIdentifier, "type:", type);
+  console.log("[FCM] response action:", actionIdentifier, "type:", type, "orderId:", orderId);
 
   if (type !== "incoming_order") return;
 
@@ -388,31 +398,40 @@ export function handleNotificationResponse(
     // accept transaction and then navigates to /active-delivery with full
     // route params.  No secondary navigation here — a second router call after
     // onAccept() would land the driver on a different screen with no params.
-    console.log("[Notifications] → Accept action");
-    orderHandlers?.onAccept();
+    console.log("[FCM] action received ACCEPT_ORDER orderId:", orderId);
+    try {
+      orderHandlers?.onAccept();
+      cancelIncomingOrderNotification().catch(() => {});
+    } catch (err) {
+      console.error("[FCM] action failed ACCEPT_ORDER:", err);
+    }
 
   } else if (actionIdentifier === ACTION_REJECT) {
     // ── Reject action button ───────────────────────────────────────────────
     // The app may stay backgrounded — no navigation needed.
-    console.log("[Notifications] → Reject action");
-    orderHandlers?.onReject();
+    console.log("[FCM] action received REJECT_ORDER orderId:", orderId);
+    try {
+      orderHandlers?.onReject();
+      cancelIncomingOrderNotification().catch(() => {});
+    } catch (err) {
+      console.error("[FCM] action failed REJECT_ORDER:", err);
+    }
 
   } else {
     // ── Plain notification tap ─────────────────────────────────────────────
     // Navigate to ride-request, passing orderId + order fields so the screen
     // can fetch the order directly if incomingRide is not yet set (background
     // or killed-app scenario — Firestore listener may not have fired yet).
-    const orderId    = (data?.orderId    as string | undefined) ?? "";
-    const customer   = (data?.customer   as string | undefined) ?? "";
-    const pickup     = (data?.pickup     as string | undefined) ?? "";
-    const pickupCity = (data?.pickupCity as string | undefined) ?? "";
-    const drop       = (data?.drop       as string | undefined) ?? "";
-    const dropCity   = (data?.dropCity   as string | undefined) ?? "";
-    const earning    = (data?.earning    as string | undefined) ?? "";
-    const distanceKm = (data?.distanceKm as string | undefined) ?? "";
+    const customer    = (data?.customer    as string | undefined) ?? "";
+    const pickup      = (data?.pickup      as string | undefined) ?? "";
+    const pickupCity  = (data?.pickupCity  as string | undefined) ?? "";
+    const drop        = (data?.drop        as string | undefined) ?? "";
+    const dropCity    = (data?.dropCity    as string | undefined) ?? "";
+    const earning     = (data?.earning     as string | undefined) ?? "";
+    const distanceKm  = (data?.distanceKm  as string | undefined) ?? "";
     const durationMin = (data?.durationMin as string | undefined) ?? "";
 
-    console.log("[Notifications] → Default tap, orderId:", orderId || "(none)");
+    console.log("[FCM] notification tap orderId:", orderId || "(none)");
     setTimeout(() => {
       try {
         if (orderId) {
@@ -427,7 +446,7 @@ export function handleNotificationResponse(
           router.push(screen ? (screen as Parameters<typeof router.push>[0]) : "/ride-request");
         }
       } catch (err) {
-        console.error("[Notifications] Navigate (tap) failed:", err);
+        console.error("[FCM] action failed (notification tap navigate):", err);
       }
     }, 600);
   }
