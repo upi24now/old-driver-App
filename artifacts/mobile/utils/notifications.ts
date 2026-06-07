@@ -189,6 +189,15 @@ export async function checkNotificationPermissions(): Promise<boolean> {
   return status.granted;
 }
 
+export async function getNotificationPermissionStatus(): Promise<{
+  granted: boolean;
+  canAskAgain: boolean;
+}> {
+  if (!Notif) return { granted: false, canAskAgain: false };
+  const status = (await Notif.getPermissionsAsync()) as unknown as PermStatus;
+  return { granted: status.granted, canAskAgain: status.canAskAgain };
+}
+
 export async function requestNotificationPermissions(): Promise<boolean> {
   if (!Notif) return false;
 

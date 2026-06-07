@@ -44,7 +44,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 import {
-  checkNotificationPermissions,
+  getNotificationPermissionStatus,
   requestNotificationPermissions,
 } from "@/utils/notifications";
 
@@ -94,34 +94,72 @@ export default function BackgroundSetupScreen() {
   const params   = useLocalSearchParams<{ back?: string }>();
   const fromProfile = params.back === "1";
 
-  const [notifGranted,    setNotifGranted]    = useState(false);
-  const [notifLoading,    setNotifLoading]    = useState(false);
-  const [locationGranted, setLocationGranted] = useState(false);
-  const [locationLoading, setLocationLoading] = useState(false);
-  const [batteryOpened,   setBatteryOpened]   = useState(false);
-  const [autostartOpened, setAutostartOpened] = useState(false);
-  const [saving,          setSaving]          = useState(false);
-  const [refreshing,      setRefreshing]      = useState(false);
+  const [notifGranted,       setNotifGranted]       = useState(false);
+  const [notifCanAskAgain,   setNotifCanAskAgain]   = useState(true);
+  const [notifLoading,       setNotifLoading]       = useState(false);
+  const [locationGranted,    setLocationGranted]    = useState(false);
+  const [locationCanAskAgain,setLocationCanAskAgain]= useState(true);
+  const [locationLoading,    setLocationLoading]    = useState(false);
+  const [batteryOpened,      setBatteryOpened]      = useState(false);
+  const [autostartOpened,    setAutostartOpened]    = useState(false);
+  const [saving,             setSaving]             = useState(false);
+  const [refreshing,         setRefreshing]         = useState(false);
 
   // ── Permission refresh ─────────────────────────────────────────────────────
   // Runs on mount and whenever the app returns to the foreground (after the
   // driver has been to device settings). This keeps the status badges live.
   async function refreshPermissions(): Promise<void> {
-    const [notif, loc] = await Promise.all([
-      checkNotificationPermissions().catch(() => false),
-      Location.getForegroundPermissionsAsync().catch(() => ({ granted: false })),
+    const [notifStatus, locStatus] = await Promise.all([
+      getNotificationPermissionStatus().catch(() => ({ granted: false, canAskAgain: false })),
+      Location.getForegroundPermissionsAsync().catch(() => ({ granted: false, canAskAgain: false })),
     ]);
-    setNotifGranted(notif);
-    setLocationGranted(loc.granted);
+    setNotifGranted(notifStatus.granted);
+    setNotifCanAskAgain(notifStatus.canAskAgain);
+    setLocationGranted(locStatus.granted);
+    setLocationCanAskAgain(locStatus.canAskAgain ?? false);
   }
 
   useEffect(() => {
-    void refreshPermissions();
+    async function initPermissions(): Promise<void> {
+      // Read current state so the UI reflects reality immediately.
+      const [notifStatus, locStatus] = await Promise.all([
+        getNotificationPermissionStatus().catch(() => ({ granted: false, canAskAgain: false })),
+        Location.getForegroundPermissionsAsync().catch(() => ({ granted: false, canAskAgain: false })),
+      ]);
+      setNotifGranted(notifStatus.granted);
+      setNotifCanAskAgain(notifStatus.canAskAgain);
+      setLocationGranted(locStatus.granted);
+      setLocationCanAskAgain(locStatus.canAskAgain ?? false);
+
+      // Auto-show OS popups for any ungranted permission the system will prompt
+      // for. Sequential so the driver sees one dialog at a time.
+      if (!notifStatus.granted && notifStatus.canAskAgain) {
+        setNotifLoading(true);
+        await requestNotificationPermissions();
+        const after = await getNotificationPermissionStatus()
+          .catch(() => ({ granted: false, canAskAgain: false }));
+        setNotifGranted(after.granted);
+        setNotifCanAskAgain(after.canAskAgain);
+        setNotifLoading(false);
+      }
+
+      if (!locStatus.granted && (locStatus.canAskAgain ?? true)) {
+        setLocationLoading(true);
+        try {
+          const { status, canAskAgain } = await Location.requestForegroundPermissionsAsync();
+          setLocationGranted(status === Location.PermissionStatus.GRANTED);
+          setLocationCanAskAgain(canAskAgain ?? false);
+        } catch {
+          setLocationGranted(false);
+        }
+        setLocationLoading(false);
+      }
+    }
+
+    void initPermissions();
 
     const handleAppState = (state: AppStateStatus) => {
-      if (state === "active") {
-        void refreshPermissions();
-      }
+      if (state === "active") void refreshPermissions();
     };
     const sub = AppState.addEventListener("change", handleAppState);
     return () => sub.remove();
@@ -131,29 +169,26 @@ export default function BackgroundSetupScreen() {
 
   async function handleEnableNotifs() {
     setNotifLoading(true);
-    const granted = await requestNotificationPermissions();
-    setNotifGranted(granted);
+    await requestNotificationPermissions();
+    const after = await getNotificationPermissionStatus()
+      .catch(() => ({ granted: false, canAskAgain: false }));
+    setNotifGranted(after.granted);
+    setNotifCanAskAgain(after.canAskAgain);
     setNotifLoading(false);
-    if (!granted) {
-      // System denied — open settings so driver can enable manually
-      await Linking.openSettings();
-    }
+    // No auto-open settings — UI renders the settings button when canAskAgain=false
   }
 
   async function handleEnableLocation() {
     setLocationLoading(true);
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      const granted = status === Location.PermissionStatus.GRANTED;
-      setLocationGranted(granted);
-      if (!granted) {
-        // System denied — open App Info so driver can grant manually
-        await openAppDetails();
-      }
+      const { status, canAskAgain } = await Location.requestForegroundPermissionsAsync();
+      setLocationGranted(status === Location.PermissionStatus.GRANTED);
+      setLocationCanAskAgain(canAskAgain ?? false);
     } catch {
       setLocationGranted(false);
     }
     setLocationLoading(false);
+    // No auto-open settings — UI renders the settings button when canAskAgain=false
   }
 
   async function handleBattery() {
@@ -261,7 +296,7 @@ export default function BackgroundSetupScreen() {
         >
           {notifGranted ? (
             <DoneBadge label="Notifications allowed" />
-          ) : (
+          ) : notifCanAskAgain ? (
             <TouchableOpacity
               style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
               onPress={handleEnableNotifs}
@@ -277,18 +312,23 @@ export default function BackgroundSetupScreen() {
                 </>
               )}
             </TouchableOpacity>
-          )}
-          {!notifGranted && (
-            <TouchableOpacity
-              style={[styles.ghostBtn, { borderColor: colors.border }]}
-              onPress={() => Linking.openSettings()}
-              activeOpacity={0.7}
-            >
-              <Feather name="external-link" size={13} color={colors.foreground} />
-              <Text style={[styles.ghostBtnText, { color: colors.foreground }]}>
-                Open App Settings
-              </Text>
-            </TouchableOpacity>
+          ) : (
+            <>
+              <View style={[styles.deniedBox, { backgroundColor: colors.muted }]}>
+                <Feather name="alert-circle" size={13} color="#b75d00" />
+                <Text style={[styles.deniedText, { color: colors.mutedForeground }]}>
+                  Permission permanently denied. Open Settings to enable.
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
+                onPress={() => Linking.openSettings()}
+                activeOpacity={0.85}
+              >
+                <Feather name="external-link" size={14} color="#fff" />
+                <Text style={styles.primaryBtnText}>Open Settings</Text>
+              </TouchableOpacity>
+            </>
           )}
         </StepCard>
 
@@ -305,7 +345,7 @@ export default function BackgroundSetupScreen() {
         >
           {locationGranted ? (
             <DoneBadge label="Location access granted" />
-          ) : (
+          ) : locationCanAskAgain ? (
             <TouchableOpacity
               style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
               onPress={handleEnableLocation}
@@ -321,18 +361,23 @@ export default function BackgroundSetupScreen() {
                 </>
               )}
             </TouchableOpacity>
-          )}
-          {!locationGranted && (
-            <TouchableOpacity
-              style={[styles.ghostBtn, { borderColor: colors.border }]}
-              onPress={openAppDetails}
-              activeOpacity={0.7}
-            >
-              <Feather name="external-link" size={13} color={colors.foreground} />
-              <Text style={[styles.ghostBtnText, { color: colors.foreground }]}>
-                Open App Settings
-              </Text>
-            </TouchableOpacity>
+          ) : (
+            <>
+              <View style={[styles.deniedBox, { backgroundColor: colors.muted }]}>
+                <Feather name="alert-circle" size={13} color="#b75d00" />
+                <Text style={[styles.deniedText, { color: colors.mutedForeground }]}>
+                  Permission permanently denied. Open Settings to enable.
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
+                onPress={openAppDetails}
+                activeOpacity={0.85}
+              >
+                <Feather name="external-link" size={14} color="#fff" />
+                <Text style={styles.primaryBtnText}>Open Settings</Text>
+              </TouchableOpacity>
+            </>
           )}
           <View style={[styles.infoBox, { backgroundColor: colors.muted }]}>
             <Feather
@@ -731,6 +776,15 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   doneText: { fontSize: 13, fontWeight: "600", color: "#00C853" },
+
+  deniedBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 7,
+    borderRadius: 10,
+    padding: 10,
+  },
+  deniedText: { fontSize: 12, lineHeight: 17, flex: 1 },
 
   refreshRow: {
     flexDirection: "row",
