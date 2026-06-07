@@ -1,0 +1,77 @@
+DRIVER APP
+
+Exact Android settings deep-link improvement.
+
+Do not run EAS build.
+
+Goal:
+Improve permission/readiness screen so buttons open the closest exact Android settings page instead of generic App Info wherever possible.
+
+Implement safe Android intent helpers using expo-intent-launcher.
+
+Add these helpers:
+
+1. openNotificationSettings()
+- Android: ACTION_APP_NOTIFICATION_SETTINGS
+- extras:
+  android.provider.extra.APP_PACKAGE = package name
+- fallback: Linking.openSettings()
+
+2. openOverlaySettings()
+- Android: android.settings.action.MANAGE_OVERLAY_PERMISSION
+- data: package:<app package>
+- fallback: App Info
+- Add this as optional "Display over other apps" card only if needed for urgent order overlay.
+- Do not block Continue on this.
+- Text must say: Optional — improves visible urgent alerts. Not required.
+
+3. openBatteryOptimizationRequest()
+- Android: android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+- data: package:<app package>
+- fallback: Battery settings / App Info
+- Do not mark complete automatically.
+
+4. openExactAppDetails()
+- Android: APPLICATION_DETAILS_SETTINGS
+- data: package:<app package>
+
+5. openBackgroundActivitySettings()
+- Try OEM-specific intents where safe:
+  - Realme/Oppo/OnePlus: app details first, then show guide Auto Launch / Background Activity
+  - Xiaomi/Redmi/POCO: securitycenter autostart intent if available, fallback App Info
+  - Vivo/iQOO: iManager/autostart intent if available, fallback App Info
+  - Samsung: battery optimization / background usage guide, fallback App Info
+- Catch all failures and fallback to App Info.
+- Never crash.
+
+6. Activity recognition
+- Do NOT add unless we actually use motion/activity data.
+- If added later, require ACTIVITY_RECOGNITION permission and clear purpose.
+- For now, do not add this card.
+
+Readiness screen changes:
+- Battery button should call openBatteryOptimizationRequest().
+- Notification denied/settings button should call openNotificationSettings().
+- Optional Overlay card can be added as recommended only if existing urgent-alert UX needs it.
+- Auto-start should show brand-specific exact guide and open closest possible settings.
+- Green status only after driver taps "YES, I ENABLED THIS".
+- Continue still requires only Notification + Foreground GPS.
+
+Do not change:
+- OTP
+- Firebase
+- wallet
+- orders
+- package name
+- routing
+- EAS config
+
+Run:
+pnpm typecheck
+
+Report:
+- exact intents added
+- fallback behavior
+- whether overlay card was added or skipped
+- typecheck result
+- confirmation no EAS build run

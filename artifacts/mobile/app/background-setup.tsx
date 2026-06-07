@@ -106,8 +106,31 @@ const AUTO_START_STEPS: Record<BrandFamily, string[]> = {
 };
 
 // ─── Settings openers ─────────────────────────────────────────────────────────
+// Every helper is fully wrapped — no uncaught rejection, no crash on any device.
 
-async function openBatterySettings(): Promise<void> {
+/**
+ * ACTION_APP_NOTIFICATION_SETTINGS — opens the exact per-app notification
+ * channel page (Android 8+).
+ * Fallback: Linking.openSettings() (generic settings root).
+ */
+async function openNotificationSettings(): Promise<void> {
+  if (Platform.OS !== "android") { await Linking.openSettings(); return; }
+  try {
+    await IntentLauncher.startActivityAsync(
+      "android.settings.APP_NOTIFICATION_SETTINGS" as IntentLauncher.ActivityAction,
+      { extra: { "android.provider.Settings.EXTRA_APP_PACKAGE": APP_PKG } },
+    );
+  } catch {
+    await Linking.openSettings();
+  }
+}
+
+/**
+ * REQUEST_IGNORE_BATTERY_OPTIMIZATIONS — takes the driver directly to the
+ * "Unrestricted / Don't optimize" dialog for this app.
+ * Fallback chain: BATTERY_SAVER_SETTINGS → App Info → generic settings.
+ */
+async function openBatteryOptimizationRequest(): Promise<void> {
   if (Platform.OS !== "android") { await Linking.openSettings(); return; }
   try {
     await IntentLauncher.startActivityAsync(
@@ -117,16 +140,27 @@ async function openBatterySettings(): Promise<void> {
   } catch {
     try {
       await IntentLauncher.startActivityAsync(
-        IntentLauncher.ActivityAction.APPLICATION_DETAILS_SETTINGS,
-        { data: `package:${APP_PKG}` },
+        "android.settings.BATTERY_SAVER_SETTINGS" as IntentLauncher.ActivityAction,
       );
     } catch {
-      await Linking.openSettings();
+      try {
+        await IntentLauncher.startActivityAsync(
+          IntentLauncher.ActivityAction.APPLICATION_DETAILS_SETTINGS,
+          { data: `package:${APP_PKG}` },
+        );
+      } catch {
+        await Linking.openSettings();
+      }
     }
   }
 }
 
-async function openAppDetails(): Promise<void> {
+/**
+ * APPLICATION_DETAILS_SETTINGS for this package.
+ * Used for GPS-denied fallback and background-activity guidance.
+ * Fallback: Linking.openSettings().
+ */
+async function openExactAppDetails(): Promise<void> {
   if (Platform.OS !== "android") { await Linking.openSettings(); return; }
   try {
     await IntentLauncher.startActivityAsync(
@@ -136,6 +170,65 @@ async function openAppDetails(): Promise<void> {
   } catch {
     await Linking.openSettings();
   }
+}
+
+/**
+ * OEM-specific auto-start / background-activity settings page.
+ *
+ * Each brand path is individually try/caught so a failure on one brand-specific
+ * intent immediately falls through to the next level — never crashes.
+ *
+ *   Xiaomi/Redmi/POCO → MIUI Security Centre autostart activity
+ *   Vivo/iQOO         → Vivo Permission Manager autostart activity
+ *   Samsung           → REQUEST_IGNORE_BATTERY_OPTIMIZATIONS (controls bg limits)
+ *   Realme/Oppo/OnePlus / generic → App Info (navigate manually per step guide)
+ *
+ * Final fallback for every brand: openExactAppDetails().
+ */
+async function openBackgroundActivitySettings(brand: BrandFamily): Promise<void> {
+  if (Platform.OS !== "android") { await Linking.openSettings(); return; }
+
+  if (brand === "xiaomi") {
+    try {
+      await IntentLauncher.startActivityAsync(
+        "android.intent.action.MAIN" as IntentLauncher.ActivityAction,
+        {
+          packageName: "com.miui.securitycenter",
+          className:   "com.miui.permcenter.autostart.AutoStartManagementActivity",
+          flags:       0x10000000, // FLAG_ACTIVITY_NEW_TASK
+        },
+      );
+      return;
+    } catch { /* fall through to App Info */ }
+  }
+
+  if (brand === "vivo") {
+    try {
+      await IntentLauncher.startActivityAsync(
+        "android.intent.action.MAIN" as IntentLauncher.ActivityAction,
+        {
+          packageName: "com.vivo.permissionmanager",
+          className:   "com.vivo.permissionmanager.activity.SoftPermissionDetailActivity",
+          flags:       0x10000000,
+        },
+      );
+      return;
+    } catch { /* fall through to App Info */ }
+  }
+
+  if (brand === "samsung") {
+    // Battery optimization controls background usage limits on Samsung
+    try {
+      await IntentLauncher.startActivityAsync(
+        "android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" as IntentLauncher.ActivityAction,
+        { data: `package:${APP_PKG}` },
+      );
+      return;
+    } catch { /* fall through to App Info */ }
+  }
+
+  // Realme/Oppo/OnePlus + generic: App Info (driver follows the on-screen step guide)
+  await openExactAppDetails();
 }
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -254,17 +347,17 @@ export default function BackgroundSetupScreen() {
   }
 
   async function handleBattery() {
-    await openBatterySettings();
+    await openBatteryOptimizationRequest();
     setBatteryOpened(true);
   }
 
   async function handleBgActivity() {
-    await openAppDetails();
+    await openExactAppDetails();
     setBgActivityOpened(true);
   }
 
   async function handleAutoStart() {
-    await openAppDetails();
+    await openBackgroundActivitySettings(brandFamily);
     setAutoStartOpened(true);
   }
 
@@ -401,11 +494,11 @@ export default function BackgroundSetupScreen() {
                   </View>
                   <TouchableOpacity
                     style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
-                    onPress={() => Linking.openSettings()}
+                    onPress={openNotificationSettings}
                     activeOpacity={0.85}
                   >
                     <Feather name="external-link" size={14} color="#fff" />
-                    <Text style={styles.primaryBtnText}>Open Settings</Text>
+                    <Text style={styles.primaryBtnText}>Open Notification Settings</Text>
                   </TouchableOpacity>
                 </>
               )}
@@ -461,7 +554,7 @@ export default function BackgroundSetupScreen() {
                   </View>
                   <TouchableOpacity
                     style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
-                    onPress={openAppDetails}
+                    onPress={openExactAppDetails}
                     activeOpacity={0.85}
                   >
                     <Feather name="external-link" size={14} color="#fff" />
