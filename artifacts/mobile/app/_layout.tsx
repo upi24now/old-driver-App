@@ -50,7 +50,14 @@ function RootLayoutNav() {
     if (authLoading)               return;
     if (hasNavigated.current)      return;
     hasNavigated.current = true;
-    if (!driverUid)                return; // no session — stay on login
+    if (!driverUid) {
+      // No persisted session — Expo Router's file-based routing may have
+      // defaulted to /(tabs) instead of /login. Explicitly push to login
+      // so the user always sees the auth screen on a fresh / logged-out start.
+      console.log("[Auth] no session → login");
+      router.replace("/login");
+      return;
+    }
 
     console.log("[Auth] routing:", {
       uid: driverUid.slice(-4),

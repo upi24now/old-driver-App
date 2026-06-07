@@ -1,9 +1,10 @@
 import { BlurView } from "expo-blur";
-import { Tabs } from "expo-router";
+import { Redirect, Tabs } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import React from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 
 // Minimal subset of BottomTabBarProps — avoids depending on @react-navigation/bottom-tabs directly
@@ -186,6 +187,24 @@ const s = StyleSheet.create({
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 export default function TabLayout() {
+  const colors = useColors();
+  const { driverUid, authLoading } = useDriver();
+
+  // Safety guard — _layout.tsx handles primary routing, but if a user lands
+  // here without a session (e.g. Expo Router resolved /(tabs) as the default
+  // URL before auth finished), redirect them immediately to avoid showing
+  // authenticated screens to unauthenticated users.
+  if (authLoading) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+  if (!driverUid) {
+    return <Redirect href="/login" />;
+  }
+
   return (
     <Tabs
       tabBar={(props) => <GlassTabBar {...props} />}
