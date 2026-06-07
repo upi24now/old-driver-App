@@ -2,16 +2,20 @@
  * Driver Readiness Setup Screen  (v3 — Rapido-style)
  *
  * Shown once after onboarding approval, before the main dashboard.
- * Guides the driver through 5 steps required for reliable order delivery:
+ * Guides the driver through up to 6 steps for reliable order delivery:
  *
  *   1. POST_NOTIFICATIONS  (required — blocks Continue)
  *   2. GPS foreground location  (required — blocks Continue)
  *   3. Battery optimization exemption  (recommended — cannot verify, user confirms)
  *   4. Background Activity  (recommended — cannot verify, user confirms)
  *   5. Auto Start — manufacturer-specific  (recommended — cannot verify, user confirms)
+ *   6. Screen Wake for Order Alerts — Android 14+ only  (recommended — cannot verify, user confirms)
+ *      Opens ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT via expo-intent-launcher.
+ *      Fallback: APPLICATION_DETAILS_SETTINGS.
  *
  * Continue is unlocked only when notifications AND GPS are granted.
- * Steps 3-5 show "YES, I ENABLED THIS" confirmation but never block Continue.
+ * Steps 3-6 show "YES, I ENABLED THIS" confirmation but never block Continue.
+ * Step 6 is hidden entirely on Android < 14 and on iOS.
  *
  * Re-accessible from: Profile → Notification & Background Settings
  *   router.push("/background-setup?back=1")
@@ -231,6 +235,23 @@ async function openBackgroundActivitySettings(brand: BrandFamily): Promise<void>
   await openExactAppDetails();
 }
 
+/**
+ * MANAGE_APP_USE_FULL_SCREEN_INTENT — Android 14+ per-app toggle that allows
+ * the app to wake the screen for urgent notifications (full-screen intents).
+ * Fallback: APPLICATION_DETAILS_SETTINGS for this package.
+ */
+async function openScreenWakeSettings(): Promise<void> {
+  if (Platform.OS !== "android") { await Linking.openSettings(); return; }
+  try {
+    await IntentLauncher.startActivityAsync(
+      IntentLauncher.ActivityAction.MANAGE_APP_USE_FULL_SCREEN_INTENT,
+      { data: `package:${APP_PKG}` },
+    );
+  } catch {
+    await openExactAppDetails();
+  }
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function BackgroundSetupScreen() {
@@ -255,6 +276,8 @@ export default function BackgroundSetupScreen() {
   const [bgActivityEnabled, setBgActivityEnabled] = useState(false);
   const [autoStartOpened,   setAutoStartOpened]   = useState(false);
   const [autoStartEnabled,  setAutoStartEnabled]  = useState(false);
+  const [screenWakeOpened,  setScreenWakeOpened]  = useState(false);
+  const [screenWakeEnabled, setScreenWakeEnabled] = useState(false);
 
   const [saving,     setSaving]     = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -263,6 +286,9 @@ export default function BackgroundSetupScreen() {
   const brandFamily  = detectBrandFamily(getDeviceBrand());
   const brandLabel   = BRAND_LABEL[brandFamily];
   const autoStartSteps = AUTO_START_STEPS[brandFamily];
+
+  // Android 14+ guard — used to conditionally show Screen Wake card and progress item
+  const isAndroid14Plus = Platform.OS === "android" && Number(Platform.Version) >= 34;
 
   // ── Permission refresh ──────────────────────────────────────────────────────
   async function refreshPermissions(): Promise<void> {
@@ -361,6 +387,11 @@ export default function BackgroundSetupScreen() {
     setAutoStartOpened(true);
   }
 
+  async function handleScreenWake() {
+    await openScreenWakeSettings();
+    setScreenWakeOpened(true);
+  }
+
   async function handleRefresh() {
     setRefreshing(true);
     await refreshPermissions();
@@ -398,6 +429,7 @@ export default function BackgroundSetupScreen() {
     { label: "Battery Setup",       done: batteryEnabled },
     { label: "Background Activity", done: bgActivityEnabled },
     { label: "Auto Start",          done: autoStartEnabled },
+    ...(isAndroid14Plus ? [{ label: "Screen Wake", done: screenWakeEnabled }] : []),
   ];
 
   return (
@@ -765,6 +797,74 @@ export default function BackgroundSetupScreen() {
             </Text>
           </View>
         </StepCard>
+
+        {/* ── Card 6: Screen Wake (Android 14+ only) ────────────────────── */}
+        {/* statusOk reflects user confirmation only — canUseFullScreenIntent()  */}
+        {/* is not exposed in the expo-notifications JS API.                     */}
+        {isAndroid14Plus && (
+          <StepCard
+            num="6"
+            icon="sun"
+            title="Screen Wake for Order Alerts"
+            required={false}
+            statusOk={screenWakeEnabled}
+            statusLabel={screenWakeEnabled ? "✓ Enabled by you" : "Recommended — Android 14+"}
+            colors={colors}
+          >
+            {screenWakeEnabled ? (
+              <DoneBadge label="Screen wake enabled" />
+            ) : (
+              <>
+                <StepList
+                  steps={[
+                    "Tap Open Screen Wake Setting below",
+                    "Find Driver App in the list",
+                    "Toggle Allow full-screen intent to On",
+                    "Return to Driver App and confirm below",
+                  ]}
+                  colors={colors}
+                />
+                {!screenWakeOpened ? (
+                  <TouchableOpacity
+                    style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
+                    onPress={handleScreenWake}
+                    activeOpacity={0.85}
+                  >
+                    <Feather name="sun" size={14} color="#fff" />
+                    <Text style={styles.primaryBtnText}>Open Screen Wake Setting</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <>
+                    <TouchableOpacity
+                      style={styles.confirmBtn}
+                      onPress={() => setScreenWakeEnabled(true)}
+                      activeOpacity={0.85}
+                    >
+                      <Feather name="check-circle" size={15} color="#fff" />
+                      <Text style={styles.confirmBtnText}>YES, I ENABLED THIS</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.ghostBtn, { borderColor: colors.border }]}
+                      onPress={handleScreenWake}
+                      activeOpacity={0.7}
+                    >
+                      <Feather name="refresh-cw" size={13} color={colors.foreground} />
+                      <Text style={[styles.ghostBtnText, { color: colors.foreground }]}>
+                        Open Setting Again
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </>
+            )}
+            <View style={[styles.infoBox, { backgroundColor: colors.muted }]}>
+              <Feather name="info" size={12} color={colors.mutedForeground} style={{ marginTop: 1 }} />
+              <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
+                {"Allow this app to wake the screen for urgent delivery requests when your phone is locked. Cannot be verified automatically."}
+              </Text>
+            </View>
+          </StepCard>
+        )}
 
         {/* ── Refresh status ────────────────────────────────────────────────── */}
         <TouchableOpacity
