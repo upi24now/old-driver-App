@@ -350,8 +350,9 @@ export async function updateDriverPushToken(
  * History:
  *   1 — original boolean-only gate (backgroundSetupShown: true)
  *   2 — versioned gate; notifications + foreground GPS required
+ *   3 — readiness gate v3; auto-request on mount, canAskAgain denial UX
  */
-export const PERMISSION_SETUP_VERSION = 2;
+export const PERMISSION_SETUP_VERSION = 3;
 
 /**
  * Mark that the driver has completed the background-permission setup screen
@@ -359,7 +360,7 @@ export const PERMISSION_SETUP_VERSION = 2;
  *
  * Writes:
  *   backgroundSetupShown:       true         (legacy compat — keeps old routing working)
- *   permissionSetupVersion:     2            (version of the setup flow completed)
+ *   permissionSetupVersion:     3            (version of the setup flow completed)
  *   permissionSetupCompletedAt: Timestamp    (when the driver tapped "Continue")
  */
 export async function updateDriverBackgroundSetup(uid: string): Promise<void> {

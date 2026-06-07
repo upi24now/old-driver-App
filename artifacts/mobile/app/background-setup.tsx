@@ -400,7 +400,7 @@ export default function BackgroundSetupScreen() {
           icon="battery-charging"
           title="Unrestricted Battery"
           required={false}
-          statusLabel={batteryOpened ? "Opened — verify manually" : "Recommended"}
+          statusLabel="Manual setup recommended — verify in phone settings"
           statusOk={false}
           body={"Open battery settings and set this app to \"Unrestricted\", \"Don't optimize\", or \"Allow background activity\"."}
           colors={colors}
@@ -444,7 +444,7 @@ export default function BackgroundSetupScreen() {
           icon="smartphone"
           title={"Auto-start & Background Activity"}
           required={false}
-          statusLabel={autostartOpened ? "Opened — verify manually" : "Recommended"}
+          statusLabel="Manual setup recommended — enable if available"
           statusOk={false}
           body={"On Realme, Oppo, Vivo, Xiaomi, and Samsung: open App Info and enable Auto Start and Background Activity if available."}
           colors={colors}
