@@ -20,7 +20,7 @@
 import * as Device from "expo-device";
 import type * as NotificationsType from "expo-notifications";
 import { router } from "expo-router";
-import { Platform } from "react-native";
+import { NativeModules, Platform } from "react-native";
 
 // ─── Safe runtime import ──────────────────────────────────────────────────────
 // expo-notifications throws on import inside Expo Go on Android SDK 53+.
@@ -37,6 +37,25 @@ const Notif: typeof NotificationsType | null = (() => {
     );
     return null;
   }
+})();
+
+// ─── Full-screen order alert native module (Android) ─────────────────────────
+// FullScreenOrderAlertModule is compiled into the APK by the
+// withFullScreenOrderAlert config plugin (plugins/withFullScreenOrderAlert.ts).
+// It is NOT available in Expo Go — sendIncomingOrderNotification() falls back
+// to the expo-notifications path whenever FSAlert is null.
+const FSAlert: {
+  showAlert:   (orderId: string, title: string, body: string) => Promise<void>;
+  cancelAlert: () => Promise<void>;
+} | null = (() => {
+  const m: unknown = NativeModules["FullScreenOrderAlert"];
+  if (m && typeof (m as { showAlert?: unknown }).showAlert === "function") {
+    return m as {
+      showAlert:   (orderId: string, title: string, body: string) => Promise<void>;
+      cancelAlert: () => Promise<void>;
+    };
+  }
+  return null;
 })();
 
 // ─── Channel IDs ──────────────────────────────────────────────────────────────
@@ -254,24 +273,44 @@ export async function sendIncomingOrderNotification(
 
   console.log("[FCM] notification received orderId:", params.orderId);
 
-  // Cancel previous local order notification (prevent stacking).
+  // Cancel any previous order notification (prevent stacking).
   await cancelIncomingOrderNotification();
 
   // Dismiss ALL system notifications before posting our local one.
   // The server FCM carries a `notification` block so Android renders a
   // system notification immediately (sound + vibration, NO action buttons).
-  // Clearing it first ensures only a single notification appears in the
-  // tray — our local one, which has the Accept / Reject action buttons.
+  // Clearing it first ensures only a single notification appears in the tray.
   try { await Notif.dismissAllNotificationsAsync(); } catch { /* ignore */ }
 
-  try {
-    const earning    = params.earning > 0 ? ` • ₹${params.earning}` : "";
-    const distanceKm = params.distanceKm > 0 ? ` • ${params.distanceKm} km` : "";
+  const earning    = params.earning    > 0 ? ` • ₹${params.earning}`    : "";
+  const distanceKm = params.distanceKm > 0 ? ` • ${params.distanceKm} km` : "";
+  const title = "🛵  New Delivery Request";
+  const body  = `${params.pickup} → ${params.drop}${earning}${distanceKm}`;
 
+  // ── Android: native full-screen alert (wakes screen, shows over lock screen) ─
+  // FullScreenOrderAlertModule (compiled in via withFullScreenOrderAlert plugin)
+  // posts to the incoming_orders_v2 channel with setFullScreenIntent(true) so
+  // the OS wakes the screen and shows the alert over the lock screen.
+  // Gracefully absent in Expo Go — falls through to the expo-notifications path.
+  if (Platform.OS === "android" && FSAlert) {
+    try {
+      await FSAlert.showAlert(params.orderId, title, body);
+      console.log("[FCM] native full-screen alert shown orderId:", params.orderId);
+      return; // native module handled display — skip expo-notifications path
+    } catch (nativeErr) {
+      console.warn(
+        "[FCM] native full-screen alert failed, falling back to expo-notifications:",
+        nativeErr,
+      );
+    }
+  }
+
+  // ── iOS / Expo Go / native module unavailable: expo-notifications path ────────
+  try {
     const id = await Notif.scheduleNotificationAsync({
       content: {
-        title: "🛵  New Delivery Request",
-        body:  `${params.pickup} → ${params.drop}${earning}${distanceKm}`,
+        title,
+        body,
         subtitle: params.customer,
         data: {
           type:        "incoming_order",
@@ -307,6 +346,12 @@ export async function sendIncomingOrderNotification(
 
 // ─── Cancel active order notification ────────────────────────────────────────
 export async function cancelIncomingOrderNotification(): Promise<void> {
+  // Cancel native full-screen notification (Android, post-EAS-build).
+  // Always attempt this first — FSAlert.cancelAlert() is idempotent.
+  if (Platform.OS === "android" && FSAlert) {
+    try { await FSAlert.cancelAlert(); } catch { /* already cancelled — harmless */ }
+  }
+  // Cancel expo-notifications notification (iOS / fallback path).
   if (!Notif || !activeOrderNotifId) return;
   try {
     await Notif.dismissNotificationAsync(activeOrderNotifId);

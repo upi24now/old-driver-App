@@ -221,15 +221,16 @@ export default function RideRequestScreen() {
   // FCM tap recovery — orderId + order fields forwarded from handleNotificationResponse
   // so the screen can fetch the order from Firestore if incomingRide is not yet set.
   const params = useLocalSearchParams<{
-    orderId?:     string;
-    customer?:    string;
-    pickup?:      string;
-    pickupCity?:  string;
-    drop?:        string;
-    dropCity?:    string;
-    earning?:     string;
-    distanceKm?:  string;
-    durationMin?: string;
+    orderId?:      string;
+    nativeAction?: string;  // "accept" | "reject" — set by FullScreenOrderActionReceiver
+    customer?:     string;
+    pickup?:       string;
+    pickupCity?:   string;
+    drop?:         string;
+    dropCity?:     string;
+    earning?:      string;
+    distanceKm?:   string;
+    durationMin?:  string;
   }>();
 
   const [fetchedRide,  setFetchedRide]  = useState<IncomingRide | null>(null);
@@ -395,6 +396,9 @@ export default function RideRequestScreen() {
   // driver has already accepted.
   const hadRideRef    = useRef(incomingRide !== null);
   const didAcceptRef  = useRef(false);
+  // Prevents the native-action useEffect from re-firing on re-renders once
+  // the action has been dispatched.
+  const nativeActionFiredRef = useRef(false);
 
   // null-on-mount guard: dismiss immediately when there is no live order AND no
   // orderId param to fetch.  If params.orderId is present we skip this — the
@@ -477,6 +481,24 @@ export default function RideRequestScreen() {
   // case incomingRide is non-null and the effect exits immediately.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [incomingRide]);
+
+  // ── Native action recovery ─────────────────────────────────────────────────
+  // When the screen is opened via deep link from FullScreenOrderActionReceiver
+  // (lock-screen Accept / Reject button tap), params.nativeAction is "accept"
+  // or "reject". Execute once the ride is available — Firestore listener or
+  // the FCM tap recovery fetch above will set it before this fires.
+  useEffect(() => {
+    if (!params.nativeAction) return;
+    if (nativeActionFiredRef.current) return;
+    if (!ride) return; // wait: Firestore or fetch hasn't delivered the order yet
+    nativeActionFiredRef.current = true;
+    if (params.nativeAction === "accept") {
+      void handleAccept();
+    } else if (params.nativeAction === "reject") {
+      handleReject();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ride, params.nativeAction]);
 
   // Auto-dismiss after a brief pause when the order is no longer available.
   useEffect(() => {
