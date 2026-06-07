@@ -53,7 +53,7 @@
           "mode": "production"
         }
       ],
-      "./plugins/withFullScreenOrderAlert"
+      "./plugins/withFullScreenOrderAlert.js"
     ],
     "experiments": {
       "typedRoutes": true,
