@@ -32,8 +32,8 @@ import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 
 const TIMER_SECONDS = 5;
-const RING_SIZE   = 72;
-const RING_STROKE = 6;
+const RING_SIZE   = 60;
+const RING_STROKE = 5;
 const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
 const RING_CIRC   = 2 * Math.PI * RING_RADIUS;
 const SCREEN_W = Dimensions.get("window").width;
@@ -41,9 +41,13 @@ const CARD_W   = SCREEN_W - 24;
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-// Orange theme — used for earnings bar, slider, urgency
-const ORANGE = "#F97316";
-const ORANGE_DARK = "#EA580C";
+// Colour palette
+const MANGO      = "#F59E0B";   // earnings gradient start
+const MANGO_DARK = "#F97316";   // earnings gradient end
+const GREEN      = "#22C55E";   // accept slider start
+const GREEN_DARK = "#16A34A";   // accept slider end
+const RED        = "#EF4444";   // reject gradient start
+const RED_DARK   = "#DC2626";   // reject gradient end
 
 function UrgencyRing({
   progress,
@@ -53,8 +57,8 @@ function UrgencyRing({
   seconds: number;
   urgent: boolean;  // kept in signature for call-site compatibility
 }) {
-  // With 5-second total timer: orange throughout, red only at last second
-  const ringColor = seconds <= 1 ? "#DC2626" : ORANGE;
+  // With 5-second total timer: mango throughout, red only at last second
+  const ringColor = seconds <= 1 ? RED_DARK : MANGO_DARK;
   const dashOffset = progress.interpolate({
     inputRange: [0, 1],
     outputRange: [0, RING_CIRC],
@@ -169,7 +173,7 @@ function SlideToAccept({ onAccept, disabled = false }: { onAccept: () => void; d
     return (
       <View style={[styles.slideTrack, { overflow: "hidden" }]}>
         <LinearGradient
-          colors={[ORANGE, ORANGE_DARK]}
+          colors={[GREEN, GREEN_DARK]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={StyleSheet.absoluteFillObject}
@@ -187,26 +191,21 @@ function SlideToAccept({ onAccept, disabled = false }: { onAccept: () => void; d
       style={styles.slideTrack}
       onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
     >
-      {/* Orange gradient fills the full track */}
+      {/* Green gradient fills the full track */}
       <LinearGradient
-        colors={[ORANGE, ORANGE_DARK]}
+        colors={[GREEN, GREEN_DARK]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
         style={StyleSheet.absoluteFillObject}
       />
-      {/* ">> Slide to Accept >>" label */}
       <Animated.Text style={[styles.slideLabel, { opacity: labelOpacity }]}>
         Slide to Accept  {">>"}
       </Animated.Text>
-      {/* White draggable thumb */}
       <Animated.View
         {...pan.panHandlers}
-        style={[
-          styles.slideThumb,
-          { transform: [{ translateX: x }] },
-        ]}
+        style={[styles.slideThumb, { transform: [{ translateX: x }] }]}
       >
-        <Feather name="chevrons-right" size={22} color={ORANGE} />
+        <Feather name="chevrons-right" size={22} color={GREEN_DARK} />
       </Animated.View>
     </View>
   );
@@ -783,20 +782,15 @@ export default function RideRequestScreen() {
                 return (
                   <Animated.View
                     key={r.id ?? idx}
-                    style={[
-                      styles.card,
-                      { transform: [{ scale: pulseScale }] },
-                    ]}
+                    style={[styles.card, { transform: [{ scale: pulseScale }] }]}
                   >
-                    {/* ── HEADER ROW 1: badges + help ── */}
-                    <View style={styles.headerBadgesRow}>
+                    {/* ── HEADER: badges + timer ── */}
+                    <View style={styles.header}>
                       <View style={styles.headerBadges}>
-                        {/* "● NEW ORDER" — always green */}
                         <View style={styles.newOrderBadge}>
                           <View style={styles.newOrderDot} />
                           <Text style={styles.newOrderText}>NEW ORDER</Text>
                         </View>
-                        {/* "⚡ HURRY!" — shown alongside NEW ORDER when urgent */}
                         {urgent && (
                           <View style={styles.hurryBadge}>
                             <Feather name="zap" size={10} color="#fff" />
@@ -804,125 +798,59 @@ export default function RideRequestScreen() {
                           </View>
                         )}
                       </View>
-                      <TouchableOpacity
-                        onPress={callSupport}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        style={styles.helpCircle}
-                      >
-                        <Feather name="help-circle" size={18} color="rgba(0,0,0,0.3)" />
-                      </TouchableOpacity>
-                    </View>
-
-                    {/* ── HEADER ROW 2: parcel info + countdown ring ── */}
-                    <View style={styles.parcelRow}>
-                      <View style={styles.parcelLeft}>
-                        <View style={styles.parcelIconBox}>
-                          <Text style={styles.parcelEmoji}>{r.parcelEmoji || "📦"}</Text>
-                        </View>
-                        <View style={styles.parcelDetails}>
-                          <Text style={styles.parcelName} numberOfLines={1}>
-                            {r.parcelType || "Package"}
-                          </Text>
-                          <Text style={styles.parcelId}>
-                            ID: #{(r.id ?? "").slice(-8).toUpperCase()}
-                          </Text>
-                        </View>
-                      </View>
-                      <UrgencyRing progress={ring} seconds={seconds} urgent={urgent} />
-                    </View>
-
-                    {/* ── SEPARATOR ── */}
-                    <View style={[styles.separator, { borderColor: colors.border }]} />
-
-                    {/* ── ROUTE ── */}
-                    <View style={styles.route}>
-                      {/* Icons column (pin + dashes + pin) */}
-                      <View style={styles.routeIcons}>
-                        <View style={styles.pickupPinOuter}>
-                          <View style={styles.pickupPinInner} />
-                        </View>
-                        <View style={styles.dotLine}>
-                          {Array.from({ length: 5 }).map((_, i) => (
-                            <View key={i} style={styles.dotLineDot} />
-                          ))}
-                        </View>
-                        <View style={styles.dropPinOuter}>
-                          <View style={styles.dropPinInner} />
-                        </View>
-                      </View>
-
-                      {/* Addresses column */}
-                      <View style={styles.routePoints}>
-                        {/* Pickup */}
-                        <View style={styles.routePointRow}>
-                          <View style={styles.routePointContent}>
-                            <Text style={styles.pickupLabel}>PICKUP</Text>
-                            <Text
-                              style={[styles.routeAddr, { color: colors.foreground }]}
-                              numberOfLines={2}
-                            >
-                              {r.pickup}
-                            </Text>
-                            {r.pickupSub ? (
-                              <Text
-                                style={[styles.routeSub, { color: colors.mutedForeground }]}
-                                numberOfLines={1}
-                              >
-                                {r.pickupSub}
-                              </Text>
-                            ) : null}
-                          </View>
-                          {r.pickupDistanceKm ? (
-                            <View style={styles.distancePillGreen}>
-                              <Text style={styles.distancePillGreenText}>
-                                📍 {r.pickupDistanceKm} km
-                              </Text>
-                            </View>
-                          ) : null}
-                        </View>
-
-                        {/* Drop */}
-                        <View style={styles.routePointRow}>
-                          <View style={styles.routePointContent}>
-                            <Text style={styles.dropLabel}>DROP</Text>
-                            <Text
-                              style={[styles.routeAddr, { color: colors.foreground }]}
-                              numberOfLines={2}
-                            >
-                              {r.drop}
-                            </Text>
-                            {r.dropSub ? (
-                              <Text
-                                style={[styles.routeSub, { color: colors.mutedForeground }]}
-                                numberOfLines={1}
-                              >
-                                {r.dropSub}
-                              </Text>
-                            ) : null}
-                          </View>
-                          <View style={styles.distancePillRed}>
-                            <Text style={styles.distancePillRedText}>
-                              📍 {r.distanceKm} km
-                            </Text>
-                          </View>
-                        </View>
+                      <View style={styles.headerRight}>
+                        <TouchableOpacity
+                          onPress={callSupport}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Feather name="help-circle" size={16} color="rgba(0,0,0,0.25)" />
+                        </TouchableOpacity>
+                        <UrgencyRing progress={ring} seconds={seconds} urgent={urgent} />
                       </View>
                     </View>
 
-                    {/* ── EARNINGS BAR (orange gradient) ── */}
+                    {/* ── PICKUP block — light green bg ── */}
+                    <View style={styles.pickupBlock}>
+                      <View style={styles.locationIconWrapGreen}>
+                        <Feather name="map-pin" size={14} color={GREEN_DARK} />
+                      </View>
+                      <View style={styles.locationContent}>
+                        <Text style={styles.pickupLabel}>PICKUP</Text>
+                        <Text style={styles.locationAddr} numberOfLines={2}>
+                          {r.pickup}
+                        </Text>
+                      </View>
+                      {r.pickupDistanceKm ? (
+                        <View style={styles.kmPillGreen}>
+                          <Text style={styles.kmPillGreenText}>{r.pickupDistanceKm} km</Text>
+                        </View>
+                      ) : null}
+                    </View>
+
+                    {/* ── DROP block — light red bg ── */}
+                    <View style={styles.dropBlock}>
+                      <View style={styles.locationIconWrapRed}>
+                        <Feather name="map-pin" size={14} color={RED_DARK} />
+                      </View>
+                      <View style={styles.locationContent}>
+                        <Text style={styles.dropLabel}>DROP</Text>
+                        <Text style={styles.locationAddr} numberOfLines={2}>
+                          {r.drop}
+                        </Text>
+                      </View>
+                      <View style={styles.kmPillRed}>
+                        <Text style={styles.kmPillRedText}>{r.distanceKm} km</Text>
+                      </View>
+                    </View>
+
+                    {/* ── EARNINGS HERO — mango gradient, strongest element ── */}
                     <LinearGradient
-                      colors={[ORANGE, ORANGE_DARK]}
+                      colors={[MANGO, MANGO_DARK]}
                       start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={styles.earningsBar}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.earningsHero}
                     >
-                      {/* Wallet circle */}
-                      <View style={styles.walletCircle}>
-                        <Feather name="credit-card" size={18} color={ORANGE} />
-                      </View>
-
-                      {/* Amount + label */}
-                      <View style={styles.earningsAmountBlock}>
+                      <View style={styles.earningsLeft}>
                         <View style={styles.earningsAmountRow}>
                           <Text style={styles.earningsCurrency}>₹</Text>
                           <Text style={styles.earningsAmount}>{r.fareEstimate}</Text>
@@ -933,45 +861,22 @@ export default function RideRequestScreen() {
                             </View>
                           ) : null}
                         </View>
+                        <Text style={styles.earningsMeta}>
+                          {r.distanceKm} km
+                          {r.durationMin ? `  ·  ${r.durationMin} min ETA` : ""}
+                        </Text>
                         <Text style={styles.earningsLabel}>Estimated Earnings</Text>
                       </View>
-
-                      {/* Divider */}
-                      <View style={styles.earningsDivider} />
-
-                      {/* Distance */}
-                      <View style={styles.earningsMetric}>
-                        <View style={styles.earningsMetricTop}>
-                          <Feather name="navigation" size={12} color="rgba(255,255,255,0.85)" />
-                          <Text style={styles.earningsMetricVal}>{r.distanceKm} km</Text>
-                        </View>
-                        <Text style={styles.earningsMetricLabel}>Distance</Text>
-                      </View>
-
-                      {/* ETA */}
-                      {r.durationMin ? (
-                        <View style={styles.earningsMetric}>
-                          <View style={styles.earningsMetricTop}>
-                            <Feather name="clock" size={12} color="rgba(255,255,255,0.85)" />
-                            <Text style={styles.earningsMetricVal}>{r.durationMin} min</Text>
-                          </View>
-                          <Text style={styles.earningsMetricLabel}>ETA</Text>
-                        </View>
-                      ) : null}
-
-                      {/* Payment badge — white pill */}
                       <View style={styles.payBadge}>
-                        <Text style={styles.payBadgeRupee}>₹</Text>
-                        <Text style={styles.payBadgeText}>{payKey}</Text>
+                        <Text style={styles.payBadgeText}>₹ {payKey}</Text>
                       </View>
                     </LinearGradient>
 
                     {/* ── ACTIONS ── */}
                     <View style={styles.actions}>
-                      {/* Reject — solid red */}
+                      {/* Reject — red gradient, fixed width */}
                       <Animated.View
                         style={{
-                          flex: 1.2,
                           transform: [
                             { scale: rejectScale },
                             {
@@ -984,33 +889,39 @@ export default function RideRequestScreen() {
                         }}
                       >
                         <TouchableOpacity
-                          style={styles.rejectBtn}
                           onPress={handleReject}
-                          activeOpacity={0.8}
+                          activeOpacity={0.85}
+                          style={{ borderRadius: 14, overflow: "hidden" }}
                         >
-                          <Animated.View
-                            pointerEvents="none"
-                            style={[
-                              StyleSheet.absoluteFillObject,
-                              {
-                                backgroundColor: "#fff",
-                                borderRadius: 16,
-                                opacity: rejectFill.interpolate({
-                                  inputRange: [0, 1],
-                                  outputRange: [0, 0.2],
-                                }),
-                              },
-                            ]}
-                          />
-                          <View style={styles.rejectIconCircle}>
-                            <Feather name="x" size={14} color="#DC2626" />
-                          </View>
-                          <Text style={styles.rejectText}>Reject</Text>
+                          <LinearGradient
+                            colors={[RED, RED_DARK]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={styles.rejectBtn}
+                          >
+                            <Animated.View
+                              pointerEvents="none"
+                              style={[
+                                StyleSheet.absoluteFillObject,
+                                {
+                                  backgroundColor: "#fff",
+                                  opacity: rejectFill.interpolate({
+                                    inputRange: [0, 1],
+                                    outputRange: [0, 0.2],
+                                  }),
+                                },
+                              ]}
+                            />
+                            <View style={styles.rejectIconCircle}>
+                              <Feather name="x" size={13} color={RED_DARK} />
+                            </View>
+                            <Text style={styles.rejectText}>Reject</Text>
+                          </LinearGradient>
                         </TouchableOpacity>
                       </Animated.View>
 
-                      {/* Slide to Accept */}
-                      <View style={{ flex: 2 }}>
+                      {/* Accept — green gradient slider */}
+                      <View style={{ flex: 1 }}>
                         <SlideToAccept onAccept={handleAccept} disabled={isAccepting} />
                       </View>
                     </View>
@@ -1072,7 +983,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: ORANGE,
+    backgroundColor: MANGO_DARK,
   },
 
   // ── Slider / card ──────────────────────────────────────────────────────────
@@ -1081,18 +992,18 @@ const styles = StyleSheet.create({
     width: CARD_W,
     marginHorizontal: 12,
     backgroundColor: "#fff",
-    borderRadius: 22,
-    padding: 12,
-    gap: 10,
+    borderRadius: 20,
+    padding: 10,
+    gap: 7,
     shadowColor: "#000",
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 10,
+    shadowOpacity: 0.16,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 9,
   },
 
-  // ── Header row 1: badges + help ────────────────────────────────────────────
-  headerBadgesRow: {
+  // ── Header: single row — badges left, help + ring right ────────────────────
+  header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -1100,332 +1011,237 @@ const styles = StyleSheet.create({
   headerBadges: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
   },
   newOrderBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 5,
     backgroundColor: "#F0FDF4",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 7,
   },
   newOrderDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: "#16A34A",
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: GREEN_DARK,
   },
   newOrderText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "800",
-    color: "#16A34A",
+    color: GREEN_DARK,
     letterSpacing: 0.4,
   },
   hurryBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    backgroundColor: ORANGE,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
+    gap: 3,
+    backgroundColor: MANGO_DARK,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 7,
   },
   hurryText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "800",
     color: "#fff",
     letterSpacing: 0.4,
   },
-  helpCircle: {
-    padding: 4,
-  },
-
-  // ── Header row 2: parcel info + ring ───────────────────────────────────────
-  parcelRow: {
+  headerRight: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  parcelLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    flex: 1,
-  },
-  parcelIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
-    backgroundColor: "#FEF3C7",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  parcelEmoji: { fontSize: 22 },
-  parcelDetails: { flex: 1, gap: 2 },
-  parcelName: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#111827",
-    letterSpacing: -0.2,
-  },
-  parcelId: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "#9CA3AF",
-  },
-
-  // ── Separator ──────────────────────────────────────────────────────────────
-  separator: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderStyle: "dashed",
+    gap: 8,
   },
 
   // ── Ring ───────────────────────────────────────────────────────────────────
   ringWrap: { alignItems: "center", justifyContent: "center" },
   ringCenter: { position: "absolute", alignItems: "center", justifyContent: "center" },
-  ringNum:  { fontSize: 24, fontWeight: "800", lineHeight: 26 },
-  ringUnit: { fontSize: 9,  fontWeight: "700", letterSpacing: 0.5, marginTop: -2 },
+  ringNum:  { fontSize: 20, fontWeight: "800", lineHeight: 22 },
+  ringUnit: { fontSize: 8,  fontWeight: "700", letterSpacing: 0.4, marginTop: -2 },
 
-  // ── Route ──────────────────────────────────────────────────────────────────
-  route: {
-    flexDirection: "row",
-    gap: 10,
-    paddingVertical: 4,
-  },
-  routeIcons: {
-    alignItems: "center",
-    paddingTop: 16,
-    gap: 3,
-    width: 22,
-  },
-  pickupPinOuter: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: "#DCFCE7",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  pickupPinInner: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#16A34A",
-  },
-  dotLine: {
-    gap: 3,
-    alignItems: "center",
-    paddingVertical: 1,
-  },
-  dotLineDot: {
-    width: 2,
-    height: 4,
-    borderRadius: 1,
-    backgroundColor: "#D1D5DB",
-  },
-  dropPinOuter: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: "#FEE2E2",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  dropPinInner: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#DC2626",
-  },
-  routePoints: { flex: 1, gap: 10 },
-  routePointRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 6,
-  },
-  routePointContent: { flex: 1, gap: 1 },
-  pickupLabel: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#16A34A",
-    letterSpacing: 0.5,
-  },
-  dropLabel: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#DC2626",
-    letterSpacing: 0.5,
-  },
-  routeAddr: { fontSize: 13, fontWeight: "700", lineHeight: 18 },
-  routeSub:  { fontSize: 11, fontWeight: "500", marginTop: 1 },
-
-  // Distance pills
-  distancePillGreen: {
-    backgroundColor: "#DCFCE7",
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    alignSelf: "flex-start",
-    marginTop: 14,   // aligns roughly with address first line
-  },
-  distancePillGreenText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#16A34A",
-  },
-  distancePillRed: {
-    backgroundColor: "#FEE2E2",
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    alignSelf: "flex-start",
-    marginTop: 14,
-  },
-  distancePillRedText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#DC2626",
-  },
-
-  // ── Earnings bar (orange gradient) ─────────────────────────────────────────
-  earningsBar: {
+  // ── Pickup block — light green background ──────────────────────────────────
+  pickupBlock: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 16,
+    backgroundColor: "#F0FDF4",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
   },
-  walletCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#fff",
+  locationIconWrapGreen: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#DCFCE7",
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
   },
-  earningsAmountBlock: { gap: 1 },
+  locationContent: { flex: 1, gap: 1 },
+  pickupLabel: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: GREEN_DARK,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  locationAddr: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#111827",
+    lineHeight: 17,
+  },
+
+  // ── Drop block — light red background ──────────────────────────────────────
+  dropBlock: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FFF5F5",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  locationIconWrapRed: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#FEE2E2",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  dropLabel: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: RED_DARK,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+
+  // Distance km pills
+  kmPillGreen: {
+    backgroundColor: "#DCFCE7",
+    borderRadius: 7,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    flexShrink: 0,
+  },
+  kmPillGreenText: { fontSize: 11, fontWeight: "700", color: GREEN_DARK },
+  kmPillRed: {
+    backgroundColor: "#FEE2E2",
+    borderRadius: 7,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    flexShrink: 0,
+  },
+  kmPillRedText: { fontSize: 11, fontWeight: "700", color: RED_DARK },
+
+  // ── Earnings hero — mango gradient, dominant element ───────────────────────
+  earningsHero: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 14,
+    gap: 10,
+  },
+  earningsLeft: { flex: 1, gap: 2 },
   earningsAmountRow: {
     flexDirection: "row",
     alignItems: "flex-end",
     gap: 1,
   },
   earningsCurrency: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "800",
     color: "#fff",
-    marginBottom: 2,
+    marginBottom: 3,
   },
   earningsAmount: {
-    fontSize: 36,
+    fontSize: 46,
     fontWeight: "900",
     color: "#fff",
-    letterSpacing: -1.5,
-    lineHeight: 38,
+    letterSpacing: -2,
+    lineHeight: 48,
   },
   surgeBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 2,
-    backgroundColor: "rgba(0,0,0,0.2)",
+    backgroundColor: "rgba(0,0,0,0.22)",
     paddingHorizontal: 5,
     paddingVertical: 2,
-    borderRadius: 6,
-    marginLeft: 4,
-    marginBottom: 3,
+    borderRadius: 5,
+    marginLeft: 5,
+    marginBottom: 4,
   },
   surgeText: { color: "#fff", fontSize: 9, fontWeight: "800" },
+  earningsMeta: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.88)",
+    marginTop: 1,
+  },
   earningsLabel: {
     fontSize: 9,
-    fontWeight: "700",
-    color: "rgba(255,255,255,0.75)",
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.68)",
     letterSpacing: 0.3,
   },
-  earningsDivider: {
-    width: 1,
-    height: 36,
-    backgroundColor: "rgba(255,255,255,0.35)",
-    marginHorizontal: 2,
-  },
-  earningsMetric: {
-    alignItems: "flex-start",
-    gap: 2,
-  },
-  earningsMetricTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-  },
-  earningsMetricVal: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#fff",
-  },
-  earningsMetricLabel: {
-    fontSize: 9,
-    fontWeight: "600",
-    color: "rgba(255,255,255,0.7)",
-  },
 
-  // Payment badge — white pill with orange text
+  // Payment badge — white pill on gradient
   payBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-    backgroundColor: "#fff",
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    paddingHorizontal: 11,
+    paddingVertical: 9,
     borderRadius: 10,
-    marginLeft: "auto",
-  },
-  payBadgeRupee: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: ORANGE,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
   },
   payBadgeText: {
     fontSize: 12,
-    fontWeight: "800",
-    color: ORANGE,
-    letterSpacing: 0.3,
+    fontWeight: "900",
+    color: MANGO_DARK,
+    letterSpacing: 0.4,
   },
 
   // ── Actions ────────────────────────────────────────────────────────────────
-  actions: { flexDirection: "row", gap: 10 },
+  actions: { flexDirection: "row", gap: 8 },
 
-  // Solid red reject button
+  // Reject — red gradient, fixed width
   rejectBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: "#DC2626",
-    overflow: "hidden",
+    gap: 7,
+    height: SLIDE_HEIGHT,
+    width: 108,
+    borderRadius: 14,
   },
   rejectIconCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
   },
   rejectText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "800",
     color: "#fff",
     letterSpacing: 0.2,
   },
 
-  // Slide to accept (orange)
+  // Slide to accept — green gradient
   slideTrack: {
     height: SLIDE_HEIGHT,
-    borderRadius: 16,
+    borderRadius: 14,
     overflow: "hidden",
     justifyContent: "center",
   },
@@ -1442,12 +1258,12 @@ const styles = StyleSheet.create({
     left: SLIDE_PAD,
     width: SLIDE_THUMB,
     height: SLIDE_THUMB,
-    borderRadius: 12,
+    borderRadius: 11,
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.14,
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 4,
     elevation: 3,
