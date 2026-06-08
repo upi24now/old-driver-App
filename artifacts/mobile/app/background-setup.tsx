@@ -1,23 +1,18 @@
 /**
- * Permission Onboarding Screen  (v4 — Rapido/Delhivery-style wizard)
+ * Permission Onboarding Screen  (v5 — Delhivery-style clean wizard)
  *
- * One clean branded screen, one permission at a time, real Android OS popups.
- * No checklist wall, no card wall, no fake-green self-confirmation buttons.
+ * One branded screen. One permission at a time. Real Android OS popups.
+ * No checklist, no card wall, no fake success, no self-confirmation buttons.
  *
  * Steps (built at mount from device capabilities):
- *   1. Notifications  — required, OS dialog auto-fires, blocks Continue
- *   2. Location       — required, OS dialog auto-fires, blocks Continue
- *   3. Battery        — optional, opens REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
- *   4. Auto-start     — optional, Xiaomi/Vivo/Realme/Oppo/OnePlus brands only
- *   5. Screen Wake    — optional, Android 14+ only
+ *   1. Notifications  — required; OS dialog auto-fires; blocks Continue until granted
+ *   2. Location       — required; OS dialog auto-fires; blocks Continue until granted
+ *   3. Battery        — optional; opens REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+ *   4. Auto-start     — optional; Xiaomi/Vivo/Realme/Oppo/OnePlus brands only
+ *   5. Screen Wake    — optional; Android 14+ only
  *
- * Rules:
- *   • Required steps: "Continue" only unlocks after OS confirms permission.
- *   • Optional steps: honest amber "Settings Opened" note, no fake green.
- *   • "Skip" is always available on optional steps.
- *
- * Re-accessible from Profile → Notification & Background Settings
- *   router.push("/background-setup?back=1")
+ * Required steps: Continue only unlocks after OS confirms permission.
+ * Optional steps: Skip always available; button changes to "Continue" after settings opened.
  */
 
 import { Feather } from "@expo/vector-icons";
@@ -190,7 +185,7 @@ async function openBackgroundActivitySettings(
       /* fall through */
     }
   }
-  // Realme/Oppo/OnePlus + generic → App Info
+  // Realme / Oppo / OnePlus + generic → App Info
   await openExactAppDetails();
 }
 
@@ -236,54 +231,50 @@ export default function BackgroundSetupScreen() {
   const fromProfile = params.back === "1";
 
   // ── Permission state (OS-verified) ─────────────────────────────────────────
-  const [notifGranted, setNotifGranted] = useState(false);
-  const [notifCanAskAgain, setNotifCanAskAgain] = useState(true);
-  const [locationGranted, setLocationGranted] = useState(false);
+  const [notifGranted,      setNotifGranted]      = useState(false);
+  const [notifCanAskAgain,  setNotifCanAskAgain]  = useState(true);
+  const [locationGranted,   setLocationGranted]   = useState(false);
   const [locationCanAskAgain, setLocationCanAskAgain] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [finishing, setFinishing] = useState(false);
+  const [loading,           setLoading]           = useState(false);
+  const [finishing,         setFinishing]         = useState(false);
 
-  // After returning from an optional settings screen, settingOpened flips to
-  // true so the primary button changes from "Open Settings" → "Continue".
+  // Flips to true after the driver opens an optional settings screen.
   // Reset to false whenever the wizard advances to a new step.
+  // Used only to change the button label ("Open Setting" → "Continue").
   const [settingOpened, setSettingOpened] = useState(false);
 
   const [currentStep, setCurrentStep] = useState(0);
 
-  // Brand / OS detection — constant for session
-  const brandFamily = detectBrandFamily(getDeviceBrand());
+  // Brand / OS detection — constant for the session
+  const brandFamily   = detectBrandFamily(getDeviceBrand());
   const isAndroid14Plus =
     Platform.OS === "android" && Number(Platform.Version) >= 34;
-  // Auto-start is only relevant on brands that restrict background activity
   const showAutoStart =
     brandFamily === "xiaomi" ||
     brandFamily === "realme" ||
     brandFamily === "vivo";
 
-  // Build step list once (values derived only from platform constants)
+  // Build step list once from platform constants
   const steps: WizardStep[] = [
     {
       id: "notifications",
       icon: "bell",
-      title: "Allow Notifications",
-      description:
-        "Driver App needs notification permission to alert you when a new delivery order arrives.",
+      title: "Enable Notifications",
+      description: "Get instant delivery order alerts.",
       optional: false,
     },
     {
       id: "location",
       icon: "map-pin",
-      title: "Allow Location Access",
-      description:
-        "Your location is used for navigation to pickup and drop points and to match you with nearby orders.",
+      title: "Enable Location",
+      description: "Required to find nearby deliveries and navigate routes.",
       optional: false,
     },
     {
       id: "battery",
       icon: "battery-charging",
-      title: "Disable Battery Restriction",
-      description:
-        "Unrestricted battery access keeps order alerts active when your screen is off. Tap Open to allow.",
+      title: "Keep App Active",
+      description: "Helps receive orders when the phone is locked.",
       optional: true,
     },
     ...(showAutoStart
@@ -291,13 +282,9 @@ export default function BackgroundSetupScreen() {
           {
             id: "autostart" as StepId,
             icon: "refresh-cw" as React.ComponentProps<typeof Feather>["name"],
-            title: "Enable Auto-start",
+            title: "Allow Background Running",
             description:
-              brandFamily === "xiaomi"
-                ? "On Xiaomi / Redmi / POCO phones, auto-start must be enabled for the app to receive orders in the background."
-                : brandFamily === "vivo"
-                  ? "On Vivo / iQOO phones, background app refresh must be enabled for reliable order delivery."
-                  : "On Realme / Oppo / OnePlus phones, auto-launch must be enabled for the app to run in background.",
+              "Helps the app receive delivery requests in the background.",
             optional: true,
           },
         ] satisfies WizardStep[])
@@ -307,9 +294,8 @@ export default function BackgroundSetupScreen() {
           {
             id: "screenwake" as StepId,
             icon: "sun" as React.ComponentProps<typeof Feather>["name"],
-            title: "Allow Screen Wake",
-            description:
-              "On Android 14+, enable full-screen alerts so the app can wake your screen when an urgent order arrives.",
+            title: "Allow Urgent Order Alerts",
+            description: "Allows urgent order alerts to appear clearly.",
             optional: true,
           },
         ] satisfies WizardStep[])
@@ -317,10 +303,10 @@ export default function BackgroundSetupScreen() {
   ];
 
   const totalSteps = steps.length;
-  const step = steps[currentStep];
+  const step       = steps[currentStep];
   const isLastStep = currentStep === totalSteps - 1;
 
-  // ── Permission refresh — called on AppState resume ─────────────────────────
+  // ── Permission refresh on AppState resume ──────────────────────────────────
   useEffect(() => {
     const handleAppState = (state: AppStateStatus) => {
       if (state !== "active") return;
@@ -346,15 +332,13 @@ export default function BackgroundSetupScreen() {
   }, []);
 
   // ── Auto-fire OS dialog when entering a required permission step ───────────
-  // stepFiredRef prevents re-firing the OS popup if the component re-renders
-  // while the dialog is still open.
+  // stepFiredRef prevents re-firing the OS popup on re-renders while it is open.
   const stepFiredRef = useRef<StepId | null>(null);
 
   useEffect(() => {
     const stepId = steps[currentStep]?.id;
     if (!stepId) return;
 
-    // Reset per-step "setting opened" state on every step change
     setSettingOpened(false);
 
     if (stepId === "notifications" && stepFiredRef.current !== "notifications") {
@@ -366,10 +350,6 @@ export default function BackgroundSetupScreen() {
         }));
         setNotifGranted(status.granted);
         setNotifCanAskAgain(status.canAskAgain);
-        console.log(
-          "[PermissionOnboarding] step=notifications granted=",
-          status.granted,
-        );
         if (status.granted || !status.canAskAgain) return;
         setLoading(true);
         await requestNotificationPermissions();
@@ -380,10 +360,6 @@ export default function BackgroundSetupScreen() {
         setNotifGranted(after.granted);
         setNotifCanAskAgain(after.canAskAgain);
         setLoading(false);
-        console.log(
-          "[PermissionOnboarding] granted notification=",
-          after.granted,
-        );
       })();
     }
 
@@ -395,20 +371,12 @@ export default function BackgroundSetupScreen() {
         );
         setLocationGranted(status.granted);
         setLocationCanAskAgain(status.canAskAgain ?? true);
-        console.log(
-          "[PermissionOnboarding] step=location granted=",
-          status.granted,
-        );
         if (status.granted || !(status.canAskAgain ?? true)) return;
         setLoading(true);
         try {
           const result = await Location.requestForegroundPermissionsAsync();
           setLocationGranted(result.granted);
           setLocationCanAskAgain(result.canAskAgain ?? false);
-          console.log(
-            "[PermissionOnboarding] granted location=",
-            result.granted,
-          );
         } catch {
           setLocationGranted(false);
         }
@@ -430,19 +398,6 @@ export default function BackgroundSetupScreen() {
 
   async function finish() {
     setFinishing(true);
-    const [notifStatus, locStatus] = await Promise.all([
-      getNotificationPermissionStatus().catch(() => ({
-        granted: false,
-        canAskAgain: false,
-      })),
-      Location.getForegroundPermissionsAsync().catch(() => ({ granted: false })),
-    ]);
-    console.log(
-      "[PermissionOnboarding] granted notification=",
-      notifStatus.granted,
-      "location=",
-      locStatus.granted,
-    );
     console.log("[PermissionOnboarding] completed");
     try {
       await markBackgroundSetupShown();
@@ -461,9 +416,58 @@ export default function BackgroundSetupScreen() {
     advance();
   }
 
-  async function handleOpenSetting() {
+  async function handlePrimary() {
     if (!step) return;
-    console.log("[PermissionOnboarding] opened setting=", step.id);
+
+    if (step.id === "notifications") {
+      if (notifGranted) {
+        advance();
+        return;
+      }
+      if (notifCanAskAgain) {
+        setLoading(true);
+        await requestNotificationPermissions();
+        const after = await getNotificationPermissionStatus().catch(() => ({
+          granted: false,
+          canAskAgain: false,
+        }));
+        setNotifGranted(after.granted);
+        setNotifCanAskAgain(after.canAskAgain);
+        setLoading(false);
+        if (after.granted) advance();
+      } else {
+        await openNotificationSettings();
+      }
+      return;
+    }
+
+    if (step.id === "location") {
+      if (locationGranted) {
+        advance();
+        return;
+      }
+      if (locationCanAskAgain) {
+        setLoading(true);
+        try {
+          const result = await Location.requestForegroundPermissionsAsync();
+          setLocationGranted(result.granted);
+          setLocationCanAskAgain(result.canAskAgain ?? false);
+          if (result.granted) advance();
+        } catch {
+          setLocationGranted(false);
+        }
+        setLoading(false);
+      } else {
+        await openExactAppDetails();
+      }
+      return;
+    }
+
+    // Optional steps: first tap opens system setting, second tap continues
+    if (settingOpened) {
+      advance();
+      return;
+    }
     if (step.id === "battery") {
       await openBatteryOptimizationRequest();
     } else if (step.id === "autostart") {
@@ -474,126 +478,41 @@ export default function BackgroundSetupScreen() {
     setSettingOpened(true);
   }
 
-  async function handleNotifAction() {
-    if (notifGranted) {
-      advance();
-      return;
-    }
-    if (notifCanAskAgain) {
-      setLoading(true);
-      await requestNotificationPermissions();
-      const after = await getNotificationPermissionStatus().catch(() => ({
-        granted: false,
-        canAskAgain: false,
-      }));
-      setNotifGranted(after.granted);
-      setNotifCanAskAgain(after.canAskAgain);
-      setLoading(false);
-      if (after.granted) advance();
-    } else {
-      await openNotificationSettings();
-    }
-  }
-
-  async function handleLocationAction() {
-    if (locationGranted) {
-      advance();
-      return;
-    }
-    if (locationCanAskAgain) {
-      setLoading(true);
-      try {
-        const result = await Location.requestForegroundPermissionsAsync();
-        setLocationGranted(result.granted);
-        setLocationCanAskAgain(result.canAskAgain ?? false);
-        if (result.granted) advance();
-      } catch {
-        setLocationGranted(false);
-      }
-      setLoading(false);
-    } else {
-      await openExactAppDetails();
-    }
-  }
-
-  async function handlePrimary() {
-    if (!step) return;
-    if (step.id === "notifications") {
-      await handleNotifAction();
-    } else if (step.id === "location") {
-      await handleLocationAction();
-    } else {
-      // Optional steps: first tap opens settings, second tap continues
-      if (settingOpened) {
-        advance();
-      } else {
-        await handleOpenSetting();
-      }
-    }
-  }
-
-  // ── Guard: steps array empty (should never happen) ────────────────────────
+  // Guard: steps array empty (should never happen in production)
   if (!step) return null;
 
-  // ── Derived render values ─────────────────────────────────────────────────
-
-  const isRequired = !step.optional;
-
-  const requiredGranted =
-    step.id === "notifications"
-      ? notifGranted
-      : step.id === "location"
-        ? locationGranted
-        : false;
+  // ── Derived values ─────────────────────────────────────────────────────────
 
   const permanentlyDenied =
     (step.id === "notifications" && !notifGranted && !notifCanAskAgain) ||
-    (step.id === "location" && !locationGranted && !locationCanAskAgain);
+    (step.id === "location"     && !locationGranted && !locationCanAskAgain);
 
   let primaryLabel: string;
   if (step.id === "notifications") {
-    if (notifGranted) primaryLabel = "Continue";
+    if (notifGranted)          primaryLabel = "Continue";
     else if (!notifCanAskAgain) primaryLabel = "Open Notification Settings";
-    else primaryLabel = "Allow Notifications";
+    else                        primaryLabel = "Allow Notifications";
   } else if (step.id === "location") {
-    if (locationGranted) primaryLabel = "Continue";
+    if (locationGranted)           primaryLabel = "Continue";
     else if (!locationCanAskAgain) primaryLabel = "Open Location Settings";
-    else primaryLabel = "Allow Location";
+    else                           primaryLabel = "Allow Location";
+  } else if (step.id === "battery") {
+    primaryLabel = settingOpened ? "Continue" : "Continue Setup";
   } else {
-    if (settingOpened) primaryLabel = "Continue";
-    else if (step.id === "battery") primaryLabel = "Open Battery Settings";
-    else if (step.id === "autostart") primaryLabel = "Open Auto-start Settings";
-    else primaryLabel = "Open Screen Wake Settings";
+    // autostart, screenwake
+    primaryLabel = settingOpened ? "Continue" : "Open Setting";
   }
 
-  // Primary button color
-  const primaryColor =
-    isRequired && requiredGranted
-      ? "#00C853"
-      : colors.primary;
+  const iconColor = step.optional ? "#2563EB" : colors.primary;
+  const ringBg    = step.optional
+    ? "rgba(37,99,235,0.08)"
+    : (colors.primary as string) + "18";
 
-  // Icon / ring color
-  const iconColor =
-    isRequired && requiredGranted
-      ? "#00C853"
-      : isRequired && permanentlyDenied
-        ? "#DC2626"
-        : isRequired
-          ? colors.primary
-          : "#2563EB";
-
-  const ringBg =
-    isRequired && requiredGranted
-      ? "rgba(0,200,83,0.10)"
-      : isRequired && permanentlyDenied
-        ? "rgba(220,38,38,0.08)"
-        : isRequired
-          ? (colors.primary as string) + "18"
-          : "rgba(37,99,235,0.08)";
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <View style={[s.root, { backgroundColor: colors.background }]}>
-      {/* ── Top bar (fromProfile only) ───────────────────────────────────── */}
+    <View style={s.root}>
+      {/* Back button — profile entry only */}
       {fromProfile && (
         <View style={[s.topBar, { paddingTop: insets.top + 8 }]}>
           <TouchableOpacity
@@ -606,11 +525,11 @@ export default function BackgroundSetupScreen() {
         </View>
       )}
 
-      {/* ── Body ─────────────────────────────────────────────────────────── */}
+      {/* ── Body ──────────────────────────────────────────────────────────── */}
       <View
         style={[
           s.body,
-          { paddingTop: fromProfile ? 24 : insets.top + 40 },
+          { paddingTop: fromProfile ? 32 : insets.top + 52 },
         ]}
       >
         {/* Brand mark */}
@@ -623,55 +542,26 @@ export default function BackgroundSetupScreen() {
           </Text>
         </View>
 
-        {/* Step progress dots */}
-        <View style={s.dotsRow}>
-          {steps.map((st, i) => (
-            <View
-              key={st.id}
-              style={[
-                s.dot,
-                {
-                  backgroundColor: colors.primary,
-                  width: i === currentStep ? 22 : 8,
-                  opacity: i < currentStep ? 0.35 : i === currentStep ? 1 : 0.18,
-                },
-              ]}
-            />
-          ))}
-        </View>
-
-        {/* Illustration */}
+        {/* Step illustration */}
         <View style={s.illustrationWrap}>
           <View
             style={[
               s.iconRing,
-              { backgroundColor: ringBg, borderColor: iconColor + "30" },
+              {
+                backgroundColor: ringBg,
+                borderColor: permanentlyDenied
+                  ? "rgba(220,38,38,0.20)"
+                  : iconColor + "28",
+              },
             ]}
           >
-            <Feather name={step.icon} size={56} color={iconColor} />
+            <Feather
+              name={step.icon}
+              size={64}
+              color={permanentlyDenied ? "#DC2626" : iconColor}
+            />
           </View>
-
-          {isRequired && requiredGranted && (
-            <View style={s.grantedBadge}>
-              <Feather name="check-circle" size={16} color="#166534" />
-              <Text style={s.grantedText}>Granted</Text>
-            </View>
-          )}
-
-          {permanentlyDenied && (
-            <View style={s.deniedBadge}>
-              <Feather name="alert-circle" size={15} color="#DC2626" />
-              <Text style={s.deniedText}>
-                Permission denied — tap the button below to open Settings
-              </Text>
-            </View>
-          )}
         </View>
-
-        {/* Step counter */}
-        <Text style={[s.stepCounter, { color: colors.mutedForeground }]}>
-          Step {currentStep + 1} of {totalSteps}
-        </Text>
 
         {/* Title */}
         <Text style={[s.title, { color: colors.foreground }]}>
@@ -682,22 +572,12 @@ export default function BackgroundSetupScreen() {
         <Text style={[s.description, { color: colors.mutedForeground }]}>
           {step.description}
         </Text>
-
-        {/* Honest "settings opened" note for optional steps */}
-        {step.optional && settingOpened && (
-          <View style={s.openedNote}>
-            <Feather name="check" size={14} color="#92400E" />
-            <Text style={s.openedNoteText}>
-              Settings opened — tap Continue when done
-            </Text>
-          </View>
-        )}
       </View>
 
-      {/* ── Footer ───────────────────────────────────────────────────────── */}
-      <View style={[s.footer, { paddingBottom: insets.bottom + 20 }]}>
+      {/* ── Footer ────────────────────────────────────────────────────────── */}
+      <View style={[s.footer, { paddingBottom: insets.bottom + 24 }]}>
         <TouchableOpacity
-          style={[s.primaryBtn, { backgroundColor: primaryColor }]}
+          style={[s.primaryBtn, { backgroundColor: colors.primary }]}
           onPress={() => void handlePrimary()}
           activeOpacity={0.85}
           disabled={loading || finishing}
@@ -705,22 +585,19 @@ export default function BackgroundSetupScreen() {
           {loading || finishing ? (
             <ActivityIndicator size="small" color="#fff" />
           ) : (
-            <>
-              <Text style={s.primaryBtnText}>{primaryLabel}</Text>
-              <Feather name="arrow-right" size={16} color="#fff" />
-            </>
+            <Text style={s.primaryBtnText}>{primaryLabel}</Text>
           )}
         </TouchableOpacity>
 
-        {/* Skip — optional steps only, before setting has been opened */}
-        {step.optional && !settingOpened && (
+        {/* Skip — optional steps only */}
+        {step.optional && (
           <TouchableOpacity
             style={s.skipBtn}
             onPress={handleSkip}
             activeOpacity={0.7}
           >
             <Text style={[s.skipText, { color: colors.mutedForeground }]}>
-              Skip for now
+              Skip
             </Text>
           </TouchableOpacity>
         )}
@@ -732,7 +609,10 @@ export default function BackgroundSetupScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  root: { flex: 1 },
+  root: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+  },
 
   topBar: {
     paddingHorizontal: 20,
@@ -748,7 +628,7 @@ const s = StyleSheet.create({
 
   body: {
     flex: 1,
-    paddingHorizontal: 28,
+    paddingHorizontal: 32,
     alignItems: "center",
   },
 
@@ -756,7 +636,7 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    marginBottom: 36,
+    marginBottom: 56,
   },
   logoCircle: {
     width: 40,
@@ -771,74 +651,21 @@ const s = StyleSheet.create({
     letterSpacing: -0.2,
   },
 
-  dotsRow: {
-    flexDirection: "row",
-    gap: 6,
-    alignItems: "center",
-    marginBottom: 48,
-  },
-  dot: {
-    height: 8,
-    borderRadius: 4,
-  },
-
   illustrationWrap: {
     alignItems: "center",
-    gap: 16,
-    marginBottom: 36,
+    marginBottom: 44,
   },
   iconRing: {
-    width: 148,
-    height: 148,
-    borderRadius: 74,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
     borderWidth: 1.5,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  grantedBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#DCFCE7",
-    paddingHorizontal: 16,
-    paddingVertical: 7,
-    borderRadius: 20,
-  },
-  grantedText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#166534",
-  },
-
-  deniedBadge: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 7,
-    backgroundColor: "#FEE2E2",
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 12,
-    maxWidth: 280,
-  },
-  deniedText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#DC2626",
-    flex: 1,
-    lineHeight: 17,
-  },
-
-  stepCounter: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-    marginBottom: 12,
-  },
-
   title: {
-    fontSize: 27,
+    fontSize: 28,
     fontWeight: "800",
     letterSpacing: -0.5,
     textAlign: "center",
@@ -846,44 +673,26 @@ const s = StyleSheet.create({
   },
 
   description: {
-    fontSize: 15,
-    lineHeight: 23,
+    fontSize: 16,
+    lineHeight: 24,
     textAlign: "center",
-    paddingHorizontal: 4,
-  },
-
-  openedNote: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    marginTop: 20,
-    backgroundColor: "#FEF3C7",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  openedNoteText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#92400E",
+    paddingHorizontal: 8,
   },
 
   footer: {
     paddingHorizontal: 24,
-    paddingTop: 12,
-    gap: 10,
+    paddingTop: 16,
+    gap: 8,
   },
 
   primaryBtn: {
-    height: 56,
-    borderRadius: 16,
-    flexDirection: "row",
+    height: 58,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
   },
   primaryBtnText: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "700",
     color: "#fff",
     letterSpacing: 0.1,
@@ -895,7 +704,7 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
   skipText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "500",
   },
 });

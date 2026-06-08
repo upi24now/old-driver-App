@@ -352,8 +352,9 @@ export async function updateDriverPushToken(
  *   2 — versioned gate; notifications + foreground GPS required
  *   3 — readiness gate v3; auto-request on mount, canAskAgain denial UX
  *   4 — Rapido/Delhivery-style wizard; one step per screen, no fake-green
+ *   5 — Clean rebuild; exact Delhivery-style labels, white bg, no badges/notes
  */
-export const PERMISSION_SETUP_VERSION = 4;
+export const PERMISSION_SETUP_VERSION = 5;
 
 /**
  * Mark that the driver has completed the background-permission setup screen
