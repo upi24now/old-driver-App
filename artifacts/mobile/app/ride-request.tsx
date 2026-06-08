@@ -225,7 +225,7 @@ export default function RideRequestScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { incomingRide, acceptRide, rejectRide, recoverIncomingRide } = useDriver();
+  const { incomingRide, pendingRides, acceptRide, rejectRide, recoverIncomingRide } = useDriver();
 
   // FCM tap recovery — orderId + order fields forwarded from handleNotificationResponse
   // so the screen can fetch the order from Firestore if incomingRide is not yet set.
@@ -247,10 +247,15 @@ export default function RideRequestScreen() {
   const [fetchFailed,  setFetchFailed]  = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  // Primary source: Firestore listener via DriverContext.
-  // Fallback:       Firestore one-time fetch triggered by notification tap params.
-  const ride = incomingRide ?? fetchedRide;
-  const rides = ride ? [ride] : [];
+  // Slider scroll ref — used to programmatically clamp position when a card
+  // is removed (accepted/rejected) and the index needs adjusting.
+  const scrollRef = useRef<ScrollView>(null);
+
+  // Primary source: pendingRides from DriverContext (ALL simultaneously-dispatched
+  // orders for this driver — the real fix for the single-card bug).
+  // Fallback: single incomingRide (Firestore listener) or FCM-tap fetchedRide.
+  const ride  = incomingRide ?? fetchedRide;
+  const rides = pendingRides.length > 0 ? pendingRides : (ride ? [ride] : []);
 
   const [seconds, setSeconds] = useState(TIMER_SECONDS);
   const [isAccepting, setIsAccepting] = useState(false);
@@ -416,11 +421,15 @@ export default function RideRequestScreen() {
 
   // Watch both incomingRide (Firestore listener) and fetchedRide (FCM tap fetch)
   // so dismiss fires correctly whichever source delivers the order.
+  // Guard: do NOT dismiss if pendingRides still has cards — the driver is viewing
+  // remaining orders. Only dismiss once all pending cards are gone.
   useEffect(() => {
     if (ride !== null) { hadRideRef.current = true; return; }
     if (didAcceptRef.current) return;
+    if (pendingRides.length > 0) return;
     if (hadRideRef.current) dismiss();
-  }, [incomingRide, fetchedRide]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incomingRide, fetchedRide, pendingRides.length]);
 
   // ─── Local OrderDoc → IncomingRide mapping (mirrors DriverContext.orderDocToRide)
   function orderDocToIncomingRide(order: OrderDoc): IncomingRide {
@@ -511,6 +520,25 @@ export default function RideRequestScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchFailed]);
 
+  // When pendingRides changes (a card was accepted or rejected and Firestore
+  // removed it), clamp the index and sync incomingRide to the newly focused card
+  // so acceptRide() always acts on whatever card is currently shown.
+  const pendingRidesKey = pendingRides.map((r) => r.id).join(",");
+  useEffect(() => {
+    if (pendingRides.length === 0) return;
+    const clamped = Math.min(currentIndex, pendingRides.length - 1);
+    if (clamped !== currentIndex) {
+      setCurrentIndex(clamped);
+      scrollRef.current?.scrollTo({ x: clamped * SCREEN_W, animated: true });
+    }
+    // Sync incomingRide only when no accept is in flight (didAcceptRef guards
+    // against resetting it while the transaction is still awaiting).
+    if (!didAcceptRef.current) {
+      recoverIncomingRide(pendingRides[clamped]!);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingRidesKey]);
+
   // Stop ringtone + vibration immediately on any exit path.
   function stopAlert() {
     try { player.pause(); } catch {}
@@ -520,6 +548,9 @@ export default function RideRequestScreen() {
   function handleReject() {
     // Ignore reject tap if accept transaction is already in flight.
     if (didAcceptRef.current) return;
+    // Capture count BEFORE the async rejectRide() state update so we can decide
+    // whether to dismiss — if >1 card is pending, the screen stays open for the rest.
+    const moreCardsRemain = pendingRides.length > 1;
     stopAlert();
     Vibration.vibrate(40); // short haptic feedback for the reject gesture
     Animated.parallel([
@@ -540,7 +571,13 @@ export default function RideRequestScreen() {
       ]),
     ]).start(() => {
       rejectRide();
-      dismiss();
+      // Only dismiss when no more cards remain — the pendingRides useEffect above
+      // will clamp the index and sync incomingRide to the next card automatically.
+      if (!moreCardsRemain) dismiss();
+      else {
+        // Reset shake / fill animation so the button is ready for the next card.
+        rejectFill.setValue(0);
+      }
     });
   }
 
@@ -572,7 +609,12 @@ export default function RideRequestScreen() {
 
   async function handleAccept() {
     Vibration.vibrate(50);
-    const ride = incomingRide ?? fetchedRide;
+    // The viewed card may not be incomingRide if the driver swiped.
+    // recoverIncomingRide was called on every scroll-end, so incomingRide should
+    // already reflect the viewed card. But use rides[currentIndex] as the
+    // navigation source so we always route to the correct order's delivery screen.
+    const viewedRide = rides[currentIndex] ?? incomingRide ?? fetchedRide;
+    const ride = viewedRide;
     if (!ride) return;
 
     // Show accepting spinner immediately so the driver gets visual feedback.
@@ -710,35 +752,37 @@ export default function RideRequestScreen() {
               ]}
             />
 
-            {/* Pagination row — shown only when there are multiple cards */}
-            {rides.length > 1 && (
-              <View style={styles.paginationRow}>
-                {rides.map((_, i) => (
-                  <View
-                    key={i}
-                    style={[
-                      styles.paginationDot,
-                      i === currentIndex && styles.paginationDotActive,
-                    ]}
-                  />
-                ))}
-                <Text style={[styles.paginationCount, { color: colors.mutedForeground }]}>
-                  {currentIndex + 1} / {rides.length}
-                </Text>
-              </View>
-            )}
+            {/* Pagination row — always shown when at least one card is present */}
+            <View style={styles.paginationRow}>
+              {rides.map((_, i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.paginationDot,
+                    i === currentIndex && styles.paginationDotActive,
+                  ]}
+                />
+              ))}
+              <Text style={[styles.paginationCount, { color: colors.mutedForeground }]}>
+                {currentIndex + 1} / {rides.length}
+              </Text>
+            </View>
 
             {/* Horizontal swipe slider */}
             <ScrollView
+              ref={scrollRef}
               horizontal
               pagingEnabled
               showsHorizontalScrollIndicator={false}
               scrollEventThrottle={16}
               style={styles.slider}
               onMomentumScrollEnd={(e) => {
-                setCurrentIndex(
-                  Math.round(e.nativeEvent.contentOffset.x / SCREEN_W),
-                );
+                const newIdx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
+                setCurrentIndex(newIdx);
+                // Sync incomingRide to the newly visible card so acceptRide()
+                // (which reads incomingRide internally) acts on the correct order.
+                const viewed = rides[newIdx];
+                if (viewed) recoverIncomingRide(viewed);
               }}
             >
               {rides.map((r, idx) => {
@@ -1009,8 +1053,8 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     backgroundColor: "#fff",
     borderRadius: 22,
-    padding: 14,
-    gap: 12,
+    padding: 10,
+    gap: 8,
     borderWidth: 2,
     shadowColor: "#000",
     shadowOpacity: 0.22,
@@ -1057,7 +1101,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     paddingHorizontal: 2,
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderTopWidth: 1,
     borderBottomWidth: 1,
   },
@@ -1087,8 +1131,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderRadius: 16,
   },
   earningsAmountRow: {
@@ -1097,30 +1141,32 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   earningsCurrency: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#fff",
-    marginBottom: 4,
-  },
-  earningsAmount: {
-    fontSize: 38,
+    fontSize: 22,
     fontWeight: "800",
     color: "#fff",
-    letterSpacing: -1.5,
-    lineHeight: 40,
+    marginBottom: 3,
+  },
+  earningsAmount: {
+    fontSize: 42,
+    fontWeight: "900",
+    color: "#fff",
+    letterSpacing: -2,
+    lineHeight: 44,
   },
   earningsLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "rgba(255,255,255,0.8)",
-    letterSpacing: 0.2,
+    fontSize: 10,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.75)",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
     marginTop: 2,
   },
   earningsMeta: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "rgba(255,255,255,0.75)",
-    marginTop: 2,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.9)",
+    marginTop: 3,
+    letterSpacing: 0.1,
   },
   surgeBadge: {
     flexDirection: "row",
@@ -1131,22 +1177,26 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 7,
     marginLeft: 6,
-    marginBottom: 5,
+    marginBottom: 4,
   },
   surgeText: { color: "#fff", fontSize: 10, fontWeight: "800" },
 
-  // ── Payment badge ───────────────────────────────────────────────────────────
+  // ── Payment badge — rendered inside the earnings hero gradient ──────────────
   payBadge: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.35)",
+    backgroundColor: "rgba(0,0,0,0.18)",
   },
   payBadgeText: {
     fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 0.5,
+    fontWeight: "900",
+    letterSpacing: 0.6,
+    color: "#fff",
   },
 
   // ── Actions ─────────────────────────────────────────────────────────────────

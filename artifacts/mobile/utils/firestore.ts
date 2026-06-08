@@ -500,6 +500,25 @@ export function listenToDispatchedOrder(
 }
 
 /**
+ * Listen for ALL "dispatched" orders assigned to this driver simultaneously.
+ * Returns the full array so the UI can render a multi-order slider.
+ * Returns an unsubscribe function; call it on cleanup.
+ */
+export function listenToAllDispatchedOrders(
+  uid:      string,
+  onOrders: (orders: OrderDoc[]) => void,
+): () => void {
+  const q = query(
+    collection(db, "orders"),
+    where("driverUid", "==", uid),
+    where("status",    "==", "dispatched"),
+  );
+  return onSnapshot(q, (snap) => {
+    onOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrderDoc)));
+  });
+}
+
+/**
  * Subscribe to a single order document.
  * Calls back with the live status string, or null if the doc no longer exists.
  * Returns an unsubscribe function; call it on cleanup.

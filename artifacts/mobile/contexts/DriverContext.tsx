@@ -27,6 +27,7 @@ import {
   getActiveOrderForDriver,
   getActiveOrdersForDriver,
   listenToDispatchedOrder,
+  listenToAllDispatchedOrders,
   listenToActiveOrder,
   acceptOrder,
   rejectOrder,
@@ -172,8 +173,9 @@ type DriverState = {
   planExpiredNoOrders:   boolean;  // plan was active, now expired, zero active orders
   planExpiredWithOrders: boolean;  // plan was active, now expired, ≥1 active order remains
 
-  incomingRide: IncomingRide | null;
-  rideHistory:  ActiveRide[];
+  incomingRide:  IncomingRide | null;
+  pendingRides:  IncomingRide[];   // ALL simultaneously-dispatched orders (slider source)
+  rideHistory:   ActiveRide[];
 
   walletBalance:  number;
   todayEarnings:  number;
@@ -330,8 +332,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const [subscriptionExpiresAt, setSubExp]  = useState<number | null>(null);
   const [nowTick,               setNowTick] = useState(() => Date.now());
 
-  const [incomingRide, setIncomingRide] = useState<IncomingRide | null>(null);
-  const [rideHistory,  setHistory]      = useState<ActiveRide[]>([]);
+  const [incomingRide,  setIncomingRide] = useState<IncomingRide | null>(null);
+  const [pendingRides,  setPendingRides] = useState<IncomingRide[]>([]);
+  const [rideHistory,   setHistory]     = useState<ActiveRide[]>([]);
 
   const [walletBalance,  setBalance]      = useState(0);
   const [todayEarnings,  setTodayEarnings]= useState(0);
@@ -516,6 +519,21 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // changes, not on every internal order-status update.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOnline, driverUid, activeOrders.length, subscriptionActive]);
+
+  // Parallel listener: keeps pendingRides (ALL dispatched orders) in sync so the
+  // ride-request slider can show every pending card simultaneously.
+  // This is read-only — accept/reject logic still operates on incomingRide.
+  useEffect(() => {
+    if (!isOnline || !driverUid || isAtCapacity || !subscriptionActive) {
+      setPendingRides([]);
+      return;
+    }
+    const unsub = listenToAllDispatchedOrders(driverUid, (orders) => {
+      setPendingRides(orders.map(orderDocToRide));
+    });
+    return unsub;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOnline, driverUid, isAtCapacity, subscriptionActive]);
 
   // ─── Auth actions ─────────────────────────────────────────────────────────
   const setPhone = (p: string) => setPhoneState(p);
@@ -1164,6 +1182,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         planExpiredNoOrders,
         planExpiredWithOrders,
         incomingRide,
+        pendingRides,
         rideHistory,
         walletBalance,
         todayEarnings,
