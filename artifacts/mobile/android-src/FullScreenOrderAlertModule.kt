@@ -73,13 +73,19 @@ class FullScreenOrderAlertModule(
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
 
-            // ── Full-screen intent: same destination, wakes the screen ─────────
-            // Using a separate request code so Android treats this as a distinct
-            // PendingIntent from the tap intent.
+            // ── Full-screen intent: explicit MainActivity launch ──────────────
+            // Must target MainActivity by class (not a deep-link URI) so the OS
+            // can start the Activity before the JS bridge is up on a killed/locked
+            // device.  orderId is passed as an extra; FLAG_ACTIVITY_NEW_TASK and
+            // FLAG_ACTIVITY_CLEAR_TOP are kept so an existing task is reused.
+            val fullScreenIntent = Intent(ctx, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra("orderId", orderId)
+            }
             val fullScreenPending = PendingIntent.getActivity(
                 ctx,
                 orderId.hashCode() + 3,
-                tapIntent,
+                fullScreenIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
 
@@ -124,7 +130,7 @@ class FullScreenOrderAlertModule(
                 .setContentTitle(title)
                 .setContentText(body)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
-                .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+                .setCategory(NotificationCompat.CATEGORY_CALL)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setAutoCancel(false)
                 .setOngoing(false)
