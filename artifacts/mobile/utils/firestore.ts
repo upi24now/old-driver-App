@@ -351,8 +351,9 @@ export async function updateDriverPushToken(
  *   1 — original boolean-only gate (backgroundSetupShown: true)
  *   2 — versioned gate; notifications + foreground GPS required
  *   3 — readiness gate v3; auto-request on mount, canAskAgain denial UX
+ *   4 — Rapido/Delhivery-style wizard; one step per screen, no fake-green
  */
-export const PERMISSION_SETUP_VERSION = 3;
+export const PERMISSION_SETUP_VERSION = 4;
 
 /**
  * Mark that the driver has completed the background-permission setup screen
