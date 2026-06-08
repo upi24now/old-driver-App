@@ -49,6 +49,16 @@ function getDeviceBrand(): string {
   return ((constants?.Brand ?? "") as string).toLowerCase();
 }
 
+async function safeOpenAppSettings(): Promise<void> {
+  if (Platform.OS === "web") {
+    console.log("[BackgroundSetup] openSettings skipped on web");
+    return;
+  }
+  if (typeof Linking.openSettings === "function") {
+    await Linking.openSettings();
+  }
+}
+
 type BrandFamily = "xiaomi" | "realme" | "samsung" | "vivo" | "generic";
 
 function detectBrandFamily(brand: string): BrandFamily {
@@ -74,7 +84,7 @@ function detectBrandFamily(brand: string): BrandFamily {
 
 async function openNotificationSettings(): Promise<void> {
   if (Platform.OS !== "android") {
-    await Linking.openSettings();
+    await safeOpenAppSettings();
     return;
   }
   try {
@@ -83,13 +93,13 @@ async function openNotificationSettings(): Promise<void> {
       { extra: { "android.provider.Settings.EXTRA_APP_PACKAGE": APP_PKG } },
     );
   } catch {
-    await Linking.openSettings();
+    await safeOpenAppSettings();
   }
 }
 
 async function openBatteryOptimizationRequest(): Promise<void> {
   if (Platform.OS !== "android") {
-    await Linking.openSettings();
+    await safeOpenAppSettings();
     return;
   }
   try {
@@ -109,7 +119,7 @@ async function openBatteryOptimizationRequest(): Promise<void> {
           { data: `package:${APP_PKG}` },
         );
       } catch {
-        await Linking.openSettings();
+        await safeOpenAppSettings();
       }
     }
   }
@@ -117,7 +127,7 @@ async function openBatteryOptimizationRequest(): Promise<void> {
 
 async function openExactAppDetails(): Promise<void> {
   if (Platform.OS !== "android") {
-    await Linking.openSettings();
+    await safeOpenAppSettings();
     return;
   }
   try {
@@ -126,7 +136,7 @@ async function openExactAppDetails(): Promise<void> {
       { data: `package:${APP_PKG}` },
     );
   } catch {
-    await Linking.openSettings();
+    await safeOpenAppSettings();
   }
 }
 
@@ -134,7 +144,7 @@ async function openBackgroundActivitySettings(
   brand: BrandFamily,
 ): Promise<void> {
   if (Platform.OS !== "android") {
-    await Linking.openSettings();
+    await safeOpenAppSettings();
     return;
   }
   if (brand === "xiaomi") {
@@ -186,7 +196,7 @@ async function openBackgroundActivitySettings(
 
 async function openScreenWakeSettings(): Promise<void> {
   if (Platform.OS !== "android") {
-    await Linking.openSettings();
+    await safeOpenAppSettings();
     return;
   }
   try {
