@@ -6,6 +6,7 @@
   "scripts": {
     "hello": "tsx ./src/hello.ts",
     "audit-delivered-order": "tsx ./src/audit-delivered-order.ts",
+    "verify-dispatch-flow": "tsx ./src/verify-dispatch-flow.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

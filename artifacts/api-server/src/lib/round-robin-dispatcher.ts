@@ -192,19 +192,35 @@ async function assignNextDriver(
 // ─── Timeout poller ───────────────────────────────────────────────────────────
 
 async function checkExpiredDispatches(db: FirebaseFirestore.Firestore): Promise<void> {
+  // Single-field query (no composite index needed).
+  // JS-filter the expiry check so Firestore only needs the status index.
   let snap: FirebaseFirestore.QuerySnapshot;
   try {
     snap = await db.collection("orders")
-      .where("status",           "==", "dispatched")
-      .where("dispatchTimeoutAt", "<=", new Date())
+      .where("status", "==", "dispatched")
       .get();
   } catch (err) {
     logger.warn({ err }, "[RR dispatcher] Timeout poll query failed");
     return;
   }
 
+  const now = new Date();
   for (const orderDoc of snap.docs) {
-    void returnToPool(db, orderDoc);
+    const data = orderDoc.data() as Record<string, unknown>;
+    const timeoutAt = data["dispatchTimeoutAt"];
+    if (!timeoutAt) continue;
+
+    // Firestore Timestamp or plain Date — normalise to JS Date.
+    const timeoutDate =
+      timeoutAt instanceof Date
+        ? timeoutAt
+        : typeof (timeoutAt as { toDate?: () => Date }).toDate === "function"
+          ? (timeoutAt as { toDate: () => Date }).toDate()
+          : null;
+
+    if (timeoutDate && timeoutDate <= now) {
+      void returnToPool(db, orderDoc);
+    }
   }
 }
 
