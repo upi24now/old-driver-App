@@ -45,13 +45,8 @@ import {
 const APP_PKG = "in.bikecourierservice.driver";
 
 function getDeviceBrand(): string {
-  return (
-    (
-      (Platform.constants as Record<string, unknown>).Brand as
-        | string
-        | undefined
-    ) ?? ""
-  ).toLowerCase();
+  const constants = Platform.constants as Record<string, unknown> | undefined;
+  return ((constants?.Brand ?? "") as string).toLowerCase();
 }
 
 type BrandFamily = "xiaomi" | "realme" | "samsung" | "vivo" | "generic";
