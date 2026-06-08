@@ -13,10 +13,12 @@ import {
   Alert,
   Animated,
   BackHandler,
+  Dimensions,
   Easing,
   Linking,
   PanResponder,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -34,20 +36,30 @@ const RING_SIZE = 64;
 const RING_STROKE = 5;
 const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
 const RING_CIRC = 2 * Math.PI * RING_RADIUS;
+const SCREEN_W = Dimensions.get("window").width;
+const CARD_W   = SCREEN_W - 24;
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+// Payment badge colour map
+const PAY_BADGE: Record<string, { bg: string; fg: string }> = {
+  CASH:   { bg: "#FEF3C7", fg: "#92400E" },
+  ONLINE: { bg: "#D1FAE5", fg: "#065F46" },
+  COD:    { bg: "#DBEAFE", fg: "#1E40AF" },
+};
 
 function UrgencyRing({
   progress,
   seconds,
-  urgent,
 }: {
   progress: Animated.Value;
   seconds: number;
-  urgent: boolean;
+  urgent: boolean;  // kept in signature for call-site compatibility
 }) {
   const colors = useColors();
-  const ringColor = urgent ? "#DC2626" : colors.primary;
+  // 3-colour urgency: green >10 s, orange 5–10 s, red ≤5 s
+  const ringColor =
+    seconds <= 5 ? "#DC2626" : seconds <= 10 ? "#D97706" : "#059669";
   const dashOffset = progress.interpolate({
     inputRange: [0, 1],
     outputRange: [0, RING_CIRC],
@@ -78,9 +90,7 @@ function UrgencyRing({
         />
       </Svg>
       <View style={styles.ringCenter}>
-        <Text style={[styles.ringNum, { color: urgent ? "#DC2626" : colors.foreground }]}>
-          {seconds}
-        </Text>
+        <Text style={[styles.ringNum, { color: ringColor }]}>{seconds}</Text>
         <Text style={[styles.ringUnit, { color: colors.mutedForeground }]}>sec</Text>
       </View>
     </View>
@@ -88,8 +98,8 @@ function UrgencyRing({
 }
 
 const SLIDE_HEIGHT = 54;
-const SLIDE_THUMB = 46;
-const SLIDE_PAD = 4;
+const SLIDE_THUMB  = 46;
+const SLIDE_PAD    = 4;
 
 function SlideToAccept({ onAccept, disabled = false }: { onAccept: () => void; disabled?: boolean }) {
   const [trackW, setTrackW] = useState(220);
@@ -161,7 +171,6 @@ function SlideToAccept({ onAccept, disabled = false }: { onAccept: () => void; d
   });
 
   if (disabled) {
-    // Accepting in-flight — fill the track green and show a spinner.
     return (
       <View style={[styles.slideTrack, { overflow: "hidden" }]}>
         <LinearGradient
@@ -236,18 +245,12 @@ export default function RideRequestScreen() {
   const [fetchedRide,  setFetchedRide]  = useState<IncomingRide | null>(null);
   const [fetchLoading, setFetchLoading] = useState(false);
   const [fetchFailed,  setFetchFailed]  = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
 
   // Primary source: Firestore listener via DriverContext.
   // Fallback:       Firestore one-time fetch triggered by notification tap params.
   const ride = incomingRide ?? fetchedRide;
-  const riderInitials = ride
-    ? (ride.passengerName || "Customer")
-        .split(" ")
-        .map((s) => s[0])
-        .join("")
-        .slice(0, 2)
-        .toUpperCase()
-    : "";
+  const rides = ride ? [ride] : [];
 
   const [seconds, setSeconds] = useState(TIMER_SECONDS);
   const [isAccepting, setIsAccepting] = useState(false);
@@ -644,17 +647,18 @@ export default function RideRequestScreen() {
     outputRange: [0.18, 0.5],
   });
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────────────────────
   return (
     <View style={styles.root}>
+      {/* Backdrop */}
       <Animated.View
         style={[
           styles.backdrop,
           { opacity: backdrop.interpolate({ inputRange: [0, 1], outputRange: [0, 0.7] }) },
         ]}
       >
-        {/* Backdrop is intentionally non-interactive — back/dismiss is locked
-            for the duration of the timer. Only Accept, Reject, timeout, or
-            external order cancellation can exit this screen. */}
         <Pressable style={{ flex: 1 }} />
       </Animated.View>
 
@@ -663,12 +667,12 @@ export default function RideRequestScreen() {
         style={[
           styles.sheetWrap,
           {
-            paddingBottom: insets.bottom + 16,
+            paddingBottom: insets.bottom + 12,
             transform: [{ translateY: cardTranslate }],
           },
         ]}
       >
-        {/* Loading state — shown while fetching order from Firestore via FCM tap params */}
+        {/* ── Loading state ── */}
         {fetchLoading && !ride && (
           <View style={styles.fetchStateBox}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -678,7 +682,7 @@ export default function RideRequestScreen() {
           </View>
         )}
 
-        {/* Error state — order no longer dispatched or fetch failed; auto-dismisses */}
+        {/* ── Error state ── */}
         {fetchFailed && !ride && (
           <View style={styles.fetchStateBox}>
             <Text style={[styles.fetchStateHeading, { color: colors.error }]}>
@@ -690,268 +694,275 @@ export default function RideRequestScreen() {
           </View>
         )}
 
-        {/* Order card — only rendered when a live order exists. */}
-        {ride && (<>
-        {/* pulsing glow halo */}
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.glow,
-            {
-              backgroundColor: urgent ? "#DC2626" : colors.primary,
-              opacity: pulseOpacity,
-              transform: [{ scale: pulseScale }],
-            },
-          ]}
-        />
+        {/* ── Slider ── */}
+        {rides.length > 0 && (
+          <>
+            {/* Pulsing glow halo */}
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.glow,
+                {
+                  backgroundColor: urgent ? "#DC2626" : colors.primary,
+                  opacity: pulseOpacity,
+                  transform: [{ scale: pulseScale }],
+                },
+              ]}
+            />
 
-        <Animated.View
-          style={[
-            styles.card,
-            {
-              borderColor: urgent ? "#DC2626" : colors.primary,
-              transform: [{ scale: pulseScale }],
-            },
-          ]}
-        >
-          {/* HEADER */}
-          <View style={styles.header}>
-            <View style={styles.headerLeft}>
-              <View
-                style={[
-                  styles.liveBadge,
-                  { backgroundColor: urgent ? "#FEE2E2" : "#f0fdf4" },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.liveBadgeDot,
-                    { backgroundColor: urgent ? "#DC2626" : colors.primary },
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.liveBadgeText,
-                    { color: urgent ? "#DC2626" : colors.primary },
-                  ]}
-                >
-                  {urgent ? "HURRY" : "NEW REQUEST"}
-                </Text>
-              </View>
-              {(ride.parcelType || ride.parcelWeight) && (
-                <Text style={[styles.tripType, { color: colors.foreground }]}>
-                  {[ride.parcelType, ride.parcelWeight].filter(Boolean).join(" · ")}
-                </Text>
-              )}
-            </View>
-            <View style={{ alignItems: "center", gap: 6 }}>
-              <TouchableOpacity onPress={callSupport} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                <Feather name="help-circle" size={16} color="rgba(0,0,0,0.35)" />
-              </TouchableOpacity>
-              <UrgencyRing progress={ring} seconds={seconds} urgent={urgent} />
-            </View>
-          </View>
-
-          {/* RIDER */}
-          <View style={[styles.riderRow, { borderColor: colors.border }]}>
-            <View style={[styles.riderAvatar, { backgroundColor: "#fff5e6" }]}>
-              <Text style={[styles.riderAvatarText, { color: "#b75d00" }]}>{riderInitials}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.riderName, { color: colors.foreground }]}>
-                {ride.passengerName}
-              </Text>
-              <View style={styles.riderMeta}>
-                <Feather name="star" size={11} color="#FFB300" />
-                <Text style={[styles.riderMetaText, { color: colors.mutedForeground }]}>
-                  {Number(ride.passengerRating ?? 5).toFixed(2)}
-                </Text>
-                <View style={[styles.metaDot, { backgroundColor: colors.border }]} />
-                <View style={styles.payChip}>
-                  <Feather name="credit-card" size={9} color={colors.primary} />
-                  <Text style={[styles.payChipText, { color: colors.primary }]}>
-                    {ride.paymentMode}
-                  </Text>
-                </View>
-              </View>
-            </View>
-            <TouchableOpacity
-              style={[styles.iconBtn, { backgroundColor: "#f5f5f5" }]}
-              activeOpacity={0.7}
-              onPress={() => {
-                if (!ride.customerPhone) return;
-                Linking.openURL(`tel:${ride.customerPhone}`).catch(() => {});
-              }}
-            >
-              <Feather name="phone" size={15} color="#0a0a0a" />
-            </TouchableOpacity>
-          </View>
-
-          {/* ROUTE */}
-          <View style={styles.route}>
-            <View style={styles.routeIcons}>
-              <View style={[styles.routeDot, { backgroundColor: colors.primary }]} />
-              <View style={styles.dotLine}>
-                {Array.from({ length: 5 }).map((_, i) => (
+            {/* Pagination row — shown only when there are multiple cards */}
+            {rides.length > 1 && (
+              <View style={styles.paginationRow}>
+                {rides.map((_, i) => (
                   <View
                     key={i}
-                    style={[styles.dotLineDot, { backgroundColor: colors.border }]}
+                    style={[
+                      styles.paginationDot,
+                      i === currentIndex && styles.paginationDotActive,
+                    ]}
                   />
                 ))}
-              </View>
-              <View style={[styles.routeSquare, { backgroundColor: "#FF3B30" }]} />
-            </View>
-            <View style={styles.routePoints}>
-              <View style={styles.routePoint}>
-                <Text style={[styles.routeLabel, { color: colors.mutedForeground }]}>
-                  PICKUP · {ride.pickupDistanceKm} km away
-                </Text>
-                <Text
-                  style={[styles.routeAddr, { color: colors.foreground }]}
-                  numberOfLines={1}
-                >
-                  {ride.pickup}
-                </Text>
-                <Text
-                  style={[styles.routeSub, { color: colors.mutedForeground }]}
-                  numberOfLines={1}
-                >
-                  {ride.pickupSub}
+                <Text style={[styles.paginationCount, { color: colors.mutedForeground }]}>
+                  {currentIndex + 1} / {rides.length}
                 </Text>
               </View>
-              <View style={styles.routePoint}>
-                <Text style={[styles.routeLabel, { color: colors.mutedForeground }]}>
-                  DROP · {ride.distanceKm} km{ride.durationMin ? ` · ~${ride.durationMin} min` : ""}
-                </Text>
-                <Text
-                  style={[styles.routeAddr, { color: colors.foreground }]}
-                  numberOfLines={1}
-                >
-                  {ride.drop}
-                </Text>
-                <Text
-                  style={[styles.routeSub, { color: colors.mutedForeground }]}
-                  numberOfLines={1}
-                >
-                  {ride.dropSub}
-                </Text>
-              </View>
-            </View>
-          </View>
+            )}
 
-          {/* FARE */}
-          <LinearGradient
-            colors={["#f0fdf4", "#e6faec"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.fareBox, { borderColor: colors.primary }]}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.fareLabel, { color: colors.mutedForeground }]}>
-                YOU EARN
-              </Text>
-              <View style={styles.fareAmountRow}>
-                <Text style={[styles.fareCurrency, { color: colors.foreground }]}>₹</Text>
-                <Text style={[styles.fareAmount, { color: colors.foreground }]}>
-                  {ride.fareEstimate}
-                </Text>
-                {ride.surge && (
-                  <View style={styles.surgeBadge}>
-                    <Feather name="zap" size={10} color="#fff" />
-                    <Text style={styles.surgeText}>{ride.surgeMultiplier ?? 1}×</Text>
-                  </View>
-                )}
-              </View>
-              {ride.paymentMode ? (
-                <Text style={[styles.fareSub, { color: colors.mutedForeground }]}>
-                  {ride.paymentMode} accepted
-                </Text>
-              ) : null}
-            </View>
-            <View style={[styles.fareDistanceBox, { borderColor: colors.primary }]}>
-              <Text style={[styles.fareDistanceNum, { color: colors.primary }]}>
-                {ride.distanceKm}
-              </Text>
-              <Text style={[styles.fareDistanceUnit, { color: colors.primary }]}>
-                km total
-              </Text>
-            </View>
-          </LinearGradient>
-
-          {/* ACTIONS */}
-          <View style={styles.actions}>
-            <Animated.View
-              style={{
-                flex: 1,
-                transform: [
-                  { scale: rejectScale },
-                  {
-                    translateX: rejectShake.interpolate({
-                      inputRange: [-1, 0, 1],
-                      outputRange: [-6, 0, 6],
-                    }),
-                  },
-                ],
+            {/* Horizontal swipe slider */}
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              scrollEventThrottle={16}
+              style={styles.slider}
+              onMomentumScrollEnd={(e) => {
+                setCurrentIndex(
+                  Math.round(e.nativeEvent.contentOffset.x / SCREEN_W),
+                );
               }}
             >
-              <TouchableOpacity
-                style={[styles.rejectBtn, { borderColor: colors.border }]}
-                onPress={handleReject}
-                activeOpacity={0.7}
-              >
-                <Animated.View
-                  pointerEvents="none"
-                  style={[
-                    StyleSheet.absoluteFillObject,
-                    {
-                      backgroundColor: "#DC2626",
-                      opacity: rejectFill.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [0, 0.14],
-                      }),
-                    },
-                  ]}
-                />
-                <Animated.View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                >
-                  <Feather
-                    name="x"
-                    size={18}
-                    color={colors.foreground}
-                  />
-                  <Text style={[styles.rejectText, { color: colors.foreground }]}>
-                    Reject
-                  </Text>
-                </Animated.View>
-              </TouchableOpacity>
-            </Animated.View>
+              {rides.map((r, idx) => {
+                const payKey  = (r.paymentMode ?? "").toUpperCase();
+                const payBadge = PAY_BADGE[payKey] ?? { bg: "#F3F4F6", fg: "#374151" };
 
-            <View style={{ flex: 2 }}>
-              <SlideToAccept onAccept={handleAccept} disabled={isAccepting} />
-            </View>
-          </View>
-        </Animated.View>
-        </>)}
+                return (
+                  <Animated.View
+                    key={r.id ?? idx}
+                    style={[
+                      styles.card,
+                      {
+                        borderColor: urgent ? "#DC2626" : colors.primary,
+                        transform: [{ scale: pulseScale }],
+                      },
+                    ]}
+                  >
+                    {/* ── HEADER ── */}
+                    <View style={styles.header}>
+                      <View style={styles.headerLeft}>
+                        {/* Urgency badge */}
+                        <View
+                          style={[
+                            styles.liveBadge,
+                            { backgroundColor: urgent ? "#FEE2E2" : "#f0fdf4" },
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.liveBadgeDot,
+                              { backgroundColor: urgent ? "#DC2626" : "#059669" },
+                            ]}
+                          />
+                          <Text
+                            style={[
+                              styles.liveBadgeText,
+                              { color: urgent ? "#DC2626" : "#059669" },
+                            ]}
+                          >
+                            {urgent ? "HURRY!" : "NEW ORDER"}
+                          </Text>
+                        </View>
+                        {/* Parcel info */}
+                        {(r.parcelType || r.parcelEmoji) ? (
+                          <Text
+                            style={[styles.parcelType, { color: colors.mutedForeground }]}
+                            numberOfLines={1}
+                          >
+                            {r.parcelEmoji} {r.parcelType}
+                          </Text>
+                        ) : null}
+                      </View>
+
+                      {/* Help + timer */}
+                      <View style={styles.headerRight}>
+                        <TouchableOpacity
+                          onPress={callSupport}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        >
+                          <Feather name="help-circle" size={16} color="rgba(0,0,0,0.3)" />
+                        </TouchableOpacity>
+                        <UrgencyRing progress={ring} seconds={seconds} urgent={urgent} />
+                      </View>
+                    </View>
+
+                    {/* ── ROUTE ── */}
+                    <View style={[styles.route, { borderColor: colors.border }]}>
+                      <View style={styles.routeIcons}>
+                        <View style={[styles.routeDot, { backgroundColor: "#059669" }]} />
+                        <View style={styles.dotLine}>
+                          {Array.from({ length: 4 }).map((_, i) => (
+                            <View
+                              key={i}
+                              style={[styles.dotLineDot, { backgroundColor: colors.border }]}
+                            />
+                          ))}
+                        </View>
+                        <View style={[styles.routeSquare, { backgroundColor: "#FF3B30" }]} />
+                      </View>
+                      <View style={styles.routePoints}>
+                        <View style={styles.routePoint}>
+                          <Text style={[styles.routeLabel, { color: colors.mutedForeground }]}>
+                            PICKUP
+                            {r.pickupDistanceKm ? ` · ${r.pickupDistanceKm} km away` : ""}
+                          </Text>
+                          <Text
+                            style={[styles.routeAddr, { color: colors.foreground }]}
+                            numberOfLines={2}
+                          >
+                            {r.pickup}
+                          </Text>
+                          {r.pickupSub ? (
+                            <Text
+                              style={[styles.routeSub, { color: colors.mutedForeground }]}
+                              numberOfLines={1}
+                            >
+                              {r.pickupSub}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <View style={styles.routePoint}>
+                          <Text style={[styles.routeLabel, { color: colors.mutedForeground }]}>
+                            DROP
+                          </Text>
+                          <Text
+                            style={[styles.routeAddr, { color: colors.foreground }]}
+                            numberOfLines={2}
+                          >
+                            {r.drop}
+                          </Text>
+                          {r.dropSub ? (
+                            <Text
+                              style={[styles.routeSub, { color: colors.mutedForeground }]}
+                              numberOfLines={1}
+                            >
+                              {r.dropSub}
+                            </Text>
+                          ) : null}
+                        </View>
+                      </View>
+                    </View>
+
+                    {/* ── EARNINGS HERO ── */}
+                    <LinearGradient
+                      colors={["#059669", "#10B981"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.earningsHero}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <View style={styles.earningsAmountRow}>
+                          <Text style={styles.earningsCurrency}>₹</Text>
+                          <Text style={styles.earningsAmount}>{r.fareEstimate}</Text>
+                          {r.surge ? (
+                            <View style={styles.surgeBadge}>
+                              <Feather name="zap" size={10} color="#fff" />
+                              <Text style={styles.surgeText}>
+                                {r.surgeMultiplier ?? 1}×
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
+                        <Text style={styles.earningsLabel}>Estimated Earnings</Text>
+                        <Text style={styles.earningsMeta}>
+                          {r.distanceKm} km
+                          {r.durationMin ? ` • ${r.durationMin} min` : ""}
+                        </Text>
+                      </View>
+
+                      {/* Payment badge */}
+                      <View style={[styles.payBadge, { backgroundColor: payBadge.bg }]}>
+                        <Text style={[styles.payBadgeText, { color: payBadge.fg }]}>
+                          {payKey || "CASH"}
+                        </Text>
+                      </View>
+                    </LinearGradient>
+
+                    {/* ── ACTIONS ── */}
+                    <View style={styles.actions}>
+                      {/* Reject — secondary */}
+                      <Animated.View
+                        style={{
+                          flex: 1,
+                          transform: [
+                            { scale: rejectScale },
+                            {
+                              translateX: rejectShake.interpolate({
+                                inputRange: [-1, 0, 1],
+                                outputRange: [-6, 0, 6],
+                              }),
+                            },
+                          ],
+                        }}
+                      >
+                        <TouchableOpacity
+                          style={[styles.rejectBtn, { borderColor: colors.border }]}
+                          onPress={handleReject}
+                          activeOpacity={0.7}
+                        >
+                          <Animated.View
+                            pointerEvents="none"
+                            style={[
+                              StyleSheet.absoluteFillObject,
+                              {
+                                backgroundColor: "#DC2626",
+                                opacity: rejectFill.interpolate({
+                                  inputRange: [0, 1],
+                                  outputRange: [0, 0.14],
+                                }),
+                              },
+                            ]}
+                          />
+                          <Feather name="x" size={18} color={colors.foreground} />
+                          <Text style={[styles.rejectText, { color: colors.foreground }]}>
+                            Reject
+                          </Text>
+                        </TouchableOpacity>
+                      </Animated.View>
+
+                      {/* Slide to Accept — primary, wider */}
+                      <View style={{ flex: 2.5 }}>
+                        <SlideToAccept onAccept={handleAccept} disabled={isAccepting} />
+                      </View>
+                    </View>
+                  </Animated.View>
+                );
+              })}
+            </ScrollView>
+          </>
+        )}
       </Animated.View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, justifyContent: "flex-end" },
+  root:    { flex: 1, justifyContent: "flex-end" },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "#000",
   },
 
   sheetWrap: {
-    paddingHorizontal: 12,
-    alignItems: "stretch",
+    // No horizontal padding — the slider is full-bleed; cards carry their own margin
   },
   glow: {
     position: "absolute",
@@ -961,26 +972,63 @@ const styles = StyleSheet.create({
     bottom: 0,
     borderRadius: 24,
   },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 22,
-    padding: 16,
-    gap: 14,
-    borderWidth: 2,
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 12,
-  },
 
-  header: {
+  // ── Pagination ──────────────────────────────────────────────────────────────
+  paginationRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+  },
+  paginationDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#D1D5DB",
+  },
+  paginationDotActive: {
+    width: 18,
+    borderRadius: 3,
+    backgroundColor: "#059669",
+  },
+  paginationCount: {
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 0.3,
+    marginLeft: 4,
+  },
+
+  // ── Slider / card ───────────────────────────────────────────────────────────
+  slider: {
+    // Full screen width — each page = SCREEN_W, card = CARD_W with 12px side margins
+  },
+  card: {
+    width: CARD_W,
+    marginHorizontal: 12,
+    backgroundColor: "#fff",
+    borderRadius: 22,
+    padding: 14,
+    gap: 12,
+    borderWidth: 2,
+    shadowColor: "#000",
+    shadowOpacity: 0.22,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 10,
+  },
+
+  // ── Header ──────────────────────────────────────────────────────────────────
+  header: {
+    flexDirection: "row",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 10,
   },
-  headerLeft: { flex: 1, gap: 6 },
+  headerLeft: { flex: 1, gap: 4 },
+  headerRight: { alignItems: "center", gap: 6 },
+
   liveBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -990,64 +1038,34 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignSelf: "flex-start",
   },
-  liveBadgeDot: { width: 6, height: 6, borderRadius: 3 },
+  liveBadgeDot:  { width: 6, height: 6, borderRadius: 3 },
   liveBadgeText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.6 },
-  tripType: { fontSize: 13, fontWeight: "600" },
+  parcelType:    { fontSize: 12, fontWeight: "600" },
 
+  // ── Ring ────────────────────────────────────────────────────────────────────
   ringWrap: { alignItems: "center", justifyContent: "center" },
   ringCenter: {
     position: "absolute",
     alignItems: "center",
     justifyContent: "center",
   },
-  ringNum: { fontSize: 18, fontWeight: "800", lineHeight: 20 },
-  ringUnit: { fontSize: 8, fontWeight: "700", letterSpacing: 0.6 },
+  ringNum:  { fontSize: 18, fontWeight: "800", lineHeight: 20 },
+  ringUnit: { fontSize: 8,  fontWeight: "700", letterSpacing: 0.6 },
 
-  riderRow: {
+  // ── Route ───────────────────────────────────────────────────────────────────
+  route: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingTop: 12,
-    paddingBottom: 12,
+    gap: 12,
+    paddingHorizontal: 2,
+    paddingVertical: 10,
     borderTopWidth: 1,
     borderBottomWidth: 1,
   },
-  riderAvatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  riderAvatarText: { fontSize: 12, fontWeight: "800" },
-  riderName: { fontSize: 14, fontWeight: "700" },
-  riderMeta: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
-  riderMetaText: { fontSize: 11, fontWeight: "600" },
-  metaDot: { width: 3, height: 3, borderRadius: 1.5 },
-  payChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    backgroundColor: "#f0fdf4",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 5,
-  },
-  payChipText: { fontSize: 10, fontWeight: "700" },
-  iconBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  route: { flexDirection: "row", gap: 12, paddingHorizontal: 2 },
-  routeIcons: { alignItems: "center", paddingTop: 4, gap: 4 },
+  routeIcons:  { alignItems: "center", paddingTop: 4, gap: 3 },
   routeDot: {
-    width: 11,
-    height: 11,
-    borderRadius: 5.5,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     borderWidth: 2.5,
     borderColor: "#fff",
     shadowColor: "#059669",
@@ -1055,31 +1073,55 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     shadowOffset: { width: 0, height: 0 },
   },
-  routeSquare: {
-    width: 11,
-    height: 11,
-    borderRadius: 2,
-  },
-  dotLine: { gap: 3, paddingVertical: 3, alignItems: "center" },
-  dotLineDot: { width: 2, height: 2, borderRadius: 1 },
-  routePoints: { flex: 1, gap: 10 },
-  routePoint: { gap: 1 },
-  routeLabel: { fontSize: 9, fontWeight: "700", letterSpacing: 0.4 },
-  routeAddr: { fontSize: 14, fontWeight: "700" },
-  routeSub: { fontSize: 11, fontWeight: "500" },
+  routeSquare: { width: 10, height: 10, borderRadius: 2 },
+  dotLine:     { gap: 3, paddingVertical: 2, alignItems: "center" },
+  dotLineDot:  { width: 2, height: 2, borderRadius: 1 },
+  routePoints: { flex: 1, gap: 8 },
+  routePoint:  { gap: 1 },
+  routeLabel:  { fontSize: 9,  fontWeight: "700", letterSpacing: 0.4 },
+  routeAddr:   { fontSize: 13, fontWeight: "700", lineHeight: 18 },
+  routeSub:    { fontSize: 11, fontWeight: "500" },
 
-  fareBox: {
+  // ── Earnings hero ───────────────────────────────────────────────────────────
+  earningsHero: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 16,
   },
-  fareLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 0.5 },
-  fareAmountRow: { flexDirection: "row", alignItems: "flex-end", gap: 3, marginTop: 2 },
-  fareCurrency: { fontSize: 18, fontWeight: "700", marginBottom: 3 },
-  fareAmount: { fontSize: 30, fontWeight: "800", letterSpacing: -1, lineHeight: 32 },
+  earningsAmountRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 2,
+  },
+  earningsCurrency: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#fff",
+    marginBottom: 4,
+  },
+  earningsAmount: {
+    fontSize: 38,
+    fontWeight: "800",
+    color: "#fff",
+    letterSpacing: -1.5,
+    lineHeight: 40,
+  },
+  earningsLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.8)",
+    letterSpacing: 0.2,
+    marginTop: 2,
+  },
+  earningsMeta: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.75)",
+    marginTop: 2,
+  },
   surgeBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -1089,23 +1131,26 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 7,
     marginLeft: 6,
-    marginBottom: 4,
+    marginBottom: 5,
   },
   surgeText: { color: "#fff", fontSize: 10, fontWeight: "800" },
-  fareSub: { fontSize: 11, marginTop: 2, fontWeight: "500" },
-  fareDistanceBox: {
+
+  // ── Payment badge ───────────────────────────────────────────────────────────
+  payBadge: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 11,
-    borderWidth: 1.5,
-    borderStyle: "dashed",
   },
-  fareDistanceNum: { fontSize: 18, fontWeight: "800", letterSpacing: -0.5 },
-  fareDistanceUnit: { fontSize: 9, fontWeight: "700", letterSpacing: 0.3 },
+  payBadgeText: {
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
 
-  actions: { flexDirection: "row", gap: 10 },
+  // ── Actions ─────────────────────────────────────────────────────────────────
+  actions:   { flexDirection: "row", gap: 10 },
   rejectBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1118,16 +1163,8 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   rejectText: { fontSize: 14, fontWeight: "700" },
-  acceptBtn: {
-    height: 54,
-    borderRadius: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  acceptText: { color: "#fff", fontSize: 16, fontWeight: "800" },
 
+  // ── Slide to accept ─────────────────────────────────────────────────────────
   slideTrack: {
     height: SLIDE_HEIGHT,
     borderRadius: 16,
@@ -1161,10 +1198,12 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
 
+  // ── Fetch state ─────────────────────────────────────────────────────────────
   fetchStateBox: {
+    marginHorizontal: 12,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 36,
+    paddingVertical: 32,
     paddingHorizontal: 24,
     backgroundColor: "#fff",
     borderRadius: 22,
