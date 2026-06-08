@@ -32,21 +32,18 @@ import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 
 const TIMER_SECONDS = 5;
-const RING_SIZE = 64;
-const RING_STROKE = 5;
+const RING_SIZE   = 72;
+const RING_STROKE = 6;
 const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
-const RING_CIRC = 2 * Math.PI * RING_RADIUS;
+const RING_CIRC   = 2 * Math.PI * RING_RADIUS;
 const SCREEN_W = Dimensions.get("window").width;
 const CARD_W   = SCREEN_W - 24;
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-// Payment badge colour map
-const PAY_BADGE: Record<string, { bg: string; fg: string }> = {
-  CASH:   { bg: "#FEF3C7", fg: "#92400E" },
-  ONLINE: { bg: "#D1FAE5", fg: "#065F46" },
-  COD:    { bg: "#DBEAFE", fg: "#1E40AF" },
-};
+// Orange theme — used for earnings bar, slider, urgency
+const ORANGE = "#F97316";
+const ORANGE_DARK = "#EA580C";
 
 function UrgencyRing({
   progress,
@@ -56,10 +53,8 @@ function UrgencyRing({
   seconds: number;
   urgent: boolean;  // kept in signature for call-site compatibility
 }) {
-  const colors = useColors();
-  // 3-colour urgency: green >10 s, orange 5–10 s, red ≤5 s
-  const ringColor =
-    seconds <= 5 ? "#DC2626" : seconds <= 10 ? "#D97706" : "#059669";
+  // With 5-second total timer: orange throughout, red only at last second
+  const ringColor = seconds <= 1 ? "#DC2626" : ORANGE;
   const dashOffset = progress.interpolate({
     inputRange: [0, 1],
     outputRange: [0, RING_CIRC],
@@ -72,7 +67,7 @@ function UrgencyRing({
           cx={RING_SIZE / 2}
           cy={RING_SIZE / 2}
           r={RING_RADIUS}
-          stroke="#eaeaea"
+          stroke="#F3F4F6"
           strokeWidth={RING_STROKE}
           fill="transparent"
         />
@@ -91,7 +86,7 @@ function UrgencyRing({
       </Svg>
       <View style={styles.ringCenter}>
         <Text style={[styles.ringNum, { color: ringColor }]}>{seconds}</Text>
-        <Text style={[styles.ringUnit, { color: colors.mutedForeground }]}>sec</Text>
+        <Text style={[styles.ringUnit, { color: "#9CA3AF" }]}>sec</Text>
       </View>
     </View>
   );
@@ -174,9 +169,9 @@ function SlideToAccept({ onAccept, disabled = false }: { onAccept: () => void; d
     return (
       <View style={[styles.slideTrack, { overflow: "hidden" }]}>
         <LinearGradient
-          colors={["#059669", "#047857"]}
+          colors={[ORANGE, ORANGE_DARK]}
           start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+          end={{ x: 1, y: 0 }}
           style={StyleSheet.absoluteFillObject}
         />
         <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
@@ -192,22 +187,18 @@ function SlideToAccept({ onAccept, disabled = false }: { onAccept: () => void; d
       style={styles.slideTrack}
       onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
     >
-      <Animated.View
-        style={[
-          StyleSheet.absoluteFillObject,
-          { borderRadius: 16, overflow: "hidden", width: fillWidth },
-        ]}
-      >
-        <LinearGradient
-          colors={["#00E060", "#00A847"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{ flex: 1 }}
-        />
-      </Animated.View>
+      {/* Orange gradient fills the full track */}
+      <LinearGradient
+        colors={[ORANGE, ORANGE_DARK]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+      {/* ">> Slide to Accept >>" label */}
       <Animated.Text style={[styles.slideLabel, { opacity: labelOpacity }]}>
-        Slide to Accept  →
+        Slide to Accept  {">>"}
       </Animated.Text>
+      {/* White draggable thumb */}
       <Animated.View
         {...pan.panHandlers}
         style={[
@@ -215,7 +206,7 @@ function SlideToAccept({ onAccept, disabled = false }: { onAccept: () => void; d
           { transform: [{ translateX: x }] },
         ]}
       >
-        <Feather name="chevrons-right" size={22} color="#059669" />
+        <Feather name="chevrons-right" size={22} color={ORANGE} />
       </Animated.View>
     </View>
   );
@@ -751,7 +742,12 @@ export default function RideRequestScreen() {
               ]}
             />
 
-            {/* Pagination row — always shown when at least one card is present */}
+            {/* Counter pill — dark pill above dots */}
+            <View style={styles.counterPill}>
+              <Text style={styles.counterText}>{currentIndex + 1} / {rides.length}</Text>
+            </View>
+
+            {/* Pagination dots — always shown */}
             <View style={styles.paginationRow}>
               {rides.map((_, i) => (
                 <View
@@ -762,9 +758,6 @@ export default function RideRequestScreen() {
                   ]}
                 />
               ))}
-              <Text style={[styles.paginationCount, { color: colors.mutedForeground }]}>
-                {currentIndex + 1} / {rides.length}
-              </Text>
             </View>
 
             {/* Horizontal swipe slider */}
@@ -785,166 +778,200 @@ export default function RideRequestScreen() {
               }}
             >
               {rides.map((r, idx) => {
-                const payKey  = (r.paymentMode ?? "").toUpperCase();
-                const payBadge = PAY_BADGE[payKey] ?? { bg: "#F3F4F6", fg: "#374151" };
+                const payKey = (r.paymentMode ?? "CASH").toUpperCase();
 
                 return (
                   <Animated.View
                     key={r.id ?? idx}
                     style={[
                       styles.card,
-                      {
-                        borderColor: urgent ? "#DC2626" : colors.primary,
-                        transform: [{ scale: pulseScale }],
-                      },
+                      { transform: [{ scale: pulseScale }] },
                     ]}
                   >
-                    {/* ── HEADER ── */}
-                    <View style={styles.header}>
-                      <View style={styles.headerLeft}>
-                        {/* Urgency badge */}
-                        <View
-                          style={[
-                            styles.liveBadge,
-                            { backgroundColor: urgent ? "#FEE2E2" : "#f0fdf4" },
-                          ]}
-                        >
-                          <View
-                            style={[
-                              styles.liveBadgeDot,
-                              { backgroundColor: urgent ? "#DC2626" : "#059669" },
-                            ]}
-                          />
-                          <Text
-                            style={[
-                              styles.liveBadgeText,
-                              { color: urgent ? "#DC2626" : "#059669" },
-                            ]}
-                          >
-                            {urgent ? "HURRY!" : "NEW ORDER"}
+                    {/* ── HEADER ROW 1: badges + help ── */}
+                    <View style={styles.headerBadgesRow}>
+                      <View style={styles.headerBadges}>
+                        {/* "● NEW ORDER" — always green */}
+                        <View style={styles.newOrderBadge}>
+                          <View style={styles.newOrderDot} />
+                          <Text style={styles.newOrderText}>NEW ORDER</Text>
+                        </View>
+                        {/* "⚡ HURRY!" — shown alongside NEW ORDER when urgent */}
+                        {urgent && (
+                          <View style={styles.hurryBadge}>
+                            <Feather name="zap" size={10} color="#fff" />
+                            <Text style={styles.hurryText}>HURRY!</Text>
+                          </View>
+                        )}
+                      </View>
+                      <TouchableOpacity
+                        onPress={callSupport}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={styles.helpCircle}
+                      >
+                        <Feather name="help-circle" size={18} color="rgba(0,0,0,0.3)" />
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* ── HEADER ROW 2: parcel info + countdown ring ── */}
+                    <View style={styles.parcelRow}>
+                      <View style={styles.parcelLeft}>
+                        <View style={styles.parcelIconBox}>
+                          <Text style={styles.parcelEmoji}>{r.parcelEmoji || "📦"}</Text>
+                        </View>
+                        <View style={styles.parcelDetails}>
+                          <Text style={styles.parcelName} numberOfLines={1}>
+                            {r.parcelType || "Package"}
+                          </Text>
+                          <Text style={styles.parcelId}>
+                            ID: #{(r.id ?? "").slice(-8).toUpperCase()}
                           </Text>
                         </View>
-                        {/* Parcel info */}
-                        {(r.parcelType || r.parcelEmoji) ? (
-                          <Text
-                            style={[styles.parcelType, { color: colors.mutedForeground }]}
-                            numberOfLines={1}
-                          >
-                            {r.parcelEmoji} {r.parcelType}
-                          </Text>
-                        ) : null}
                       </View>
-
-                      {/* Help + timer */}
-                      <View style={styles.headerRight}>
-                        <TouchableOpacity
-                          onPress={callSupport}
-                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                        >
-                          <Feather name="help-circle" size={16} color="rgba(0,0,0,0.3)" />
-                        </TouchableOpacity>
-                        <UrgencyRing progress={ring} seconds={seconds} urgent={urgent} />
-                      </View>
+                      <UrgencyRing progress={ring} seconds={seconds} urgent={urgent} />
                     </View>
+
+                    {/* ── SEPARATOR ── */}
+                    <View style={[styles.separator, { borderColor: colors.border }]} />
 
                     {/* ── ROUTE ── */}
-                    <View style={[styles.route, { borderColor: colors.border }]}>
+                    <View style={styles.route}>
+                      {/* Icons column (pin + dashes + pin) */}
                       <View style={styles.routeIcons}>
-                        <View style={[styles.routeDot, { backgroundColor: "#059669" }]} />
+                        <View style={styles.pickupPinOuter}>
+                          <View style={styles.pickupPinInner} />
+                        </View>
                         <View style={styles.dotLine}>
-                          {Array.from({ length: 4 }).map((_, i) => (
-                            <View
-                              key={i}
-                              style={[styles.dotLineDot, { backgroundColor: colors.border }]}
-                            />
+                          {Array.from({ length: 5 }).map((_, i) => (
+                            <View key={i} style={styles.dotLineDot} />
                           ))}
                         </View>
-                        <View style={[styles.routeSquare, { backgroundColor: "#FF3B30" }]} />
+                        <View style={styles.dropPinOuter}>
+                          <View style={styles.dropPinInner} />
+                        </View>
                       </View>
+
+                      {/* Addresses column */}
                       <View style={styles.routePoints}>
-                        <View style={styles.routePoint}>
-                          <Text style={[styles.routeLabel, { color: colors.mutedForeground }]}>
-                            PICKUP
-                            {r.pickupDistanceKm ? ` · ${r.pickupDistanceKm} km away` : ""}
-                          </Text>
-                          <Text
-                            style={[styles.routeAddr, { color: colors.foreground }]}
-                            numberOfLines={2}
-                          >
-                            {r.pickup}
-                          </Text>
-                          {r.pickupSub ? (
+                        {/* Pickup */}
+                        <View style={styles.routePointRow}>
+                          <View style={styles.routePointContent}>
+                            <Text style={styles.pickupLabel}>PICKUP</Text>
                             <Text
-                              style={[styles.routeSub, { color: colors.mutedForeground }]}
-                              numberOfLines={1}
+                              style={[styles.routeAddr, { color: colors.foreground }]}
+                              numberOfLines={2}
                             >
-                              {r.pickupSub}
+                              {r.pickup}
                             </Text>
+                            {r.pickupSub ? (
+                              <Text
+                                style={[styles.routeSub, { color: colors.mutedForeground }]}
+                                numberOfLines={1}
+                              >
+                                {r.pickupSub}
+                              </Text>
+                            ) : null}
+                          </View>
+                          {r.pickupDistanceKm ? (
+                            <View style={styles.distancePillGreen}>
+                              <Text style={styles.distancePillGreenText}>
+                                📍 {r.pickupDistanceKm} km
+                              </Text>
+                            </View>
                           ) : null}
                         </View>
-                        <View style={styles.routePoint}>
-                          <Text style={[styles.routeLabel, { color: colors.mutedForeground }]}>
-                            DROP
-                          </Text>
-                          <Text
-                            style={[styles.routeAddr, { color: colors.foreground }]}
-                            numberOfLines={2}
-                          >
-                            {r.drop}
-                          </Text>
-                          {r.dropSub ? (
+
+                        {/* Drop */}
+                        <View style={styles.routePointRow}>
+                          <View style={styles.routePointContent}>
+                            <Text style={styles.dropLabel}>DROP</Text>
                             <Text
-                              style={[styles.routeSub, { color: colors.mutedForeground }]}
-                              numberOfLines={1}
+                              style={[styles.routeAddr, { color: colors.foreground }]}
+                              numberOfLines={2}
                             >
-                              {r.dropSub}
+                              {r.drop}
                             </Text>
-                          ) : null}
+                            {r.dropSub ? (
+                              <Text
+                                style={[styles.routeSub, { color: colors.mutedForeground }]}
+                                numberOfLines={1}
+                              >
+                                {r.dropSub}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <View style={styles.distancePillRed}>
+                            <Text style={styles.distancePillRedText}>
+                              📍 {r.distanceKm} km
+                            </Text>
+                          </View>
                         </View>
                       </View>
                     </View>
 
-                    {/* ── EARNINGS HERO ── */}
+                    {/* ── EARNINGS BAR (orange gradient) ── */}
                     <LinearGradient
-                      colors={["#059669", "#10B981"]}
+                      colors={[ORANGE, ORANGE_DARK]}
                       start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.earningsHero}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.earningsBar}
                     >
-                      <View style={{ flex: 1 }}>
+                      {/* Wallet circle */}
+                      <View style={styles.walletCircle}>
+                        <Feather name="credit-card" size={18} color={ORANGE} />
+                      </View>
+
+                      {/* Amount + label */}
+                      <View style={styles.earningsAmountBlock}>
                         <View style={styles.earningsAmountRow}>
                           <Text style={styles.earningsCurrency}>₹</Text>
                           <Text style={styles.earningsAmount}>{r.fareEstimate}</Text>
                           {r.surge ? (
                             <View style={styles.surgeBadge}>
-                              <Feather name="zap" size={10} color="#fff" />
-                              <Text style={styles.surgeText}>
-                                {r.surgeMultiplier ?? 1}×
-                              </Text>
+                              <Feather name="zap" size={9} color="#fff" />
+                              <Text style={styles.surgeText}>{r.surgeMultiplier ?? 1}×</Text>
                             </View>
                           ) : null}
                         </View>
                         <Text style={styles.earningsLabel}>Estimated Earnings</Text>
-                        <Text style={styles.earningsMeta}>
-                          {r.distanceKm} km
-                          {r.durationMin ? ` • ${r.durationMin} min` : ""}
-                        </Text>
                       </View>
 
-                      {/* Payment badge */}
-                      <View style={[styles.payBadge, { backgroundColor: payBadge.bg }]}>
-                        <Text style={[styles.payBadgeText, { color: payBadge.fg }]}>
-                          {payKey || "CASH"}
-                        </Text>
+                      {/* Divider */}
+                      <View style={styles.earningsDivider} />
+
+                      {/* Distance */}
+                      <View style={styles.earningsMetric}>
+                        <View style={styles.earningsMetricTop}>
+                          <Feather name="navigation" size={12} color="rgba(255,255,255,0.85)" />
+                          <Text style={styles.earningsMetricVal}>{r.distanceKm} km</Text>
+                        </View>
+                        <Text style={styles.earningsMetricLabel}>Distance</Text>
+                      </View>
+
+                      {/* ETA */}
+                      {r.durationMin ? (
+                        <View style={styles.earningsMetric}>
+                          <View style={styles.earningsMetricTop}>
+                            <Feather name="clock" size={12} color="rgba(255,255,255,0.85)" />
+                            <Text style={styles.earningsMetricVal}>{r.durationMin} min</Text>
+                          </View>
+                          <Text style={styles.earningsMetricLabel}>ETA</Text>
+                        </View>
+                      ) : null}
+
+                      {/* Payment badge — white pill */}
+                      <View style={styles.payBadge}>
+                        <Text style={styles.payBadgeRupee}>₹</Text>
+                        <Text style={styles.payBadgeText}>{payKey}</Text>
                       </View>
                     </LinearGradient>
 
                     {/* ── ACTIONS ── */}
                     <View style={styles.actions}>
-                      {/* Reject — secondary */}
+                      {/* Reject — solid red */}
                       <Animated.View
                         style={{
-                          flex: 1,
+                          flex: 1.2,
                           transform: [
                             { scale: rejectScale },
                             {
@@ -957,32 +984,33 @@ export default function RideRequestScreen() {
                         }}
                       >
                         <TouchableOpacity
-                          style={[styles.rejectBtn, { borderColor: colors.border }]}
+                          style={styles.rejectBtn}
                           onPress={handleReject}
-                          activeOpacity={0.7}
+                          activeOpacity={0.8}
                         >
                           <Animated.View
                             pointerEvents="none"
                             style={[
                               StyleSheet.absoluteFillObject,
                               {
-                                backgroundColor: "#DC2626",
+                                backgroundColor: "#fff",
+                                borderRadius: 16,
                                 opacity: rejectFill.interpolate({
                                   inputRange: [0, 1],
-                                  outputRange: [0, 0.14],
+                                  outputRange: [0, 0.2],
                                 }),
                               },
                             ]}
                           />
-                          <Feather name="x" size={18} color={colors.foreground} />
-                          <Text style={[styles.rejectText, { color: colors.foreground }]}>
-                            Reject
-                          </Text>
+                          <View style={styles.rejectIconCircle}>
+                            <Feather name="x" size={14} color="#DC2626" />
+                          </View>
+                          <Text style={styles.rejectText}>Reject</Text>
                         </TouchableOpacity>
                       </Animated.View>
 
-                      {/* Slide to Accept — primary, wider */}
-                      <View style={{ flex: 2.5 }}>
+                      {/* Slide to Accept */}
+                      <View style={{ flex: 2 }}>
                         <SlideToAccept onAccept={handleAccept} disabled={isAccepting} />
                       </View>
                     </View>
@@ -1003,230 +1031,408 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "#000",
   },
-
   sheetWrap: {
     // No horizontal padding — the slider is full-bleed; cards carry their own margin
   },
   glow: {
     position: "absolute",
-    top: 0,
-    left: 12,
-    right: 12,
-    bottom: 0,
+    top: 0, left: 12, right: 12, bottom: 0,
     borderRadius: 24,
   },
 
-  // ── Pagination ──────────────────────────────────────────────────────────────
+  // ── Counter pill + pagination dots ─────────────────────────────────────────
+  counterPill: {
+    alignSelf: "center",
+    backgroundColor: "#1C1C1E",
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 6,
+    marginBottom: 8,
+  },
+  counterText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
   paginationRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    marginBottom: 8,
-    paddingHorizontal: 12,
+    marginBottom: 10,
   },
   paginationDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#D1D5DB",
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#9CA3AF",
   },
   paginationDotActive: {
-    width: 18,
-    borderRadius: 3,
-    backgroundColor: "#059669",
-  },
-  paginationCount: {
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 0.3,
-    marginLeft: 4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: ORANGE,
   },
 
-  // ── Slider / card ───────────────────────────────────────────────────────────
-  slider: {
-    // Full screen width — each page = SCREEN_W, card = CARD_W with 12px side margins
-  },
+  // ── Slider / card ──────────────────────────────────────────────────────────
+  slider: {},
   card: {
     width: CARD_W,
     marginHorizontal: 12,
     backgroundColor: "#fff",
     borderRadius: 22,
-    padding: 10,
-    gap: 8,
-    borderWidth: 2,
+    padding: 12,
+    gap: 10,
     shadowColor: "#000",
-    shadowOpacity: 0.22,
-    shadowRadius: 20,
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
     shadowOffset: { width: 0, height: 6 },
     elevation: 10,
   },
 
-  // ── Header ──────────────────────────────────────────────────────────────────
-  header: {
+  // ── Header row 1: badges + help ────────────────────────────────────────────
+  headerBadgesRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  headerBadges: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  newOrderBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#F0FDF4",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  newOrderDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: "#16A34A",
+  },
+  newOrderText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#16A34A",
+    letterSpacing: 0.4,
+  },
+  hurryBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: ORANGE,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  hurryText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#fff",
+    letterSpacing: 0.4,
+  },
+  helpCircle: {
+    padding: 4,
+  },
+
+  // ── Header row 2: parcel info + ring ───────────────────────────────────────
+  parcelRow: {
+    flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
   },
-  headerLeft: { flex: 1, gap: 4 },
-  headerRight: { alignItems: "center", gap: 6 },
-
-  liveBadge: {
+  parcelLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 8,
-    alignSelf: "flex-start",
+    gap: 10,
+    flex: 1,
   },
-  liveBadgeDot:  { width: 6, height: 6, borderRadius: 3 },
-  liveBadgeText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.6 },
-  parcelType:    { fontSize: 12, fontWeight: "600" },
-
-  // ── Ring ────────────────────────────────────────────────────────────────────
-  ringWrap: { alignItems: "center", justifyContent: "center" },
-  ringCenter: {
-    position: "absolute",
+  parcelIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: "#FEF3C7",
     alignItems: "center",
     justifyContent: "center",
   },
-  ringNum:  { fontSize: 18, fontWeight: "800", lineHeight: 20 },
-  ringUnit: { fontSize: 8,  fontWeight: "700", letterSpacing: 0.6 },
+  parcelEmoji: { fontSize: 22 },
+  parcelDetails: { flex: 1, gap: 2 },
+  parcelName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#111827",
+    letterSpacing: -0.2,
+  },
+  parcelId: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#9CA3AF",
+  },
 
-  // ── Route ───────────────────────────────────────────────────────────────────
+  // ── Separator ──────────────────────────────────────────────────────────────
+  separator: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderStyle: "dashed",
+  },
+
+  // ── Ring ───────────────────────────────────────────────────────────────────
+  ringWrap: { alignItems: "center", justifyContent: "center" },
+  ringCenter: { position: "absolute", alignItems: "center", justifyContent: "center" },
+  ringNum:  { fontSize: 24, fontWeight: "800", lineHeight: 26 },
+  ringUnit: { fontSize: 9,  fontWeight: "700", letterSpacing: 0.5, marginTop: -2 },
+
+  // ── Route ──────────────────────────────────────────────────────────────────
   route: {
     flexDirection: "row",
-    gap: 12,
-    paddingHorizontal: 2,
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
+    gap: 10,
+    paddingVertical: 4,
   },
-  routeIcons:  { alignItems: "center", paddingTop: 4, gap: 3 },
-  routeDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    borderWidth: 2.5,
-    borderColor: "#fff",
-    shadowColor: "#059669",
-    shadowOpacity: 0.5,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 0 },
+  routeIcons: {
+    alignItems: "center",
+    paddingTop: 16,
+    gap: 3,
+    width: 22,
   },
-  routeSquare: { width: 10, height: 10, borderRadius: 2 },
-  dotLine:     { gap: 3, paddingVertical: 2, alignItems: "center" },
-  dotLineDot:  { width: 2, height: 2, borderRadius: 1 },
-  routePoints: { flex: 1, gap: 8 },
-  routePoint:  { gap: 1 },
-  routeLabel:  { fontSize: 9,  fontWeight: "700", letterSpacing: 0.4 },
-  routeAddr:   { fontSize: 13, fontWeight: "700", lineHeight: 18 },
-  routeSub:    { fontSize: 11, fontWeight: "500" },
+  pickupPinOuter: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "#DCFCE7",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pickupPinInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#16A34A",
+  },
+  dotLine: {
+    gap: 3,
+    alignItems: "center",
+    paddingVertical: 1,
+  },
+  dotLineDot: {
+    width: 2,
+    height: 4,
+    borderRadius: 1,
+    backgroundColor: "#D1D5DB",
+  },
+  dropPinOuter: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "#FEE2E2",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dropPinInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#DC2626",
+  },
+  routePoints: { flex: 1, gap: 10 },
+  routePointRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+  },
+  routePointContent: { flex: 1, gap: 1 },
+  pickupLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#16A34A",
+    letterSpacing: 0.5,
+  },
+  dropLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#DC2626",
+    letterSpacing: 0.5,
+  },
+  routeAddr: { fontSize: 13, fontWeight: "700", lineHeight: 18 },
+  routeSub:  { fontSize: 11, fontWeight: "500", marginTop: 1 },
 
-  // ── Earnings hero ───────────────────────────────────────────────────────────
-  earningsHero: {
+  // Distance pills
+  distancePillGreen: {
+    backgroundColor: "#DCFCE7",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    alignSelf: "flex-start",
+    marginTop: 14,   // aligns roughly with address first line
+  },
+  distancePillGreenText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#16A34A",
+  },
+  distancePillRed: {
+    backgroundColor: "#FEE2E2",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    alignSelf: "flex-start",
+    marginTop: 14,
+  },
+  distancePillRedText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#DC2626",
+  },
+
+  // ── Earnings bar (orange gradient) ─────────────────────────────────────────
+  earningsBar: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
     borderRadius: 16,
   },
+  walletCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  earningsAmountBlock: { gap: 1 },
   earningsAmountRow: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: 2,
+    gap: 1,
   },
   earningsCurrency: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: "800",
     color: "#fff",
-    marginBottom: 3,
+    marginBottom: 2,
   },
   earningsAmount: {
-    fontSize: 42,
+    fontSize: 36,
     fontWeight: "900",
     color: "#fff",
-    letterSpacing: -2,
-    lineHeight: 44,
-  },
-  earningsLabel: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: "rgba(255,255,255,0.75)",
-    letterSpacing: 0.4,
-    textTransform: "uppercase",
-    marginTop: 2,
-  },
-  earningsMeta: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "rgba(255,255,255,0.9)",
-    marginTop: 3,
-    letterSpacing: 0.1,
+    letterSpacing: -1.5,
+    lineHeight: 38,
   },
   surgeBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 2,
-    backgroundColor: "#D97706",
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 7,
-    marginLeft: 6,
-    marginBottom: 4,
+    backgroundColor: "rgba(0,0,0,0.2)",
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginLeft: 4,
+    marginBottom: 3,
   },
-  surgeText: { color: "#fff", fontSize: 10, fontWeight: "800" },
-
-  // ── Payment badge — rendered inside the earnings hero gradient ──────────────
-  payBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 10,
+  surgeText: { color: "#fff", fontSize: 9, fontWeight: "800" },
+  earningsLabel: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.75)",
+    letterSpacing: 0.3,
+  },
+  earningsDivider: {
+    width: 1,
+    height: 36,
+    backgroundColor: "rgba(255,255,255,0.35)",
+    marginHorizontal: 2,
+  },
+  earningsMetric: {
+    alignItems: "flex-start",
+    gap: 2,
+  },
+  earningsMetricTop: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.35)",
-    backgroundColor: "rgba(0,0,0,0.18)",
+    gap: 3,
   },
-  payBadgeText: {
-    fontSize: 13,
-    fontWeight: "900",
-    letterSpacing: 0.6,
+  earningsMetricVal: {
+    fontSize: 12,
+    fontWeight: "700",
     color: "#fff",
   },
+  earningsMetricLabel: {
+    fontSize: 9,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.7)",
+  },
 
-  // ── Actions ─────────────────────────────────────────────────────────────────
-  actions:   { flexDirection: "row", gap: 10 },
+  // Payment badge — white pill with orange text
+  payBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    backgroundColor: "#fff",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    marginLeft: "auto",
+  },
+  payBadgeRupee: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: ORANGE,
+  },
+  payBadgeText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: ORANGE,
+    letterSpacing: 0.3,
+  },
+
+  // ── Actions ────────────────────────────────────────────────────────────────
+  actions: { flexDirection: "row", gap: 10 },
+
+  // Solid red reject button
   rejectBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    height: 54,
+    gap: 8,
+    height: 56,
     borderRadius: 16,
-    borderWidth: 1.5,
-    backgroundColor: "#fff",
+    backgroundColor: "#DC2626",
     overflow: "hidden",
   },
-  rejectText: { fontSize: 14, fontWeight: "700" },
+  rejectIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rejectText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#fff",
+    letterSpacing: 0.2,
+  },
 
-  // ── Slide to accept ─────────────────────────────────────────────────────────
+  // Slide to accept (orange)
   slideTrack: {
     height: SLIDE_HEIGHT,
     borderRadius: 16,
-    backgroundColor: "#D1FAE5",
-    borderWidth: 1.5,
-    borderColor: "#059669",
     overflow: "hidden",
     justifyContent: "center",
   },
   slideLabel: {
     position: "absolute",
     alignSelf: "center",
-    color: "#059669",
+    color: "#fff",
     fontSize: 14,
     fontWeight: "800",
     letterSpacing: 0.3,
@@ -1247,7 +1453,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
 
-  // ── Fetch state ─────────────────────────────────────────────────────────────
+  // ── Fetch state ────────────────────────────────────────────────────────────
   fetchStateBox: {
     marginHorizontal: 12,
     alignItems: "center",
