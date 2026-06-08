@@ -120,7 +120,7 @@ function withFullScreenOrderAlert(config) {
       // Insert import on a new line immediately after the `package` declaration.
       contents = contents.replace(
         /^(package .+)$/m,
-        `$1\n\nimport ${ANDROID_PKG}.${PACKAGE_CLASS}`,
+        `$1\n\nimport \`in\`.bikecourierservice.driver.${PACKAGE_CLASS}`,
       );
       // Register inside the getPackages() apply block.
       // The generated MainApplication.kt (SDK 54) contains exactly this string.

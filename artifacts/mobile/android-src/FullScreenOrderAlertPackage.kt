@@ -1,4 +1,4 @@
-package in.bikecourierservice.driver
+package `in`.bikecourierservice.driver
 
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule
