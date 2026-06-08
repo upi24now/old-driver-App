@@ -133,7 +133,7 @@ class FullScreenOrderAlertModule(
                 .setCategory(NotificationCompat.CATEGORY_CALL)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setAutoCancel(false)
-                .setOngoing(false)
+                .setOngoing(true)
                 // Vibration pattern matches the 5 canonical locations in the codebase.
                 // On Android 8+ this is overridden by channel settings — it acts as
                 // a belt-and-suspenders fallback for older API levels.
@@ -154,7 +154,16 @@ class FullScreenOrderAlertModule(
                 )
                 .build()
 
-            NotificationManagerCompat.from(ctx).notify(NOTIFICATION_ID, notification)
+            val nmCompat = NotificationManagerCompat.from(ctx)
+            // Android 14 (API 34): USE_FULL_SCREEN_INTENT requires explicit user grant.
+            // If canUseFullScreenIntent() is false the OS silently drops the screen-wake.
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                android.util.Log.d(
+                    "FSAlert",
+                    "canUseFullScreenIntent=${nmCompat.canUseFullScreenIntent()}",
+                )
+            }
+            nmCompat.notify(NOTIFICATION_ID, notification)
             promise.resolve(null)
         } catch (e: Exception) {
             promise.reject("FSA_SHOW_ERROR", e.message ?: "Unknown error posting alert", e)
