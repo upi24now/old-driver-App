@@ -486,6 +486,34 @@ export default function BackgroundSetupScreen() {
   // Guard: steps array empty (should never happen in production)
   if (!step) return null;
 
+  // ── Web bypass ─────────────────────────────────────────────────────────────
+  // Browser has no Android notification/location APIs. Show a single button
+  // so approved drivers can reach the dashboard during web preview testing.
+  // Android APK never enters this branch.
+  if (Platform.OS === "web") {
+    return (
+      <View style={[s.root, { justifyContent: "center", paddingHorizontal: 24 }]}>
+        <TouchableOpacity
+          style={[s.primaryBtn, { backgroundColor: colors.primary }]}
+          onPress={() => {
+            setFinishing(true);
+            void markBackgroundSetupShown()
+              .then(() => router.replace("/(tabs)"))
+              .finally(() => setFinishing(false));
+          }}
+          activeOpacity={0.85}
+          disabled={finishing}
+        >
+          {finishing ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={s.primaryBtnText}>Continue to Dashboard</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   // ── Derived values ─────────────────────────────────────────────────────────
 
   const permanentlyDenied =

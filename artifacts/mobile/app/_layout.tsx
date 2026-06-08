@@ -11,6 +11,7 @@ import * as Location from "expo-location";
 import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef, useState } from "react";
+import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -85,6 +86,14 @@ function RootLayoutNav() {
     // sufficient because the driver may have tapped "Skip" on first visit.
     // Both notification AND GPS must be granted before the dashboard is shown.
     void (async () => {
+      // Web preview: skip Android permission checks entirely — no notification
+      // or location APIs exist in the browser. Approved drivers go straight to
+      // the dashboard. Android APK path is completely unchanged below.
+      if (Platform.OS === "web") {
+        console.log("[Auth] web → (tabs) (permission check skipped)");
+        router.replace("/(tabs)");
+        return;
+      }
       const [notifOk, locStatus] = await Promise.all([
         checkNotificationPermissions().catch(() => false),
         Location.getForegroundPermissionsAsync().catch(() => ({ granted: false })),
