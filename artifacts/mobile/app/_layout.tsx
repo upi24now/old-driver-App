@@ -65,14 +65,21 @@ function RootLayoutNav() {
       documentsSubmitted, verificationStatus, backgroundSetupShown,
     });
 
-    if (!vehicle?.id)                            { console.log("[Auth] → vehicle-selection");    router.replace("/vehicle-selection");    return; }
-    if (!profile?.name)                          { console.log("[Auth] → profile-setup");        router.replace("/profile-setup");        return; }
-    if (!documentsSubmitted)                     { console.log("[Auth] → document-upload");      router.replace("/document-upload");      return; }
-    // Fee screen: only when onboardingFeeApplies is explicitly true (brand-new signup).
-    // Existing drivers never have this field set, so they always skip this branch.
-    if (onboardingFeeApplies && onboardingFeeStatus !== "paid" && verificationStatus !== "approved") {
-                                                   console.log("[Auth] → onboarding-fee");       router.replace("/onboarding-fee");       return; }
-    if (verificationStatus !== "approved")       { console.log("[Auth] → verification-pending"); router.replace("/verification-pending"); return; }
+    if (!vehicle?.id)   { console.log("[Auth] → vehicle-selection"); router.replace("/vehicle-selection"); return; }
+    if (!profile?.name) { console.log("[Auth] → profile-setup");     router.replace("/profile-setup");     return; }
+
+    // Approved/verified drivers skip document, fee, and verification-pending checks.
+    // documentsSubmitted may be absent on manually-onboarded drivers — that must never
+    // block an already-approved driver from reaching the dashboard.
+    const isApproved = verificationStatus === "approved" || verificationStatus === "verified";
+    if (!isApproved) {
+      if (!documentsSubmitted) { console.log("[Auth] → document-upload");      router.replace("/document-upload");      return; }
+      // Fee screen: only when onboardingFeeApplies is explicitly true (brand-new signup).
+      // Existing drivers never have this field set, so they always skip this branch.
+      if (onboardingFeeApplies && onboardingFeeStatus !== "paid") {
+                                 console.log("[Auth] → onboarding-fee");       router.replace("/onboarding-fee");       return; }
+                                 console.log("[Auth] → verification-pending"); router.replace("/verification-pending"); return;
+    }
 
     // Check real runtime permissions — backgroundSetupShown alone is not
     // sufficient because the driver may have tapped "Skip" on first visit.

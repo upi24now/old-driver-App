@@ -41,7 +41,7 @@ export type DriverDoc = {
 
   // ── Documents ─────────────────────────────────────────────────────────────
   documentsSubmitted?:   boolean;  // true after submitDriverDocuments()
-  verificationStatus?:   string;   // "pending" | "verified" | "rejected"
+  verificationStatus?:   string;   // "pending" | "approved" | "verified" | "rejected"
   documents?: {
     selfie?:    DriverDocEntry;
     aadhaar?:   DriverDocEntry;

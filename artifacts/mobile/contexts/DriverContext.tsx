@@ -435,8 +435,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           } catch {
             // Active order restore failed — driver sees no active delivery after restart
           }
-        } catch {
-          // Firestore read failed — user remains authenticated, profile stays null
+        } catch (firestoreErr) {
+          console.error("[Auth] Firestore read failed after sign-in:", firestoreErr);
+          // User remains authenticated; profile/vehicle stay null. _layout.tsx
+          // will route to /vehicle-selection because state is at defaults.
         }
 
         // Register FCM push token — fire-and-forget, never blocks auth or navigation.
@@ -552,18 +554,26 @@ export function DriverProvider({ children }: { children: ReactNode }) {
    *   5. Approved             → main app
    */
   function deriveNextRoute(d: DriverDoc): OnboardingRoute {
-    if (!d.vehicleId)          return "/vehicle-selection";
-    if (!d.name)               return "/profile-setup";
-    if (!d.documentsSubmitted) return "/document-upload";
-    // Show the fee screen ONLY when ALL three conditions are true:
-    //   1. onboardingFeeApplies is explicitly true (set at createDriverDoc time)
-    //   2. fee has not been paid yet
-    //   3. driver is not yet approved (approved = already past onboarding)
-    // Existing drivers NEVER have onboardingFeeApplies set, so they skip entirely.
-    if (d.onboardingFeeApplies === true && d.onboardingFeeStatus !== "paid" && d.verificationStatus !== "approved") {
-      return "/onboarding-fee";
+    if (!d.vehicleId) return "/vehicle-selection";
+    if (!d.name)      return "/profile-setup";
+
+    // Approved/verified drivers skip document, fee, and verification-pending checks.
+    // documentsSubmitted may be absent on manually-onboarded drivers — that must never
+    // block an already-approved driver from reaching the dashboard.
+    const isApproved =
+      d.verificationStatus === "approved" || d.verificationStatus === "verified";
+    if (!isApproved) {
+      if (!d.documentsSubmitted) return "/document-upload";
+      // Show the fee screen ONLY when ALL three conditions are true:
+      //   1. onboardingFeeApplies is explicitly true (set at createDriverDoc time)
+      //   2. fee has not been paid yet
+      //   3. driver is not yet approved (approved = already past onboarding)
+      // Existing drivers NEVER have onboardingFeeApplies set, so they skip entirely.
+      if (d.onboardingFeeApplies === true && d.onboardingFeeStatus !== "paid") {
+        return "/onboarding-fee";
+      }
+      return "/verification-pending";
     }
-    if (d.verificationStatus !== "approved") return "/verification-pending";
     if ((d.permissionSetupVersion ?? 0) < PERMISSION_SETUP_VERSION) return "/background-setup";
     return "/(tabs)";
   }
