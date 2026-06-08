@@ -9,6 +9,7 @@ import {
   Alert,
   Animated,
   Easing,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -282,8 +283,10 @@ export default function HomeScreen() {
 
   async function setOnline(v: boolean) {
     // Before going online, check critical permissions and warn if missing.
-    // Non-blocking: driver can still choose to go online anyway.
-    if (v) {
+    // Web preview: skip permission check — browser has no Android notification
+    // or GPS APIs; drivers should be able to toggle duty freely in web preview.
+    // Android APK path is completely unchanged.
+    if (v && Platform.OS !== "web") {
       const [notifOk, locStatus] = await Promise.all([
         checkNotificationPermissions().catch(() => false),
         Location.getForegroundPermissionsAsync().catch(() => ({ granted: false })),
