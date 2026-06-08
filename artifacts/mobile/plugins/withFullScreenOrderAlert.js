@@ -39,6 +39,9 @@ const {
   withMainApplication,
   withDangerousMod,
 } = require("@expo/config-plugins");
+const { addImports, appendContentsInsideDeclarationBlock } = require(
+  "@expo/config-plugins/build/android/codeMod",
+);
 
 const fs   = require("fs");
 const path = require("path");
@@ -115,18 +118,29 @@ function withFullScreenOrderAlert(config) {
   config = withMainApplication(config, (mod) => {
     let contents = mod.modResults.contents;
 
-    // Idempotent — skip if the package is already present.
-    if (!contents.includes(PACKAGE_CLASS)) {
-      // Insert import on a new line immediately after the `package` declaration.
-      contents = contents.replace(
-        /^(package .+)$/m,
-        `$1\n\nimport \`in\`.bikecourierservice.driver.${PACKAGE_CLASS}`,
-      );
-      // Register inside the getPackages() apply block.
-      // The generated MainApplication.kt (SDK 54) contains exactly this string.
-      contents = contents.replace(
-        "PackageList(this).packages.apply {",
-        `PackageList(this).packages.apply {\n      add(${PACKAGE_CLASS}())`,
+    // addImports is idempotent (skips if already present) and uses the Expo
+    // codeMod utility that splits on \n, finds the package line by regex, and
+    // splices the import after it — robust to CRLF and whitespace variations
+    // that would cause a naive string/regex replace to silently no-op.
+    contents = addImports(
+      contents,
+      ["`in`.bikecourierservice.driver." + PACKAGE_CLASS],
+      false, // Kotlin — no trailing semicolons
+    );
+
+    // appendContentsInsideDeclarationBlock is bracket-matched:
+    //   1. Finds "override fun getPackages" by regex.
+    //   2. Locates the first { at or after that position (the apply {} block).
+    //   3. Bracket-walks forward to find the matching closing }.
+    //   4. Inserts the new line immediately before that }.
+    // This is robust to any whitespace / indentation in the generated file —
+    // the previous literal string match silently failed whenever the generated
+    // MainApplication.kt did not contain the exact bytes expected.
+    if (!contents.includes(`add(${PACKAGE_CLASS}())`)) {
+      contents = appendContentsInsideDeclarationBlock(
+        contents,
+        "override fun getPackages",
+        `\n      add(${PACKAGE_CLASS}())\n    `,
       );
     }
 

@@ -57,6 +57,7 @@ const FSAlert: {
   }
   return null;
 })();
+console.log("[FSAlert] native module available:", FSAlert !== null);
 
 // ─── Channel IDs ──────────────────────────────────────────────────────────────
 export const CHANNEL_ORDERS  = "incoming_orders_v2";
@@ -294,6 +295,7 @@ export async function sendIncomingOrderNotification(
   // Gracefully absent in Expo Go — falls through to the expo-notifications path.
   if (Platform.OS === "android" && FSAlert) {
     try {
+      console.log("[FSAlert] showAlert called orderId=", params.orderId);
       await FSAlert.showAlert(params.orderId, title, body);
       console.log("[FCM] native full-screen alert shown orderId:", params.orderId);
       return; // native module handled display — skip expo-notifications path
@@ -306,6 +308,7 @@ export async function sendIncomingOrderNotification(
   }
 
   // ── iOS / Expo Go / native module unavailable: expo-notifications path ────────
+  console.log("[FSAlert] fallback to expo-notifications");
   try {
     const id = await Notif.scheduleNotificationAsync({
       content: {
