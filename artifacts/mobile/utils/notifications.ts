@@ -49,6 +49,7 @@ const FSAlert: {
   cancelAlert: () => Promise<void>;
 } | null = (() => {
   const m: unknown = NativeModules["FullScreenOrderAlert"];
+  console.log("[FSAlert] NativeModules.FullScreenOrderAlert =", !!NativeModules["FullScreenOrderAlert"]);
   if (m && typeof (m as { showAlert?: unknown }).showAlert === "function") {
     return m as {
       showAlert:   (orderId: string, title: string, body: string) => Promise<void>;
@@ -308,6 +309,7 @@ export async function sendIncomingOrderNotification(
   }
 
   // ── iOS / Expo Go / native module unavailable: expo-notifications path ────────
+  console.log("[FSAlert] USING EXPO FALLBACK");
   console.log("[FSAlert] fallback to expo-notifications");
   try {
     const id = await Notif.scheduleNotificationAsync({
