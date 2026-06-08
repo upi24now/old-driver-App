@@ -31,7 +31,7 @@ import Svg, { Circle } from "react-native-svg";
 import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 
-const TIMER_SECONDS = 15;
+const TIMER_SECONDS = 5;
 const RING_SIZE = 64;
 const RING_STROKE = 5;
 const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
@@ -225,7 +225,7 @@ export default function RideRequestScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { incomingRide, pendingRides, acceptRide, rejectRide, recoverIncomingRide } = useDriver();
+  const { incomingRide, pendingRides, acceptRide, rejectRide, timeoutRide, recoverIncomingRide } = useDriver();
 
   // FCM tap recovery — orderId + order fields forwarded from handleNotificationResponse
   // so the screen can fetch the order from Firestore if incomingRide is not yet set.
@@ -376,18 +376,17 @@ export default function RideRequestScreen() {
     return () => sub.remove();
   }, []);
 
-  // auto-dismiss when timer hits zero (auto-reject)
+  // auto-dismiss when timer hits zero (timeout — NOT an explicit rejection)
   useEffect(() => {
     if (seconds === 0) {
       Vibration.vibrate(80);
       setTimeout(() => {
         // If the driver pressed Accept just before the timer fired, the accept
-        // transaction is already in flight (didAcceptRef.current === true).
-        // Do not call rejectRide() — the safe rejectOrder transaction would
-        // still no-op in Firestore, but skipping it here avoids any UI race.
-        // Also skip dismiss() so the accept path can handle its own navigation.
+        // transaction is already in flight — skip to avoid any UI race.
         if (didAcceptRef.current) return;
-        rejectRide();
+        // Use timeoutRide (not rejectRide) so the driver is NOT added to
+        // rejectedBy and may receive the same order again in the next cycle.
+        timeoutRide();
         dismiss();
       }, 600);
     }

@@ -17,7 +17,7 @@ import Svg, { Path, Rect } from "react-native-svg";
 import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 
-const RING_DURATION = 15;
+const RING_DURATION = 5;
 
 function ShakingPulsingCard({ children }: { children: React.ReactNode }) {
   const shake = useRef(new Animated.Value(0)).current;

@@ -1,6 +1,7 @@
 import {
   arrayUnion,
   collection,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -394,7 +395,8 @@ export async function updateDriverBackgroundSetup(uid: string): Promise<void> {
 //   Any stage  → cancelled (customer cancels)
 
 export type OrderStatus =
-  | "pending"
+  | "searching"       // in the driver-assignment pool (new round-robin status)
+  | "pending"         // legacy pool status (driverCancelOrder still writes this)
   | "dispatched"
   | "accepted"
   | "rejected"
@@ -437,6 +439,10 @@ export type OrderDoc = {
   paymentMode:      "Cash" | "UPI" | "Card";
   surge?:           boolean;
   surgeMultiplier?: number;
+
+  // Round-robin dispatch fields — written by round-robin-dispatcher.ts (server)
+  dispatchTimeoutAt?:       unknown;  // JS Date / Firestore Timestamp; poller resets order when elapsed
+  lastDispatchedDriverUid?: string;   // used to advance the round-robin cursor
 
   // Timestamps — set by serverTimestamp() at each transition
   createdAt:    unknown;
@@ -673,19 +679,22 @@ export async function acceptOrder(
 }
 
 /**
- * Safely reject a dispatched order.
+ * Safely reject a dispatched order (explicit driver tap on ✕).
  *
- * Uses a Firestore runTransaction so a stale timeout or reject tap can never
- * overwrite an order that was already accepted (by this driver or another),
- * cancelled, or reassigned by the dispatcher.
+ * Uses a Firestore runTransaction so a stale reject tap can never overwrite an
+ * order that was already accepted, cancelled, or reassigned.
  *
  * Pre-conditions checked inside the transaction:
  *   • doc exists
- *   • status === "dispatched"  (not accepted, to_pickup, at_pickup, …)
+ *   • status === "dispatched"
  *   • driverUid === this driver (not reassigned to someone else)
  *
- * On success writes: status="rejected", rejectedBy arrayUnion, rejectedAt, updatedAt.
- * Returns AcceptOrderResult so callers use the same typed result shape.
+ * On success: returns order to the dispatch pool (status → "searching"),
+ * clears driverUid, and records the rejecting driver in rejectedBy so the
+ * round-robin dispatcher skips them in this cycle.
+ *
+ * The customer order is NOT cancelled — it stays alive until accepted or the
+ * customer explicitly cancels.
  */
 export async function rejectOrder(orderId: string, driverUid: string): Promise<AcceptOrderResult> {
   try {
@@ -700,7 +709,6 @@ export async function rejectOrder(orderId: string, driverUid: string): Promise<A
       const data = snap.data() as OrderDoc;
 
       if (data.status !== "dispatched") {
-        // Already accepted, in-progress, or cancelled — do not overwrite.
         const sameDriver = data.driverUid === driverUid;
         throw Object.assign(new Error("Order no longer dispatched"), {
           code: sameDriver ? "already_claimed" : "not_dispatched",
@@ -711,11 +719,15 @@ export async function rejectOrder(orderId: string, driverUid: string): Promise<A
         throw Object.assign(new Error("Order reassigned to another driver"), { code: "reassigned" });
       }
 
+      // Return to pool so the round-robin dispatcher assigns the next driver.
+      // Record the rejecting driver so they are skipped in this cycle.
       tx.update(ref, {
-        status:     "rejected",
-        rejectedAt: serverTimestamp(),
-        updatedAt:  serverTimestamp(),
-        rejectedBy: arrayUnion(driverUid),
+        status:           "searching",
+        driverUid:        null,
+        rejectedBy:       arrayUnion(driverUid),
+        rejectedAt:       serverTimestamp(),
+        dispatchTimeoutAt: deleteField(),
+        updatedAt:        serverTimestamp(),
       });
     });
 
@@ -727,6 +739,42 @@ export async function rejectOrder(orderId: string, driverUid: string): Promise<A
     if (code === "missing")         return { ok: false, reason: "missing" };
     if (code === "not_dispatched")  return { ok: false, reason: "not_dispatched" };
     return { ok: false, reason: "unknown" };
+  }
+}
+
+/**
+ * Handle a dispatch timeout — driver ignored the order for the full timer duration.
+ *
+ * Unlike rejectOrder, timeout does NOT add the driver to rejectedBy, so they
+ * may receive the same order again in the next cycle.  All other semantics are
+ * identical: the order returns to the pool (status → "searching") so the
+ * round-robin dispatcher can assign the next driver.
+ *
+ * The round-robin server-side poller also resets timed-out orders independently
+ * (via dispatchTimeoutAt), but this client-side call provides an immediate reset
+ * for drivers whose app is in the foreground when the timer fires.
+ */
+export async function timeoutOrder(orderId: string, driverUid: string): Promise<void> {
+  try {
+    await runTransaction(db, async (tx) => {
+      const ref  = doc(db, "orders", orderId);
+      const snap = await tx.get(ref);
+      if (!snap.exists()) return;
+
+      const data = snap.data() as OrderDoc;
+      if (data.status !== "dispatched") return;   // already accepted or reassigned
+      if (data.driverUid !== driverUid) return;   // already moved to next driver
+
+      // Return to pool without blacklisting the driver.
+      tx.update(ref, {
+        status:           "searching",
+        driverUid:        null,
+        dispatchTimeoutAt: deleteField(),
+        updatedAt:        serverTimestamp(),
+      });
+    });
+  } catch {
+    // Fire-and-forget: the server-side poller will catch it if this fails.
   }
 }
 

@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startFcmDispatcher } from "./lib/fcm-dispatcher";
+import { startRoundRobinDispatcher } from "./lib/round-robin-dispatcher";
 
 const rawPort = process.env["PORT"];
 
@@ -27,5 +28,10 @@ app.listen(port, (err) => {
   // Start the Firestore → FCM order dispatcher (fire-and-forget; errors logged internally)
   startFcmDispatcher().catch((e) =>
     logger.error({ err: e }, "FCM dispatcher startup failed"),
+  );
+
+  // Start the round-robin driver dispatch loop (fire-and-forget; errors logged internally)
+  startRoundRobinDispatcher().catch((e) =>
+    logger.error({ err: e }, "Round-robin dispatcher startup failed"),
   );
 });

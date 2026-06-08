@@ -31,6 +31,7 @@ import {
   listenToActiveOrder,
   acceptOrder,
   rejectOrder,
+  timeoutOrder,
   requestWithdrawal as fsRequestWithdrawal,
   updateDriverBackgroundSetup,
   PERMISSION_SETUP_VERSION,
@@ -198,8 +199,9 @@ type DriverState = {
   addEarningLocally: (amount: number) => void;
   refreshWallet:     () => Promise<void>;
 
-  acceptRide: () => Promise<AcceptOrderResult>;
-  rejectRide: () => void;
+  acceptRide:  () => Promise<AcceptOrderResult>;
+  rejectRide:  () => void;
+  timeoutRide: () => void;  // timer expiry — does NOT blacklist driver (may receive order again)
   // Injects an IncomingRide fetched from outside the Firestore listener —
   // used by ride-request.tsx when the app was backgrounded/killed and the
   // Firestore listener didn't fire before the screen opened.
@@ -849,15 +851,30 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     if (!ride || !uid) return;
 
     // Safe conditional transaction — will not write if the order has already
-    // been accepted, cancelled, or reassigned.  Fire-and-forget is fine here:
-    // the UI clears immediately regardless of the Firestore result, and the
-    // transaction's no-op on failure is the correct behaviour (do not overwrite
-    // an already-accepted order with "rejected").
+    // been accepted, cancelled, or reassigned.  Now writes status="searching"
+    // (not "rejected") so the order returns to the round-robin pool; the driver
+    // is added to rejectedBy so they won't receive the same order again this cycle.
     rejectOrder(ride.id, uid).catch(console.error);
 
     // Always clear local state so the request screen dismisses cleanly.
     setIncomingRide(null);
     lastSeenOrderId.current = null; // allow next dispatch to arrive
+    cancelIncomingOrderNotification().catch(console.error);
+  };
+
+  const timeoutRide = () => {
+    const ride = incomingRide;
+    const uid  = driverUid;
+    if (!ride || !uid) return;
+
+    // Returns order to pool (status="searching") without blacklisting the driver.
+    // The driver may receive the same order again in the next dispatch cycle.
+    // The server-side poller will also catch the timeout independently.
+    timeoutOrder(ride.id, uid).catch(console.error);
+
+    // Clear local state so the request screen dismisses cleanly.
+    setIncomingRide(null);
+    lastSeenOrderId.current = null;
     cancelIncomingOrderNotification().catch(console.error);
   };
 
@@ -1200,6 +1217,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         refreshSubscription,
         acceptRide,
         rejectRide,
+        timeoutRide,
         recoverIncomingRide,
         endRide,
         focusOrder,
