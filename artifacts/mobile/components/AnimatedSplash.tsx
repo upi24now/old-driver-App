@@ -1,16 +1,17 @@
-import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
-  Dimensions,
   Easing,
+  Image,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
 
-const { width } = Dimensions.get("window");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const LOGO     = require("../assets/images/logo.png") as number;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const FALLBACK = require("../assets/images/icon.png") as number;
 
 interface AnimatedSplashProps {
   isReady: boolean;
@@ -18,8 +19,10 @@ interface AnimatedSplashProps {
 }
 
 export function AnimatedSplash({ isReady, onAnimationComplete }: AnimatedSplashProps) {
-  const logoOpacity = useRef(new Animated.Value(0)).current;
-  const logoScale = useRef(new Animated.Value(0.78)).current;
+  const [logoError, setLogoError] = useState(false);
+
+  const logoOpacity    = useRef(new Animated.Value(0)).current;
+  const logoScale      = useRef(new Animated.Value(0.78)).current;
   const taglineOpacity = useRef(new Animated.Value(0)).current;
 
   const dot1 = useRef(new Animated.Value(0.25)).current;
@@ -54,9 +57,9 @@ export function AnimatedSplash({ isReady, onAnimationComplete }: AnimatedSplashP
 
     const pulse = Animated.loop(
       Animated.sequence([
-        makeDotPulse(dot1, 0),
-        makeDotPulse(dot2, 0),
-        makeDotPulse(dot3, 0),
+        makeDotPulse(dot1),
+        makeDotPulse(dot2),
+        makeDotPulse(dot3),
         Animated.delay(400),
       ])
     );
@@ -92,12 +95,13 @@ export function AnimatedSplash({ isReady, onAnimationComplete }: AnimatedSplashP
           ]}
         >
           <View style={styles.iconRing}>
-            <View style={styles.iconInner}>
-              <Feather name="navigation" size={40} color="#00C853" />
-            </View>
+            <Image
+              source={logoError ? FALLBACK : LOGO}
+              onError={() => setLogoError(true)}
+              style={styles.logo}
+              resizeMode="contain"
+            />
           </View>
-
-          <Text style={styles.appName}>DRIVER</Text>
 
           <View style={styles.accentLine} />
         </Animated.View>
@@ -112,15 +116,11 @@ export function AnimatedSplash({ isReady, onAnimationComplete }: AnimatedSplashP
         <Dot anim={dot2} />
         <Dot anim={dot3} />
       </View>
-
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>Powered by DriverStack</Text>
-      </View>
     </Animated.View>
   );
 }
 
-function makeDotPulse(anim: Animated.Value, _delay: number) {
+function makeDotPulse(anim: Animated.Value) {
   return Animated.sequence([
     Animated.timing(anim, {
       toValue: 1,
@@ -172,21 +172,9 @@ const styles = StyleSheet.create({
     shadowRadius: 28,
     elevation: 12,
   },
-  iconInner: {
-    width: 86,
-    height: 86,
-    borderRadius: 43,
-    backgroundColor: "rgba(0, 200, 83, 0.10)",
-    borderWidth: 1,
-    borderColor: "rgba(0, 200, 83, 0.18)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  appName: {
-    fontSize: 38,
-    fontWeight: "800",
-    color: "#FFFFFF",
-    letterSpacing: 12,
+  logo: {
+    width: 82,
+    height: 82,
   },
   accentLine: {
     width: 48,
@@ -213,15 +201,5 @@ const styles = StyleSheet.create({
     height: 7,
     borderRadius: 3.5,
     backgroundColor: "#00C853",
-  },
-  footer: {
-    position: "absolute",
-    bottom: 48,
-  },
-  footerText: {
-    fontSize: 11,
-    color: "rgba(255,255,255,0.18)",
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
   },
 });

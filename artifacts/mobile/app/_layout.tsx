@@ -42,23 +42,31 @@ function RootLayoutNav() {
   } = useDriver();
 
   // ── Auth-restore navigation ───────────────────────────────────────────────
-  // Fires once per app session when Firebase finishes restoring a persisted
-  // session. If the driver is already authenticated (no OTP needed), route
-  // them to the correct onboarding step. The `hasNavigated` ref prevents this
-  // effect from re-running after post-OTP navigation changes driverUid.
+  // Fires when authLoading clears (app start) or driverUid changes (login /
+  // logout). The `hasNavigated` ref prevents the onboarding routing logic from
+  // re-running after subsequent profile/vehicle/status field updates, but the
+  // unauthenticated redirect must bypass that gate so logout always lands on
+  // /login even after the initial auth-restore has already run.
   const hasNavigated = useRef(false);
   useEffect(() => {
-    if (authLoading)               return;
-    if (hasNavigated.current)      return;
-    hasNavigated.current = true;
+    if (authLoading) return;
+
+    // Unauthenticated — always redirect to /login.
+    // Placed before the hasNavigated gate so that:
+    //   (a) Fresh/logged-out app start → login screen.
+    //   (b) Explicit signOut() call (driverUid → null) → login screen,
+    //       even though hasNavigated is already true from the prior session.
     if (!driverUid) {
-      // No persisted session — Expo Router's file-based routing may have
-      // defaulted to /(tabs) instead of /login. Explicitly push to login
-      // so the user always sees the auth screen on a fresh / logged-out start.
       console.log("[Auth] no session → login");
       router.replace("/login");
       return;
     }
+
+    // Authenticated — only run the onboarding routing logic once per session.
+    // Prevents re-routing when profile/vehicle/status fields update after the
+    // initial navigation has already resolved.
+    if (hasNavigated.current) return;
+    hasNavigated.current = true;
 
     console.log("[Auth] routing:", {
       uid: driverUid.slice(-4),

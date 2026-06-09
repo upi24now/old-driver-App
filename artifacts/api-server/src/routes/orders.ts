@@ -28,6 +28,8 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
   const driverUid = await requireAuth(req, res);
   if (!driverUid) return;
 
+  req.log.info({ orderId, driverUid, otpLength: typeof otpEntered === "string" ? otpEntered.length : -1 }, "complete-order: received");
+
   // ── 2. Input validation ───────────────────────────────────────────────────────
   if (typeof otpEntered !== "string" || !/^\d{4}$/.test(otpEntered)) {
     res.status(400).json({ ok: false, error: "otp_invalid_format" });
@@ -110,6 +112,7 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
       if (order["driverUid"] !== driverUid) throw txError("forbidden");
 
       // ── Stage guard ───────────────────────────────────────────────────────────
+      req.log.info({ orderId, driverUid, orderStatus: order["status"] }, "complete-order: stage check");
       if (order["status"] !== "at_drop") throw txError("invalid_stage");
 
       // ── Fare and payment from order doc — never from client ───────────────────

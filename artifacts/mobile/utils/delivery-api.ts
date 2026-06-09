@@ -30,7 +30,10 @@ export async function completeDelivery(
 
     const token = await user.getIdToken();
 
-    const res = await fetch(`${BASE_URL}/orders/${orderId}/complete`, {
+    const url = `${BASE_URL}/orders/${orderId}/complete`;
+    console.log("[OTP] fetch →", url);
+
+    const res = await fetch(url, {
       method:  "POST",
       headers: {
         "Content-Type":  "application/json",
@@ -38,6 +41,8 @@ export async function completeDelivery(
       },
       body: JSON.stringify({ otpEntered }),
     });
+
+    console.log("[OTP] HTTP", res.status, res.statusText);
 
     const json = (await res.json()) as {
       ok?:            boolean;
@@ -47,6 +52,8 @@ export async function completeDelivery(
       todayDate?:     string;
       error?:         string;
     };
+
+    console.log("[OTP] body:", JSON.stringify(json));
 
     if (json.ok === true) {
       return {

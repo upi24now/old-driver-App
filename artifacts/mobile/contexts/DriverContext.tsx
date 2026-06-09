@@ -186,7 +186,7 @@ type DriverState = {
   confirmOtp: (phone: string, otp: string) => Promise<ConfirmOtpResult>;
   setProfile: (p: Profile) => void;
   setVehicle: (v: Vehicle) => void;
-  signOut:    () => void;
+  signOut:    () => Promise<void>;
 
   setOnline:           (v: boolean) => { ok: boolean; reason?: string };
   activatePlan:        (id: SubPlan) => { ok: boolean; reason?: string };
@@ -667,11 +667,21 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     setOnboardingFeeStatus("paid");
   };
 
-  const signOut = () => {
+  const signOut = async (): Promise<void> => {
     if (driverUid) {
       updateDriverOnlineStatus(driverUid, false).catch(console.error);
     }
-    firebaseSignOut(firebaseAuth).catch(console.error);
+    // Await Firebase sign-out so the persisted session is cleared from
+    // AsyncStorage before the app can be killed. Fire-and-forget was the
+    // prior behaviour; a race between killing the app and this write completing
+    // allowed the session to survive a restart even after an explicit logout.
+    try {
+      await firebaseSignOut(firebaseAuth);
+    } catch (err) {
+      console.error("[Auth] firebaseSignOut failed:", err);
+      // Continue with local state cleanup regardless — the driver is logged
+      // out from the app's perspective even if the remote call failed.
+    }
 
     // Explicitly drain the listener map before clearing state so no Firestore
     // callbacks can fire after sign-out and attempt to update unmounted state.

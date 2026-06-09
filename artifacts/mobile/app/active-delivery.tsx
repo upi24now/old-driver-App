@@ -822,9 +822,19 @@ export default function ActiveDeliveryScreen() {
 
       setOtpError(null);
 
+      // ── OTP debug instrumentation ─────────────────────────────────────────
+      console.log("[OTP] submit — stage:", stage, "| orderId:", orderId ?? "NULL", "| otpLength:", otp.length);
+
       // ── Server-side OTP verification + completion ─────────────────────────
       // Server atomically: verifies OTP, marks order delivered, credits wallet.
       const result = await completeDelivery(orderId!, otp);
+
+      console.log(
+        "[OTP] response — ok:", result.ok,
+        result.ok
+          ? "| newBalance:" + String(result.newBalance)
+          : "| error:" + result.error,
+      );
 
       if (!result.ok) {
         switch (result.error) {
