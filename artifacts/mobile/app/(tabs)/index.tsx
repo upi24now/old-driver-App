@@ -20,7 +20,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
-import LiveMap, { DemandSummary, HotZoneStrip } from "@/components/LiveMap";
+import LiveMap, { HotZoneStrip } from "@/components/LiveMap";
 
 function RadarPulse({ color }: { color: string }) {
   const a1 = useRef(new Animated.Value(0)).current;
@@ -538,7 +538,6 @@ export default function HomeScreen() {
 
           <LiveMap online={online} />
           <HotZoneStrip />
-          <DemandSummary />
 
         </View>
 

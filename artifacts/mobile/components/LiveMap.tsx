@@ -3,9 +3,11 @@ import { Fragment, useEffect, useRef } from "react";
 import {
   Animated,
   Easing,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 import Svg, {
@@ -44,6 +46,8 @@ type HotZone = {
   x:      number;
   y:      number;
   r:      number;  // outer gradient radius
+  lat:    number;
+  lng:    number;
 };
 
 export const TIER_COLOR: Record<Tier, string> = {
@@ -56,13 +60,19 @@ export const TIER_COLOR: Record<Tier, string> = {
 // Positions chosen to stay within the clipped-visible x range (≈ 48–352).
 // Label text extends ±35 SVG units from cx, so cx must stay in 83–317.
 const HOT_ZONES: HotZone[] = [
-  { label: "Railway Station", orders: 18, tier: "very_high", x: 115, y: 80,  r: 30 },
-  { label: "Bus Stand",       orders: 12, tier: "high",      x: 285, y: 88,  r: 26 },
-  { label: "Market Area",     orders:  6, tier: "medium",    x: 200, y: 148, r: 24 },
-  { label: "Hospital Zone",   orders:  4, tier: "low",       x: 290, y: 160, r: 20 },
+  { label: "Railway Station", orders: 18, tier: "very_high", x: 115, y: 80,  r: 30, lat: 12.9774, lng: 77.5710 },
+  { label: "Bus Stand",       orders: 12, tier: "high",      x: 285, y: 88,  r: 26, lat: 12.9815, lng: 77.5993 },
+  { label: "Market Area",     orders:  6, tier: "medium",    x: 200, y: 148, r: 24, lat: 12.9611, lng: 77.5760 },
+  { label: "Hospital Zone",   orders:  4, tier: "low",       x: 290, y: 160, r: 20, lat: 12.9256, lng: 77.6759 },
 ];
 
-// ─── HotZoneStrip — premium two-line chips ────────────────────────────────────
+// ─── HotZoneStrip — premium tappable two-line chips ──────────────────────────
+function openNav(lat: number, lng: number) {
+  Linking.openURL(
+    `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,
+  );
+}
+
 export function HotZoneStrip() {
   return (
     <ScrollView
@@ -72,7 +82,12 @@ export function HotZoneStrip() {
       contentContainerStyle={styles.stripContent}
     >
       {HOT_ZONES.map((z) => (
-        <View key={z.label} style={styles.stripChip}>
+        <TouchableOpacity
+          key={z.label}
+          style={styles.stripChip}
+          activeOpacity={0.72}
+          onPress={() => openNav(z.lat, z.lng)}
+        >
           {/* coloured left accent bar */}
           <View style={[styles.stripBar, { backgroundColor: TIER_COLOR[z.tier] }]} />
           <View style={styles.stripBody}>
@@ -81,33 +96,9 @@ export function HotZoneStrip() {
               {z.orders} Orders
             </Text>
           </View>
-        </View>
+        </TouchableOpacity>
       ))}
     </ScrollView>
-  );
-}
-
-// ─── DemandSummary — HIGH DEMAND NOW list ────────────────────────────────────
-export function DemandSummary() {
-  return (
-    <View style={styles.demandWrap}>
-      <Text style={styles.demandHeading}>HIGH DEMAND NOW</Text>
-      {HOT_ZONES.map((z, i) => (
-        <View
-          key={z.label}
-          style={[
-            styles.demandRow,
-            i < HOT_ZONES.length - 1 && styles.demandRowBorder,
-          ]}
-        >
-          <View style={[styles.demandDot, { backgroundColor: TIER_COLOR[z.tier] }]} />
-          <Text style={styles.demandName}>{z.label}</Text>
-          <Text style={[styles.demandCount, { color: TIER_COLOR[z.tier] }]}>
-            {z.orders} Orders
-          </Text>
-        </View>
-      ))}
-    </View>
   );
 }
 
@@ -509,48 +500,4 @@ const styles = StyleSheet.create({
     fontWeight: "700" as const,
   },
 
-  // ── Demand summary section ─────────────────────────────────────────────────
-  demandWrap: {
-    marginTop:         12,
-    backgroundColor:   "rgba(18,22,38,0.88)",
-    borderRadius:      10,
-    borderWidth:       1,
-    borderColor:       "rgba(255,255,255,0.08)",
-    paddingHorizontal: 14,
-    paddingTop:        10,
-    paddingBottom:     6,
-  },
-  demandHeading: {
-    fontSize:      10,
-    fontWeight:    "700" as const,
-    letterSpacing: 1.4,
-    color:         "rgba(255,255,255,0.38)",
-    marginBottom:  8,
-  },
-  demandRow: {
-    flexDirection:  "row",
-    alignItems:     "center",
-    gap:            10,
-    paddingVertical: 6,
-  },
-  demandRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
-  },
-  demandDot: {
-    width:        8,
-    height:       8,
-    borderRadius: 4,
-    flexShrink:   0,
-  },
-  demandName: {
-    flex:       1,
-    fontSize:   13,
-    color:      "rgba(255,255,255,0.88)",
-    fontWeight: "500" as const,
-  },
-  demandCount: {
-    fontSize:   13,
-    fontWeight: "700" as const,
-  },
 });
