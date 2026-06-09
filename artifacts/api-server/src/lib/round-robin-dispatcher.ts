@@ -30,7 +30,7 @@ import { adminFirestore } from "./firebase-admin";
 import { logger } from "./logger";
 
 const DISPATCH_TIMEOUT_SECONDS = 5;
-const POLL_INTERVAL_MS         = 2_000;
+const POLL_INTERVAL_MS         = 30_000; // 30 s — was 2 s; keeps daily poll reads ≤ 2 880
 
 // Statuses that mean "this order is in the pool, needs a driver".
 const POOL_STATUSES = ["searching", "pending"] as const;
@@ -71,7 +71,10 @@ export async function startRoundRobinDispatcher(): Promise<void> {
   // ── Poller: expire timed-out dispatched orders ───────────────────────────────
   setInterval(() => { void checkExpiredDispatches(db); }, POLL_INTERVAL_MS);
 
-  logger.info({ timeoutSec: DISPATCH_TIMEOUT_SECONDS }, "[RR dispatcher] Running");
+  logger.info(
+    { timeoutSec: DISPATCH_TIMEOUT_SECONDS, pollIntervalMs: POLL_INTERVAL_MS },
+    "[RR dispatcher] Running",
+  );
 }
 
 // ─── Driver assignment ────────────────────────────────────────────────────────
