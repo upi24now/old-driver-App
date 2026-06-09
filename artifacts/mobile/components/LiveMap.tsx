@@ -53,23 +53,14 @@ export const TIER_COLOR: Record<Tier, string> = {
   low:       "#34C759",
 };
 
-const TIER_LABEL: Record<Tier, string> = {
-  very_high: "Very High",
-  high:      "High",
-  medium:    "Medium",
-  low:       "Low",
-};
-
 // Positions chosen to stay within the clipped-visible x range (≈ 48–352).
 // Label text extends ±35 SVG units from cx, so cx must stay in 83–317.
 const HOT_ZONES: HotZone[] = [
   { label: "Railway Station", orders: 18, tier: "very_high", x: 115, y: 80,  r: 30 },
   { label: "Bus Stand",       orders: 12, tier: "high",      x: 285, y: 88,  r: 26 },
   { label: "Market Area",     orders:  6, tier: "medium",    x: 200, y: 148, r: 24 },
-  { label: "Hospital Zone",   orders:  4, tier: "low",       x: 315, y: 162, r: 20 },
+  { label: "Hospital Zone",   orders:  4, tier: "low",       x: 290, y: 160, r: 20 },
 ];
-
-const LEGEND_TIERS: Tier[] = ["very_high", "high", "medium", "low"];
 
 // ─── HotZoneStrip — premium two-line chips ────────────────────────────────────
 export function HotZoneStrip() {
@@ -278,29 +269,6 @@ export default function LiveMap({ online }: { online: boolean }) {
         {/* Driver-pin SVG glow halo (behind the View-layer pin) */}
         <Circle cx="200" cy="110" r="22" fill="url(#hz_pin_glow)" />
 
-        {/* ── Legend (top-left, inside safe zone) ───────────────────────── */}
-        <Rect x="52" y="6" width="82" height="58" rx="5"
-          fill="rgba(10,14,26,0.80)"
-        />
-        {LEGEND_TIERS.map((t, i) => (
-          <Fragment key={t}>
-            <Circle
-              cx={61}
-              cy={16 + i * 13}
-              r={3.5}
-              fill={TIER_COLOR[t]}
-            />
-            <SvgText
-              x={68}
-              y={20 + i * 13}
-              fontSize={7.5}
-              fontWeight="500"
-              fill="rgba(255,255,255,0.75)"
-            >
-              {TIER_LABEL[t]}
-            </SvgText>
-          </Fragment>
-        ))}
       </Svg>
 
       {/* ── Driver location pin — dominant visual element ─────────────── */}
@@ -514,7 +482,7 @@ const styles = StyleSheet.create({
   stripChip: {
     flexDirection:   "row",
     alignItems:      "stretch",
-    width:           130,
+    width:           120,
     backgroundColor: "rgba(18,22,38,0.92)",
     borderRadius:    10,
     borderWidth:     1,
@@ -527,8 +495,8 @@ const styles = StyleSheet.create({
   stripBody: {
     flex:              1,
     paddingHorizontal: 10,
-    paddingVertical:   8,
-    gap:               3,
+    paddingVertical:   6,
+    gap:               2,
   },
   stripName: {
     fontSize:      12,
