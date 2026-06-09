@@ -85,7 +85,9 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
     return Object.assign(new Error(code), { code }) as TxError;
   }
 
-  let newBalance = 0;
+  let newBalance    = 0;
+  let newToday      = 0;
+  let newTrips      = 0;
 
   try {
     await db.runTransaction(async (tx) => {
@@ -120,8 +122,8 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
 
       newBalance = ((d["walletBalance"]    as number | undefined) ?? 0) + fareAmount;
       const newLifetime = ((d["lifetimeEarnings"] as number | undefined) ?? 0) + fareAmount;
-      const newToday    = ((isSameDay ? (d["todayEarnings"] as number | undefined) : undefined) ?? 0) + fareAmount;
-      const newTrips    = ((isSameDay ? (d["tripsToday"]    as number | undefined) : undefined) ?? 0) + 1;
+      newToday   = ((isSameDay ? (d["todayEarnings"] as number | undefined) : undefined) ?? 0) + fareAmount;
+      newTrips   = ((isSameDay ? (d["tripsToday"]    as number | undefined) : undefined) ?? 0) + 1;
 
       // ── Writes ────────────────────────────────────────────────────────────────
       tx.update(orderRef, {
@@ -153,7 +155,7 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
       { orderId, driverUid, isLegacyOtp },
       "complete-order: delivery completed and wallet credited",
     );
-    res.json({ ok: true, newBalance });
+    res.json({ ok: true, newBalance, todayEarnings: newToday, tripsToday: newTrips, todayDate: today });
 
   } catch (err: unknown) {
     const code = (err as Partial<TxError>).code;

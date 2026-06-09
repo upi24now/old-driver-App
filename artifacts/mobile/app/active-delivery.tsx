@@ -535,7 +535,7 @@ export default function ActiveDeliveryScreen() {
   }>();
 
   // Must come before useState so the lazy initializer can read restored status.
-  const { activeOrders, activeRide, endRide, orderRemovalReasons, driverUid, refreshWallet } = useDriver();
+  const { activeOrders, activeRide, endRide, orderRemovalReasons, driverUid, applyWalletUpdate } = useDriver();
 
   // ── Derive orderId and thisOrder early — before useState so the lazy
   // initializer can seed stage from the correct order's status. ────────────────
@@ -852,7 +852,13 @@ export default function ActiveDeliveryScreen() {
       // Server completed the order — arm self-exit guard, sync wallet, show celebration.
       // endRide + navigation happen when the driver taps "Back to Home" below.
       didEndSelf.current = true;
-      refreshWallet().catch(console.error);
+      // Apply server-computed wallet values directly from the response.
+      // POST /complete returns newBalance, todayEarnings, tripsToday, todayDate —
+      // all computed inside the same transaction that credited the wallet, so no
+      // Firestore re-read is needed.  refreshWallet() is kept for withdrawal path.
+      if (result.ok) {
+        applyWalletUpdate(result.newBalance, result.todayEarnings, result.tripsToday, result.todayDate);
+      }
       setStage("delivered");
       return;
     }

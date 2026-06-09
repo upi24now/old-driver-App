@@ -195,25 +195,33 @@ async function assignNextDriver(
 // ─── Timeout poller ───────────────────────────────────────────────────────────
 
 async function checkExpiredDispatches(db: FirebaseFirestore.Firestore): Promise<void> {
-  // Single-field query (no composite index needed).
-  // JS-filter the expiry check so Firestore only needs the status index.
+  // Composite index required: orders — status ASC, dispatchTimeoutAt ASC
+  //
+  // The dispatchTimeoutAt range filter is pushed into Firestore so only
+  // genuinely-expired docs are downloaded.  Previously all dispatched orders
+  // were fetched and the expiry was checked in JS, costing one read per
+  // dispatched order per poll cycle regardless of whether any had timed out.
+  //
+  // The JS-side expiry guard below is kept as a safety net (e.g. clock skew
+  // between server instances) and does not affect normal-path behaviour.
+  const now = new Date();
   let snap: FirebaseFirestore.QuerySnapshot;
   try {
     snap = await db.collection("orders")
-      .where("status", "==", "dispatched")
+      .where("status",          "==", "dispatched")
+      .where("dispatchTimeoutAt", "<=", now)
       .get();
   } catch (err) {
     logger.warn({ err }, "[RR dispatcher] Timeout poll query failed");
     return;
   }
 
-  const now = new Date();
   for (const orderDoc of snap.docs) {
     const data = orderDoc.data() as Record<string, unknown>;
     const timeoutAt = data["dispatchTimeoutAt"];
     if (!timeoutAt) continue;
 
-    // Firestore Timestamp or plain Date — normalise to JS Date.
+    // Safety guard: normalise to JS Date and re-verify expiry.
     const timeoutDate =
       timeoutAt instanceof Date
         ? timeoutAt

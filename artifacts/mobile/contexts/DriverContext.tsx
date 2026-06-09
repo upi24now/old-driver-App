@@ -26,7 +26,6 @@ import {
   updateDriverSubscription,
   getActiveOrderForDriver,
   getActiveOrdersForDriver,
-  listenToDispatchedOrder,
   listenToAllDispatchedOrders,
   listenToActiveOrder,
   acceptOrder,
@@ -194,10 +193,12 @@ type DriverState = {
   refreshSubscription: () => Promise<void>;
 
   // ── Wallet ──────────────────────────────────────────────────────────────
-  // addEarningLocally: optimistic update after delivery (before server confirms)
-  // refreshWallet:     re-reads driver doc and syncs wallet fields from Firestore
-  addEarningLocally: (amount: number) => void;
-  refreshWallet:     () => Promise<void>;
+  // addEarningLocally:  optimistic update after delivery (before server confirms)
+  // refreshWallet:      re-reads driver doc and syncs wallet fields from Firestore
+  // applyWalletUpdate:  applies server-computed wallet values directly (no Firestore read)
+  addEarningLocally:  (amount: number) => void;
+  refreshWallet:      () => Promise<void>;
+  applyWalletUpdate:  (balance: number, todayEarnings: number, tripsToday: number, todayDate: string) => void;
 
   acceptRide:  () => Promise<AcceptOrderResult>;
   rejectRide:  () => void;
@@ -478,19 +479,32 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     }
   }, [subscriptionActive, isOnline, activeOrders.length]);
 
-  // ─── Firestore incoming order listener ────────────────────────────────────
-  // Runs whenever the driver is online and authenticated.
-  // Listens for orders where { driverUid == uid, status == "dispatched" }.
-  // Customer app writes such a document to dispatch an order to this driver.
+  // ─── Firestore dispatched-order listener (single channel) ────────────────
+  // Replaces two previous effects that each ran the identical query:
+  //   driverUid == uid AND status == "dispatched"
+  // Running both simultaneously caused 2× Firestore reads per snapshot event.
+  //
+  // One listenToAllDispatchedOrders subscription now serves both purposes:
+  //   • pendingRides  — full orders array for the multi-card slider (was L2)
+  //   • incomingRide  — first order + notification + navigation (was L1)
+  //
+  // Guard conditions and dedup logic are identical to the originals.
   const lastSeenOrderId = useRef<string | null>(null);
   useEffect(() => {
-    // Capacity gate: only listen for new orders when a slot is free and plan is active.
-    // Phase 4: isAtCapacity allows up to MAX_ACTIVE_ORDERS concurrent orders.
-    if (!isOnline || !driverUid || isAtCapacity || !subscriptionActive) return;
+    if (!isOnline || !driverUid || isAtCapacity || !subscriptionActive) {
+      setPendingRides([]);
+      return;
+    }
 
-    const unsub = listenToDispatchedOrder(driverUid, (order) => {
-      if (!order) {
-        // No dispatched order — clear incoming state if it was from Firestore
+    const unsub = listenToAllDispatchedOrders(driverUid, (orders) => {
+      // ── L2 purpose: keep multi-card slider in sync ───────────────────────
+      setPendingRides(orders.map(orderDocToRide));
+
+      // ── L1 purpose: surface first incoming ride + notify ─────────────────
+      const first = orders[0] ?? null;
+
+      if (!first) {
+        // No dispatched order — clear incoming state if it was ours
         setIncomingRide((prev) =>
           prev && prev.id === lastSeenOrderId.current ? null : prev,
         );
@@ -498,12 +512,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       }
 
       // Avoid re-triggering for an order already being shown
-      if (order.id === lastSeenOrderId.current) return;
-      lastSeenOrderId.current = order.id;
+      if (first.id === lastSeenOrderId.current) return;
+      lastSeenOrderId.current = first.id;
 
-      console.log("[FCM] notification received from Firestore orderId:", order.id);
+      console.log("[FCM] notification received from Firestore orderId:", first.id);
 
-      const ride = orderDocToRide(order);
+      const ride = orderDocToRide(first);
       setIncomingRide(ride);
 
       sendIncomingOrderNotification({
@@ -518,23 +532,6 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       router.push("/ride-request");
     });
 
-    return unsub;
-  // Use .length (not the array) so the effect only re-runs when the slot count
-  // changes, not on every internal order-status update.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOnline, driverUid, activeOrders.length, subscriptionActive]);
-
-  // Parallel listener: keeps pendingRides (ALL dispatched orders) in sync so the
-  // ride-request slider can show every pending card simultaneously.
-  // This is read-only — accept/reject logic still operates on incomingRide.
-  useEffect(() => {
-    if (!isOnline || !driverUid || isAtCapacity || !subscriptionActive) {
-      setPendingRides([]);
-      return;
-    }
-    const unsub = listenToAllDispatchedOrders(driverUid, (orders) => {
-      setPendingRides(orders.map(orderDocToRide));
-    });
     return unsub;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOnline, driverUid, isAtCapacity, subscriptionActive]);
@@ -794,6 +791,29 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     } catch {
       // silent — optimistic values remain until next successful refresh
     }
+  };
+
+  /**
+   * Apply server-computed wallet values directly to state without a Firestore read.
+   *
+   * Used on the delivery-completion path where POST /complete already returns
+   * the freshly computed balance, todayEarnings, tripsToday, and todayDate.
+   * Avoids one getDriverDoc() call per delivery.
+   *
+   * refreshWallet() is unchanged and still used for withdrawals and any path
+   * where a Firestore re-read is genuinely required.
+   */
+  const applyWalletUpdate = (
+    balance:      number,
+    todayEarning: number,
+    trips:        number,
+    date:         string,
+  ): void => {
+    const today   = new Date().toISOString().slice(0, 10);
+    const sameDay = date === today;
+    setBalance(balance);
+    setTodayEarnings(sameDay ? todayEarning : 0);
+    setTripsToday   (sameDay ? trips        : 0);
   };
 
   // ─── Ride actions ─────────────────────────────────────────────────────────
@@ -1217,6 +1237,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         transactions,
         addEarningLocally,
         refreshWallet,
+        applyWalletUpdate,
         setPhone,
         confirmOtp,
         setProfile,
