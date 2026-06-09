@@ -261,7 +261,7 @@ export default function RideRequestScreen() {
   // Stable player instance for the alert ringtone — created once per screen mount.
   const player = useAudioPlayer(
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require("../assets/ringtone.wav") as Parameters<typeof useAudioPlayer>[0]
+    require("../assets/old_telephone_ring.mp3") as Parameters<typeof useAudioPlayer>[0]
   );
 
   const urgent = seconds <= 5;

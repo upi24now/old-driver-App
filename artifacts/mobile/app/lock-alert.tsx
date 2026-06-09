@@ -181,7 +181,7 @@ export default function LockAlertScreen() {
   // useAudioPlayer creates a stable player instance for the bundled ringtone.
   const player = useAudioPlayer(
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require("../assets/ringtone.wav") as Parameters<typeof useAudioPlayer>[0]
+    require("../assets/old_telephone_ring.mp3") as Parameters<typeof useAudioPlayer>[0]
   );
 
   // ─── Button pulse animation (runs while ringtone is active) ─────────────

@@ -165,7 +165,11 @@ export async function setupAndroidChannels(): Promise<void> {
     name: "Urgent Order Alerts",
     description: "High-priority alerts for new delivery requests",
     importance: Notif.AndroidImportance.MAX,
-    sound: "ringtone",
+    // Android reads this stem name from res/raw/ at channel-creation time.
+    // NOTE: Android does not allow apps to force system volume; perceived
+    // loudness depends on the user's notification volume and OEM behaviour
+    // (Oppo, Vivo, Tecno, Samsung all apply their own loudness profiles).
+    sound: "old_telephone_ring",
     vibrationPattern: [0, 1200, 200, 1200, 200, 1200, 500],
     enableLights: true,
     lightColor: "#FF4D8D",
@@ -327,7 +331,7 @@ export async function sendIncomingOrderNotification(
           distanceKm:  String(params.distanceKm),
           screen:      "/ride-request",
         },
-        sound: "ringtone.wav",
+        sound: "old_telephone_ring.mp3",
         badge:    1,
         priority: "max",
         categoryIdentifier: CATEGORY_ORDERS,
