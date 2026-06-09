@@ -543,21 +543,37 @@ export function listenToActiveOrder(
 }
 
 /**
- * Return the single in-progress order assigned to this driver, or null.
- * Queries by driverUid only (no composite index needed), then filters
- * active statuses client-side.
+ * Active statuses used for both Firestore-level filtering and any local guards.
+ * Stored as an array so it can be passed directly to Firestore's `where("status","in",…)`.
+ * Previously this was a Set used for client-side filtering; the filter is now
+ * pushed into the query, so Firestore only returns the ≤3 docs we actually need.
+ *
+ * Composite index required: (driverUid ASC, status ASC) — create in Firebase Console
+ * or via firestore.indexes.json if not already present.
  */
-const ACTIVE_STATUSES = new Set<OrderStatus>([
+const ACTIVE_STATUSES: OrderStatus[] = [
   "accepted", "to_pickup", "at_pickup", "to_drop", "at_drop",
-]);
+];
 
+/**
+ * Return the single most-recently-accepted in-progress order for this driver,
+ * or null if none exists.
+ *
+ * Both filters are evaluated by Firestore, so only active-status docs for this
+ * driver are downloaded.  Previously all orders for the driver were fetched and
+ * filtered client-side, which scanned the driver's entire order history on every
+ * app restart.
+ */
 export async function getActiveOrderForDriver(uid: string): Promise<OrderDoc | null> {
   const snap = await getDocs(
-    query(collection(db, "orders"), where("driverUid", "==", uid)),
+    query(
+      collection(db, "orders"),
+      where("driverUid", "==", uid),
+      where("status", "in", ACTIVE_STATUSES),
+      limit(3),
+    ),
   );
-  const active = snap.docs
-    .map((d) => ({ id: d.id, ...d.data() } as OrderDoc))
-    .filter((o) => ACTIVE_STATUSES.has(o.status));
+  const active = snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrderDoc));
   if (active.length === 0) return null;
   active.sort((a, b) => {
     const ta = (a.acceptedAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
@@ -568,30 +584,37 @@ export async function getActiveOrderForDriver(uid: string): Promise<OrderDoc | n
 }
 
 /**
- * Returns up to MAX_ACTIVE_ORDERS (3) active orders for the given driver,
+ * Returns up to maxResults (default 3) active orders for the given driver,
  * sorted by acceptedAt descending (newest first).
  *
  * Used by the auth-restore path in DriverContext so that after an app restart
  * the driver's full multi-order set is rebuilt rather than just the newest one.
- * The cap of 3 prevents an edge-case where Firestore holds stale in-progress
- * docs from a previous session from flooding the restored state.
+ * The cap prevents edge-cases where Firestore holds stale in-progress docs from
+ * a previous session from flooding the restored state.
+ *
+ * Both filters are evaluated by Firestore — only active-status docs are
+ * downloaded (previously all orders for the driver were fetched and filtered
+ * client-side).
  */
 export async function getActiveOrdersForDriver(
   uid: string,
-  limit = 3,
+  maxResults = 3,
 ): Promise<OrderDoc[]> {
   const snap = await getDocs(
-    query(collection(db, "orders"), where("driverUid", "==", uid)),
+    query(
+      collection(db, "orders"),
+      where("driverUid", "==", uid),
+      where("status", "in", ACTIVE_STATUSES),
+      limit(maxResults),
+    ),
   );
-  const active = snap.docs
-    .map((d) => ({ id: d.id, ...d.data() } as OrderDoc))
-    .filter((o) => ACTIVE_STATUSES.has(o.status));
+  const active = snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrderDoc));
   active.sort((a, b) => {
     const ta = (a.acceptedAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
     const tb = (b.acceptedAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
     return tb - ta; // newest first
   });
-  return active.slice(0, limit);
+  return active;
 }
 
 /**
