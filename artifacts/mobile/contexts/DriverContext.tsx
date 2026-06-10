@@ -330,15 +330,22 @@ function tsToMillis(ts: unknown): number | null {
 
 function isStaleDispatch(order: OrderDoc): boolean {
   const now = Date.now();
-  // Prefer dispatchedAt — written by the server at assignment time.
+  // 1. dispatchedAt — written by round-robin dispatcher at assignment time.
   const dispMs = tsToMillis(order.dispatchedAt);
   if (dispMs !== null) return now - dispMs > STALE_DISPATCH_MS;
-  // Fall back to dispatchTimeoutAt — if the window has already elapsed the
-  // poller should have returned this order to "searching"; ignore it anyway.
+  // 2. dispatchTimeoutAt — if the window has already elapsed the order is stale.
   const timeoutMs = tsToMillis(order.dispatchTimeoutAt);
   if (timeoutMs !== null) return timeoutMs < now;
-  // No timestamp at all — likely a manually created test doc; ignore.
-  return true;
+  // 3. fcmDispatchedAt — written by FCM dispatcher; present on customer-app
+  //    direct-dispatch orders that never go through round-robin.
+  const fcmMs = tsToMillis((order as unknown as Record<string, unknown>)["fcmDispatchedAt"]);
+  if (fcmMs !== null) return now - fcmMs > STALE_DISPATCH_MS;
+  // 4. createdAt — universal fallback; customer app always writes this.
+  const createdMs = tsToMillis((order as unknown as Record<string, unknown>)["createdAt"]);
+  if (createdMs !== null) return now - createdMs > STALE_DISPATCH_MS;
+  // 5. No timestamp at all — cannot determine age; treat as fresh so a real
+  //    customer order is never silently dropped.
+  return false;
 }
 
 // ─── Capacity model ───────────────────────────────────────────────────────────
