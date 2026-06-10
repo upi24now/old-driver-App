@@ -589,15 +589,40 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // Guard conditions and dedup logic are identical to the originals.
   const lastSeenOrderId = useRef<string | null>(null);
   useEffect(() => {
+    // ── Log 1: effect entry ───────────────────────────────────────────────────
+    console.log("[DriverOfferListener] effect", {
+      isOnline,
+      driverUid,
+      isAtCapacity,
+      subscriptionActive,
+    });
+
     if (!isOnline || !driverUid || isAtCapacity || !subscriptionActive) {
+      const reason =
+        !isOnline          ? "offline" :
+        !driverUid         ? "no uid" :
+        isAtCapacity       ? "at capacity" :
+                             "subscription inactive";
+      console.log("[DriverOfferListener] guard blocked —", reason);
       setPendingRides([]);
       return;
     }
 
+    // ── Log 2: subscription created ──────────────────────────────────────────
+    console.log("[DriverOfferListener] subscribed uid=", driverUid);
+
     const unsub = listenToAllDispatchedOrders(driverUid, (orders) => {
-      // ── Debug: log every dispatched order received ────────────────────────
+      // ── Log 3: snapshot received ──────────────────────────────────────────
+      console.log("[DriverOfferListener] snapshot size=", orders.length);
       orders.forEach((o) => {
         const raw = o as unknown as Record<string, unknown>;
+        console.log("[DriverOfferListener] order", {
+          orderId:              o.id,
+          status:               o.status,
+          activeOfferDriverUids: o.activeOfferDriverUids ?? null,
+          driverUid:            o.driverUid ?? null,
+        });
+        // ── Legacy dispatch debug (keep for backward compat with existing log searches)
         console.log("[DispatchDebug] orderId:", o.id, JSON.stringify({
           status:            o.status,
           driverUid:         o.driverUid,
