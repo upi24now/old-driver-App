@@ -29,7 +29,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminFirestore } from "./firebase-admin";
 import { logger } from "./logger";
 
-const DISPATCH_TIMEOUT_SECONDS = 5;
+const DISPATCH_TIMEOUT_SECONDS = 60;
 const POLL_INTERVAL_MS         = 30_000; // 30 s — was 2 s; keeps daily poll reads ≤ 2 880
 
 // Statuses that mean "this order is in the pool, needs a driver".
@@ -119,7 +119,12 @@ async function assignNextDriver(
   }
 
   if (drivers.length === 0) {
-    // All online drivers have rejected this order in this cycle.
+    // All online drivers have rejected this order in this cycle (or no drivers online).
+    const reason = rejectedBy.length > 0
+      ? `all ${rejectedBy.length} online driver(s) already rejected this order`
+      : "no online drivers found";
+    logger.warn({ orderId, reason, rejectedBy }, "[RR dispatcher] No eligible driver — cannot assign");
+
     // Reset rejectedBy so the cycle restarts from scratch.
     if (rejectedBy.length > 0) {
       try {

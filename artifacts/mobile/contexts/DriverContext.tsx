@@ -261,19 +261,46 @@ export function useDriver() {
 }
 
 // ─── Map Firestore OrderDoc → IncomingRide ────────────────────────────────────
+//
+// Helper: return s if it is a non-empty string, else "".
+// Safe against undefined/null coming from Firestore fields not in the TypeScript
+// type (e.g. customer app writing pickupAddress instead of pickup at runtime).
+function strField(s: unknown): string {
+  return typeof s === "string" && s.trim().length > 0 ? s.trim() : "";
+}
+// Helper: return n if it is a finite number, else undefined.
+function numField(n: unknown): number | undefined {
+  return typeof n === "number" && isFinite(n) ? n : undefined;
+}
+
 function orderDocToRide(order: OrderDoc): IncomingRide {
+  // Address fallbacks: customer app may write pickupAddress / deliveryAddress /
+  // dropAddress alongside (or instead of) the canonical pickup / drop fields.
+  const pickup = strField(order.pickup) || strField(order.pickupAddress);
+  const drop   = strField(order.drop)   || strField(order.deliveryAddress) || strField(order.dropAddress);
+
+  // Fare fallbacks: customer app may use totalAmount, price, amount, or deliveryFee
+  // instead of (or in addition to) fareEstimate.
+  const fareEstimate =
+    numField(order.fareEstimate) ??
+    numField(order.totalAmount)  ??
+    numField(order.price)        ??
+    numField(order.amount)       ??
+    numField(order.deliveryFee)  ??
+    0;
+
   return {
     id:               order.id,
-    pickup:           order.pickup,
+    pickup,
     pickupSub:        order.pickupSub         ?? "",
     pickupCity:       order.pickupCity,
-    drop:             order.drop,
+    drop,
     dropSub:          order.dropSub           ?? "",
     dropCity:         order.dropCity,
     distanceKm:       order.distanceKm        ?? 0,
     pickupDistanceKm: order.pickupDistanceKm  ?? 0,
     durationMin:      order.durationMin       ?? 0,
-    fareEstimate:     order.fareEstimate      ?? 0,
+    fareEstimate,
     paymentMode:      order.paymentMode,
     surge:            order.surge             ?? false,
     surgeMultiplier:  order.surgeMultiplier   ?? 1,
@@ -284,6 +311,34 @@ function orderDocToRide(order: OrderDoc): IncomingRide {
     parcelEmoji:      order.parcelEmoji     ?? "📦",
     parcelWeight:     order.parcelWeight    ?? "Package",
   };
+}
+
+// ─── Stale dispatch guard ─────────────────────────────────────────────────────
+// Dispatched orders older than STALE_DISPATCH_MS are ignored by the driver
+// listener so that abandoned test/dev documents do not produce popup rides.
+const STALE_DISPATCH_MS = 2 * 60 * 1000; // 2 minutes
+
+function tsToMillis(ts: unknown): number | null {
+  if (ts == null) return null;
+  if (typeof ts === "number") return ts;
+  if (typeof (ts as { toMillis?: unknown }).toMillis === "function") {
+    return (ts as { toMillis: () => number }).toMillis();
+  }
+  if (ts instanceof Date) return ts.getTime();
+  return null;
+}
+
+function isStaleDispatch(order: OrderDoc): boolean {
+  const now = Date.now();
+  // Prefer dispatchedAt — written by the server at assignment time.
+  const dispMs = tsToMillis(order.dispatchedAt);
+  if (dispMs !== null) return now - dispMs > STALE_DISPATCH_MS;
+  // Fall back to dispatchTimeoutAt — if the window has already elapsed the
+  // poller should have returned this order to "searching"; ignore it anyway.
+  const timeoutMs = tsToMillis(order.dispatchTimeoutAt);
+  if (timeoutMs !== null) return timeoutMs < now;
+  // No timestamp at all — likely a manually created test doc; ignore.
+  return true;
 }
 
 // ─── Capacity model ───────────────────────────────────────────────────────────
@@ -514,14 +569,25 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     }
 
     const unsub = listenToAllDispatchedOrders(driverUid, (orders) => {
+      // ── Stale-order filter ────────────────────────────────────────────────
+      // Drop any dispatched doc older than 2 minutes so abandoned test/dev
+      // orders never surface as ride popups.
+      const freshOrders = orders.filter((o) => {
+        if (isStaleDispatch(o)) {
+          console.warn("[Dispatch] Ignoring stale dispatched order:", o.id);
+          return false;
+        }
+        return true;
+      });
+
       // ── L2 purpose: keep multi-card slider in sync ───────────────────────
-      setPendingRides(orders.map(orderDocToRide));
+      setPendingRides(freshOrders.map(orderDocToRide));
 
       // ── L1 purpose: surface first incoming ride + notify ─────────────────
-      const first = orders[0] ?? null;
+      const first = freshOrders[0] ?? null;
 
       if (!first) {
-        // No dispatched order — clear incoming state if it was ours
+        // No fresh dispatched order — clear incoming state if it was ours
         setIncomingRide((prev) =>
           prev && prev.id === lastSeenOrderId.current ? null : prev,
         );

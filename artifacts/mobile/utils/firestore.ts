@@ -432,19 +432,26 @@ export type OrderDoc = {
   parcelEmoji:      string;
   parcelWeight:     string;
 
-  // Route
+  // Route — primary fields; customer app may also write pickupAddress / deliveryAddress
   pickup:           string;
+  pickupAddress?:   string;
   pickupSub?:       string;
   pickupCity:       string;
   drop:             string;
+  deliveryAddress?: string;
+  dropAddress?:     string;
   dropSub?:         string;
   dropCity:         string;
   distanceKm:       number;
   pickupDistanceKm?: number;
   durationMin:      number;
 
-  // Fare
+  // Fare — primary field used by this app; customer app may use alternate names
   fareEstimate:     number;
+  totalAmount?:     number;
+  price?:           number;
+  amount?:          number;
+  deliveryFee?:     number;
   paymentMode:      "Cash" | "UPI" | "Card";
   surge?:           boolean;
   surgeMultiplier?: number;

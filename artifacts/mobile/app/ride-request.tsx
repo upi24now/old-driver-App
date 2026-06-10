@@ -421,19 +421,44 @@ export default function RideRequestScreen() {
   }, [incomingRide, fetchedRide, pendingRides.length]);
 
   // ─── Local OrderDoc → IncomingRide mapping (mirrors DriverContext.orderDocToRide)
+  // Keep in sync with DriverContext.orderDocToRide whenever fallback fields change.
   function orderDocToIncomingRide(order: OrderDoc): IncomingRide {
+    // Address fallbacks — customer app may write pickupAddress / deliveryAddress.
+    const pickup = (typeof order.pickup === "string" && order.pickup.trim()
+      ? order.pickup.trim()
+      : typeof order.pickupAddress === "string" && order.pickupAddress.trim()
+        ? order.pickupAddress.trim()
+        : "");
+    const drop = (typeof order.drop === "string" && order.drop.trim()
+      ? order.drop.trim()
+      : typeof order.deliveryAddress === "string" && order.deliveryAddress.trim()
+        ? order.deliveryAddress.trim()
+        : typeof order.dropAddress === "string" && order.dropAddress.trim()
+          ? order.dropAddress.trim()
+          : "");
+
+    // Fare fallbacks — customer app may use totalAmount, price, amount, deliveryFee.
+    const toNum = (v: unknown) => (typeof v === "number" && isFinite(v) ? v : undefined);
+    const fareEstimate =
+      toNum(order.fareEstimate) ??
+      toNum(order.totalAmount)  ??
+      toNum(order.price)        ??
+      toNum(order.amount)       ??
+      toNum(order.deliveryFee)  ??
+      0;
+
     return {
       id:               order.id,
-      pickup:           order.pickup,
+      pickup,
       pickupSub:        order.pickupSub         ?? "",
       pickupCity:       order.pickupCity,
-      drop:             order.drop,
+      drop,
       dropSub:          order.dropSub           ?? "",
       dropCity:         order.dropCity,
       distanceKm:       order.distanceKm        ?? 0,
       pickupDistanceKm: order.pickupDistanceKm  ?? 0,
       durationMin:      order.durationMin       ?? 0,
-      fareEstimate:     order.fareEstimate      ?? 0,
+      fareEstimate,
       paymentMode:      order.paymentMode,
       surge:            order.surge             ?? false,
       surgeMultiplier:  order.surgeMultiplier   ?? 1,
