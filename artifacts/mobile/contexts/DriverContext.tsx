@@ -316,7 +316,9 @@ function orderDocToRide(order: OrderDoc): IncomingRide {
 // ─── Stale dispatch guard ─────────────────────────────────────────────────────
 // Dispatched orders older than STALE_DISPATCH_MS are ignored by the driver
 // listener so that abandoned test/dev documents do not produce popup rides.
-const STALE_DISPATCH_MS = 2 * 60 * 1000; // 2 minutes
+// 10 min: real-world drivers may take several minutes to come online after a
+// customer places an order; 2 min was too short and silently dropped live orders.
+const STALE_DISPATCH_MS = 10 * 60 * 1000; // 10 minutes
 
 function tsToMillis(ts: unknown): number | null {
   if (ts == null) return null;
@@ -576,9 +578,26 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     }
 
     const unsub = listenToAllDispatchedOrders(driverUid, (orders) => {
+      // ── Debug: log every dispatched order received ────────────────────────
+      orders.forEach((o) => {
+        const raw = o as unknown as Record<string, unknown>;
+        console.log("[DispatchDebug] orderId:", o.id, JSON.stringify({
+          status:            o.status,
+          driverUid:         o.driverUid,
+          fareEstimate:      (raw["fareEstimate"]   ?? raw["totalAmount"] ?? raw["price"] ?? raw["amount"] ?? raw["deliveryFee"] ?? null),
+          pickup:            (raw["pickup"]         ?? raw["pickupAddress"]   ?? null),
+          drop:              (raw["drop"]           ?? raw["deliveryAddress"] ?? raw["dropAddress"] ?? null),
+          dispatchedAt:      (raw["dispatchedAt"]   ?? null),
+          dispatchTimeoutAt: (raw["dispatchTimeoutAt"] ?? null),
+          fcmDispatchedAt:   (raw["fcmDispatchedAt"] ?? null),
+          createdAt:         (raw["createdAt"]      ?? null),
+          isStale:           isStaleDispatch(o),
+        }));
+      });
+
       // ── Stale-order filter ────────────────────────────────────────────────
-      // Drop any dispatched doc older than 2 minutes so abandoned test/dev
-      // orders never surface as ride popups.
+      // Drop any dispatched doc older than STALE_DISPATCH_MS so abandoned
+      // test/dev orders never surface as ride popups.
       const freshOrders = orders.filter((o) => {
         if (isStaleDispatch(o)) {
           console.warn("[Dispatch] Ignoring stale dispatched order:", o.id);
