@@ -31,7 +31,7 @@ import Svg, { Circle } from "react-native-svg";
 import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 
-const TIMER_SECONDS = 55;
+const TIMER_SECONDS = 15;
 const RING_SIZE   = 60;
 const RING_STROKE = 5;
 const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
