@@ -40,6 +40,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDriver } from "@/contexts/DriverContext";
 // onboardingFeeApplies is true only for brand-new signup drivers.
 import { useColors } from "@/hooks/useColors";
+import { registerDriverKeys } from "@/utils/driver-api";
 import { getDriverDoc, submitDriverDocuments } from "@/utils/firestore";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -535,7 +536,7 @@ export default function DocumentUploadScreen() {
   const colors     = useColors();
   const insets     = useSafeAreaInsets();
   const router     = useRouter();
-  const { driverUid, onboardingFeeApplies } = useDriver();
+  const { driverUid, onboardingFeeApplies, phone, profile } = useDriver();
   const [submitting, setSubmitting] = useState(false);
 
   const [docsLoading, setDocsLoading] = useState(true);
@@ -657,8 +658,28 @@ export default function DocumentUploadScreen() {
     }
     setSubmitting(true);
     try {
-      // Collect URIs for every non-locked doc (locked = already admin-verified;
-      // skip to avoid overwriting their admin-set status with "pending").
+      // ── Duplicate-driver check ────────────────────────────────────────────
+      // Must pass before any Firestore write. The same driver re-submitting
+      // (e.g. after a rejection) is always allowed through because the server
+      // excludes the requesting driverUid from the duplicate query.
+      const keysResult = await registerDriverKeys({
+        driverUid,
+        phone,
+        licenseNumber: profile?.licenseNumber,
+        vehicleNumber: profile?.vehicleNumber,
+      });
+      if (!keysResult.ok) {
+        Alert.alert(
+          "Account Already Exists",
+          keysResult.message,
+          [{ text: "OK" }],
+        );
+        setSubmitting(false);
+        return;
+      }
+
+      // ── Collect URIs for every non-locked doc ─────────────────────────────
+      // locked = already admin-verified; skip to avoid overwriting admin status.
       const docUris: Record<string, string | null> = {};
       for (const d of DOCS) {
         const st   = docs[d.id];

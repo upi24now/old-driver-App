@@ -53,7 +53,13 @@ import {
 export type SubPlan = "daily" | "weekly" | "monthly";
 
 export type Vehicle = { id: string; name: string };
-export type Profile = { name: string; city: string; gender: string };
+export type Profile = {
+  name:           string;
+  city:           string;
+  gender:         string;
+  licenseNumber?: string;
+  vehicleNumber?: string;
+};
 
 /**
  * IncomingRide is the driver-side view of a Firestore order document.
@@ -379,9 +385,11 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           if (driverDoc) {
             if (driverDoc.name) {
               setProfileState({
-                name:   driverDoc.name   ?? "",
-                city:   driverDoc.city   ?? "",
-                gender: driverDoc.gender ?? "",
+                name:          driverDoc.name          ?? "",
+                city:          driverDoc.city          ?? "",
+                gender:        driverDoc.gender        ?? "",
+                licenseNumber: driverDoc.licenseNumber ?? "",
+                vehicleNumber: driverDoc.vehicleNumber ?? "",
               });
             }
             if (driverDoc.vehicleId) {

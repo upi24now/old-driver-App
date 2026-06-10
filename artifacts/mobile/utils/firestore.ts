@@ -34,6 +34,8 @@ export type DriverDoc = {
   gender?:                string;
   vehicleId?:             string;
   vehicleName?:           string;
+  licenseNumber?:         string;
+  vehicleNumber?:         string;
   isOnline:               boolean;
   subscriptionPlan?:      string;
   subscriptionExpiresAt?: number;
@@ -257,6 +259,8 @@ export async function updateDriverProfile(uid: string, p: Profile): Promise<void
     name:      p.name,
     city:      p.city,
     gender:    p.gender,
+    ...(p.licenseNumber ? { licenseNumber: p.licenseNumber.trim().toUpperCase() } : {}),
+    ...(p.vehicleNumber ? { vehicleNumber: p.vehicleNumber.trim().toUpperCase() } : {}),
     updatedAt: serverTimestamp(),
   }, { merge: true });
 }

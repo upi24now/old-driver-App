@@ -260,7 +260,13 @@ export default function ProfileSetupScreen() {
 
   function handleContinue() {
     if (!isValid) return;
-    setProfile({ name: fields.name.trim(), city: fields.city, gender: fields.gender });
+    setProfile({
+      name:          fields.name.trim(),
+      city:          fields.city,
+      gender:        fields.gender,
+      licenseNumber: fields.licenseNumber.trim(),
+      vehicleNumber: fields.vehicleNumber.trim(),
+    });
     router.push("/document-upload");
   }
 
