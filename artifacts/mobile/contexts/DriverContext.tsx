@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import {
   onAuthStateChanged,
   signInWithCustomToken,
@@ -523,8 +523,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           // will route to /vehicle-selection because state is at defaults.
         }
 
-        // Register FCM push token — fire-and-forget, never blocks auth or navigation.
-        // No-ops safely in Expo Go and when google-services.json is absent from the build.
+        // Register FCM push token on session restore and fresh login.
+        // Fire-and-forget; no-ops safely in Expo Go and when google-services.json
+        // is absent from the build.
         registerDriverPushToken(user.uid).catch(console.error);
       } else {
         setDriverUid(null);
@@ -532,6 +533,22 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       setAuthLoading(false);
     });
     return unsub;
+  }, []);
+
+  // ─── FCM token refresh on foreground ──────────────────────────────────────
+  // Re-registers the FCM token whenever the app returns to the foreground.
+  // Uses driverUidRef (kept in sync above) so the listener is registered once
+  // and never needs to be torn down and re-created as driverUid changes.
+  // This handles the case where the token stored in Firestore has been
+  // invalidated (app reinstall, data clear, token rotation) without requiring
+  // the driver to log out and back in.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active" && driverUidRef.current) {
+        registerDriverPushToken(driverUidRef.current).catch(console.error);
+      }
+    });
+    return () => sub.remove();
   }, []);
 
   // ─── Subscription heartbeat ────────────────────────────────────────────────
