@@ -570,20 +570,20 @@ export default function SubscriptionScreen() {
           style={[
             styles.cta,
             {
-              backgroundColor: isSelectedCurrentPlan ? colors.success : colors.primary,
+              backgroundColor: colors.primary,
               opacity: isActivating ? 0.6 : 1,
             },
           ]}
           activeOpacity={0.85}
           onPress={handleActivate}
-          disabled={isActivating || isSelectedCurrentPlan}
+          disabled={isActivating}
         >
           {isActivating ? (
             <ActivityIndicator size="small" color="#fff" />
           ) : isSelectedCurrentPlan ? (
             <>
-              <Feather name="check-circle" size={16} color="#fff" />
-              <Text style={styles.ctaText}>Current Plan Active</Text>
+              <Feather name="refresh-cw" size={15} color="#fff" />
+              <Text style={styles.ctaText}>Renew {selectedPlan.name} Plan</Text>
             </>
           ) : (
             <>
