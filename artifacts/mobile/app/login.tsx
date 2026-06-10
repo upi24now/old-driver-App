@@ -1,13 +1,11 @@
-import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
   Easing,
-  Image,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -20,135 +18,116 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
-import { useColors } from "@/hooks/useColors";
 import { sendOtp } from "@/utils/auth-api";
-import { TS } from "@/constants/typography";
 
-const LOGO = require("@/assets/images/logo.png");
+// ─── Design tokens (self-contained — no theme dependency) ────────────────────
+const D = {
+  bg:            "#F6F7FB",
+  textPrimary:   "#0F172A",
+  textSecondary: "#6B7280",
+  cardBg:        "#FFFFFF",
+  activeCard:    "#FFF3BF",
+  gradStart:     "#FFD43B",
+  gradEnd:       "#FFA726",
+  greenLine:     "#22C55E",
+  border:        "#E5E7EB",
+  inputBorder:   "#D1D5DB",
+  error:         "#DC2626",
+  signUpGold:    "#F59E0B",
+  placeholder:   "#9CA3AF",
+  white:         "#FFFFFF",
+} as const;
 
-const COUNTRY_CODE = "+91";
+const VEHICLES = [
+  { emoji: "🏍", label: "Motorcycle" },
+  { emoji: "🛺", label: "Auto" },
+  { emoji: "🚚", label: "Truck" },
+] as const;
 
-// ─── 3D Phone Input Card ─────────────────────────────────────────────────────
-function PhoneInputCard({
-  focused,
+// ─── Vehicle Card ─────────────────────────────────────────────────────────────
+function VehicleCard({
+  emoji,
+  label,
+  active,
   onPress,
-  children,
 }: {
-  focused: boolean;
+  emoji: string;
+  label: string;
+  active: boolean;
   onPress: () => void;
-  children: React.ReactNode;
 }) {
-  const colors = useColors();
-  const scale = useRef(new Animated.Value(1)).current;
-  const glow  = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(active ? 1.06 : 1)).current;
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.spring(scale, {
-        toValue: focused ? 1.025 : 1,
-        useNativeDriver: true,
-        speed: 28,
-        bounciness: 9,
-      }),
-      Animated.timing(glow, {
-        toValue: focused ? 1 : 0,
-        duration: 260,
-        useNativeDriver: true,
-        easing: Easing.out(Easing.ease),
-      }),
-    ]).start();
-  }, [focused]);
+    Animated.spring(scale, {
+      toValue: active ? 1.06 : 1,
+      useNativeDriver: true,
+      speed: 30,
+      bounciness: 8,
+    }).start();
+  }, [active]);
 
   return (
-    <Animated.View style={[styles.card3dOuter, { transform: [{ scale }] }]}>
-      {/* Focus glow ring */}
+    <Pressable onPress={onPress} style={styles.vehicleHitArea}>
       <Animated.View
         style={[
-          styles.card3dGlow,
-          {
-            opacity:         glow,
-            backgroundColor: colors.primary,
-            shadowColor:     colors.primary,
-          },
-        ]}
-        pointerEvents="none"
-      />
-
-      {/* Card shell — border & shadow animate with focused state */}
-      <View
-        style={[
-          styles.card3dShell,
-          {
-            borderColor:    focused ? colors.primary      : colors.border,
-            borderWidth:    focused ? 1.5                 : 1,
-            backgroundColor: colors.surface,
-            shadowColor:    focused ? colors.primary      : "#000",
-            shadowOpacity:  focused ? 0.20                : 0.08,
-            shadowRadius:   focused ? 22                  : 14,
-            shadowOffset:   { width: 0, height: focused ? 8 : 5 },
-            elevation:      focused ? 10                  : 5,
-          },
+          styles.vehicleCard,
+          active && styles.vehicleCardActive,
+          { transform: [{ scale }] },
         ]}
       >
-        {/* Sheen highlight at top edge */}
-        <View style={styles.card3dSheen} />
-        <Pressable onPress={onPress} style={styles.card3dRow}>
-          {children}
-        </Pressable>
-      </View>
-    </Animated.View>
+        <Text style={styles.vehicleEmoji}>{emoji}</Text>
+        <Text
+          style={[
+            styles.vehicleLabel,
+            active && styles.vehicleLabelActive,
+          ]}
+        >
+          {label}
+        </Text>
+      </Animated.View>
+    </Pressable>
   );
 }
 
-// ─── Continue Button ──────────────────────────────────────────────────────────
-function ContinueButton({
+// ─── Login Button ─────────────────────────────────────────────────────────────
+function LoginButton({
   enabled,
+  loading,
   onPress,
 }: {
   enabled: boolean;
+  loading: boolean;
   onPress: () => void;
 }) {
-  const colors = useColors();
   const scale = useRef(new Animated.Value(1)).current;
 
-  const press = (to: number) =>
-    Animated.spring(scale, {
-      toValue: to,
-      useNativeDriver: true,
-      speed: 40,
-      bounciness: 6,
-    }).start();
+  const pressIn  = () => Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, speed: 40, bounciness: 4 }).start();
+  const pressOut = () => Animated.spring(scale, { toValue: 1,    useNativeDriver: true, speed: 40, bounciness: 4 }).start();
 
   return (
-    <Animated.View
-      style={[
-        styles.ctaWrap,
-        {
-          transform:    [{ scale }],
-          shadowColor:  enabled ? colors.primary : "transparent",
-          shadowOpacity: enabled ? 0.28 : 0,
-          elevation:     enabled ? 6    : 0,
-        },
-      ]}
-    >
+    <Animated.View style={[styles.btnWrap, { transform: [{ scale }] }]}>
       <Pressable
         onPress={onPress}
-        onPressIn={() => enabled && press(0.97)}
-        onPressOut={() => press(1)}
+        onPressIn={pressIn}
+        onPressOut={pressOut}
         disabled={!enabled}
-        style={styles.ctaPressable}
+        style={styles.btnPressable}
       >
-        <View
-          style={[
-            styles.ctaButton,
-            { backgroundColor: enabled ? colors.primary : colors.muted },
-          ]}
+        <LinearGradient
+          colors={enabled ? [D.gradStart, D.gradEnd] : ["#D1D5DB", "#D1D5DB"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.btnGradient}
         >
-          <Text style={[styles.ctaText, !enabled && { color: colors.mutedForeground }]}>
-            Continue
-          </Text>
-          {enabled && <Feather name="arrow-right" size={18} color="#fff" />}
-        </View>
+          {loading ? (
+            <ActivityIndicator size="small" color={D.white} />
+          ) : (
+            <Text style={[styles.btnText, !enabled && { color: "#9CA3AF" }]}>
+              Login
+            </Text>
+          )}
+        </LinearGradient>
       </Pressable>
     </Animated.View>
   );
@@ -156,16 +135,17 @@ function ContinueButton({
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function LoginScreen() {
-  const colors  = useColors();
-  const insets  = useSafeAreaInsets();
-  const router  = useRouter();
+  const insets   = useSafeAreaInsets();
+  const router   = useRouter();
   const inputRef = useRef<TextInput>(null);
-  const [phone, setPhone] = useState("");
-  const { setPhone: setDriverPhone, driverUid, authLoading } = useDriver();
+
+  const [phone,   setPhone]   = useState("");
   const [focused, setFocused] = useState(false);
-  const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error,   setError]   = useState("");
+  const [activeVehicle, setActiveVehicle] = useState(1);
+
+  const { setPhone: setDriverPhone, driverUid, authLoading } = useDriver();
 
   const isValid = phone.replace(/\D/g, "").length === 10;
 
@@ -186,7 +166,6 @@ export default function LoginScreen() {
     setLoading(true);
 
     const result = await sendOtp(digits);
-
     if (!result.ok) {
       setLoading(false);
       setError(result.error);
@@ -201,558 +180,355 @@ export default function LoginScreen() {
     });
   }
 
-  function handleContinue() { void goToOtp(); }
-  function handleSignUp()    { void goToOtp(); }
-
-  const inputInner = (
-    <>
-      <TouchableOpacity
-        activeOpacity={0.6}
-        onPress={() => setShowCountryPicker(true)}
-        style={styles.countrySelector}
-        hitSlop={{ top: 12, bottom: 12, left: 8, right: 4 }}
-      >
-        <View style={[styles.flagWrap, { borderColor: colors.border }]}>
-          <View style={[styles.flagBand, { backgroundColor: "#FF9933" }]} />
-          <View style={[styles.flagBand, { backgroundColor: "#FFFFFF" }]}>
-            <View style={styles.flagChakra} />
-          </View>
-          <View style={[styles.flagBand, { backgroundColor: "#138808" }]} />
-        </View>
-        <Text style={[styles.codeText, { color: colors.foreground }]}>{COUNTRY_CODE}</Text>
-        <Feather name="chevron-down" size={15} color={colors.mutedForeground} />
-      </TouchableOpacity>
-
-      <View style={[styles.codeDivider, { backgroundColor: colors.borderStrong }]} />
-
-      <TextInput
-        ref={inputRef}
-        style={[styles.phoneInput, { color: colors.foreground }]}
-        value={phone}
-        onChangeText={(t) => setPhone(t.replace(/\D/g, "").slice(0, 10))}
-        keyboardType="phone-pad"
-        placeholder="Enter mobile number"
-        placeholderTextColor={colors.textPlaceholder}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        returnKeyType="done"
-        onSubmitEditing={handleContinue}
-        underlineColorAndroid="transparent"
-        selectionColor={colors.primary}
-      />
-    </>
-  );
-
-  // Show blank screen while Firebase restores session from AsyncStorage.
-  // This prevents the login form from flashing before _layout.tsx routes.
   if (authLoading) {
     return (
-      <View style={[styles.root, styles.loadingRoot, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
+      <View style={[styles.root, { backgroundColor: D.bg, alignItems: "center", justifyContent: "center" }]}>
+        <ActivityIndicator size="large" color={D.gradEnd} />
       </View>
     );
   }
 
-  // Session already active — _layout.tsx is the single source of truth for routing
-  // authenticated users to the correct screen (onboarding, permissions, or dashboard).
-  // Do NOT redirect here; doing so bypasses the onboarding and permission checks.
   if (driverUid) {
     return (
-      <View style={[styles.root, styles.loadingRoot, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
+      <View style={[styles.root, { backgroundColor: D.bg, alignItems: "center", justifyContent: "center" }]}>
+        <ActivityIndicator size="large" color={D.gradEnd} />
       </View>
     );
   }
 
   return (
     <KeyboardAvoidingView
-      style={[styles.root, { backgroundColor: colors.background }]}
+      style={[styles.root, { backgroundColor: D.bg }]}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView
         contentContainerStyle={[
-          styles.container,
-          {
-            paddingTop: insets.top + 4,
-            paddingBottom: insets.bottom + 24,
-          },
+          styles.scroll,
+          { paddingTop: insets.top + 32, paddingBottom: insets.bottom + 32 },
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.topBar}>
-          <TouchableOpacity
-            style={[styles.backBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
-            onPress={() => router.canGoBack() && router.back()}
-            activeOpacity={0.7}
-          >
-            <Feather name="arrow-left" size={20} color={colors.foreground} />
-          </TouchableOpacity>
+        {/* ── Brand heading ── */}
+        <Text style={styles.brandTitle}>Ride Partner</Text>
+        <Text style={styles.brandSubtitle}>Welcome back, driver</Text>
+
+        {/* ── Vehicle selector row ── */}
+        <View style={styles.vehicleRow}>
+          {VEHICLES.map((v, i) => (
+            <VehicleCard
+              key={v.label}
+              emoji={v.emoji}
+              label={v.label}
+              active={activeVehicle === i}
+              onPress={() => setActiveVehicle(i)}
+            />
+          ))}
         </View>
 
-        {/* ── Premium hero section ── */}
-        <View style={styles.heroSection}>
-          <View
+        {/* ── Login card ── */}
+        <View style={styles.loginCard}>
+          <Text style={styles.cardHeading}>Driver Login</Text>
+
+          {/* Mobile Number field */}
+          <Text style={styles.fieldLabel}>Mobile Number</Text>
+          <Pressable
+            onPress={() => inputRef.current?.focus()}
             style={[
-              styles.heroCard,
-              {
-                backgroundColor: colors.surface,
-                borderColor:     colors.border,
-                shadowColor:     colors.primary,
-              },
+              styles.inputRow,
+              focused && styles.inputRowFocused,
             ]}
           >
-            {/* Sheen */}
-            <View style={styles.heroSheen} />
-
-            {/* Brand badge */}
-            <View style={[styles.heroBadge, { backgroundColor: colors.primarySoft }]}>
-              <Text style={[styles.heroBadgeText, { color: colors.primary }]}>🚴 Bike Courier</Text>
-            </View>
-
-            <Image
-              source={LOGO}
-              style={styles.logoImage}
-              resizeMode="contain"
+            <Text style={styles.countryCode}>+91</Text>
+            <View style={styles.inputDivider} />
+            <TextInput
+              ref={inputRef}
+              style={styles.phoneInput}
+              value={phone}
+              onChangeText={(t) => setPhone(t.replace(/\D/g, "").slice(0, 10))}
+              keyboardType="phone-pad"
+              placeholder="Mobile Number"
+              placeholderTextColor={D.placeholder}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
+              returnKeyType="done"
+              onSubmitEditing={() => void goToOtp()}
+              underlineColorAndroid="transparent"
+              selectionColor={D.gradEnd}
+              {...(Platform.OS === "web" ? { outlineWidth: 0 } as object : {})}
             />
+          </Pressable>
 
-            <Text style={[styles.heroTagline, { color: colors.mutedForeground }]}>
-              Delivery Partner Platform
-            </Text>
+          {/* Green progress line */}
+          <View style={styles.progressLine} />
+
+          {/* Error */}
+          {!!error && (
+            <Text style={styles.errorText}>{error}</Text>
+          )}
+
+          {/* Login button */}
+          <LoginButton
+            enabled={isValid && !loading}
+            loading={loading}
+            onPress={() => void goToOtp()}
+          />
+
+          {/* Sign up row */}
+          <View style={styles.signupRow}>
+            <Text style={styles.signupGray}>New driver? </Text>
+            <TouchableOpacity
+              activeOpacity={0.6}
+              hitSlop={8}
+              onPress={() => void goToOtp()}
+              disabled={loading}
+            >
+              <Text style={styles.signupGold}>Sign Up</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
-        <View style={styles.headingSection}>
-          <Text style={[styles.title, { color: colors.foreground }]}>Welcome Driver</Text>
-          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            Login with your mobile number to continue deliveries
-          </Text>
-        </View>
-
-        <View style={styles.formSection}>
-          <PhoneInputCard
-            focused={focused}
-            onPress={() => inputRef.current?.focus()}
-          >
-            {inputInner}
-          </PhoneInputCard>
-
-          <ContinueButton enabled={isValid && !loading} onPress={handleContinue} />
-
-          {!!error && (
-            <View style={styles.errorRow}>
-              <Feather name="alert-circle" size={13} color={colors.error} />
-              <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.signupRow}>
-          <Text style={[styles.signupText, { color: colors.mutedForeground }]}>New driver? </Text>
-          <TouchableOpacity
-            activeOpacity={0.6}
-            hitSlop={8}
-            onPress={handleSignUp}
-            disabled={loading}
-          >
-            <Text style={[styles.signupLink, { color: colors.primary }, loading && { opacity: 0.5 }]}>
-              Sign up
-            </Text>
-          </TouchableOpacity>
-        </View>
-
+        {/* ── Terms ── */}
         <View style={styles.termsRow}>
-          <Text style={[styles.termsText, { color: colors.mutedForeground }]}>
-            By continuing, you agree to our{" "}
-          </Text>
-          <TouchableOpacity
-            activeOpacity={0.7}
-            hitSlop={6}
-            onPress={() => router.push("/terms-and-conditions")}
-          >
-            <Text style={[styles.termsLink, { color: colors.primary }]}>
-              Terms & Conditions
-            </Text>
+          <Text style={styles.termsText}>By continuing you agree to our </Text>
+          <TouchableOpacity activeOpacity={0.7} hitSlop={6} onPress={() => router.push("/terms-and-conditions")}>
+            <Text style={styles.termsLink}>Terms</Text>
           </TouchableOpacity>
-          <Text style={[styles.termsText, { color: colors.mutedForeground }]}>{" and "}</Text>
-          <TouchableOpacity
-            activeOpacity={0.7}
-            hitSlop={6}
-            onPress={() => router.push("/privacy-policy")}
-          >
-            <Text style={[styles.termsLink, { color: colors.primary }]}>
-              Privacy Policy
-            </Text>
+          <Text style={styles.termsText}> & </Text>
+          <TouchableOpacity activeOpacity={0.7} hitSlop={6} onPress={() => router.push("/privacy-policy")}>
+            <Text style={styles.termsLink}>Privacy Policy</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
-
-      <Modal
-        visible={showCountryPicker}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowCountryPicker(false)}
-      >
-        <Pressable
-          style={styles.modalBackdrop}
-          onPress={() => setShowCountryPicker(false)}
-        >
-          <Pressable
-            style={[styles.modalCard, { backgroundColor: colors.surface }]}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.foreground }]}>Select country</Text>
-              <TouchableOpacity onPress={() => setShowCountryPicker(false)}>
-                <Feather name="x" size={20} color={colors.foreground} />
-              </TouchableOpacity>
-            </View>
-
-            <View
-              style={[
-                styles.countryItemActive,
-                { backgroundColor: colors.primarySoft, borderColor: colors.primary },
-              ]}
-            >
-              <View style={[styles.flagWrap, { borderColor: colors.border }]}>
-                <View style={[styles.flagBand, { backgroundColor: "#FF9933" }]} />
-                <View style={[styles.flagBand, { backgroundColor: "#FFFFFF" }]}>
-                  <View style={styles.flagChakra} />
-                </View>
-                <View style={[styles.flagBand, { backgroundColor: "#138808" }]} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.countryItemName, { color: colors.foreground }]}>India</Text>
-                <Text style={[styles.countryItemCode, { color: colors.mutedForeground }]}>+91</Text>
-              </View>
-              <Feather name="check-circle" size={20} color={colors.primary} />
-            </View>
-
-            <Text style={[styles.modalHint, { color: colors.mutedForeground }]}>
-              More countries coming soon.
-            </Text>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </KeyboardAvoidingView>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  loadingRoot: { alignItems: "center", justifyContent: "center" },
-  container: {
+
+  scroll: {
     flexGrow: 1,
     paddingHorizontal: 24,
+    alignItems: "center",
   },
 
-  topBar: {
+  // Brand
+  brandTitle: {
+    fontSize: 32,
+    fontWeight: "800",
+    color: D.textPrimary,
+    letterSpacing: -0.5,
+    textAlign: "center",
+    marginBottom: 6,
+  },
+  brandSubtitle: {
+    fontSize: 15,
+    fontWeight: "400",
+    color: D.textSecondary,
+    textAlign: "center",
+    marginBottom: 28,
+  },
+
+  // Vehicle row
+  vehicleRow: {
     flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
+    justifyContent: "center",
+    alignItems: "flex-end",
+    gap: 14,
+    marginBottom: 28,
+    width: "100%",
   },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
+  vehicleHitArea: {
+    flex: 1,
+    maxWidth: 100,
+    alignItems: "center",
+  },
+  vehicleCard: {
+    width: 82,
+    height: 82,
+    borderRadius: 20,
+    backgroundColor: D.white,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
+    gap: 4,
+    shadowColor: "#000",
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+  vehicleCardActive: {
+    backgroundColor: D.activeCard,
+    shadowColor: "#F59E0B",
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 6,
+  },
+  vehicleEmoji: {
+    fontSize: 32,
+  },
+  vehicleLabel: {
+    fontSize: 11,
+    fontWeight: "500",
+    color: D.textSecondary,
+    letterSpacing: 0.1,
+  },
+  vehicleLabelActive: {
+    color: D.textPrimary,
+    fontWeight: "600",
   },
 
-  // ── Hero section ──
-  heroSection: {
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-  },
-  heroCard: {
-    alignItems: "center",
-    borderRadius: 28,
-    borderWidth: 1,
-    paddingTop: 20,
-    paddingBottom: 14,
-    paddingHorizontal: 24,
+  // Login card
+  loginCard: {
     width: "100%",
-    overflow: "hidden",
-    shadowOpacity: 0.10,
+    backgroundColor: D.white,
+    borderRadius: 24,
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 24,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
-    gap: 2,
+    elevation: 8,
+    marginBottom: 20,
   },
-  heroSheen: {
-    position: "absolute",
-    top: 0,
-    left: 24,
-    right: 24,
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.9)",
-    zIndex: 2,
-  },
-  heroBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 20,
-    marginBottom: 8,
-  },
-  heroBadgeText: {
-    ...TS.label,
-    fontSize: 11,
-    letterSpacing: 0.5,
-    fontWeight: "700",
-  },
-  logoImage: {
-    width: 150,
-    height: 150,
-  },
-  heroTagline: {
-    ...TS.bodySm,
-    fontWeight: "500",
-    marginTop: 2,
-  },
-
-  // ── Heading ──
-  headingSection: {
-    marginTop: 16,
-    gap: 8,
-    alignItems: "center",
-  },
-  title: {
-    fontSize: 34,
+  cardHeading: {
+    fontSize: 28,
     fontWeight: "800",
-    letterSpacing: -0.6,
-    textAlign: "center",
-  },
-  subtitle: {
-    ...TS.bodyLg,
-    textAlign: "center",
-    paddingHorizontal: 12,
+    color: D.textPrimary,
+    letterSpacing: -0.5,
+    marginBottom: 22,
   },
 
-  // ── Form ──
-  formSection: {
-    marginTop: 22,
-    gap: 0,
+  // Field
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: D.textSecondary,
+    marginBottom: 10,
+    letterSpacing: 0.1,
   },
-
-  // Phone input card — shell bg/border/shadow injected inline
-  card3dOuter: {
-    position: "relative",
-  },
-  card3dGlow: {
-    position: "absolute",
-    top: -10,
-    left: -10,
-    right: -10,
-    bottom: -10,
-    borderRadius: 34,
-    shadowOpacity: 0.42,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 0,
-  },
-  card3dShell: {
-    borderRadius: 24,
-    height: 58,
-    overflow: "hidden",
-    position: "relative",
-  },
-  card3dSheen: {
-    position: "absolute",
-    top: 0,
-    left: 18,
-    right: 18,
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.95)",
-    zIndex: 2,
-  },
-  card3dRow: {
+  inputRow: {
     flexDirection: "row",
     alignItems: "center",
-    height: "100%",
-    paddingHorizontal: 0,
+    borderWidth: 1.5,
+    borderColor: D.inputBorder,
+    borderRadius: 14,
+    height: 56,
+    paddingHorizontal: 16,
+    backgroundColor: D.white,
   },
-
-  // Country selector
-  countrySelector: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexShrink: 0,
-    gap: 4,
-    paddingLeft: 14,
-    paddingRight: 4,
-    height: "100%",
-    backgroundColor: "transparent",
+  inputRowFocused: {
+    borderColor: D.gradEnd,
   },
-  flagWrap: {
-    width: 24,
-    height: 17,
-    borderRadius: 2.5,
-    overflow: "hidden",
-    borderWidth: 0.5,
-    flexDirection: "column",
-  },
-  flagBand: {
-    flex: 1,
-    width: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  flagChakra: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    borderWidth: 0.8,
-    borderColor: "#1A237E",
-  },
-  codeText: {
-    fontSize: 16,
+  countryCode: {
+    fontSize: 17,
     fontWeight: "700",
+    color: D.textPrimary,
     letterSpacing: 0.2,
+    paddingRight: 12,
   },
-  codeDivider: {
-    width: 1,
-    height: 20,
-    alignSelf: "center",
-    marginHorizontal: 0,
+  inputDivider: {
+    width: 1.5,
+    height: 22,
+    backgroundColor: D.inputBorder,
+    marginRight: 12,
   },
   phoneInput: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    paddingLeft: 4,
-    paddingRight: 12,
+    color: D.textPrimary,
     height: "100%",
-    borderWidth: 0,
     ...Platform.select({
-      web: {
-        outlineWidth: 0,
-        outlineStyle: "none",
-      } as object,
+      web: { outlineWidth: 0, outlineStyle: "none" } as object,
       default: {},
     }),
   },
 
-  // CTA button — bg + shadow injected inline
-  ctaWrap: {
-    borderRadius: 16,
-    width: "88%",
-    alignSelf: "center",
-    marginTop: 40,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-  },
-  ctaPressable: {
-    borderRadius: 16,
-    overflow: "hidden",
-  },
-  ctaButton: {
-    height: 52,
-    borderRadius: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    width: "100%",
-  },
-  ctaText: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#fff",
-    letterSpacing: 0.2,
+  // Progress line
+  progressLine: {
+    height: 3,
+    backgroundColor: D.greenLine,
+    borderRadius: 2,
+    marginTop: 14,
+    marginBottom: 6,
   },
 
   // Error
-  errorRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    marginTop: 10,
-    paddingHorizontal: 4,
-  },
   errorText: {
-    ...TS.bodySm,
+    fontSize: 13,
     fontWeight: "500",
-    flex: 1,
+    color: D.error,
+    marginTop: 8,
+    marginBottom: 2,
   },
 
-  // Sign-up / terms
+  // Button
+  btnWrap: {
+    marginTop: 22,
+    borderRadius: 16,
+    shadowColor: D.gradEnd,
+    shadowOpacity: 0.32,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 6,
+  },
+  btnPressable: {
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  btnGradient: {
+    height: 56,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  btnText: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: D.white,
+    letterSpacing: 0.3,
+  },
+
+  // Sign up
   signupRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 24,
+    marginTop: 20,
   },
-  signupText: {
-    ...TS.body,
+  signupGray: {
+    fontSize: 14,
+    fontWeight: "400",
+    color: D.textSecondary,
   },
-  signupLink: {
-    ...TS.body,
-    fontWeight: "800",
-    letterSpacing: 0.2,
+  signupGold: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: D.signUpGold,
   },
+
+  // Terms
   termsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 16,
-    marginBottom: 8,
     paddingHorizontal: 16,
+    gap: 1,
   },
   termsText: {
-    ...TS.bodySm,
+    fontSize: 12,
+    color: D.textSecondary,
   },
   termsLink: {
-    ...TS.bodySm,
+    fontSize: 12,
     fontWeight: "700",
-  },
-
-  // Country picker modal
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(17,24,39,0.5)",
-    justifyContent: "center",
-    paddingHorizontal: 28,
-  },
-  modalCard: {
-    borderRadius: 22,
-    padding: 22,
-    gap: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 12,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-  },
-  countryItemActive: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    padding: 14,
-    borderRadius: 16,
-    borderWidth: 1.5,
-  },
-  countryItemName: {
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  countryItemCode: {
-    ...TS.bodySm,
-    marginTop: 2,
-  },
-  modalHint: {
-    ...TS.bodySm,
-    textAlign: "center",
+    color: D.signUpGold,
   },
 });
