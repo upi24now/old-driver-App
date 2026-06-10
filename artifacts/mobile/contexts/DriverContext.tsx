@@ -657,10 +657,19 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       const first = freshOrders[0] ?? null;
 
       if (!first) {
-        // No fresh dispatched order — clear incoming state if it was ours
-        setIncomingRide((prev) =>
-          prev && prev.id === lastSeenOrderId.current ? null : prev,
-        );
+        // Firestore query returned empty — the customer app may have removed
+        // this driver from activeOfferDriverUids before the driver's 15-second
+        // local timer completed (customer-side offer window is shorter).
+        //
+        // Only clear incomingRide when no offer is actively being shown
+        // (lastSeenOrderId is null).  If an offer IS being shown, leave
+        // incomingRide intact and let the driver-side timer (timeoutRide at
+        // seconds=0), an explicit reject, or an accept handle dismissal.
+        // This prevents the customer-app removal from racing ahead of the
+        // driver's countdown and causing early screen dismissal.
+        if (!lastSeenOrderId.current) {
+          setIncomingRide(null);
+        }
         return;
       }
 
