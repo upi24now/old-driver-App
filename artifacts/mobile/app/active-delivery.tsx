@@ -696,7 +696,10 @@ export default function ActiveDeliveryScreen() {
   useEffect(() => {
     if (!orderId) return;
     const restored = activeRide?.orderStatus;
-    const isFreshAccept = !restored || restored === "accepted";
+    const isFreshAccept =
+      !restored ||
+      restored === "accepted" ||
+      restored === "driver_assigned";
     if (isFreshAccept) {
       updateOrderStage(orderId, "to_pickup").catch(console.error);
     }
