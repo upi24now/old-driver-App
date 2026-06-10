@@ -32,6 +32,18 @@ import { logger } from "./logger";
 const DISPATCH_TIMEOUT_SECONDS = 60;
 const POLL_INTERVAL_MS         = 30_000; // 30 s — was 2 s; keeps daily poll reads ≤ 2 880
 
+// ── Idle guard ───────────────────────────────────────────────────────────────
+// After a successful dispatch, checkExpiredDispatches must keep polling until
+// the order is either accepted or its timeout elapses.  The longest that can
+// take is DISPATCH_TIMEOUT_SECONDS + one POLL_INTERVAL_MS (the poller fires up
+// to one full interval after the deadline).  Once that window passes with no
+// new dispatch, further polls are skipped — there is nothing to expire.
+//
+// Initialised to Date.now() so the first poll after a server restart always
+// runs, covering any orders dispatched by a previous instance.
+const IDLE_GUARD_MS = DISPATCH_TIMEOUT_SECONDS * 1000 + POLL_INTERVAL_MS; // 90 s at defaults
+let lastDispatchAt: number = Date.now();
+
 // Statuses that mean "this order is in the pool, needs a driver".
 const POOL_STATUSES = ["searching", "pending"] as const;
 
@@ -189,6 +201,7 @@ async function assignNextDriver(
     });
 
     if (assigned) {
+      lastDispatchAt = Date.now(); // extend the idle-guard window
       logger.info({ orderId, driverUid: chosen.uid, timeoutSec: DISPATCH_TIMEOUT_SECONDS },
         "[RR dispatcher] Order assigned to driver");
     }
@@ -200,6 +213,14 @@ async function assignNextDriver(
 // ─── Timeout poller ───────────────────────────────────────────────────────────
 
 async function checkExpiredDispatches(db: FirebaseFirestore.Firestore): Promise<void> {
+  // ── Idle guard ─────────────────────────────────────────────────────────────
+  // Skip the Firestore query when no dispatched orders can still be awaiting
+  // their timeout.  IDLE_GUARD_MS covers the full dispatch window plus one
+  // extra poll interval so no expiry is ever missed.
+  if (Date.now() - lastDispatchAt > IDLE_GUARD_MS) {
+    return;
+  }
+
   // Composite index required: orders — status ASC, dispatchTimeoutAt ASC
   //
   // The dispatchTimeoutAt range filter is pushed into Firestore so only
