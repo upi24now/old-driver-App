@@ -153,6 +153,7 @@ type DriverState = {
   vehicle:          Vehicle | null;
   verificationStatus: string | null;  // "pending" | "verified" | "rejected" | null
   documentsSubmitted: boolean;
+  accountStatus:      string | null;  // "active" | "suspended" | "blocked" | null
 
   isOnline:         boolean;
 
@@ -314,7 +315,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const [verificationStatus, setVerifStatus]  = useState<string | null>(null);
   const [documentsSubmitted, setDocsSubmitted] = useState<boolean>(false);
 
-  const [isOnline, setOnlineState] = useState(false);
+  const [isOnline,       setOnlineState]    = useState(false);
+  const [accountStatus,  setAccountStatus]  = useState<string | null>(null);
 
   // ── Multi-order foundation ─────────────────────────────────────────────────
   // Phase 1: always contains at most 1 order.  Phase 3+ lifts the cap.
@@ -395,8 +397,15 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             if (driverDoc.vehicleId) {
               setVehicleState({ id: driverDoc.vehicleId, name: driverDoc.vehicleName ?? "" });
             }
-            // Restore persisted online status and subscription
-            setOnlineState(driverDoc.isOnline ?? false);
+            // Restore persisted online status and subscription.
+            // Suspended/blocked accounts are always forced offline on restore.
+            setAccountStatus(driverDoc.accountStatus ?? null);
+            {
+              const isSuspended =
+                driverDoc.accountStatus === "suspended" ||
+                driverDoc.accountStatus === "blocked";
+              setOnlineState(isSuspended ? false : (driverDoc.isOnline ?? false));
+            }
             if (driverDoc.subscriptionPlan) {
               setSubPlan(driverDoc.subscriptionPlan as SubPlan);
             }
@@ -618,7 +627,14 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         if (driverDoc.vehicleId) {
           setVehicleState({ id: driverDoc.vehicleId, name: driverDoc.vehicleName ?? "" });
         }
-        setOnlineState(driverDoc.isOnline ?? false);
+        // Restore online status — suspended/blocked drivers are forced offline.
+        setAccountStatus(driverDoc.accountStatus ?? null);
+        {
+          const isSuspended =
+            driverDoc.accountStatus === "suspended" ||
+            driverDoc.accountStatus === "blocked";
+          setOnlineState(isSuspended ? false : (driverDoc.isOnline ?? false));
+        }
         if (driverDoc.subscriptionPlan)      setSubPlan(driverDoc.subscriptionPlan as SubPlan);
         if (driverDoc.subscriptionExpiresAt) setSubExp(driverDoc.subscriptionExpiresAt);
         // Restore wallet
@@ -677,7 +693,13 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
   const signOut = async (): Promise<void> => {
     if (driverUid) {
-      updateDriverOnlineStatus(driverUid, false).catch(console.error);
+      // Await so the offline status is written before the Firebase session is
+      // cleared. Best-effort — logout continues even if the write fails.
+      try {
+        await updateDriverOnlineStatus(driverUid, false);
+      } catch {
+        // intentionally ignored
+      }
     }
     // Await Firebase sign-out so the persisted session is cleared from
     // AsyncStorage before the app can be killed. Fire-and-forget was the
@@ -714,6 +736,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     setTripsToday(0);
     setTxns([]);
     setVerifStatus(null);
+    setAccountStatus(null);
     setDocsSubmitted(false);
     setBackgroundSetupShown(false);
     setPermissionSetupVersion(0);
@@ -725,6 +748,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
   // ─── Online / subscription ────────────────────────────────────────────────
   const setOnline: DriverState["setOnline"] = (v) => {
+    if (v && (accountStatus === "suspended" || accountStatus === "blocked")) {
+      return { ok: false, reason: "Your account has been suspended. Please contact support." };
+    }
     if (v && !subscriptionActive) {
       return { ok: false, reason: "Your subscription has expired. Activate a plan to go online." };
     }
@@ -1229,6 +1255,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         vehicle,
         verificationStatus,
         documentsSubmitted,
+        accountStatus,
         isOnline,
         // Multi-order foundation
         activeOrders,

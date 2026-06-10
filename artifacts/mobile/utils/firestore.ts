@@ -37,6 +37,9 @@ export type DriverDoc = {
   licenseNumber?:         string;
   vehicleNumber?:         string;
   isOnline:               boolean;
+  onlineStatus?:          "online" | "offline";
+  lastSeenAt?:            unknown;
+  accountStatus?:         string;   // "active" | "suspended" | "blocked"
   subscriptionPlan?:      string;
   subscriptionExpiresAt?: number;
   createdAt:              unknown;
@@ -324,7 +327,9 @@ export async function updateDriverOnlineStatus(
 ): Promise<void> {
   await setDoc(doc(db, "drivers", uid), {
     isOnline,
-    updatedAt: serverTimestamp(),
+    onlineStatus: isOnline ? "online" : "offline",
+    lastSeenAt:   serverTimestamp(),
+    updatedAt:    serverTimestamp(),
   }, { merge: true });
 }
 
