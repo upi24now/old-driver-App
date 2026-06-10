@@ -2,8 +2,17 @@
  * FCM Order Dispatcher
  *
  * Attaches a Firestore listener on server startup.
- * When an order transitions to status="dispatched" and has a driverUid,
- * sends a high-priority FCM push notification to the driver's device.
+ * Sends a high-priority FCM push to every driver targeted by an order.
+ *
+ * Supports two dispatch models:
+ *
+ *   Phase 1 — round-robin / assigned driver:
+ *     Order has driverUid: string.  Sends to that single driver.
+ *
+ *   Phase 2 — broadcast offer:
+ *     Order has activeOfferDriverUids: string[].  Sends to every UID in the
+ *     array.  driverUid is absent until a driver accepts — the dispatcher
+ *     reads activeOfferDriverUids first and falls back to driverUid.
  *
  * Duplicate prevention — atomic claim protocol:
  *
@@ -18,15 +27,15 @@
  *   race to claim the same order, exactly one transaction commits the write;
  *   the other re-reads, sees the claim, and exits.
  *
- *   After a successful FCM send: fcmDispatchedAt + fcmMessageId are written.
- *   After a failed FCM send: claim fields are cleared; fcmDispatchError and
- *   fcmDispatchErrorAt are written so the failure is visible in Firestore.
- *   (The onSnapshot listener only reacts to "added" events so there is no
- *   automatic retry — a human can inspect and re-trigger if needed.)
+ *   After all sends complete:
+ *     - fcmDispatchedAt is always written (canonical "done" flag).
+ *     - Phase 1: fcmMessageId (string) written for backward compatibility.
+ *     - Phase 2: fcmMessageIds (Record<uid,messageId>) written for successes.
+ *     - Any per-UID failures write fcmDispatchErrors (Record<uid,reason>).
+ *   If every UID fails: claim fields are cleared; fcmDispatchError is written.
  *
  * Safety:
- *   - Only the assigned driver receives the notification (token looked up
- *     from drivers/{driverUid} — never sent broadcast).
+ *   - Only drivers in activeOfferDriverUids (or driverUid) receive a push.
  *   - Full fcmToken is never logged.
  *   - No order stage or accept/reject logic is touched.
  */
@@ -72,11 +81,20 @@ export async function startFcmDispatcher(): Promise<void> {
         // Fast-path skip: if either guard field already exists, no transaction needed.
         if (data["fcmDispatchedAt"] || data["fcmDispatchClaimedAt"]) continue;
 
-        const orderId   = doc.id;
-        const driverUid = typeof data["driverUid"] === "string" ? data["driverUid"] : null;
+        const orderId = doc.id;
 
-        if (!driverUid) {
-          logger.warn({ orderId }, "[FCM dispatcher] Dispatched order has no driverUid — skipping");
+        // ── Resolve target UIDs ──────────────────────────────────────────────
+        // Phase 2: activeOfferDriverUids is authoritative when present.
+        // Phase 1: fall back to the single driverUid string.
+        const rawOfferUids = data["activeOfferDriverUids"];
+        const targetUids: string[] = Array.isArray(rawOfferUids)
+          ? (rawOfferUids as unknown[]).filter((u): u is string => typeof u === "string")
+          : typeof data["driverUid"] === "string"
+            ? [data["driverUid"] as string]
+            : [];
+
+        if (targetUids.length === 0) {
+          logger.warn({ orderId }, "[FCM dispatcher] Dispatched order has no target UIDs — skipping");
           continue;
         }
 
@@ -91,8 +109,8 @@ export async function startFcmDispatcher(): Promise<void> {
           durationMin: typeof data["durationMin"]  === "number" ? String(data["durationMin"])  : "0",
         };
 
-        // Fire-and-forget per order; errors are logged individually
-        void sendOrderFcm(db, orderId, driverUid, orderPayload);
+        // Fire-and-forget per order; errors are logged and written individually.
+        void sendOrderFcm(db, orderId, targetUids, orderPayload);
       }
     },
     (err) => {
@@ -162,10 +180,12 @@ async function claimFcmDispatch(
   return !alreadyClaimed;
 }
 
+type SendResult = { uid: string; messageId: string } | { uid: string; error: string };
+
 async function sendOrderFcm(
   db: FirebaseFirestore.Firestore,
   orderId: string,
-  driverUid: string,
+  targetUids: string[],
   order: OrderPayload,
 ): Promise<void> {
   // ── 1. Atomically claim dispatch rights ───────────────────────────────────
@@ -175,91 +195,123 @@ async function sendOrderFcm(
     return;
   }
 
-  // ── 2. Read driver fcmToken ───────────────────────────────────────────────
-  let fcmToken: string | null = null;
+  // ── 2. Resolve messaging client once ────────────────────────────────────
+  let messaging: Awaited<ReturnType<typeof adminMessaging>>;
   try {
-    const driverSnap = await db.doc(`drivers/${driverUid}`).get();
-    const token = driverSnap.data()?.["fcmToken"];
-    fcmToken = typeof token === "string" && token.length > 0 ? token : null;
+    messaging = await adminMessaging();
   } catch (err) {
-    logger.error({ err, orderId, driverUid }, "[FCM dispatcher] Failed to read driver fcmToken");
-    await clearClaim(db, orderId, "Failed to read driver fcmToken");
+    logger.error({ err, orderId }, "[FCM dispatcher] Failed to init Firebase messaging");
+    await clearClaim(db, orderId, "Failed to init Firebase messaging");
     return;
   }
 
-  if (!fcmToken) {
-    logger.warn({ orderId, driverUid }, "[FCM dispatcher] Driver has no fcmToken — skipping push");
-    await clearClaim(db, orderId, "Driver has no fcmToken");
-    return;
-  }
+  const notifBody = order.earning !== "0" && order.distanceKm !== "0"
+    ? `₹${order.earning} • ${order.distanceKm} km — ${order.customer || "New order"}`
+    : order.customer || "You have a new delivery request";
 
-  // ── 3. Send FCM ───────────────────────────────────────────────────────────
-  let messageId: string;
-  try {
-    const messaging = await adminMessaging();
-    // Build a human-readable body from order data so drivers see the fare
-    // and distance immediately on the heads-up notification, even before the
-    // background task can re-post a local notification with action buttons.
-    const notifBody = order.earning !== "0" && order.distanceKm !== "0"
-      ? `₹${order.earning} • ${order.distanceKm} km — ${order.customer || "New order"}`
-      : order.customer || "You have a new delivery request";
+  // ── 3. Send FCM to each target UID independently ─────────────────────────
+  const results: SendResult[] = [];
 
-    messageId = await messaging.send({
-      token: fcmToken,
-      notification: {
-        title: "🛵 New Delivery Request",
-        body:  notifBody,
-      },
-      data: {
-        type:        "incoming_order",
-        orderId,
-        driverUid,
-        customer:    order.customer,
-        pickup:      order.pickup,
-        pickupCity:  order.pickupCity,
-        drop:        order.drop,
-        dropCity:    order.dropCity,
-        earning:     order.earning,
-        distanceKm:  order.distanceKm,
-        durationMin: order.durationMin,
-      },
-      android: {
-        priority: "high",
+  for (const driverUid of targetUids) {
+    // Read the driver's fcmToken.
+    let fcmToken: string | null = null;
+    try {
+      const driverSnap = await db.doc(`drivers/${driverUid}`).get();
+      const token = driverSnap.data()?.["fcmToken"];
+      fcmToken = typeof token === "string" && token.length > 0 ? token : null;
+    } catch (err) {
+      logger.error({ err, orderId, driverUid }, "[FCM dispatcher] Failed to read driver fcmToken");
+      results.push({ uid: driverUid, error: "Failed to read fcmToken" });
+      continue;
+    }
+
+    if (!fcmToken) {
+      logger.warn({ orderId, driverUid }, "[FCM dispatcher] Driver has no fcmToken — skipping push");
+      results.push({ uid: driverUid, error: "No fcmToken" });
+      continue;
+    }
+
+    // Send the push.
+    try {
+      const messageId = await messaging.send({
+        token: fcmToken,
         notification: {
-          channelId:           CHANNEL_ORDERS,
-          sound:               "ringtone",
-          visibility:          "public",
-          priority:            "max",
-          // Vibration pattern (ms): 0 delay, 1200 on, 200 off × 2, 500 tail.
-          // This fires once at notification delivery — the JS-layer
-          // Vibration.vibrate(pattern, true) loop takes over when the
-          // foreground screen mounts (ride-request / lock-alert).
-          vibrateTimingsMillis: [0, 1200, 200, 1200, 200, 1200, 500],
-          defaultVibrateTimings: false,
+          title: "🛵 New Delivery Request",
+          body:  notifBody,
         },
-      },
-    });
-  } catch (err) {
-    logger.error({ err, orderId, driverUid }, "[FCM dispatcher] FCM send failed");
-    // Clear claim so the failure is visible; record the error for diagnostics.
-    await clearClaim(db, orderId, err instanceof Error ? err.message : "Unknown FCM send error");
+        data: {
+          type:        "incoming_order",
+          orderId,
+          driverUid,
+          customer:    order.customer,
+          pickup:      order.pickup,
+          pickupCity:  order.pickupCity,
+          drop:        order.drop,
+          dropCity:    order.dropCity,
+          earning:     order.earning,
+          distanceKm:  order.distanceKm,
+          durationMin: order.durationMin,
+        },
+        android: {
+          priority: "high",
+          notification: {
+            channelId:           CHANNEL_ORDERS,
+            sound:               "ringtone",
+            visibility:          "public",
+            priority:            "max",
+            // Vibration pattern (ms): 0 delay, 1200 on, 200 off × 2, 500 tail.
+            // This fires once at notification delivery — the JS-layer
+            // Vibration.vibrate(pattern, true) loop takes over when the
+            // foreground screen mounts (ride-request / lock-alert).
+            vibrateTimingsMillis: [0, 1200, 200, 1200, 200, 1200, 500],
+            defaultVibrateTimings: false,
+          },
+        },
+      });
+
+      logger.info(
+        { orderId, driverUid, messageId, instanceId: INSTANCE_ID, tokenPrefix: fcmToken.substring(0, 10) + "..." },
+        "[FCM dispatcher] FCM push sent",
+      );
+      results.push({ uid: driverUid, messageId });
+    } catch (err) {
+      logger.error({ err, orderId, driverUid }, "[FCM dispatcher] FCM send failed");
+      results.push({ uid: driverUid, error: err instanceof Error ? err.message : "Unknown FCM send error" });
+    }
+  }
+
+  // ── 4. Write results back to Firestore ───────────────────────────────────
+  const successes = results.filter((r): r is { uid: string; messageId: string } => "messageId" in r);
+  const failures  = results.filter((r): r is { uid: string; error: string }     => "error"     in r);
+
+  // If every UID failed, clear the claim so the order is diagnosable and a
+  // cold-restart of the server would re-attempt (claim is gone).
+  if (successes.length === 0) {
+    const reason = failures.map((f) => `${f.uid}: ${f.error}`).join("; ");
+    logger.warn({ orderId, reason }, "[FCM dispatcher] All FCM sends failed — clearing claim");
+    await clearClaim(db, orderId, reason);
     return;
   }
 
-  logger.info(
-    { orderId, driverUid, messageId, instanceId: INSTANCE_ID, tokenPrefix: fcmToken.substring(0, 10) + "..." },
-    "[FCM dispatcher] FCM push sent",
-  );
+  // Build the update payload.
+  // Phase 1 (single driver): write fcmMessageId (string) for backward compat.
+  // Phase 2 (multiple drivers): write fcmMessageIds (Record<uid,messageId>).
+  const updateData: Record<string, unknown> = {
+    fcmDispatchedAt: FieldValue.serverTimestamp(),
+  };
 
-  // ── 4. Mark order as dispatched ───────────────────────────────────────────
-  // Claim fields are intentionally left in place — they serve as a record of
-  // which instance sent the push.  fcmDispatchedAt is the canonical "done" flag
-  // checked by the fast-path guard on every new snapshot event.
+  if (targetUids.length === 1 && successes.length === 1) {
+    updateData["fcmMessageId"] = successes[0].messageId;
+  } else {
+    updateData["fcmMessageIds"] = Object.fromEntries(successes.map((s) => [s.uid, s.messageId]));
+  }
+
+  if (failures.length > 0) {
+    updateData["fcmDispatchErrors"] = Object.fromEntries(failures.map((f) => [f.uid, f.error]));
+  }
+
   try {
-    await db.doc(`orders/${orderId}`).update({
-      fcmDispatchedAt: FieldValue.serverTimestamp(),
-      fcmMessageId:    messageId,
-    });
+    await db.doc(`orders/${orderId}`).update(updateData);
   } catch (err) {
     // Non-fatal: the claim is already written so duplicate sends are still
     // prevented.  The absence of fcmDispatchedAt only matters on a cold
