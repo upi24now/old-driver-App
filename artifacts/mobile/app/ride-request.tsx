@@ -215,7 +215,7 @@ export default function RideRequestScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { incomingRide, pendingRides, acceptRide, rejectRide, timeoutRide, recoverIncomingRide } = useDriver();
+  const { driverUid, incomingRide, pendingRides, acceptRide, rejectRide, timeoutRide, recoverIncomingRide } = useDriver();
 
   // FCM tap recovery — orderId + order fields forwarded from handleNotificationResponse
   // so the screen can fetch the order from Firestore if incomingRide is not yet set.
@@ -486,7 +486,11 @@ export default function RideRequestScreen() {
     fetchOrderById(params.orderId)
       .then((order) => {
         if (cancelled) return;
-        if (!order || order.status !== "dispatched") {
+        // Phase 2: order is valid if this driver is still in the offer list.
+        // (Phase 1 used status==="dispatched"; that field is no longer set.)
+        const inOffer = order != null && driverUid != null &&
+          (order.activeOfferDriverUids ?? []).includes(driverUid);
+        if (!inOffer) {
           setFetchFailed(true);
           setFetchLoading(false);
           return;

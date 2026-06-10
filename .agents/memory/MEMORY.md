@@ -1,3 +1,4 @@
 - [expo-audio vs expo-av](expo-audio-sdk54.md) — SDK 54 removed expo-av; use expo-audio@1.1.1 with useAudioPlayer hook.
 - [Expo Go Android image picker](expo-go-android.md) — allowsEditing: true causes UCrop silent drop on Android; always use false.
 - [Bike Courier colour system](bike-courier-colours.md) — semantic token architecture; brand constants pattern used in active-delivery.tsx.
+- [Phase 2 dispatch model](phase2-dispatch.md) — activeOfferDriverUids array-contains replaces driverUid==uid AND status==dispatched; accept writes driver_assigned; reject/timeout use arrayRemove.

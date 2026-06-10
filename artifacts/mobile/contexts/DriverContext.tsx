@@ -986,9 +986,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     if (isAtCapacity) return { ok: false, reason: "already_claimed" };
 
     // 1. Firestore transaction — atomic claim; must succeed before ANY local state update.
-    //    The transaction reads the order doc, verifies status==="dispatched" and
-    //    driverUid===uid, then writes accepted fields in a single atomic operation.
-    //    If another driver beat us, the transaction throws and we get ok:false.
+    //    Phase 2: verifies uid is still in activeOfferDriverUids and status !== "driver_assigned",
+    //    then writes status="driver_assigned", driverUid, acceptedAt, activeOfferDriverUids=[]
+    //    in one atomic operation.  If another driver won the race, returns ok:false.
     const result = await acceptOrder(ride.id, uid, profile?.name ?? null, driverRating, driverTrips);
 
     if (!result.ok) {
@@ -1004,7 +1004,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
     // 2. Transaction succeeded — safe to commit local state.
     // Append to array with duplicate guard and hard cap at MAX_ACTIVE_ORDERS.
-    const accepted: ActiveRide = { ...ride, acceptedAt: Date.now(), orderStatus: "accepted" };
+    const accepted: ActiveRide = { ...ride, acceptedAt: Date.now(), orderStatus: "driver_assigned" };
     setActiveOrders((prev) => {
       if (prev.some((o) => o.id === accepted.id)) return prev;       // dedup
       return [...prev, accepted].slice(0, MAX_ACTIVE_ORDERS);        // cap
@@ -1158,7 +1158,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         if (reason === "delivered" || reason === "completed") {
           const localOrder = activeOrdersRef.current.find((o) => o.id === order.id);
           const localStatus = localOrder?.orderStatus;
-          if (localStatus === "accepted" || localStatus === "to_pickup") {
+          if (localStatus === "driver_assigned" || localStatus === "accepted" || localStatus === "to_pickup") {
             // The driver has not yet advanced past pickup on this device but
             // Firestore already shows a completion status — stale snapshot.
             // Log for debugging and bail; the next snapshot (after the

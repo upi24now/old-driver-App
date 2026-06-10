@@ -1,4 +1,5 @@
 import {
+  arrayRemove,
   arrayUnion,
   collection,
   deleteField,
@@ -404,10 +405,11 @@ export async function updateDriverBackgroundSetup(uid: string): Promise<void> {
 //   Any stage  → cancelled (customer cancels)
 
 export type OrderStatus =
-  | "searching"       // in the driver-assignment pool (new round-robin status)
-  | "pending"         // legacy pool status (driverCancelOrder still writes this)
-  | "dispatched"
-  | "accepted"
+  | "searching"        // in the driver-assignment pool (round-robin status)
+  | "pending"          // legacy pool status (driverCancelOrder still writes this)
+  | "dispatched"       // Phase 1 legacy: single-driver direct dispatch
+  | "driver_assigned"  // Phase 2: written atomically when a driver wins the offer
+  | "accepted"         // legacy alias kept for backward compatibility
   | "rejected"
   | "to_pickup"
   | "at_pickup"
@@ -455,6 +457,10 @@ export type OrderDoc = {
   paymentMode:      "Cash" | "UPI" | "Card";
   surge?:           boolean;
   surgeMultiplier?: number;
+
+  // Phase 2 multi-driver offer fields — written by the customer app during dispatch
+  activeOfferDriverUids?: string[];             // drivers currently holding the offer
+  offerStartedAt?:        Record<string, unknown>; // map of driverUid → Firestore Timestamp
 
   // Round-robin dispatch fields — written by round-robin-dispatcher.ts (server)
   dispatchTimeoutAt?:       unknown;  // JS Date / Firestore Timestamp; poller resets order when elapsed
@@ -506,10 +512,10 @@ export function listenToDispatchedOrder(
   uid:     string,
   onOrder: (order: OrderDoc | null) => void,
 ): () => void {
+  // Phase 2: query by activeOfferDriverUids membership, not driverUid assignment.
   const q = query(
     collection(db, "orders"),
-    where("driverUid", "==", uid),
-    where("status",    "==", "dispatched"),
+    where("activeOfferDriverUids", "array-contains", uid),
   );
   return onSnapshot(q, (snap) => {
     if (snap.empty) {
@@ -522,9 +528,14 @@ export function listenToDispatchedOrder(
 }
 
 /**
- * Listen for ALL "dispatched" orders assigned to this driver simultaneously.
+ * Listen for ALL orders currently offered to this driver simultaneously.
+ * Phase 2: the customer app writes activeOfferDriverUids instead of a single
+ * driverUid, so multiple drivers can hold the same offer concurrently.
  * Returns the full array so the UI can render a multi-order slider.
  * Returns an unsubscribe function; call it on cleanup.
+ *
+ * Query: activeOfferDriverUids array-contains uid
+ * No composite index required — single array-contains uses the auto-index.
  */
 export function listenToAllDispatchedOrders(
   uid:      string,
@@ -532,8 +543,7 @@ export function listenToAllDispatchedOrders(
 ): () => void {
   const q = query(
     collection(db, "orders"),
-    where("driverUid", "==", uid),
-    where("status",    "==", "dispatched"),
+    where("activeOfferDriverUids", "array-contains", uid),
   );
   return onSnapshot(q, (snap) => {
     onOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrderDoc)));
@@ -568,7 +578,7 @@ export function listenToActiveOrder(
  * or via firestore.indexes.json if not already present.
  */
 const ACTIVE_STATUSES: OrderStatus[] = [
-  "accepted", "to_pickup", "at_pickup", "to_drop", "at_drop",
+  "driver_assigned", "accepted", "to_pickup", "at_pickup", "to_drop", "at_drop",
 ];
 
 /**
@@ -638,9 +648,9 @@ export async function getActiveOrdersForDriver(
  *
  * ok: true  — transaction succeeded; this driver now owns the order.
  * ok: false — transaction aborted; reason tells the caller why:
- *   "already_claimed" — order was accepted by this driver on another code path
- *   "reassigned"      — order driverUid no longer matches this driver
- *   "not_dispatched"  — order status has moved past "dispatched"
+ *   "already_claimed" — order already has status "driver_assigned" (another driver won)
+ *   "reassigned"      — this driver is no longer in activeOfferDriverUids
+ *   "not_dispatched"  — order is in an unexpected state (cancelled, expired, etc.)
  *   "missing"         — order document does not exist
  *   "unknown"         — unexpected Firestore error
  */
@@ -649,15 +659,16 @@ export type AcceptOrderResult =
   | { ok: false; reason: "already_claimed" | "reassigned" | "not_dispatched" | "missing" | "unknown" };
 
 /**
- * Atomically claim a dispatched order for this driver.
+ * Atomically claim an offered order for this driver.
  *
- * Uses a Firestore runTransaction so exactly one driver wins when multiple
- * drivers (or multiple code paths on the same device) call this concurrently:
+ * Phase 2: the customer app broadcasts the order to multiple drivers via
+ * activeOfferDriverUids.  Exactly one driver wins the race:
  *   • Reads the order doc inside the transaction.
- *   • Aborts if the doc is missing, the status is no longer "dispatched",
- *     or the driverUid has been reassigned to a different driver.
- *   • Writes status="accepted", driverUid, driverName, acceptedAt, updatedAt
- *     only when all pre-conditions pass.
+ *   • Guard 1 — aborts if status === "driver_assigned" (another driver won).
+ *   • Guard 2 — aborts if this driver's UID is no longer in activeOfferDriverUids
+ *               (order cancelled, offer expired, or driver removed from list).
+ *   • Writes status="driver_assigned", driverUid, driverName, acceptedAt,
+ *     activeOfferDriverUids=[] in one atomic operation.
  *
  * Returns AcceptOrderResult — callers MUST check result.ok before updating
  * local state.  Never set activeOrders until this returns { ok: true }.
@@ -680,29 +691,30 @@ export async function acceptOrder(
 
       const data = snap.data() as OrderDoc;
 
-      // Order must still be waiting for a driver.
-      if (data.status !== "dispatched") {
-        // Distinguish "this driver already accepted on another path" vs
-        // "a different driver claimed it" vs "customer cancelled / timed out".
-        const sameDriver = data.driverUid === driverUid;
-        throw Object.assign(new Error("Order no longer dispatched"), {
-          code: sameDriver ? "already_claimed" : "not_dispatched",
+      // Guard 1: another driver already claimed this order.
+      if (data.status === "driver_assigned") {
+        throw Object.assign(new Error("Order already accepted by another driver"), {
+          code: "already_claimed",
         });
       }
 
-      // Order must still be assigned to this driver (not reassigned by dispatcher).
-      if (data.driverUid !== driverUid) {
-        throw Object.assign(new Error("Order reassigned to another driver"), { code: "reassigned" });
+      // Guard 2: this driver is no longer in the active offer list — the order
+      // was cancelled, the offer expired, or the driver was removed from the list.
+      if (!(data.activeOfferDriverUids ?? []).includes(driverUid)) {
+        throw Object.assign(new Error("Driver no longer in offer list"), {
+          code: "reassigned",
+        });
       }
 
       tx.update(ref, {
-        status:       "accepted",
+        status:                "driver_assigned",
         driverUid,
-        driverName:   driverName  ?? "",
-        driverRating: driverRating ?? "5.0",
-        driverTrips:  driverTrips  ?? 0,
-        acceptedAt:   serverTimestamp(),
-        updatedAt:    serverTimestamp(),
+        driverName:            driverName  ?? "",
+        driverRating:          driverRating ?? "5.0",
+        driverTrips:           driverTrips  ?? 0,
+        acceptedAt:            serverTimestamp(),
+        activeOfferDriverUids: [],
+        updatedAt:             serverTimestamp(),
       });
     });
 
@@ -718,65 +730,23 @@ export async function acceptOrder(
 }
 
 /**
- * Safely reject a dispatched order (explicit driver tap on ✕).
+ * Reject an offered order — removes this driver from the offer list.
  *
- * Uses a Firestore runTransaction so a stale reject tap can never overwrite an
- * order that was already accepted, cancelled, or reassigned.
+ * Phase 2: uses arrayRemove so only this driver's UID is removed from
+ * activeOfferDriverUids; all other drivers in the offer are unaffected.
+ * No transaction needed — arrayRemove is an atomic Firestore field transform.
  *
- * Pre-conditions checked inside the transaction:
- *   • doc exists
- *   • status === "dispatched"
- *   • driverUid === this driver (not reassigned to someone else)
- *
- * On success: returns order to the dispatch pool (status → "searching"),
- * clears driverUid, and records the rejecting driver in rejectedBy so the
- * round-robin dispatcher skips them in this cycle.
- *
- * The customer order is NOT cancelled — it stays alive until accepted or the
- * customer explicitly cancels.
+ * The customer order is NOT cancelled — it stays alive for the remaining
+ * drivers in the offer list (or until the customer explicitly cancels).
  */
 export async function rejectOrder(orderId: string, driverUid: string): Promise<AcceptOrderResult> {
   try {
-    await runTransaction(db, async (tx) => {
-      const ref  = doc(db, "orders", orderId);
-      const snap = await tx.get(ref);
-
-      if (!snap.exists()) {
-        throw Object.assign(new Error("Order document missing"), { code: "missing" });
-      }
-
-      const data = snap.data() as OrderDoc;
-
-      if (data.status !== "dispatched") {
-        const sameDriver = data.driverUid === driverUid;
-        throw Object.assign(new Error("Order no longer dispatched"), {
-          code: sameDriver ? "already_claimed" : "not_dispatched",
-        });
-      }
-
-      if (data.driverUid !== driverUid) {
-        throw Object.assign(new Error("Order reassigned to another driver"), { code: "reassigned" });
-      }
-
-      // Return to pool so the round-robin dispatcher assigns the next driver.
-      // Record the rejecting driver so they are skipped in this cycle.
-      tx.update(ref, {
-        status:           "searching",
-        driverUid:        null,
-        rejectedBy:       arrayUnion(driverUid),
-        rejectedAt:       serverTimestamp(),
-        dispatchTimeoutAt: deleteField(),
-        updatedAt:        serverTimestamp(),
-      });
+    await updateDoc(doc(db, "orders", orderId), {
+      activeOfferDriverUids: arrayRemove(driverUid),
+      updatedAt:             serverTimestamp(),
     });
-
     return { ok: true };
   } catch (e: unknown) {
-    const code = (e as { code?: string }).code;
-    if (code === "already_claimed") return { ok: false, reason: "already_claimed" };
-    if (code === "reassigned")      return { ok: false, reason: "reassigned" };
-    if (code === "missing")         return { ok: false, reason: "missing" };
-    if (code === "not_dispatched")  return { ok: false, reason: "not_dispatched" };
     return { ok: false, reason: "unknown" };
   }
 }
@@ -784,33 +754,19 @@ export async function rejectOrder(orderId: string, driverUid: string): Promise<A
 /**
  * Handle a dispatch timeout — driver ignored the order for the full timer duration.
  *
- * Unlike rejectOrder, timeout does NOT add the driver to rejectedBy, so they
- * may receive the same order again in the next cycle.  All other semantics are
- * identical: the order returns to the pool (status → "searching") so the
- * round-robin dispatcher can assign the next driver.
+ * Phase 2: unlike rejectOrder, timeout does NOT record the driver in any
+ * blacklist, so they may receive the same order again if re-offered.
+ * Uses arrayRemove to remove only this driver from activeOfferDriverUids;
+ * other drivers in the offer are unaffected.
  *
- * The round-robin server-side poller also resets timed-out orders independently
- * (via dispatchTimeoutAt), but this client-side call provides an immediate reset
- * for drivers whose app is in the foreground when the timer fires.
+ * The server-side poller handles timeouts independently via offerStartedAt,
+ * but this client-side call provides an immediate response when the timer fires.
  */
 export async function timeoutOrder(orderId: string, driverUid: string): Promise<void> {
   try {
-    await runTransaction(db, async (tx) => {
-      const ref  = doc(db, "orders", orderId);
-      const snap = await tx.get(ref);
-      if (!snap.exists()) return;
-
-      const data = snap.data() as OrderDoc;
-      if (data.status !== "dispatched") return;   // already accepted or reassigned
-      if (data.driverUid !== driverUid) return;   // already moved to next driver
-
-      // Return to pool without blacklisting the driver.
-      tx.update(ref, {
-        status:           "searching",
-        driverUid:        null,
-        dispatchTimeoutAt: deleteField(),
-        updatedAt:        serverTimestamp(),
-      });
+    await updateDoc(doc(db, "orders", orderId), {
+      activeOfferDriverUids: arrayRemove(driverUid),
+      updatedAt:             serverTimestamp(),
     });
   } catch {
     // Fire-and-forget: the server-side poller will catch it if this fails.
