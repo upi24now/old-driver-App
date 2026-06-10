@@ -444,6 +444,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     const unsub = onAuthStateChanged(firebaseAuth, async (user) => {
       if (user) {
         setDriverUid(user.uid);
+        console.log("AUTH UID =", firebaseAuth.currentUser?.uid);
+        console.log("DRIVER UID =", user.uid);
         const phoneFromUid = user.uid.startsWith("91") ? user.uid.slice(2) : user.uid;
         setPhoneState(phoneFromUid);
         try {
