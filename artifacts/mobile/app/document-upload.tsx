@@ -45,6 +45,7 @@ import { useColors } from "@/hooks/useColors";
 import { registerDriverKeys } from "@/utils/driver-api";
 import { getDriverDoc, submitDriverDocuments } from "@/utils/firestore";
 import { uploadDocumentImage, isRemoteUrl } from "@/utils/storage";
+import { firebaseAuth } from "@/utils/firebase";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -748,60 +749,107 @@ export default function DocumentUploadScreen() {
   async function handleSubmit() {
     if (!allReady || submitting || docsLoading) return;
     if (!driverUid) {
-      console.error("[document-upload] handleSubmit: driverUid is null");
+      console.error("[KYC] handleSubmit: driverUid is null — aborting");
       return;
     }
+
+    // ── Auth UID check ────────────────────────────────────────────────────────
+    const authUid = firebaseAuth.currentUser?.uid ?? null;
+    console.log("[KYC] auth check — authUid:", authUid, "| driverUid:", driverUid, "| match:", authUid === driverUid);
+    if (!authUid) {
+      console.error("[KYC] Firebase auth currentUser is null — cannot write");
+      Alert.alert("Session Expired", "Please log out and sign in again.", [{ text: "OK" }]);
+      return;
+    }
+
     setSubmitting(true);
+
+    // ── Phase 1: duplicate-driver check ──────────────────────────────────────
+    console.log("[KYC] phase 1 — registerDriverKeys start");
+    let keysResult: Awaited<ReturnType<typeof registerDriverKeys>>;
     try {
-      // ── Duplicate-driver check ────────────────────────────────────────────
-      // Must pass before any Firestore write. The same driver re-submitting
-      // (e.g. after a rejection) is always allowed through because the server
-      // excludes the requesting driverUid from the duplicate query.
-      const keysResult = await registerDriverKeys({
+      keysResult = await registerDriverKeys({
         driverUid,
         phone,
         licenseNumber: profile?.licenseNumber,
         vehicleNumber: profile?.vehicleNumber,
       });
-      if (!keysResult.ok) {
-        Alert.alert(
-          "Account Already Exists",
-          keysResult.message,
-          [{ text: "OK" }],
-        );
-        setSubmitting(false);
-        return;
-      }
-
-      // ── Upload local images to Firebase Storage, then collect download URLs ──
-      // locked = already admin-verified; skip to avoid overwriting admin status.
-      // Docs that already have a remote HTTPS URL (loaded back from Firestore on a
-      // re-submission) are passed through as-is — no re-upload needed.
-      const docUris: Record<string, string | null> = {};
-      for (const d of DOCS) {
-        const st   = docs[d.id];
-        const lock = normalizeLock(st.status, !!st.uri);
-        if (lock === "locked") continue;
-
-        if (st.uri && !isRemoteUrl(st.uri)) {
-          // Local file:// or content:// path — upload to Firebase Storage first
-          console.log(`[document-upload] uploading ${d.id} to Storage…`);
-          const downloadURL = await uploadDocumentImage(driverUid, d.id, st.uri);
-          console.log(`[document-upload] ${d.id} → ${downloadURL.slice(0, 60)}…`);
-          docUris[d.id] = downloadURL;
-        } else {
-          // null or already a Firebase Storage URL
-          docUris[d.id] = st.uri;
-        }
-      }
-      await submitDriverDocuments(driverUid, docUris);
-      // Route new signup drivers (onboardingFeeApplies = true) to the fee screen.
-      // Existing drivers who re-upload docs (e.g. rejected) go straight to pending.
-      router.replace(onboardingFeeApplies ? "/onboarding-fee" : "/verification-pending");
+      console.log("[KYC] phase 1 — registerDriverKeys result:", JSON.stringify(keysResult));
     } catch (err) {
-      console.error("[document-upload] Firestore write failed:", err);
+      const e = err as Error;
+      console.error("[KYC] phase 1 — registerDriverKeys THREW:", e?.message, e?.stack);
+      Alert.alert("Submission Error", "Could not verify account. Please try again.");
       setSubmitting(false);
+      return;
     }
+    if (!keysResult.ok) {
+      console.warn("[KYC] phase 1 — duplicate detected:", keysResult.message);
+      Alert.alert("Account Already Exists", keysResult.message, [{ text: "OK" }]);
+      setSubmitting(false);
+      return;
+    }
+
+    // ── Phase 2: upload each document to Firebase Storage ────────────────────
+    console.log("[KYC] phase 2 — Storage uploads start");
+    const docUris: Record<string, string | null> = {};
+    for (const d of DOCS) {
+      const st   = docs[d.id];
+      const lock = normalizeLock(st.status, !!st.uri);
+      if (lock === "locked") {
+        console.log(`[KYC] ${d.id} — locked/approved, skipping`);
+        continue;
+      }
+
+      if (st.uri && !isRemoteUrl(st.uri)) {
+        console.log(`[KYC] ${d.id} — uploading local URI: ${st.uri.slice(0, 80)}`);
+        try {
+          const downloadURL = await uploadDocumentImage(driverUid, d.id, st.uri);
+          console.log(`[KYC] ${d.id} — Storage OK: ${downloadURL.slice(0, 80)}`);
+          docUris[d.id] = downloadURL;
+        } catch (err) {
+          const e = err as Error & { code?: string };
+          console.error(`[KYC] ${d.id} — Storage FAILED code=${e?.code} msg=${e?.message}`);
+          console.error(`[KYC] ${d.id} — Storage stack:`, e?.stack);
+          Alert.alert("Upload Failed", `Could not upload ${d.title}.\n\n${e?.message ?? String(err)}`);
+          setSubmitting(false);
+          return;
+        }
+      } else if (st.uri && isRemoteUrl(st.uri)) {
+        console.log(`[KYC] ${d.id} — already remote URL, skipping re-upload`);
+        docUris[d.id] = st.uri;
+      } else {
+        console.log(`[KYC] ${d.id} — uri is null`);
+        docUris[d.id] = null;
+      }
+    }
+    console.log("[KYC] phase 2 — all Storage uploads done. docUris keys:", Object.keys(docUris));
+
+    // ── Phase 3: Firestore write ──────────────────────────────────────────────
+    console.log("[KYC] phase 3 — Firestore write start");
+    console.log("[KYC] phase 3 — payload:", JSON.stringify(docUris));
+    try {
+      await submitDriverDocuments(driverUid, docUris);
+      console.log("[KYC] phase 3 — Firestore write SUCCESS");
+    } catch (err) {
+      const e = err as Error & { code?: string };
+      console.error("[KYC] phase 3 — Firestore FAILED");
+      console.error("[KYC]   code   :", e?.code);
+      console.error("[KYC]   message:", e?.message);
+      console.error("[KYC]   stack  :", e?.stack);
+      Alert.alert(
+        "Submission Failed",
+        `Could not save documents.\n\nCode: ${e?.code ?? "unknown"}\n${e?.message ?? String(err)}`,
+        [{ text: "OK" }],
+      );
+      setSubmitting(false);
+      return;
+    }
+
+    // ── Route ─────────────────────────────────────────────────────────────────
+    // New signup drivers → onboarding fee screen.
+    // Existing drivers re-uploading → verification-pending.
+    console.log("[KYC] submit complete — routing, onboardingFeeApplies:", onboardingFeeApplies);
+    router.replace(onboardingFeeApplies ? "/onboarding-fee" : "/verification-pending");
   }
 
   // ── Render ──

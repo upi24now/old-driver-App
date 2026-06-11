@@ -295,27 +295,47 @@ export async function updateDriverSubscription(
 
 /**
  * Mark the driver's document submission in Firestore and persist each doc's
- * URI alongside a "pending" status. Uses dot-notation field paths so that
- * existing admin-set fields on sibling docs are not overwritten.
+ * Storage download URL alongside a "pending" status.
  *
- * @param uid     - Driver UID
- * @param docUris - Map of docId → local URI (null if doc was locked/skipped)
+ * Uses setDoc with merge:true instead of updateDoc so this succeeds even if
+ * the driver document was never created (e.g. timing edge-case on first signup).
+ *
+ * Dot-notation field paths ensure existing admin-set fields on sibling docs
+ * are not overwritten.
+ *
+ * @param uid     - Driver UID (must match Firebase Auth UID)
+ * @param docUris - Map of docId → Firebase Storage download URL (or null if skipped)
  */
 export async function submitDriverDocuments(
   uid:     string,
   docUris: Record<string, string | null>,
 ): Promise<void> {
+  // Strip undefined values — Firestore rejects them.
+  // null is intentional (clears a previous URI); undefined is a bug.
+  const safeUris: Record<string, string | null> = {};
+  for (const [id, uri] of Object.entries(docUris)) {
+    if (uri !== undefined) safeUris[id] = uri;
+  }
+
   const updates: Record<string, unknown> = {
     documentsSubmitted:   true,
     verificationStatus:   "pending",
     documentsSubmittedAt: serverTimestamp(),
     updatedAt:            serverTimestamp(),
   };
-  for (const [id, uri] of Object.entries(docUris)) {
-    updates[`documents.${id}.uri`]    = uri ?? null;
+  for (const [id, uri] of Object.entries(safeUris)) {
+    updates[`documents.${id}.uri`]    = uri;
     updates[`documents.${id}.status`] = "pending";
   }
-  await updateDoc(doc(db, "drivers", uid), updates);
+
+  console.log("[submitDriverDocuments] uid:", uid);
+  console.log("[submitDriverDocuments] fields:", JSON.stringify(Object.keys(updates)));
+
+  // setDoc with merge:true — safe whether the doc exists or not.
+  // updateDoc would throw NOT_FOUND if the doc is missing.
+  await setDoc(doc(db, "drivers", uid), updates, { merge: true });
+
+  console.log("[submitDriverDocuments] write completed");
 }
 
 /**
