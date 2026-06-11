@@ -42,7 +42,6 @@ import { getOnboardingFeeConfig, type OnboardingFeeConfig } from "@/utils/firest
 // ── Premium brand constants (screen-specific, outside token system) ──────────
 const PINK        = "#E83272";
 const HOT_PINK    = "#F43F8F";
-const DEEP_PURPLE = "#1F1235";
 const SUCCESS     = "#10B981";
 const GOLD        = "#F59E0B";
 const MUTED       = "#6B7280";
