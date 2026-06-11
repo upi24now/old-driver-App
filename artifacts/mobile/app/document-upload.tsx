@@ -329,30 +329,6 @@ function DocStatusChip({ lock }: { lock: NormalizedDocLock }) {
 
 // ─── DocumentCard ─────────────────────────────────────────────────────────────
 
-// ── Forensic preview image (temporary diagnostic) ────────────────────────────
-// Replace with final RNImage once rendering is confirmed working.
-function ForensicPreview({
-  previewUri,
-  docId,
-  onError,
-}: {
-  previewUri: string;
-  docId: string;
-  onError: () => void;
-}) {
-  return (
-    <View>
-      <Text style={styles.debugUriText} numberOfLines={4}>{"URI: " + previewUri}</Text>
-      <RNImage
-        source={{ uri: previewUri }}
-        style={{ width: 300, height: 200, borderWidth: 3, borderColor: "red", backgroundColor: "yellow" }}
-        resizeMode="cover"
-        onLoad={() => console.log("[IMAGE_LOAD_OK]", docId, previewUri)}
-        onError={(e) => { onError(); console.log("[IMAGE_LOAD_ERROR]", docId, previewUri, e.nativeEvent); }}
-      />
-    </View>
-  );
-}
 
 function DocumentCard({
   doc,
@@ -483,24 +459,21 @@ function DocumentCard({
 
         /* ── LOCKED — approved / verified ── */
         uploaded ? (
-          <View style={[styles.previewWrap, doc.isSelfie && styles.previewWrapSquare]}>
-            {previewUri ? (
-              <ForensicPreview previewUri={previewUri} docId={doc.id} onError={() => setPreviewError(true)} />
-            ) : (
-              <View style={styles.previewFallback}>
-                <Text style={styles.previewFallbackText}>{"NO URI\nstate.uri: " + String(state.uri)}</Text>
-              </View>
-            )}
-            {previewError && (
-              <View style={styles.previewFallback}>
-                <Text style={styles.previewFallbackText}>Load error — upload saved</Text>
-              </View>
-            )}
+          <>
+            <View style={styles.previewWrap}>
+              <RNImage
+                source={{ uri: previewUri ?? "" }}
+                style={styles.previewImg}
+                resizeMode="cover"
+                onLoad={() => console.log("[CARD_PREVIEW_OK]", doc.id)}
+                onError={(e) => console.log("[CARD_PREVIEW_ERROR]", doc.id, e.nativeEvent)}
+              />
+            </View>
             <View style={[styles.previewBar, { backgroundColor: "rgba(5,150,105,0.90)" }]}>
               <SafeInlineIcon name="lock" size={13} color="#fff" />
               <Text style={styles.previewBarText}>Verified — changes locked</Text>
             </View>
-          </View>
+          </>
         ) : (
           <View
             style={[
@@ -519,24 +492,21 @@ function DocumentCard({
 
         /* ── WAITING — pending / submitted ── */
         uploaded ? (
-          <View style={[styles.previewWrap, doc.isSelfie && styles.previewWrapSquare]}>
-            {previewUri ? (
-              <ForensicPreview previewUri={previewUri} docId={doc.id} onError={() => setPreviewError(true)} />
-            ) : (
-              <View style={styles.previewFallback}>
-                <Text style={styles.previewFallbackText}>{"NO URI\nstate.uri: " + String(state.uri)}</Text>
-              </View>
-            )}
-            {previewError && (
-              <View style={styles.previewFallback}>
-                <Text style={styles.previewFallbackText}>Load error — upload saved</Text>
-              </View>
-            )}
+          <>
+            <View style={styles.previewWrap}>
+              <RNImage
+                source={{ uri: previewUri ?? "" }}
+                style={styles.previewImg}
+                resizeMode="cover"
+                onLoad={() => console.log("[CARD_PREVIEW_OK]", doc.id)}
+                onError={(e) => console.log("[CARD_PREVIEW_ERROR]", doc.id, e.nativeEvent)}
+              />
+            </View>
             <View style={[styles.previewBar, { backgroundColor: "rgba(217,119,6,0.90)" }]}>
               <SafeInlineIcon name="clock" size={13} color="#fff" />
               <Text style={styles.previewBarText}>Pending verification</Text>
             </View>
-          </View>
+          </>
         ) : (
           <View
             style={[
@@ -567,19 +537,16 @@ function DocumentCard({
             </Text>
           </View>
           {uploaded ? (
-            <View style={[styles.previewWrap, doc.isSelfie && styles.previewWrapSquare]}>
-              {previewUri ? (
-                <ForensicPreview previewUri={previewUri} docId={doc.id} onError={() => setPreviewError(true)} />
-              ) : (
-                <View style={styles.previewFallback}>
-                  <Text style={styles.previewFallbackText}>{"NO URI\nstate.uri: " + String(state.uri)}</Text>
-                </View>
-              )}
-              {previewError && (
-                <View style={styles.previewFallback}>
-                  <Text style={styles.previewFallbackText}>Load error — upload saved</Text>
-                </View>
-              )}
+            <>
+              <View style={styles.previewWrap}>
+                <RNImage
+                  source={{ uri: previewUri ?? "" }}
+                  style={styles.previewImg}
+                  resizeMode="cover"
+                  onLoad={() => console.log("[CARD_PREVIEW_OK]", doc.id)}
+                  onError={(e) => console.log("[CARD_PREVIEW_ERROR]", doc.id, e.nativeEvent)}
+                />
+              </View>
               <View style={[styles.previewBar, { backgroundColor: "rgba(220,38,38,0.88)" }]}>
                 <Text style={styles.previewBarText}>Previous upload (rejected)</Text>
                 <View style={{ flex: 1 }} />
@@ -588,7 +555,7 @@ function DocumentCard({
                   <Text style={styles.barBtnText}>Replace</Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            </>
           ) : (
             <View
               style={[
@@ -614,19 +581,16 @@ function DocumentCard({
       ) : uploaded ? (
 
         /* ── UPLOADED — normal, no status yet ── */
-        <View style={[styles.previewWrap, doc.isSelfie && styles.previewWrapSquare]}>
-          {previewUri ? (
-            <ForensicPreview previewUri={previewUri} docId={doc.id} onError={() => setPreviewError(true)} />
-          ) : (
-            <View style={styles.previewFallback}>
-              <Text style={styles.previewFallbackText}>{"NO URI\nstate.uri: " + String(state.uri)}</Text>
-            </View>
-          )}
-          {previewError && (
-            <View style={styles.previewFallback}>
-              <Text style={styles.previewFallbackText}>Load error — upload saved</Text>
-            </View>
-          )}
+        <>
+          <View style={styles.previewWrap}>
+            <RNImage
+              source={{ uri: previewUri ?? "" }}
+              style={styles.previewImg}
+              resizeMode="cover"
+              onLoad={() => console.log("[CARD_PREVIEW_OK]", doc.id)}
+              onError={(e) => console.log("[CARD_PREVIEW_ERROR]", doc.id, e.nativeEvent)}
+            />
+          </View>
           <View style={styles.previewBar}>
             <SafeInlineIcon name="check" size={13} color="#fff" />
             <Text style={styles.previewBarText}>
@@ -645,7 +609,7 @@ function DocumentCard({
               <SafeInlineIcon name="close" size={11} color={colors.error} />
             </TouchableOpacity>
           </View>
-        </View>
+        </>
 
       ) : (
 
@@ -1346,16 +1310,16 @@ const styles = StyleSheet.create({
   // Preview
   previewWrap: {
     width: "100%",
-    height: 220,
+    height: 260,
     borderRadius: 18,
     overflow: "hidden",
     backgroundColor: "#F3F4F6",
+    marginTop: 18,
   },
-  previewWrapSquare: { height: 220 },
+  previewWrapSquare: { height: 260 },
   previewImg: {
     width: "100%",
-    height: 220,
-    backgroundColor: "#F3F4F6",
+    height: "100%" as unknown as number,
   },
   previewFallback: {
     position: "absolute",
@@ -1395,16 +1359,14 @@ const styles = StyleSheet.create({
     color: "#713F12",
   },
   previewBar: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 9,
     backgroundColor: "rgba(0,0,0,0.58)",
+    borderRadius: 12,
+    marginTop: 8,
   },
   previewBarText: { fontSize: 12, fontWeight: "600", color: "#fff" },
   barBtn: {
