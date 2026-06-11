@@ -47,3 +47,4 @@ TEST_OTP_PHONES = "8299013350:123456"
 
 [nix]
 packages = ["nano"]
+channel = "stable-25_05"
