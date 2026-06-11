@@ -1,4 +1,4 @@
-import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { SafeIcon, SafeInlineIcon, SafeIconName } from "@/components/SafeIcon";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
@@ -39,50 +39,31 @@ const B = {
 } as const;
 
 // ─── Service cards data ───────────────────────────────────────────────────────
-const SERVICES = [
-  {
-    mcIcon:     "motorbike" as const,
-    title:      "2-Wheeler",
-    sub:        "Express",
-    accent:     B.orange,
-    accentSoft: "#FFF3E0",
-  },
-  {
-    mcIcon:     "car-side"  as const,
-    title:      "3W Loader",
-    sub:        "Economy",
-    accent:     B.amber,
-    accentSoft: "#FFFBEB",
-  },
-  {
-    mcIcon:     "truck"     as const,
-    title:      "4W Loader",
-    sub:        "Cargo",
-    accent:     B.indigo,
-    accentSoft: "#EEF2FF",
-  },
-] as const;
+const SERVICES: Array<{
+  safeIcon:   SafeIconName;
+  title:      string;
+  sub:        string;
+  accent:     string;
+  accentSoft: string;
+}> = [
+  { safeIcon: "bike",  title: "2-Wheeler", sub: "Express", accent: B.orange, accentSoft: "#FFF3E0" },
+  { safeIcon: "auto",  title: "3W Loader", sub: "Economy", accent: B.amber,  accentSoft: "#FFFBEB" },
+  { safeIcon: "truck", title: "4W Loader", sub: "Cargo",   accent: B.indigo, accentSoft: "#EEF2FF" },
+];
 
 // ─── Trust chips data ─────────────────────────────────────────────────────────
-const CHIPS = [
-  { icon: "lock"    as const, label: "Secure OTP",     color: "#059669", bg: "#ECFDF5" },
-  { icon: "zap"     as const, label: "Instant Signup",  color: "#D97706", bg: "#FFFBEB" },
-  { icon: "bell-off"as const, label: "No Spam",         color: "#DC2626", bg: "#FFF1F2" },
-] as const;
+const CHIPS: Array<{ icon: SafeIconName; label: string; color: string; bg: string }> = [
+  { icon: "lock",  label: "Secure OTP",    color: "#059669", bg: "#ECFDF5" },
+  { icon: "star",  label: "Instant Signup", color: "#D97706", bg: "#FFFBEB" },
+  { icon: "bell",  label: "No Spam",        color: "#DC2626", bg: "#FFF1F2" },
+];
 
 // ─── ServiceCard ──────────────────────────────────────────────────────────────
-function ServiceCard({ mcIcon, title, sub, accent, accentSoft }: (typeof SERVICES)[number]) {
+function ServiceCard({ safeIcon, title, sub, accent, accentSoft }: typeof SERVICES[number]) {
   return (
     <View style={styles.serviceCard}>
       <View style={[styles.accentDot, { backgroundColor: accent }]} />
-      <View style={[styles.serviceIconWrap, { backgroundColor: accentSoft }]}>
-        <MaterialCommunityIcons
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          name={mcIcon as any}
-          size={26}
-          color={accent}
-        />
-      </View>
+      <SafeIcon name={safeIcon} size={48} bg={accentSoft} color={accent} rounded={14} />
       <Text style={styles.serviceTitle} numberOfLines={1}>{title}</Text>
       <Text style={styles.serviceSub}   numberOfLines={1}>{sub}</Text>
       <View style={[styles.accentLine, { backgroundColor: accent }]} />
@@ -91,10 +72,10 @@ function ServiceCard({ mcIcon, title, sub, accent, accentSoft }: (typeof SERVICE
 }
 
 // ─── TrustChip ────────────────────────────────────────────────────────────────
-function TrustChip({ icon, label, color, bg }: (typeof CHIPS)[number]) {
+function TrustChip({ icon, label, color, bg }: typeof CHIPS[number]) {
   return (
     <View style={[styles.chip, { backgroundColor: bg, borderColor: `${color}40` }]}>
-      <Feather name={icon} size={11} color={color} />
+      <SafeInlineIcon name={icon} size={11} color={color} />
       <Text style={[styles.chipText, { color }]}>{label}</Text>
     </View>
   );

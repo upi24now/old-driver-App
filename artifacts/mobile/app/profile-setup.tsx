@@ -8,7 +8,7 @@
  * All Firebase/Firestore/navigation logic is unchanged.
  */
 
-import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { SafeInlineIcon, SafeIconName } from "@/components/SafeIcon";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
@@ -137,7 +137,7 @@ function ProgressDots({ step }: { step: number }) {
                 : { backgroundColor: D.border, borderWidth: 2, borderColor: "#D1D5DB" },
             ]}
           >
-            {s <= step && <Feather name="check" size={9} color="#fff" />}
+            {s <= step && <SafeInlineIcon name="check" size={9} color="#fff" />}
           </View>
           {i < 3 && (
             <View
@@ -158,12 +158,12 @@ function SectionCard({ children, style }: { children: React.ReactNode; style?: o
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
-function CardTitle({ label, icon }: { label: string; icon?: React.ComponentProps<typeof Feather>["name"] }) {
+function CardTitle({ label, icon }: { label: string; icon?: SafeIconName }) {
   return (
     <View style={styles.cardTitleRow}>
       {icon && (
         <View style={styles.cardTitleIconBox}>
-          <Feather name={icon} size={14} color={D.primary} />
+          <SafeInlineIcon name={icon} size={14} color={D.primary} />
         </View>
       )}
       <Text style={styles.cardTitleText}>{label}</Text>
@@ -252,26 +252,26 @@ function DobInput({ value, onChangeText }: { value: string; onChangeText: (t: st
 }
 
 // ─── Vehicle data for the summary card ───────────────────────────────────────
-const VEHICLE_META: Record<string, { mcIcon: string; gradStart: string; gradEnd: string }> = {
-  bike:        { mcIcon: "motorbike",     gradStart: "#FF6B9D", gradEnd: "#9B59B6" },
-  scooter:     { mcIcon: "motorbike",     gradStart: "#FF8C69", gradEnd: "#FFA726" },
-  "auto-pass": { mcIcon: "car-side",      gradStart: "#FFD43B", gradEnd: "#FFA726" },
-  "auto-cargo":{ mcIcon: "truck-delivery",gradStart: "#FB923C", gradEnd: "#F59E0B" },
-  "mini-car":  { mcIcon: "car",           gradStart: "#38BDF8", gradEnd: "#2563EB" },
-  sedan:       { mcIcon: "car-side",      gradStart: "#818CF8", gradEnd: "#4338CA" },
-  suv:         { mcIcon: "car",           gradStart: "#2DD4BF", gradEnd: "#0D9488" },
-  "tata-ace":  { mcIcon: "truck-delivery",gradStart: "#4ADE80", gradEnd: "#16A34A" },
-  pickup:      { mcIcon: "truck",         gradStart: "#A3E635", gradEnd: "#65A30D" },
-  "mini-truck":{ mcIcon: "truck",         gradStart: "#22D3EE", gradEnd: "#0EA5E9" },
-  eicher:      { mcIcon: "truck",         gradStart: "#94A3B8", gradEnd: "#3B82F6" },
-  "truck-14ft":{ mcIcon: "truck",         gradStart: "#C084FC", gradEnd: "#6D28D9" },
+const VEHICLE_META: Record<string, { safeIcon: SafeIconName; gradStart: string; gradEnd: string }> = {
+  bike:        { safeIcon: "bike",    gradStart: "#FF6B9D", gradEnd: "#9B59B6" },
+  scooter:     { safeIcon: "scooter", gradStart: "#FF8C69", gradEnd: "#FFA726" },
+  "auto-pass": { safeIcon: "auto",    gradStart: "#FFD43B", gradEnd: "#FFA726" },
+  "auto-cargo":{ safeIcon: "truck",   gradStart: "#FB923C", gradEnd: "#F59E0B" },
+  "mini-car":  { safeIcon: "car",     gradStart: "#38BDF8", gradEnd: "#2563EB" },
+  sedan:       { safeIcon: "car",     gradStart: "#818CF8", gradEnd: "#4338CA" },
+  suv:         { safeIcon: "car",     gradStart: "#2DD4BF", gradEnd: "#0D9488" },
+  "tata-ace":  { safeIcon: "truck",   gradStart: "#4ADE80", gradEnd: "#16A34A" },
+  pickup:      { safeIcon: "truck",   gradStart: "#A3E635", gradEnd: "#65A30D" },
+  "mini-truck":{ safeIcon: "truck",   gradStart: "#22D3EE", gradEnd: "#0EA5E9" },
+  eicher:      { safeIcon: "truck",   gradStart: "#94A3B8", gradEnd: "#3B82F6" },
+  "truck-14ft":{ safeIcon: "truck",   gradStart: "#C084FC", gradEnd: "#6D28D9" },
   // legacy ids from the old 4-vehicle screen
-  auto:        { mcIcon: "car-side",      gradStart: "#FFD43B", gradEnd: "#FFA726" },
-  truck:       { mcIcon: "truck",         gradStart: "#4ADE80", gradEnd: "#16A34A" },
+  auto:        { safeIcon: "auto",    gradStart: "#FFD43B", gradEnd: "#FFA726" },
+  truck:       { safeIcon: "truck",   gradStart: "#4ADE80", gradEnd: "#16A34A" },
 };
 
 function vehicleMeta(id: string) {
-  return VEHICLE_META[id] ?? { mcIcon: "car", gradStart: "#94A3B8", gradEnd: "#6B7280" };
+  return VEHICLE_META[id] ?? { safeIcon: "car" as SafeIconName, gradStart: "#94A3B8", gradEnd: "#6B7280" };
 }
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
@@ -367,7 +367,7 @@ export default function ProfileSetupScreen() {
             style={styles.backBtn}
             activeOpacity={0.7}
           >
-            <Feather name="arrow-left" size={18} color={D.textDark} />
+            <SafeInlineIcon name="back" size={18} color={D.textDark} />
           </TouchableOpacity>
 
           <View style={styles.headerCenter}>
@@ -422,11 +422,11 @@ export default function ProfileSetupScreen() {
                 />
               ) : (
                 <View style={styles.photoCircle}>
-                  <Feather name="user" size={34} color={D.primary} />
+                  <SafeInlineIcon name="user" size={34} color={D.primary} />
                 </View>
               )}
               <View style={styles.cameraChip}>
-                <Feather name="camera" size={12} color="#fff" />
+                <SafeInlineIcon name="camera" size={12} color="#fff" />
               </View>
             </TouchableOpacity>
 
@@ -436,12 +436,12 @@ export default function ProfileSetupScreen() {
 
             <View style={styles.photoTagsRow}>
               <View style={styles.photoTag}>
-                <Feather name="camera" size={10} color={D.textMuted} />
+                <SafeInlineIcon name="camera" size={10} color={D.textMuted} />
                 <Text style={styles.photoTagText}>Camera</Text>
               </View>
               <View style={styles.photoTagDot} />
               <View style={styles.photoTag}>
-                <Feather name="image" size={10} color={D.textMuted} />
+                <SafeInlineIcon name="gallery" size={10} color={D.textMuted} />
                 <Text style={styles.photoTagText}>Gallery</Text>
               </View>
             </View>
@@ -486,11 +486,7 @@ export default function ProfileSetupScreen() {
               >
                 {fields.city || "Select your city"}
               </Text>
-              <Feather
-                name={cityOpen ? "chevron-up" : "chevron-down"}
-                size={16}
-                color={D.textMuted}
-              />
+              <Text style={{ fontSize: 13, color: D.textMuted }}>{cityOpen ? "▲" : "▼"}</Text>
             </TouchableOpacity>
 
             {cityOpen && (
@@ -512,7 +508,7 @@ export default function ProfileSetupScreen() {
                     >
                       {c}
                     </Text>
-                    {fields.city === c && <Feather name="check" size={14} color={D.primary} />}
+                    {fields.city === c && <SafeInlineIcon name="check" size={14} color={D.primary} />}
                   </TouchableOpacity>
                 ))}
               </View>
@@ -569,24 +565,19 @@ export default function ProfileSetupScreen() {
                 end={{ x: 1, y: 1 }}
                 style={styles.vehicleThumb}
               >
-                <MaterialCommunityIcons
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  name={vMeta.mcIcon as any}
-                  size={22}
-                  color="#fff"
-                />
+                <SafeInlineIcon name={vMeta.safeIcon} size={22} color="#fff" />
               </LinearGradient>
               <View style={{ flex: 1 }}>
                 <Text style={styles.vehicleName}>{vehicle.name}</Text>
                 <Text style={styles.vehicleId}>Vehicle type selected in Step 2</Text>
               </View>
               <View style={styles.vehicleCheck}>
-                <Feather name="check" size={14} color={D.success} />
+                <SafeInlineIcon name="check" size={14} color={D.success} />
               </View>
             </View>
           ) : (
             <View style={styles.vehicleEmpty}>
-              <Feather name="alert-circle" size={16} color={D.mutedFg} />
+              <SafeInlineIcon name="warning" size={16} color={D.mutedFg} />
               <Text style={styles.vehicleEmptyText}>
                 No vehicle selected — go back and choose a vehicle
               </Text>
@@ -620,7 +611,7 @@ export default function ProfileSetupScreen() {
         {/* ─── 5. Verification Info Card ─── */}
         <View style={styles.verifyCard}>
           <View style={styles.verifyIconWrap}>
-            <MaterialCommunityIcons name="shield-check" size={20} color="#047857" />
+            <SafeInlineIcon name="shield" size={20} color="#047857" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.verifyTitle}>Verification Process</Text>
@@ -640,11 +631,7 @@ export default function ProfileSetupScreen() {
         ]}
       >
         <View style={styles.footerHint}>
-          <Feather
-            name={isValid ? "check-circle" : "info"}
-            size={13}
-            color={isValid ? D.success : D.mutedFg}
-          />
+          <SafeInlineIcon name={isValid ? "check" : "info"} size={13} color={isValid ? D.success : D.mutedFg} />
           <Text style={styles.footerHintText}>
             {isValid
               ? "Looks good! Ready to continue."
@@ -669,11 +656,7 @@ export default function ProfileSetupScreen() {
             <Text style={[styles.ctaText, !isValid && { color: D.mutedFg }]}>
               Continue to Documents
             </Text>
-            <Feather
-              name="arrow-right"
-              size={18}
-              color={isValid ? "#fff" : D.mutedFg}
-            />
+            <SafeInlineIcon name="arrow" size={18} color={isValid ? "#fff" : D.mutedFg} />
           </LinearGradient>
         </Pressable>
       </View>

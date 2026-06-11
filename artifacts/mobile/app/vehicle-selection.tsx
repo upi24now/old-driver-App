@@ -1,4 +1,4 @@
-import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { SafeInlineIcon, SafeIconName } from "@/components/SafeIcon";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -43,7 +43,7 @@ type VehicleOption = {
   tagline:      string;
   capacity:     string;
   price:        string;
-  mcIcon:       string;
+  safeIcon:     SafeIconName;
   capacityType: "passenger" | "cargo";
   category:     Exclude<Category, "All">;
   popular?:     boolean;
@@ -55,73 +55,73 @@ type VehicleOption = {
 const VEHICLES: VehicleOption[] = [
   {
     id: "bike",        name: "Bike Delivery",  tagline: "Quick parcel rides",
-    capacity: "1 Parcel",  price: "₹6/km",   mcIcon: "motorbike",  capacityType: "cargo",
+    capacity: "1 Parcel",  price: "₹6/km",   safeIcon: "bike",    capacityType: "cargo",
     category: "2 Wheeler", popular: true,
     gradStart: "#FF6B9D",  gradMid: "#E8336C",  gradEnd: "#9B59B6",
   },
   {
     id: "scooter",     name: "Scooter",        tagline: "Light delivery rides",
-    capacity: "1 Parcel",  price: "₹5/km",   mcIcon: "scooter",    capacityType: "cargo",
+    capacity: "1 Parcel",  price: "₹5/km",   safeIcon: "scooter", capacityType: "cargo",
     category: "2 Wheeler",
     gradStart: "#FF8C69",  gradEnd: "#FFA726",
   },
   {
     id: "auto-pass",   name: "Auto Passenger", tagline: "3-seater city rides",
-    capacity: "3 Seats",   price: "₹10/km",  mcIcon: "car-side",   capacityType: "passenger",
+    capacity: "3 Seats",   price: "₹10/km",  safeIcon: "auto",    capacityType: "passenger",
     category: "3 Wheeler",
     gradStart: "#FFD43B",  gradEnd: "#FFA726",
   },
   {
     id: "auto-cargo",  name: "Auto Cargo",     tagline: "Small goods delivery",
-    capacity: "300 kg",    price: "₹12/km",  mcIcon: "truck-delivery", capacityType: "cargo",
+    capacity: "300 kg",    price: "₹12/km",  safeIcon: "truck",   capacityType: "cargo",
     category: "3 Wheeler",
     gradStart: "#FB923C",  gradEnd: "#F59E0B",
   },
   {
     id: "mini-car",    name: "Mini Car",       tagline: "Compact comfort",
-    capacity: "4 Seats",   price: "₹14/km",  mcIcon: "car",        capacityType: "passenger",
+    capacity: "4 Seats",   price: "₹14/km",  safeIcon: "car",     capacityType: "passenger",
     category: "4 Wheeler",
     gradStart: "#38BDF8",  gradEnd: "#2563EB",
   },
   {
     id: "sedan",       name: "Sedan",          tagline: "Premium comfort",
-    capacity: "4 Seats",   price: "₹18/km",  mcIcon: "car-side",   capacityType: "passenger",
+    capacity: "4 Seats",   price: "₹18/km",  safeIcon: "car",     capacityType: "passenger",
     category: "4 Wheeler",
     gradStart: "#818CF8",  gradEnd: "#4338CA",
   },
   {
     id: "suv",         name: "SUV",            tagline: "Family rides",
-    capacity: "6 Seats",   price: "₹22/km",  mcIcon: "car",        capacityType: "passenger",
+    capacity: "6 Seats",   price: "₹22/km",  safeIcon: "car",     capacityType: "passenger",
     category: "4 Wheeler",
     gradStart: "#2DD4BF",  gradEnd: "#0D9488",
   },
   {
     id: "tata-ace",    name: "Tata Ace",       tagline: "Mini goods carrier",
-    capacity: "750 kg",    price: "₹16/km",  mcIcon: "truck-delivery", capacityType: "cargo",
+    capacity: "750 kg",    price: "₹16/km",  safeIcon: "truck",   capacityType: "cargo",
     category: "Cargo",
     gradStart: "#4ADE80",  gradEnd: "#16A34A",
   },
   {
     id: "pickup",      name: "Pickup Truck",   tagline: "Heavy parcel delivery",
-    capacity: "1 Ton",     price: "₹20/km",  mcIcon: "truck",      capacityType: "cargo",
+    capacity: "1 Ton",     price: "₹20/km",  safeIcon: "truck",   capacityType: "cargo",
     category: "Cargo",
     gradStart: "#A3E635",  gradEnd: "#65A30D",
   },
   {
     id: "mini-truck",  name: "Mini Truck",     tagline: "Bulk goods transport",
-    capacity: "1.5 Ton",   price: "₹24/km",  mcIcon: "truck",      capacityType: "cargo",
+    capacity: "1.5 Ton",   price: "₹24/km",  safeIcon: "truck",   capacityType: "cargo",
     category: "Cargo",
     gradStart: "#22D3EE",  gradEnd: "#0EA5E9",
   },
   {
     id: "eicher",      name: "Eicher Truck",   tagline: "Commercial transport",
-    capacity: "3 Ton",     price: "₹32/km",  mcIcon: "truck",      capacityType: "cargo",
+    capacity: "3 Ton",     price: "₹32/km",  safeIcon: "truck",   capacityType: "cargo",
     category: "Heavy",
     gradStart: "#94A3B8",  gradEnd: "#3B82F6",
   },
   {
     id: "truck-14ft",  name: "14 Feet Truck",  tagline: "Large goods movement",
-    capacity: "5 Ton",     price: "₹40/km",  mcIcon: "truck",      capacityType: "cargo",
+    capacity: "5 Ton",     price: "₹40/km",  safeIcon: "truck",   capacityType: "cargo",
     category: "Heavy",
     gradStart: "#C084FC",  gradEnd: "#6D28D9",
   },
@@ -191,24 +191,19 @@ function VehicleCard({
         >
           {vehicle.popular && (
             <View style={styles.badge}>
-              <Feather name="star" size={8} color="#fff" />
+              <SafeInlineIcon name="star" size={8} color="#fff" />
               <Text style={styles.badgeText}>Popular</Text>
             </View>
           )}
 
           {selected && (
             <View style={styles.checkCircle}>
-              <Feather name="check" size={10} color={D.white} />
+              <SafeInlineIcon name="check" size={10} color={D.white} />
             </View>
           )}
 
           <View style={styles.emojiWrap}>
-            <MaterialCommunityIcons
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              name={vehicle.mcIcon as any}
-              size={30}
-              color="#fff"
-            />
+            <SafeInlineIcon name={vehicle.safeIcon} size={22} color="#fff" />
           </View>
         </LinearGradient>
 
@@ -233,8 +228,8 @@ function VehicleCard({
               },
             ]}
           >
-            <Feather
-              name={vehicle.capacityType === "passenger" ? "users" : "package"}
+            <SafeInlineIcon
+              name="package"
               size={9}
               color={selected ? D.primary : D.textMuted}
             />
@@ -268,7 +263,7 @@ function StepDot({ filled }: { filled: boolean }) {
           : { backgroundColor: D.border, borderWidth: 2, borderColor: "#D1D5DB" },
       ]}
     >
-      {filled && <Feather name="check" size={9} color={D.white} />}
+      {filled && <SafeInlineIcon name="check" size={9} color={D.white} />}
     </View>
   );
 }
@@ -343,7 +338,7 @@ export default function VehicleSelectionScreen() {
           style={styles.backBtn}
           activeOpacity={0.7}
         >
-          <Feather name="arrow-left" size={18} color={D.textPrimary} />
+          <SafeInlineIcon name="back" size={18} color={D.textPrimary} />
         </TouchableOpacity>
 
         <View style={styles.headerCenter}>
@@ -356,7 +351,7 @@ export default function VehicleSelectionScreen() {
           activeOpacity={0.7}
           onPress={callSupport}
         >
-          <Feather name="help-circle" size={15} color={D.primary} />
+          <SafeInlineIcon name="support" size={15} color={D.primary} />
           <Text style={styles.helpText}>Help</Text>
         </TouchableOpacity>
       </View>
@@ -407,7 +402,7 @@ export default function VehicleSelectionScreen() {
       >
         {rows.length === 0 ? (
           <View style={styles.emptyState}>
-            <Feather name="search" size={40} color="#9CA3AF" />
+            <SafeInlineIcon name="search" size={40} color="#9CA3AF" />
             <Text style={styles.emptyText}>No vehicles in this category</Text>
           </View>
         ) : (
@@ -453,12 +448,7 @@ export default function VehicleSelectionScreen() {
                 end={{ x: 1, y: 1 }}
                 style={styles.summaryThumb}
               >
-                <MaterialCommunityIcons
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  name={selectedVehicle.mcIcon as any}
-                  size={22}
-                  color="#fff"
-                />
+                <SafeInlineIcon name={selectedVehicle.safeIcon} size={22} color="#fff" />
               </LinearGradient>
 
               <View style={{ flex: 1 }}>
@@ -475,7 +465,7 @@ export default function VehicleSelectionScreen() {
             </>
           ) : (
             <View style={styles.summaryEmpty}>
-              <Feather name="grid" size={16} color={D.mutedFg} />
+              <SafeInlineIcon name="package" size={16} color={D.mutedFg} />
               <Text style={styles.summaryEmptyText}>No vehicle selected</Text>
             </View>
           )}
@@ -499,11 +489,7 @@ export default function VehicleSelectionScreen() {
             <Text style={[styles.ctaText, !selectedId && { color: D.mutedFg }]}>
               Continue
             </Text>
-            <Feather
-              name="arrow-right"
-              size={18}
-              color={selectedId ? D.white : D.mutedFg}
-            />
+            <SafeInlineIcon name="arrow" size={18} color={selectedId ? D.white : D.mutedFg} />
           </LinearGradient>
         </Pressable>
       </View>

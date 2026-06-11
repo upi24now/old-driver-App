@@ -1,90 +1,76 @@
-/**
- * SafeIcon.tsx
- *
- * Emoji-based icon tiles that render without any icon-font dependency.
- * All glyphs are native Unicode / emoji — zero glyph-square risk on Android.
- *
- * Exports
- *   SafeIcon          — square tile with coloured background
- *   SafeInlineIcon    — bare glyph, no tile (for use inside buttons / rows)
- *   SafeIcon3D        — premium 3D-effect tile with gloss + glow shadow
- *   PremiumButton3D   — chunky 3D press-effect CTA button
- */
+// FILE: artifacts/mobile/components/SafeIcon.tsx
+// PURPOSE: No Feather, no MaterialCommunityIcons, no emoji, no broken box glyph.
+// This uses plain text labels + View shapes only, so it works on web, Expo Go, Android browser.
 
 import React from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  type ViewStyle,
-} from "react-native";
+import { View, Text, StyleSheet, ViewStyle, Pressable } from "react-native";
 
-// ─────────────────────────────────────────────────────────────────
-// Icon name registry
-// ─────────────────────────────────────────────────────────────────
+export type SafeIconName =
+  | "bike"
+  | "scooter"
+  | "auto"
+  | "truck"
+  | "user"
+  | "camera"
+  | "gallery"
+  | "id"
+  | "doc"
+  | "license"
+  | "rc"
+  | "shield"
+  | "lock"
+  | "check"
+  | "clock"
+  | "bell"
+  | "support"
+  | "book"
+  | "car"
+  | "package"
+  | "rupee"
+  | "arrow"
+  | "back"
+  | "hash"
+  | "star"
+  | "warning"
+  | "info"
+  | "refresh"
+  | "close"
+  | "profile"
+  | "search";
 
-export const LABELS = {
-  // Navigation / actions
-  arrow:       "→",
-  back:        "←",
-  check:       "✓",
-  close:       "✕",
-  refresh:     "↺",
-  search:      "🔍",
-  filter:      "⊟",
-  edit:        "✎",
-  share:       "↗",
-
-  // Auth / security
-  lock:        "🔒",
-  shield:      "🛡",
-  otp:         "🔑",
-  verified:    "✅",
-  eye:         "👁",
-
-  // Vehicles
-  bike:        "🏍",
-  scooter:     "🛵",
-  auto:        "🚗",
-  truck:       "🚚",
-  cargo:       "📦",
-  cycle:       "🚲",
-
-  // Delivery / orders
-  package:     "📦",
-  location:    "📍",
-  delivery:    "🚀",
-  pickup:      "🏪",
-  route:       "🗺",
-  timer:       "⏱",
-
-  // Documents / profile
-  camera:      "📷",
-  document:    "📄",
-  id:          "🪪",
-  license:     "📋",
-  selfie:      "🤳",
-  profile:     "👤",
-
-  // UI / status
-  star:        "⭐",
-  bell:        "🔔",
-  support:     "🎧",
-  wallet:      "💳",
-  earnings:    "💰",
-  info:        "ℹ",
-  warning:     "⚠",
-  success:     "🎉",
-  trophy:      "🏆",
-  fire:        "🔥",
-} as const;
-
-export type SafeIconName = keyof typeof LABELS;
-
-// ─────────────────────────────────────────────────────────────────
-// Shared prop type
-// ─────────────────────────────────────────────────────────────────
+export const LABELS: Record<SafeIconName, string> = {
+  bike:    "2W",
+  scooter: "SC",
+  auto:    "3W",
+  truck:   "4W",
+  user:    "US",
+  camera:  "CAM",
+  gallery: "IMG",
+  id:      "ID",
+  doc:     "DOC",
+  license: "DL",
+  rc:      "RC",
+  shield:  "SAFE",
+  lock:    "LOCK",
+  check:   "OK",
+  clock:   "TIME",
+  bell:    "NOTI",
+  support: "HELP",
+  book:    "BOOK",
+  car:     "CAR",
+  package: "PKG",
+  rupee:   "₹",
+  arrow:   ">",
+  back:    "<",
+  hash:    "#",
+  star:    "POP",
+  warning: "!",
+  info:    "i",
+  refresh: "R",
+  close:   "X",
+  profile: "DR",
+  search:  "SRC",
+};
 
 type Props = {
   name: SafeIconName;
@@ -92,21 +78,18 @@ type Props = {
   color?: string;
   bg?: string;
   rounded?: number;
-  textSize?: number;
   style?: ViewStyle;
+  textSize?: number;
 };
-
-// ─────────────────────────────────────────────────────────────────
-// SafeIcon — simple flat tile
-// ─────────────────────────────────────────────────────────────────
 
 export function SafeIcon({
   name,
-  size = 44,
-  bg = "#F3F4F6",
-  rounded = 12,
-  textSize,
+  size = 48,
+  color = "#E83272",
+  bg = "#FCE7F3",
+  rounded = 16,
   style,
+  textSize,
 }: Props) {
   return (
     <View
@@ -126,7 +109,10 @@ export function SafeIcon({
         adjustsFontSizeToFit
         style={[
           styles.label,
-          { fontSize: textSize ?? Math.max(10, size * 0.45) },
+          {
+            color,
+            fontSize: textSize ?? Math.max(10, size * 0.28),
+          },
         ]}
       >
         {LABELS[name]}
@@ -135,33 +121,31 @@ export function SafeIcon({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────
-// SafeInlineIcon — bare glyph, no background tile
-// ─────────────────────────────────────────────────────────────────
-
 export function SafeInlineIcon({
   name,
+  color = "#E83272",
   size = 18,
-  color = "#111827",
-  style,
-}: Props) {
+}: {
+  name: SafeIconName;
+  color?: string;
+  size?: number;
+}) {
   return (
     <Text
       numberOfLines={1}
-      style={[
-        styles.inline,
-        { fontSize: size, color },
-        style as object,
-      ]}
+      style={{
+        color,
+        fontSize: Math.max(10, size * 0.72),
+        fontWeight: "900",
+        includeFontPadding: false,
+      }}
     >
       {LABELS[name]}
     </Text>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────
-// SafeIcon3D — premium 3D-effect tile (gloss highlight + glow)
-// ─────────────────────────────────────────────────────────────────
+// ─── SafeIcon3D ────────────────────────────────────────────────────────────────
 
 export function SafeIcon3D({
   name,
@@ -177,42 +161,24 @@ export function SafeIcon3D({
     <View
       style={[
         styles.icon3dShadow,
-        {
-          shadowColor: glow,
-          borderRadius: rounded,
-        },
+        { shadowColor: glow, borderRadius: rounded },
         style,
       ]}
     >
       <View
         style={[
           styles.icon3dTile,
-          {
-            width: size,
-            height: size,
-            borderRadius: rounded,
-            backgroundColor: bg,
-          },
+          { width: size, height: size, borderRadius: rounded, backgroundColor: bg },
         ]}
       >
         <View style={styles.icon3dHighlight} />
-        <View
-          style={[
-            styles.icon3dInner,
-            {
-              borderRadius: Math.max(8, rounded - 5),
-            },
-          ]}
-        >
+        <View style={[styles.icon3dInner, { borderRadius: Math.max(8, rounded - 5) }]}>
           <Text
             numberOfLines={1}
             adjustsFontSizeToFit
             style={[
               styles.label,
-              {
-                color,
-                fontSize: textSize ?? Math.max(10, size * 0.27),
-              },
+              { color, fontSize: textSize ?? Math.max(10, size * 0.27) },
             ]}
           >
             {LABELS[name]}
@@ -223,9 +189,7 @@ export function SafeIcon3D({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────
-// PremiumButton3D — chunky 3D press-effect CTA button
-// ─────────────────────────────────────────────────────────────────
+// ─── PremiumButton3D ──────────────────────────────────────────────────────────
 
 type PremiumButton3DProps = {
   title: string;
@@ -246,7 +210,6 @@ export function PremiumButton3D({
   leftIcon,
   rightIcon = "arrow",
   bg = "#E83272",
-  bg2 = "#F97316",
   textColor = "#FFFFFF",
   style,
 }: PremiumButton3DProps) {
@@ -270,19 +233,10 @@ export function PremiumButton3D({
       <View
         style={[
           styles.button3dBase,
-          {
-            backgroundColor: disabled ? "#CBD5E1" : "#BE185D",
-          },
+          { backgroundColor: disabled ? "#CBD5E1" : "#BE185D" },
         ]}
       >
-        <View
-          style={[
-            styles.button3dFace,
-            {
-              backgroundColor: activeBg,
-            },
-          ]}
-        >
+        <View style={[styles.button3dFace, { backgroundColor: activeBg }]}>
           <View
             style={[
               styles.button3dGloss,
@@ -297,14 +251,9 @@ export function PremiumButton3D({
             {leftIcon ? (
               <SafeInlineIcon name={leftIcon} color={activeText} size={17} />
             ) : null}
-
-            <Text
-              numberOfLines={1}
-              style={[styles.button3dText, { color: activeText }]}
-            >
+            <Text numberOfLines={1} style={[styles.button3dText, { color: activeText }]}>
               {title}
             </Text>
-
             {rightIcon ? (
               <SafeInlineIcon name={rightIcon} color={activeText} size={17} />
             ) : null}
@@ -315,32 +264,20 @@ export function PremiumButton3D({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────
-// Styles
-// ─────────────────────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  // SafeIcon (flat tile)
   tile: {
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
   },
-
-  // SafeInlineIcon (bare glyph)
-  inline: {
-    includeFontPadding: false,
-    textAlignVertical: "center",
-  },
-
-  // Shared label (used by SafeIcon, SafeIcon3D inner text)
   label: {
-    includeFontPadding: false,
-    textAlignVertical: "center",
+    fontWeight: "900",
     textAlign: "center",
+    includeFontPadding: false,
+    letterSpacing: 0.2,
   },
 
-  // SafeIcon3D
   icon3dShadow: {
     shadowOffset:  { width: 0, height: 10 },
     shadowRadius:  18,
@@ -348,11 +285,11 @@ const styles = StyleSheet.create({
     elevation:     8,
   },
   icon3dTile: {
-    alignItems:      "center",
-    justifyContent:  "center",
-    overflow:        "hidden",
-    borderWidth:     1,
-    borderColor:     "rgba(255,255,255,0.75)",
+    alignItems:     "center",
+    justifyContent: "center",
+    overflow:       "hidden",
+    borderWidth:    1,
+    borderColor:    "rgba(255,255,255,0.75)",
   },
   icon3dHighlight: {
     position:        "absolute",
@@ -372,7 +309,6 @@ const styles = StyleSheet.create({
     borderColor:     "rgba(255,255,255,0.35)",
   },
 
-  // PremiumButton3D
   button3dWrap: {
     shadowColor:  "#E83272",
     shadowOffset: { width: 0, height: 14 },
@@ -400,10 +336,10 @@ const styles = StyleSheet.create({
     height:   "46%",
   },
   button3dContent: {
-    flexDirection:   "row",
-    alignItems:      "center",
-    justifyContent:  "center",
-    gap:             10,
+    flexDirection:    "row",
+    alignItems:       "center",
+    justifyContent:   "center",
+    gap:              10,
     paddingHorizontal: 18,
   },
   button3dText: {

@@ -20,7 +20,7 @@
  *  - null / missing       → upload allowed
  */
 
-import { Feather } from "@expo/vector-icons";
+import { SafeInlineIcon, SafeIconName } from "@/components/SafeIcon";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
@@ -83,7 +83,7 @@ type DocSpec = {
   id: DocId;
   title: string;
   description: string;
-  icon: React.ComponentProps<typeof Feather>["name"];
+  icon: SafeIconName;
   hint: string;
   /** selfie = use front-facing camera for "Take Photo" */
   isSelfie?: boolean;
@@ -102,35 +102,35 @@ const DOCS: DocSpec[] = [
     id: "aadhaar",
     title: "Aadhaar Front",
     description: "Government ID — front side",
-    icon: "credit-card",
+    icon: "id",
     hint: "All 12 digits and full name must be visible",
   },
   {
     id: "pan",
     title: "PAN Card",
     description: "10-digit PAN required for earnings & tax",
-    icon: "file-text",
+    icon: "doc",
     hint: "PAN number and name must be clearly readable",
   },
   {
     id: "license",
     title: "Driving License",
     description: "Valid Indian driving license",
-    icon: "award",
+    icon: "license",
     hint: "Both sides preferred — expiry must be valid",
   },
   {
     id: "rc",
     title: "Vehicle RC",
     description: "Registration Certificate of your vehicle",
-    icon: "file-text",
+    icon: "rc",
     hint: "RC book / smart card — all details clearly visible",
   },
   {
     id: "insurance",
     title: "Aadhaar Back",
     description: "Government ID — back side",
-    icon: "credit-card",
+    icon: "id",
     hint: "Back side clearly visible — expiry and address readable",
   },
 ];
@@ -277,16 +277,18 @@ function showSourceSheet(
 
 function DocStatusChip({ lock }: { lock: NormalizedDocLock }) {
   const colors = useColors();
-  const cfg = {
-    locked:   { bg: colors.successSoft,  color: colors.success,         label: "Verified",  icon: "lock"         } as const,
-    waiting:  { bg: colors.warningSoft,  color: colors.warning,         label: "Pending",   icon: "clock"        } as const,
-    reupload: { bg: colors.errorSoft,    color: colors.error,           label: "Rejected",  icon: "alert-circle" } as const,
-    upload:   { bg: colors.muted,        color: colors.mutedForeground, label: "Required",  icon: null           } as const,
-  }[lock];
+  type ChipCfg = { bg: string; color: string; label: string; icon: SafeIconName | null };
+  const CFG: Record<NormalizedDocLock, ChipCfg> = {
+    locked:   { bg: colors.successSoft,  color: colors.success,         label: "Verified", icon: "lock"    },
+    waiting:  { bg: colors.warningSoft,  color: colors.warning,         label: "Pending",  icon: "clock"   },
+    reupload: { bg: colors.errorSoft,    color: colors.error,           label: "Rejected", icon: "warning" },
+    upload:   { bg: colors.muted,        color: colors.mutedForeground, label: "Required", icon: null      },
+  };
+  const cfg = CFG[lock];
 
   return (
     <View style={[styles.badge, { backgroundColor: cfg.bg }]}>
-      {cfg.icon && <Feather name={cfg.icon} size={10} color={cfg.color} />}
+      {cfg.icon && <SafeInlineIcon name={cfg.icon} size={10} color={cfg.color} />}
       <Text style={[styles.badgeText, { color: cfg.color }]}>{cfg.label}</Text>
     </View>
   );
@@ -352,7 +354,7 @@ function DocumentCard({
       {/* ── Header row ── */}
       <View style={styles.cardHeader}>
         <View style={[styles.docIconWrap, { backgroundColor: iconBg }]}>
-          <Feather name={doc.icon} size={22} color={iconColor} />
+          <SafeInlineIcon name={doc.icon} size={22} color={iconColor} />
         </View>
         <View style={styles.cardHeaderText}>
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>
@@ -388,7 +390,7 @@ function DocumentCard({
               transition={250}
             />
             <View style={[styles.previewBar, { backgroundColor: "rgba(5,150,105,0.90)" }]}>
-              <Feather name="lock" size={13} color="#fff" />
+              <SafeInlineIcon name="lock" size={13} color="#fff" />
               <Text style={styles.previewBarText}>Verified — changes locked</Text>
             </View>
           </View>
@@ -399,7 +401,7 @@ function DocumentCard({
               { borderColor: colors.success, backgroundColor: colors.successSoft },
             ]}
           >
-            <Feather name="lock" size={22} color={colors.success} />
+            <SafeInlineIcon name="lock" size={22} color={colors.success} />
             <Text style={[styles.lockedLabel, { color: colors.successText }]}>
               Verified — changes locked
             </Text>
@@ -418,7 +420,7 @@ function DocumentCard({
               transition={250}
             />
             <View style={[styles.previewBar, { backgroundColor: "rgba(217,119,6,0.90)" }]}>
-              <Feather name="clock" size={13} color="#fff" />
+              <SafeInlineIcon name="clock" size={13} color="#fff" />
               <Text style={styles.previewBarText}>Pending verification</Text>
             </View>
           </View>
@@ -429,7 +431,7 @@ function DocumentCard({
               { borderColor: colors.warning, backgroundColor: colors.warningSoft },
             ]}
           >
-            <Feather name="clock" size={22} color={colors.warning} />
+            <SafeInlineIcon name="clock" size={22} color={colors.warning} />
             <Text style={[styles.lockedLabel, { color: colors.warningText }]}>
               Pending verification
             </Text>
@@ -446,7 +448,7 @@ function DocumentCard({
               { backgroundColor: colors.errorSoft, borderColor: colors.error },
             ]}
           >
-            <Feather name="alert-circle" size={14} color={colors.error} />
+            <SafeInlineIcon name="warning" size={14} color={colors.error} />
             <Text style={[styles.rejectedBannerText, { color: colors.error }]}>
               Rejected — upload again
             </Text>
@@ -463,7 +465,7 @@ function DocumentCard({
                 <Text style={styles.previewBarText}>Previous upload (rejected)</Text>
                 <View style={{ flex: 1 }} />
                 <TouchableOpacity style={styles.barBtn} onPress={() => { console.log("[UPLOAD_TOUCH] visible button tapped", doc.id, "state=reupload-replace"); onUpload(); }} activeOpacity={0.8}>
-                  <Feather name="refresh-cw" size={11} color="#fff" />
+                  <SafeInlineIcon name="refresh" size={11} color="#fff" />
                   <Text style={styles.barBtnText}>Replace</Text>
                 </TouchableOpacity>
               </View>
@@ -477,7 +479,7 @@ function DocumentCard({
             >
               <TouchableOpacity style={styles.uploadBtn} onPress={() => { console.log("[UPLOAD_TOUCH] visible button tapped", doc.id, "state=reupload-empty"); onUpload(); }} activeOpacity={0.82}>
                 <View style={[styles.uploadBtnSolid, { backgroundColor: colors.error }]}>
-                  <Feather name="upload" size={17} color="#fff" />
+                  <SafeInlineIcon name="arrow" size={17} color="#fff" />
                   <Text style={styles.uploadBtnText}>
                     {doc.isSelfie ? "Upload Selfie Again" : "Upload Again"}
                   </Text>
@@ -501,13 +503,13 @@ function DocumentCard({
             transition={250}
           />
           <View style={styles.previewBar}>
-            <Feather name="check-circle" size={13} color="#fff" />
+            <SafeInlineIcon name="check" size={13} color="#fff" />
             <Text style={styles.previewBarText}>
               {doc.isSelfie ? "Selfie saved" : "Document saved"}
             </Text>
             <View style={{ flex: 1 }} />
             <TouchableOpacity style={styles.barBtn} onPress={() => { console.log("[UPLOAD_TOUCH] visible button tapped", doc.id, "state=uploaded-retake"); onUpload(); }} activeOpacity={0.8}>
-              <Feather name="refresh-cw" size={11} color="#fff" />
+              <SafeInlineIcon name="refresh" size={11} color="#fff" />
               <Text style={styles.barBtnText}>Retake</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -515,7 +517,7 @@ function DocumentCard({
               onPress={onRemove}
               activeOpacity={0.8}
             >
-              <Feather name="trash-2" size={11} color={colors.error} />
+              <SafeInlineIcon name="close" size={11} color={colors.error} />
             </TouchableOpacity>
           </View>
         </View>
@@ -531,7 +533,7 @@ function DocumentCard({
         >
           <TouchableOpacity style={styles.uploadBtn} onPress={() => { console.log("[UPLOAD_TOUCH] visible button tapped", doc.id, "state=empty"); onUpload(); }} activeOpacity={0.82}>
             <View style={[styles.uploadBtnSolid, { backgroundColor: colors.primary }]}>
-              <Feather name="camera" size={17} color="#fff" />
+              <SafeInlineIcon name="camera" size={17} color="#fff" />
               <Text style={styles.uploadBtnText}>
                 {doc.isSelfie ? "Take Selfie" : "Take Photo / Upload"}
               </Text>
@@ -542,17 +544,17 @@ function DocumentCard({
           </Text>
           <View style={styles.tagsRow}>
             <View style={styles.tag}>
-              <Feather name="camera" size={9} color={colors.mutedForeground} />
+              <SafeInlineIcon name="camera" size={9} color={colors.mutedForeground} />
               <Text style={[styles.tagText, { color: colors.mutedForeground }]}>Camera</Text>
             </View>
             <View style={[styles.tagDot, { backgroundColor: colors.border }]} />
             <View style={styles.tag}>
-              <Feather name="image" size={9} color={colors.mutedForeground} />
+              <SafeInlineIcon name="gallery" size={9} color={colors.mutedForeground} />
               <Text style={[styles.tagText, { color: colors.mutedForeground }]}>Gallery</Text>
             </View>
             <View style={[styles.tagDot, { backgroundColor: colors.border }]} />
             <View style={styles.tag}>
-              <Feather name="lock" size={9} color={colors.mutedForeground} />
+              <SafeInlineIcon name="lock" size={9} color={colors.mutedForeground} />
               <Text style={[styles.tagText, { color: colors.mutedForeground }]}>Encrypted</Text>
             </View>
           </View>
@@ -761,7 +763,7 @@ export default function DocumentUploadScreen() {
             style={styles.backBtn}
             activeOpacity={0.7}
           >
-            <Feather name="arrow-left" size={18} color="#111827" />
+            <SafeInlineIcon name="back" size={18} color="#111827" />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Text style={styles.headerTitle}>Upload Documents</Text>
@@ -775,7 +777,7 @@ export default function DocumentUploadScreen() {
           {[1, 2, 3, 4].map((s, i) => (
             <View key={s} style={styles.progressSegment}>
               <View style={[styles.stepDot, { backgroundColor: "#E83272" }]}>
-                <Feather name="check" size={9} color="#fff" />
+                <SafeInlineIcon name="check" size={9} color="#fff" />
               </View>
               {i < 3 && (
                 <View style={[styles.progressLine, { backgroundColor: "#E83272" }]} />
@@ -816,7 +818,7 @@ export default function DocumentUploadScreen() {
         {/* Security banner */}
         <View style={styles.banner}>
           <View style={styles.bannerIcon}>
-            <Feather name="shield" size={20} color="#10B981" />
+            <SafeInlineIcon name="shield" size={20} color="#10B981" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.bannerTitle}>Your documents are safe</Text>
@@ -851,7 +853,7 @@ export default function DocumentUploadScreen() {
           ]}
         >
           <View style={styles.tipHeader}>
-            <Feather name="info" size={13} color={colors.mutedForeground} />
+            <SafeInlineIcon name="info" size={13} color={colors.mutedForeground} />
             <Text style={[styles.tipTitle, { color: colors.foreground }]}>
               Tips for a clear photo
             </Text>
@@ -874,7 +876,7 @@ export default function DocumentUploadScreen() {
         {/* Platform notice (development helper) */}
         {Platform.OS === "android" && (
           <View style={[styles.platformNote, { backgroundColor: colors.muted }]}>
-            <Feather name="smartphone" size={12} color={colors.mutedForeground} />
+            <SafeInlineIcon name="info" size={12} color={colors.mutedForeground} />
             <Text style={[styles.platformNoteText, { color: colors.mutedForeground }]}>
               After selecting a photo, tap the checkmark / Done button to confirm.
             </Text>
@@ -897,11 +899,7 @@ export default function DocumentUploadScreen() {
         ]}
       >
         <View style={styles.footerHint}>
-          <Feather
-            name={allReady ? "check-circle" : "info"}
-            size={13}
-            color={allReady ? colors.success : colors.mutedForeground}
-          />
+          <SafeInlineIcon name={allReady ? "check" : "info"} size={13} color={allReady ? colors.success : colors.mutedForeground} />
           <Text style={[styles.hintText, { color: colors.mutedForeground }]}>
             {allReady
               ? "All documents ready. Ready to submit."
@@ -928,7 +926,7 @@ export default function DocumentUploadScreen() {
                 <Text style={[styles.submitText, !allReady && { color: "#9CA3AF" }]}>
                   Submit for Verification
                 </Text>
-                <Feather name="arrow-right" size={18} color={allReady ? "#fff" : "#9CA3AF"} />
+                <SafeInlineIcon name="arrow" size={18} color={allReady ? "#fff" : "#9CA3AF"} />
               </>
             )}
           </LinearGradient>

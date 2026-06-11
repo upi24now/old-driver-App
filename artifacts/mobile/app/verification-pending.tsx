@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { SafeInlineIcon } from "@/components/SafeIcon";
 import { useRouter } from "expo-router";
 import { callSupport } from "@/utils/support";
 import { useEffect, useRef } from "react";
@@ -152,7 +152,7 @@ function TimelineStep({
             },
           ]}
         >
-          {status === "done" && <Feather name="check" size={13} color="#fff" />}
+          {status === "done" && <SafeInlineIcon name="check" size={13} color="#fff" />}
           {status === "active" && (
             <View style={[styles.tlActiveCore, { backgroundColor: colors.pending }]} />
           )}
@@ -227,7 +227,7 @@ export default function VerificationPendingScreen() {
             ])
           }
         >
-          <Feather name="more-horizontal" size={18} color={colors.foreground} />
+          <SafeInlineIcon name="info" size={18} color={colors.foreground} />
         </TouchableOpacity>
       </View>
 
@@ -255,7 +255,7 @@ export default function VerificationPendingScreen() {
                 },
               ]}
             >
-              <Feather name="shield" size={28} color="#fff" />
+              <SafeInlineIcon name="shield" size={28} color="#fff" />
             </View>
           </View>
 
@@ -271,7 +271,7 @@ export default function VerificationPendingScreen() {
           </Text>
 
           <View style={styles.heroEtaPill}>
-            <Feather name="clock" size={12} color="#fff" />
+            <SafeInlineIcon name="clock" size={12} color="#fff" />
             <Text style={styles.heroEtaText}>Usually within 24 hours</Text>
           </View>
         </View>
@@ -326,7 +326,7 @@ export default function VerificationPendingScreen() {
             <View
               style={[styles.adminAvatar, { backgroundColor: colors.pendingSoft }]}
             >
-              <Feather name="user-check" size={16} color={colors.pending} />
+              <SafeInlineIcon name="profile" size={16} color={colors.pending} />
             </View>
             <View style={{ flex: 1 }}>
               <View style={styles.messageHeaderRow}>
@@ -334,7 +334,7 @@ export default function VerificationPendingScreen() {
                   Verification Team
                 </Text>
                 <View style={[styles.verifiedDot, { backgroundColor: colors.pending }]}>
-                  <Feather name="check" size={8} color="#fff" />
+                  <SafeInlineIcon name="check" size={8} color="#fff" />
                 </View>
               </View>
               <Text style={[styles.messageMeta, { color: colors.mutedForeground }]}>
@@ -351,7 +351,7 @@ export default function VerificationPendingScreen() {
             . Keep an eye on your notifications."
           </Text>
           <View style={[styles.messageFooter, { borderTopColor: colors.border }]}>
-            <Feather name="info" size={12} color={colors.mutedForeground} />
+            <SafeInlineIcon name="info" size={12} color={colors.mutedForeground} />
             <Text style={[styles.messageFooterText, { color: colors.mutedForeground }]}>
               Ticket ID: DRV-2026-04827
             </Text>
@@ -372,7 +372,7 @@ export default function VerificationPendingScreen() {
           ].map((item) => (
             <View key={item} style={styles.checklistRow}>
               <View style={[styles.checklistDot, { backgroundColor: colors.primary }]}>
-                <Feather name="check" size={9} color="#fff" />
+                <SafeInlineIcon name="check" size={9} color="#fff" />
               </View>
               <Text style={[styles.checklistText, { color: colors.foreground }]}>
                 {item}
@@ -391,7 +391,7 @@ export default function VerificationPendingScreen() {
           onPress={callSupport}
         >
           <View style={[styles.supportIcon, { backgroundColor: colors.warningSoft }]}>
-            <Feather name="help-circle" size={16} color={colors.warning} />
+            <SafeInlineIcon name="support" size={16} color={colors.warning} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={[styles.supportTitle, { color: colors.foreground }]}>
@@ -401,7 +401,7 @@ export default function VerificationPendingScreen() {
               Contact our support team 24×7
             </Text>
           </View>
-          <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+          <SafeInlineIcon name="arrow" size={18} color={colors.mutedForeground} />
         </TouchableOpacity>
       </ScrollView>
 
@@ -431,11 +431,7 @@ export default function VerificationPendingScreen() {
           }}
           activeOpacity={0.85}
         >
-          <Feather
-            name={isApproved ? "home" : "refresh-cw"}
-            size={17}
-            color={isApproved ? "#fff" : colors.foreground}
-          />
+          <SafeInlineIcon name={isApproved ? "check" : "refresh"} size={17} color={isApproved ? "#fff" : colors.foreground} />
           <Text style={[styles.primaryBtnText, !isApproved && { color: colors.foreground }]}>
             {isApproved ? "Go to Dashboard" : "Check Application Status"}
           </Text>
@@ -450,7 +446,7 @@ export default function VerificationPendingScreen() {
             )
           }
         >
-          <Feather name="bell" size={15} color={colors.foreground} />
+          <SafeInlineIcon name="bell" size={15} color={colors.foreground} />
           <Text style={[styles.ghostBtnText, { color: colors.foreground }]}>
             Notify Me When Approved
           </Text>

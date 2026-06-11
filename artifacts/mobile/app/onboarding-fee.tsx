@@ -19,7 +19,7 @@
  */
 
 import { LinearGradient } from "expo-linear-gradient";
-import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { SafeInlineIcon, SafeIconName } from "@/components/SafeIcon";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -63,11 +63,11 @@ const FALLBACK_CONFIG: OnboardingFeeConfig = {
   title:    "One-time onboarding fee",
 };
 
-const CHECKLIST = [
-  { icon: "file-text"  as const, label: "Document verification" },
-  { icon: "award"      as const, label: "Verified driver badge" },
-  { icon: "package"    as const, label: "Unlimited order access" },
-  { icon: "headphones" as const, label: "Priority support" },
+const CHECKLIST: { icon: SafeIconName; label: string }[] = [
+  { icon: "doc",     label: "Document verification" },
+  { icon: "check",   label: "Verified driver badge" },
+  { icon: "package", label: "Unlimited order access" },
+  { icon: "support", label: "Priority support" },
 ];
 
 export default function OnboardingFeeScreen() {
@@ -270,7 +270,7 @@ export default function OnboardingFeeScreen() {
           {/* Card header — shield-check + title */}
           <View style={s.cardHeaderRow}>
             <LinearGradient colors={[PINK, HOT_PINK]} style={s.cardIconBox}>
-              <MaterialCommunityIcons name="shield-check" size={22} color="#fff" />
+              <SafeInlineIcon name="shield" size={22} color="#fff" />
             </LinearGradient>
             <View style={{ flex: 1 }}>
               <Text style={s.cardTitle}>Driver Account Activation</Text>
@@ -288,10 +288,10 @@ export default function OnboardingFeeScreen() {
           {CHECKLIST.map((item) => (
             <View key={item.label} style={s.checkRow}>
               <View style={s.checkIconBox}>
-                <Feather name={item.icon} size={13} color={PINK} />
+                <SafeInlineIcon name={item.icon} size={13} color={PINK} />
               </View>
               <Text style={s.checkLabel}>{item.label}</Text>
-              <Feather name="check-circle" size={15} color={SUCCESS} />
+              <SafeInlineIcon name="check" size={15} color={SUCCESS} />
             </View>
           ))}
 
@@ -325,9 +325,9 @@ export default function OnboardingFeeScreen() {
                 <ActivityIndicator color="#fff" />
               ) : (
                 <>
-                  <Feather name="lock" size={15} color="#fff" />
+                  <SafeInlineIcon name="lock" size={15} color="#fff" />
                   <Text style={s.payBtnText}>Pay ₹{amount} — Activate Account</Text>
-                  <Feather name="arrow-right" size={15} color="#fff" />
+                  <SafeInlineIcon name="arrow" size={15} color="#fff" />
                 </>
               )}
             </LinearGradient>
@@ -335,7 +335,7 @@ export default function OnboardingFeeScreen() {
 
           {/* Trust line */}
           <View style={s.trustLineRow}>
-            <Feather name="lock" size={11} color={MUTED} />
+            <SafeInlineIcon name="lock" size={11} color={MUTED} />
             <Text style={s.trustLine}>
               Secure payment via Razorpay · ₹{amount} {currency}
             </Text>
@@ -345,13 +345,13 @@ export default function OnboardingFeeScreen() {
 
         {/* ── Mini trust badges row ── */}
         <View style={s.badgesRow}>
-          {[
-            { icon: "shield"      as const, text: "Verified" },
-            { icon: "check-circle"as const, text: "Trusted" },
-            { icon: "star"        as const, text: "Premium Support" },
-          ].map((b) => (
+          {([
+            { icon: "shield" as SafeIconName, text: "Verified" },
+            { icon: "check"  as SafeIconName, text: "Trusted" },
+            { icon: "star"   as SafeIconName, text: "Premium Support" },
+          ] as const).map((b) => (
             <View key={b.text} style={s.trustBadge}>
-              <Feather name={b.icon} size={12} color={PINK} />
+              <SafeInlineIcon name={b.icon} size={12} color={PINK} />
               <Text style={s.trustBadgeText}>{b.text}</Text>
             </View>
           ))}
@@ -387,16 +387,16 @@ export default function OnboardingFeeScreen() {
 
             {/* Sparkle decoration — icon only */}
             <View style={s.sparkleRow}>
-              <Feather name="star" size={10} color={GOLD} />
-              <Feather name="star" size={14} color={PINK} />
-              <Feather name="star" size={9}  color={SUCCESS} />
+              <SafeInlineIcon name="star" size={10} color={GOLD} />
+              <SafeInlineIcon name="star" size={14} color={PINK} />
+              <SafeInlineIcon name="star" size={9}  color={SUCCESS} />
             </View>
 
             {/* Triple-ring green check badge */}
             <View style={s.successRingOuter}>
               <View style={s.successRingMid}>
                 <View style={s.successRingInner}>
-                  <Feather name="check" size={32} color="#fff" />
+                  <SafeInlineIcon name="check" size={32} color="#fff" />
                 </View>
               </View>
             </View>
@@ -409,7 +409,7 @@ export default function OnboardingFeeScreen() {
             <View style={s.modalInfoCard}>
               <View style={s.modalInfoRow}>
                 <View style={[s.modalIconBox, { backgroundColor: PINK_SOFT }]}>
-                  <Feather name="file-text" size={14} color={PINK} />
+                  <SafeInlineIcon name="doc" size={14} color={PINK} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.modalInfoTitle}>Documents Submitted</Text>
@@ -421,7 +421,7 @@ export default function OnboardingFeeScreen() {
 
               <View style={s.modalInfoRow}>
                 <View style={[s.modalIconBox, { backgroundColor: SUCCESS_SOFT }]}>
-                  <Feather name="clock" size={14} color={SUCCESS} />
+                  <SafeInlineIcon name="clock" size={14} color={SUCCESS} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.modalInfoTitle}>Verification Pending</Text>
@@ -433,7 +433,7 @@ export default function OnboardingFeeScreen() {
 
               <View style={s.modalInfoRow}>
                 <View style={[s.modalIconBox, { backgroundColor: "rgba(99,102,241,0.10)" }]}>
-                  <Feather name="hash" size={14} color="#6366F1" />
+                  <SafeInlineIcon name="hash" size={14} color="#6366F1" />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.modalInfoTitle}>Application ID</Text>
@@ -460,7 +460,7 @@ export default function OnboardingFeeScreen() {
                 end={{ x: 1, y: 0 }}
                 style={s.dashBtnGrad}
               >
-                <Feather name="clock" size={15} color="#fff" />
+                <SafeInlineIcon name="clock" size={15} color="#fff" />
                 <Text style={s.dashBtnText}>Go to Verification Status</Text>
               </LinearGradient>
             </TouchableOpacity>
