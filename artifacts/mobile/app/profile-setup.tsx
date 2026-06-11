@@ -8,7 +8,7 @@
  * All Firebase/Firestore/navigation logic is unchanged.
  */
 
-import { Feather } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
@@ -158,10 +158,14 @@ function SectionCard({ children, style }: { children: React.ReactNode; style?: o
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
-function CardTitle({ label, emoji }: { label: string; emoji?: string }) {
+function CardTitle({ label, icon }: { label: string; icon?: React.ComponentProps<typeof Feather>["name"] }) {
   return (
     <View style={styles.cardTitleRow}>
-      {emoji && <Text style={styles.cardTitleEmoji}>{emoji}</Text>}
+      {icon && (
+        <View style={styles.cardTitleIconBox}>
+          <Feather name={icon} size={14} color={D.primary} />
+        </View>
+      )}
       <Text style={styles.cardTitleText}>{label}</Text>
     </View>
   );
@@ -248,26 +252,26 @@ function DobInput({ value, onChangeText }: { value: string; onChangeText: (t: st
 }
 
 // ─── Vehicle data for the summary card ───────────────────────────────────────
-const VEHICLE_META: Record<string, { emoji: string; gradStart: string; gradEnd: string }> = {
-  bike:        { emoji: "🏍",  gradStart: "#FF6B9D", gradEnd: "#9B59B6" },
-  scooter:     { emoji: "🛵",  gradStart: "#FF8C69", gradEnd: "#FFA726" },
-  "auto-pass": { emoji: "🛺",  gradStart: "#FFD43B", gradEnd: "#FFA726" },
-  "auto-cargo":{ emoji: "🛺",  gradStart: "#FB923C", gradEnd: "#F59E0B" },
-  "mini-car":  { emoji: "🚗",  gradStart: "#38BDF8", gradEnd: "#2563EB" },
-  sedan:       { emoji: "🚘",  gradStart: "#818CF8", gradEnd: "#4338CA" },
-  suv:         { emoji: "🚙",  gradStart: "#2DD4BF", gradEnd: "#0D9488" },
-  "tata-ace":  { emoji: "🚚",  gradStart: "#4ADE80", gradEnd: "#16A34A" },
-  pickup:      { emoji: "🛻",  gradStart: "#A3E635", gradEnd: "#65A30D" },
-  "mini-truck":{ emoji: "🚛",  gradStart: "#22D3EE", gradEnd: "#0EA5E9" },
-  eicher:      { emoji: "🚛",  gradStart: "#94A3B8", gradEnd: "#3B82F6" },
-  "truck-14ft":{ emoji: "🚚",  gradStart: "#C084FC", gradEnd: "#6D28D9" },
+const VEHICLE_META: Record<string, { mcIcon: string; gradStart: string; gradEnd: string }> = {
+  bike:        { mcIcon: "motorbike",     gradStart: "#FF6B9D", gradEnd: "#9B59B6" },
+  scooter:     { mcIcon: "motorbike",     gradStart: "#FF8C69", gradEnd: "#FFA726" },
+  "auto-pass": { mcIcon: "car-side",      gradStart: "#FFD43B", gradEnd: "#FFA726" },
+  "auto-cargo":{ mcIcon: "truck-delivery",gradStart: "#FB923C", gradEnd: "#F59E0B" },
+  "mini-car":  { mcIcon: "car",           gradStart: "#38BDF8", gradEnd: "#2563EB" },
+  sedan:       { mcIcon: "car-side",      gradStart: "#818CF8", gradEnd: "#4338CA" },
+  suv:         { mcIcon: "car",           gradStart: "#2DD4BF", gradEnd: "#0D9488" },
+  "tata-ace":  { mcIcon: "truck-delivery",gradStart: "#4ADE80", gradEnd: "#16A34A" },
+  pickup:      { mcIcon: "truck",         gradStart: "#A3E635", gradEnd: "#65A30D" },
+  "mini-truck":{ mcIcon: "truck",         gradStart: "#22D3EE", gradEnd: "#0EA5E9" },
+  eicher:      { mcIcon: "truck",         gradStart: "#94A3B8", gradEnd: "#3B82F6" },
+  "truck-14ft":{ mcIcon: "truck",         gradStart: "#C084FC", gradEnd: "#6D28D9" },
   // legacy ids from the old 4-vehicle screen
-  auto:        { emoji: "🛺",  gradStart: "#FFD43B", gradEnd: "#FFA726" },
-  truck:       { emoji: "🚚",  gradStart: "#4ADE80", gradEnd: "#16A34A" },
+  auto:        { mcIcon: "car-side",      gradStart: "#FFD43B", gradEnd: "#FFA726" },
+  truck:       { mcIcon: "truck",         gradStart: "#4ADE80", gradEnd: "#16A34A" },
 };
 
 function vehicleMeta(id: string) {
-  return VEHICLE_META[id] ?? { emoji: "🚗", gradStart: "#94A3B8", gradEnd: "#6B7280" };
+  return VEHICLE_META[id] ?? { mcIcon: "car", gradStart: "#94A3B8", gradEnd: "#6B7280" };
 }
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
@@ -417,7 +421,7 @@ export default function ProfileSetupScreen() {
                 />
               ) : (
                 <View style={styles.photoCircle}>
-                  <Text style={{ fontSize: 36 }}>👤</Text>
+                  <Feather name="user" size={34} color={D.primary} />
                 </View>
               )}
               <View style={styles.cameraChip}>
@@ -445,7 +449,7 @@ export default function ProfileSetupScreen() {
 
         {/* ─── 2. Personal Information Card ─── */}
         <SectionCard>
-          <CardTitle label="Personal Information" emoji="📋" />
+          <CardTitle label="Personal Information" icon="user" />
 
           <FieldInput
             label="Full Name"
@@ -554,7 +558,7 @@ export default function ProfileSetupScreen() {
 
         {/* ─── 3. Selected Vehicle Card ─── */}
         <SectionCard>
-          <CardTitle label="Selected Vehicle" emoji="🚗" />
+          <CardTitle label="Selected Vehicle" icon="truck" />
 
           {vehicle && vMeta ? (
             <View style={styles.vehicleRow}>
@@ -564,7 +568,12 @@ export default function ProfileSetupScreen() {
                 end={{ x: 1, y: 1 }}
                 style={styles.vehicleThumb}
               >
-                <Text style={{ fontSize: 22 }}>{vMeta.emoji}</Text>
+                <MaterialCommunityIcons
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  name={vMeta.mcIcon as any}
+                  size={22}
+                  color="#fff"
+                />
               </LinearGradient>
               <View style={{ flex: 1 }}>
                 <Text style={styles.vehicleName}>{vehicle.name}</Text>
@@ -586,7 +595,7 @@ export default function ProfileSetupScreen() {
 
         {/* ─── 4. Vehicle Details Card ─── */}
         <SectionCard>
-          <CardTitle label="Vehicle Details" emoji="🔑" />
+          <CardTitle label="Vehicle Details" icon="key" />
 
           <FieldInput
             label="Vehicle Number"
@@ -610,7 +619,7 @@ export default function ProfileSetupScreen() {
         {/* ─── 5. Verification Info Card ─── */}
         <View style={styles.verifyCard}>
           <View style={styles.verifyIconWrap}>
-            <Text style={{ fontSize: 22 }}>🛡️</Text>
+            <Feather name="shield" size={20} color="#047857" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.verifyTitle}>Verification Process</Text>
@@ -767,7 +776,14 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 12,
   },
-  cardTitleEmoji: { fontSize: 18 },
+  cardTitleIconBox: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    backgroundColor: "rgba(232,50,114,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   cardTitleText: {
     fontSize: 15,
     fontWeight: "800",

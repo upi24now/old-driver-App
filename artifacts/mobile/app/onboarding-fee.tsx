@@ -334,9 +334,12 @@ export default function OnboardingFeeScreen() {
           </TouchableOpacity>
 
           {/* Trust line */}
-          <Text style={s.trustLine}>
-            🔒  Secure payment via Razorpay · ₹{amount} {currency}
-          </Text>
+          <View style={s.trustLineRow}>
+            <Feather name="lock" size={11} color={MUTED} />
+            <Text style={s.trustLine}>
+              Secure payment via Razorpay · ₹{amount} {currency}
+            </Text>
+          </View>
 
         </View>
 
@@ -384,9 +387,9 @@ export default function OnboardingFeeScreen() {
 
             {/* Sparkle decoration — icon only */}
             <View style={s.sparkleRow}>
-              <Text style={[s.sparkle, { color: GOLD,    fontSize: 10 }]}>✦</Text>
-              <Text style={[s.sparkle, { color: PINK,    fontSize: 14 }]}>✦</Text>
-              <Text style={[s.sparkle, { color: SUCCESS, fontSize: 9  }]}>✦</Text>
+              <Feather name="star" size={10} color={GOLD} />
+              <Feather name="star" size={14} color={PINK} />
+              <Feather name="star" size={9}  color={SUCCESS} />
             </View>
 
             {/* Triple-ring green check badge */}
@@ -531,7 +534,8 @@ const s = StyleSheet.create({
   payBtnText: { fontSize: 15, fontWeight: "800", color: "#fff", fontFamily: "Inter_700Bold" },
   payArrow:   { fontSize: 16, fontWeight: "900", color: "#fff" },
 
-  trustLine: { textAlign: "center", fontSize: 11, color: MUTED, fontFamily: "Inter_400Regular", marginTop: 10 },
+  trustLineRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 10 },
+  trustLine: { textAlign: "center", fontSize: 11, color: MUTED, fontFamily: "Inter_400Regular" },
 
   // ── Mini trust badges ──
   badgesRow: { flexDirection: "row", justifyContent: "center", gap: 10 },
@@ -557,7 +561,6 @@ const s = StyleSheet.create({
   },
 
   sparkleRow: { flexDirection: "row", gap: 6, alignItems: "center" },
-  sparkle:    { fontWeight: "900" },
 
   successRingOuter: {
     width: 90, height: 90, borderRadius: 45,

@@ -1,3 +1,4 @@
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useEffect, useRef, useState } from "react";
@@ -39,19 +40,19 @@ const D = {
 } as const;
 
 const VEHICLES = [
-  { emoji: "🏍", label: "Motorcycle" },
-  { emoji: "🛺", label: "Auto" },
-  { emoji: "🚚", label: "Truck" },
+  { icon: "motorbike" as const, label: "Motorcycle" },
+  { icon: "car"       as const, label: "Auto"       },
+  { icon: "truck"     as const, label: "Truck"      },
 ] as const;
 
 // ─── Vehicle Card ─────────────────────────────────────────────────────────────
 function VehicleCard({
-  emoji,
+  icon,
   label,
   active,
   onPress,
 }: {
-  emoji: string;
+  icon: string;
   label: string;
   active: boolean;
   onPress: () => void;
@@ -76,7 +77,12 @@ function VehicleCard({
           { transform: [{ scale }] },
         ]}
       >
-        <Text style={styles.vehicleEmoji}>{emoji}</Text>
+        <MaterialCommunityIcons
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          name={icon as any}
+          size={30}
+          color={active ? D.textPrimary : D.textSecondary}
+        />
         <Text
           style={[
             styles.vehicleLabel,
@@ -218,7 +224,7 @@ export default function LoginScreen() {
           {VEHICLES.map((v, i) => (
             <VehicleCard
               key={v.label}
-              emoji={v.emoji}
+              icon={v.icon}
               label={v.label}
               active={activeVehicle === i}
               onPress={() => setActiveVehicle(i)}
@@ -367,8 +373,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 5 },
     elevation: 6,
   },
-  vehicleEmoji: {
-    fontSize: 32,
+  vehicleIcon: {
+    marginBottom: 2,
   },
   vehicleLabel: {
     fontSize: 11,

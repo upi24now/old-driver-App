@@ -83,7 +83,7 @@ type DocSpec = {
   id: DocId;
   title: string;
   description: string;
-  emoji: string;
+  icon: React.ComponentProps<typeof Feather>["name"];
   hint: string;
   /** selfie = use front-facing camera for "Take Photo" */
   isSelfie?: boolean;
@@ -94,7 +94,7 @@ const DOCS: DocSpec[] = [
     id: "selfie",
     title: "Driver Selfie",
     description: "Clear photo of your face — no glasses or hat",
-    emoji: "🤳",
+    icon: "camera",
     hint: "Look straight at camera, neutral background",
     isSelfie: true,
   },
@@ -102,35 +102,35 @@ const DOCS: DocSpec[] = [
     id: "aadhaar",
     title: "Aadhaar Front",
     description: "Government ID — front side",
-    emoji: "🪪",
+    icon: "credit-card",
     hint: "All 12 digits and full name must be visible",
   },
   {
     id: "pan",
     title: "PAN Card",
     description: "10-digit PAN required for earnings & tax",
-    emoji: "💳",
+    icon: "file-text",
     hint: "PAN number and name must be clearly readable",
   },
   {
     id: "license",
     title: "Driving License",
     description: "Valid Indian driving license",
-    emoji: "🪪",
+    icon: "award",
     hint: "Both sides preferred — expiry must be valid",
   },
   {
     id: "rc",
     title: "Vehicle RC",
     description: "Registration Certificate of your vehicle",
-    emoji: "📄",
+    icon: "file",
     hint: "RC book / smart card — all details clearly visible",
   },
   {
     id: "insurance",
     title: "Aadhaar Back",
     description: "Government ID — back side",
-    emoji: "🪪",
+    icon: "credit-card",
     hint: "Back side clearly visible — expiry and address readable",
   },
 ];
@@ -324,6 +324,13 @@ function DocumentCard({
     upload:   uploaded ? colors.successSoft : colors.muted,
   }[lockState];
 
+  const iconColor = {
+    locked:   colors.success,
+    waiting:  colors.warning,
+    reupload: colors.error,
+    upload:   uploaded ? colors.success : colors.primary,
+  }[lockState];
+
   const isActive = lockState === "locked" || (lockState === "upload" && uploaded);
 
   return (
@@ -345,7 +352,7 @@ function DocumentCard({
       {/* ── Header row ── */}
       <View style={styles.cardHeader}>
         <View style={[styles.docIconWrap, { backgroundColor: iconBg }]}>
-          <Text style={styles.docEmoji}>{doc.emoji}</Text>
+          <Feather name={doc.icon} size={22} color={iconColor} />
         </View>
         <View style={styles.cardHeaderText}>
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>
@@ -809,7 +816,7 @@ export default function DocumentUploadScreen() {
         {/* Security banner */}
         <View style={styles.banner}>
           <View style={styles.bannerIcon}>
-            <Text style={{ fontSize: 20 }}>🛡️</Text>
+            <Feather name="shield" size={20} color="#10B981" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.bannerTitle}>Your documents are safe</Text>
@@ -1061,7 +1068,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  docEmoji:       { fontSize: 22 },
+  docEmoji:       { /* replaced by Feather icon */ },
   cardHeaderText: { flex: 1, gap: 2 },
   cardTitle:      { fontSize: 15, fontWeight: "700" },
   cardDesc:       { fontSize: 12 },

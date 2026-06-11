@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/useColors";
 import { TS } from "@/constants/typography";
+import { useDriver } from "@/contexts/DriverContext";
 
 function PulseRing({ delay, color }: { delay: number; color: string }) {
   const scale   = useRef(new Animated.Value(0)).current;
@@ -195,6 +196,8 @@ export default function VerificationPendingScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { verificationStatus } = useDriver();
+  const isApproved = verificationStatus === "approved" || verificationStatus === "verified";
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -269,7 +272,7 @@ export default function VerificationPendingScreen() {
 
           <View style={styles.heroEtaPill}>
             <Feather name="clock" size={12} color="#fff" />
-            <Text style={styles.heroEtaText}>Typically 24–48 hours</Text>
+            <Text style={styles.heroEtaText}>Usually within 24 hours</Text>
           </View>
         </View>
 
@@ -338,7 +341,7 @@ export default function VerificationPendingScreen() {
             "Thank you for your application! Your documents are now in our review
             queue. We'll get back to you within{" "}
             <Text style={{ fontWeight: "700", color: colors.pending }}>
-              24-48 hours
+              24 hours
             </Text>
             . Keep an eye on your notifications."
           </Text>
@@ -426,12 +429,28 @@ export default function VerificationPendingScreen() {
         ]}
       >
         <TouchableOpacity
-          style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
-          onPress={() => router.replace("/(tabs)")}
+          style={[styles.primaryBtn, { backgroundColor: isApproved ? colors.primary : colors.muted }]}
+          onPress={() => {
+            if (isApproved) {
+              router.replace("/(tabs)");
+            } else {
+              Alert.alert(
+                "Verification Pending",
+                "Your application is still under review. You'll receive a notification once approved.",
+                [{ text: "OK" }],
+              );
+            }
+          }}
           activeOpacity={0.85}
         >
-          <Feather name="home" size={17} color="#fff" />
-          <Text style={styles.primaryBtnText}>Go to Dashboard</Text>
+          <Feather
+            name={isApproved ? "home" : "refresh-cw"}
+            size={17}
+            color={isApproved ? "#fff" : colors.foreground}
+          />
+          <Text style={[styles.primaryBtnText, !isApproved && { color: colors.foreground }]}>
+            {isApproved ? "Go to Dashboard" : "Check Application Status"}
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.ghostBtn, { borderColor: colors.border }]}
