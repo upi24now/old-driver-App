@@ -21,7 +21,6 @@
  */
 
 import { SafeInlineIcon, SafeIconName, SafeIcon } from "@/components/SafeIcon";
-import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
@@ -29,6 +28,7 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image as RNImage,
   Platform,
   ScrollView,
   StyleSheet,
@@ -324,6 +324,12 @@ function DocumentCard({
     console.log("[PREVIEW_DEBUG] uri type =", typeof state.uri);
     console.log("[PREVIEW_DEBUG] uploaded state =", uploaded, "lock =", lockState);
     console.log("[PREVIEW_DEBUG] render Image = true");
+    console.log("[PREVIEW_RENDER]", {
+      id: doc.id,
+      uri: state.uri,
+      uriType: typeof state.uri,
+      hasUri: !!state.uri,
+    });
   }, [doc.id, state.uri, uploaded, lockState]);
 
   const cardBorderColor = {
@@ -401,13 +407,12 @@ function DocumentCard({
         /* ── LOCKED — approved / verified ── */
         uploaded ? (
           <View style={[styles.previewWrap, doc.isSelfie && styles.previewWrapSquare]}>
-            <Image
-              source={{ uri: state.uri! }}
+            <RNImage
+              source={{ uri: String(state.uri!) }}
               style={styles.previewImg}
-              contentFit="cover"
-              cachePolicy="none"
-              onLoad={() => console.log("[PREVIEW_DEBUG] image loaded", doc.id)}
-              onError={(e) => { setPreviewError(true); console.log("[PREVIEW_DEBUG] image error", doc.id, e.error); }}
+              resizeMode="cover"
+              onLoad={() => console.log("[RN_PREVIEW] loaded", doc.id)}
+              onError={(e) => { setPreviewError(true); console.log("[RN_PREVIEW] error", doc.id, e.nativeEvent); }}
             />
             {previewError && (
               <View style={styles.previewFallback}>
@@ -438,13 +443,12 @@ function DocumentCard({
         /* ── WAITING — pending / submitted ── */
         uploaded ? (
           <View style={[styles.previewWrap, doc.isSelfie && styles.previewWrapSquare]}>
-            <Image
-              source={{ uri: state.uri! }}
+            <RNImage
+              source={{ uri: String(state.uri!) }}
               style={styles.previewImg}
-              contentFit="cover"
-              cachePolicy="none"
-              onLoad={() => console.log("[PREVIEW_DEBUG] image loaded", doc.id)}
-              onError={(e) => { setPreviewError(true); console.log("[PREVIEW_DEBUG] image error", doc.id, e.error); }}
+              resizeMode="cover"
+              onLoad={() => console.log("[RN_PREVIEW] loaded", doc.id)}
+              onError={(e) => { setPreviewError(true); console.log("[RN_PREVIEW] error", doc.id, e.nativeEvent); }}
             />
             {previewError && (
               <View style={styles.previewFallback}>
@@ -487,13 +491,12 @@ function DocumentCard({
           </View>
           {uploaded ? (
             <View style={[styles.previewWrap, doc.isSelfie && styles.previewWrapSquare]}>
-              <Image
-                source={{ uri: state.uri! }}
+              <RNImage
+                source={{ uri: String(state.uri!) }}
                 style={styles.previewImg}
-                contentFit="cover"
-                cachePolicy="none"
-                onLoad={() => console.log("[PREVIEW_DEBUG] image loaded", doc.id)}
-                onError={(e) => { setPreviewError(true); console.log("[PREVIEW_DEBUG] image error", doc.id, e.error); }}
+                resizeMode="cover"
+                onLoad={() => console.log("[RN_PREVIEW] loaded", doc.id)}
+                onError={(e) => { setPreviewError(true); console.log("[RN_PREVIEW] error", doc.id, e.nativeEvent); }}
               />
               {previewError && (
                 <View style={styles.previewFallback}>
@@ -535,13 +538,12 @@ function DocumentCard({
 
         /* ── UPLOADED — normal, no status yet ── */
         <View style={[styles.previewWrap, doc.isSelfie && styles.previewWrapSquare]}>
-          <Image
-            source={{ uri: state.uri! }}
+          <RNImage
+            source={{ uri: String(state.uri!) }}
             style={styles.previewImg}
-            contentFit="cover"
-            cachePolicy="none"
-            onLoad={() => console.log("[PREVIEW_DEBUG] image loaded", doc.id)}
-            onError={(e) => { setPreviewError(true); console.log("[PREVIEW_DEBUG] image error", doc.id, e.error); }}
+            resizeMode="cover"
+            onLoad={() => console.log("[RN_PREVIEW] loaded", doc.id)}
+            onError={(e) => { setPreviewError(true); console.log("[RN_PREVIEW] error", doc.id, e.nativeEvent); }}
           />
           {previewError && (
             <View style={styles.previewFallback}>
@@ -678,6 +680,14 @@ export default function DocumentUploadScreen() {
     try {
       const uri = await pickFn();
       if (uri) {
+        console.log("[PICKER_RESULT]", {
+          id,
+          uri,
+          uriType: typeof uri,
+          startsFile: uri?.startsWith("file://"),
+          startsContent: uri?.startsWith("content://"),
+          length: uri?.length,
+        });
         patch(id, { uri, uploadedAt: Date.now(), loading: false, freshUpload: true });
         console.log("[UPLOAD_FLOW] upload success, id =", id, "uri =", uri);
       } else {
@@ -1201,21 +1211,17 @@ const styles = StyleSheet.create({
 
   // Preview
   previewWrap: {
-    borderRadius: 12,
+    width: "100%",
+    height: 220,
+    borderRadius: 18,
     overflow: "hidden",
-    aspectRatio: 16 / 9,
-    backgroundColor: "#1a1a1a",
+    backgroundColor: "#F3F4F6",
   },
-  previewWrapSquare: { aspectRatio: 1 },
-  // Absolute fill: expo-image does not resolve "100%" height against an
-  // aspectRatio-sized parent. Use position:absolute so the image always
-  // covers the entire previewWrap surface regardless of layout pass order.
+  previewWrapSquare: { height: 220 },
   previewImg: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    width: "100%",
+    height: 220,
+    backgroundColor: "#F3F4F6",
   },
   previewFallback: {
     position: "absolute",
@@ -1223,13 +1229,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "#1a1a1a",
+    backgroundColor: "#F3F4F6",
     alignItems: "center",
     justifyContent: "center",
     padding: 12,
   },
   previewFallbackText: {
-    color: "#9CA3AF",
+    color: "#6B7280",
     fontSize: 12,
     fontWeight: "500" as const,
     textAlign: "center" as const,
