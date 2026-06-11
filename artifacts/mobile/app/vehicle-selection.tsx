@@ -11,6 +11,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -19,26 +20,32 @@ import { callSupport } from "@/utils/support";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const D = {
-  bg:          "#F6F7FB",
-  white:       "#FFFFFF",
-  textPrimary: "#0F172A",
-  textMuted:   "#6B7280",
-  border:      "#E5E7EB",
-  primary:     "#E8336C",
-  primarySoft: "#FFF0F5",
-  muted:       "#F3F4F6",
-  mutedFg:     "#9CA3AF",
+  bg:           "#F6F7FB",
+  white:        "#FFFFFF",
+  textPrimary:  "#0F172A",
+  textMuted:    "#6B7280",
+  border:       "#E5E7EB",
+  primary:      "#E8336C",
+  primarySoft:  "#FFF0F5",
+  muted:        "#F3F4F6",
+  mutedFg:      "#9CA3AF",
+  chipSelected: "#E8336C",
 } as const;
+
+// ─── Categories ───────────────────────────────────────────────────────────────
+type Category = "All" | "2 Wheeler" | "3 Wheeler" | "4 Wheeler" | "Cargo" | "Heavy";
+const CATEGORIES: Category[] = ["All", "2 Wheeler", "3 Wheeler", "4 Wheeler", "Cargo", "Heavy"];
 
 // ─── Vehicle definitions ──────────────────────────────────────────────────────
 type VehicleOption = {
   id:        string;
   name:      string;
   tagline:   string;
-  seatLabel: string;
+  capacity:  string;
   price:     string;
   emoji:     string;
-  badge?:    string;
+  category:  Exclude<Category, "All">;
+  popular?:  boolean;
   gradStart: string;
   gradEnd:   string;
   gradMid?:  string;
@@ -46,46 +53,76 @@ type VehicleOption = {
 
 const VEHICLES: VehicleOption[] = [
   {
-    id:        "bike",
-    name:      "Bike",
-    tagline:   "Quick delivery rides",
-    seatLabel: "1 Seat",
-    price:     "₹6/km",
-    emoji:     "🏍",
-    badge:     "⭐ Popular",
-    gradStart: "#FF6B9D",
-    gradMid:   "#E8336C",
-    gradEnd:   "#9B59B6",
+    id: "bike",        name: "Bike Delivery",  tagline: "Quick parcel rides",
+    capacity: "1 Parcel",  price: "₹6/km",   emoji: "🏍",
+    category: "2 Wheeler", popular: true,
+    gradStart: "#FF6B9D",  gradMid: "#E8336C",  gradEnd: "#9B59B6",
   },
   {
-    id:        "auto",
-    name:      "Auto",
-    tagline:   "3-seater city rides",
-    seatLabel: "3 Seats",
-    price:     "₹10/km",
-    emoji:     "🛺",
-    gradStart: "#FFD43B",
-    gradEnd:   "#FFA726",
+    id: "scooter",     name: "Scooter",        tagline: "Light delivery rides",
+    capacity: "1 Parcel",  price: "₹5/km",   emoji: "🛵",
+    category: "2 Wheeler",
+    gradStart: "#FF8C69",  gradEnd: "#FFA726",
   },
   {
-    id:        "mini-truck",
-    name:      "Mini Truck",
-    tagline:   "Light goods transport",
-    seatLabel: "1 Ton",
-    price:     "₹14/km",
-    emoji:     "🚚",
-    gradStart: "#60A5FA",
-    gradEnd:   "#2563EB",
+    id: "auto-pass",   name: "Auto Passenger", tagline: "3-seater city rides",
+    capacity: "3 Seats",   price: "₹10/km",  emoji: "🛺",
+    category: "3 Wheeler",
+    gradStart: "#FFD43B",  gradEnd: "#FFA726",
   },
   {
-    id:        "pickup",
-    name:      "Pickup Truck",
-    tagline:   "Heavy delivery transport",
-    seatLabel: "2 Ton",
-    price:     "₹18/km",
-    emoji:     "🛻",
-    gradStart: "#4ADE80",
-    gradEnd:   "#16A34A",
+    id: "auto-cargo",  name: "Auto Cargo",     tagline: "Small goods delivery",
+    capacity: "300 kg",    price: "₹12/km",  emoji: "🛺",
+    category: "3 Wheeler",
+    gradStart: "#FB923C",  gradEnd: "#F59E0B",
+  },
+  {
+    id: "mini-car",    name: "Mini Car",       tagline: "Compact comfort",
+    capacity: "4 Seats",   price: "₹14/km",  emoji: "🚗",
+    category: "4 Wheeler",
+    gradStart: "#38BDF8",  gradEnd: "#2563EB",
+  },
+  {
+    id: "sedan",       name: "Sedan",          tagline: "Premium comfort",
+    capacity: "4 Seats",   price: "₹18/km",  emoji: "🚘",
+    category: "4 Wheeler",
+    gradStart: "#818CF8",  gradEnd: "#4338CA",
+  },
+  {
+    id: "suv",         name: "SUV",            tagline: "Family rides",
+    capacity: "6 Seats",   price: "₹22/km",  emoji: "🚙",
+    category: "4 Wheeler",
+    gradStart: "#2DD4BF",  gradEnd: "#0D9488",
+  },
+  {
+    id: "tata-ace",    name: "Tata Ace",       tagline: "Mini goods carrier",
+    capacity: "750 kg",    price: "₹16/km",  emoji: "🚚",
+    category: "Cargo",
+    gradStart: "#4ADE80",  gradEnd: "#16A34A",
+  },
+  {
+    id: "pickup",      name: "Pickup Truck",   tagline: "Heavy parcel delivery",
+    capacity: "1 Ton",     price: "₹20/km",  emoji: "🛻",
+    category: "Cargo",
+    gradStart: "#A3E635",  gradEnd: "#65A30D",
+  },
+  {
+    id: "mini-truck",  name: "Mini Truck",     tagline: "Bulk goods transport",
+    capacity: "1.5 Ton",   price: "₹24/km",  emoji: "🚛",
+    category: "Cargo",
+    gradStart: "#22D3EE",  gradEnd: "#0EA5E9",
+  },
+  {
+    id: "eicher",      name: "Eicher Truck",   tagline: "Commercial transport",
+    capacity: "3 Ton",     price: "₹32/km",  emoji: "🚛",
+    category: "Heavy",
+    gradStart: "#94A3B8",  gradEnd: "#3B82F6",
+  },
+  {
+    id: "truck-14ft",  name: "14 Feet Truck",  tagline: "Large goods movement",
+    capacity: "5 Ton",     price: "₹40/km",  emoji: "🚚",
+    category: "Heavy",
+    gradStart: "#C084FC",  gradEnd: "#6D28D9",
   },
 ];
 
@@ -94,10 +131,12 @@ function VehicleCard({
   vehicle,
   selected,
   onPress,
+  cardWidth,
 }: {
-  vehicle:  VehicleOption;
-  selected: boolean;
-  onPress:  () => void;
+  vehicle:   VehicleOption;
+  selected:  boolean;
+  onPress:   () => void;
+  cardWidth: number;
 }) {
   const scale = useRef(new Animated.Value(1)).current;
   const prev  = useRef(selected);
@@ -105,8 +144,8 @@ function VehicleCard({
   useEffect(() => {
     if (selected && !prev.current) {
       Animated.sequence([
-        Animated.spring(scale, { toValue: 1.04, friction: 4, tension: 280, useNativeDriver: true }),
-        Animated.spring(scale, { toValue: 1,    friction: 5, tension: 220, useNativeDriver: true }),
+        Animated.spring(scale, { toValue: 1.045, friction: 4, tension: 290, useNativeDriver: true }),
+        Animated.spring(scale, { toValue: 1,     friction: 5, tension: 220, useNativeDriver: true }),
       ]).start();
     }
     prev.current = selected;
@@ -121,11 +160,12 @@ function VehicleCard({
       style={[
         styles.cardWrap,
         {
+          width:         cardWidth,
           shadowColor:   selected ? D.primary : "#000",
           shadowOpacity: selected ? 0.22      : 0.07,
-          shadowRadius:  selected ? 18        : 10,
-          shadowOffset:  { width: 0, height: selected ? 8 : 3 },
-          elevation:     selected ? 12        : 4,
+          shadowRadius:  selected ? 16        : 8,
+          shadowOffset:  { width: 0, height: selected ? 7 : 3 },
+          elevation:     selected ? 10        : 3,
           transform:     [{ scale }],
         },
       ]}
@@ -135,40 +175,37 @@ function VehicleCard({
         style={[
           styles.card,
           {
-            borderColor: selected ? D.primary : D.border,
-            borderWidth: selected ? 2         : 1.5,
+            borderColor:     selected ? D.primary : D.border,
+            borderWidth:     selected ? 2         : 1.5,
             backgroundColor: selected ? D.primarySoft : D.white,
           },
         ]}
       >
-        {/* ── Gradient top area ── */}
+        {/* ── Gradient top ── */}
         <LinearGradient
           colors={gradColors}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={styles.gradientTop}
+          style={styles.gradTop}
         >
-          {/* Badge */}
-          {vehicle.badge && (
+          {vehicle.popular && (
             <View style={styles.badge}>
-              <Text style={styles.badgeText}>{vehicle.badge}</Text>
+              <Text style={styles.badgeText}>⭐ Popular</Text>
             </View>
           )}
 
-          {/* Checkmark */}
           {selected && (
             <View style={styles.checkCircle}>
-              <Feather name="check" size={11} color={D.white} />
+              <Feather name="check" size={10} color={D.white} />
             </View>
           )}
 
-          {/* Vehicle emoji — large, centered with frosted circle */}
           <View style={styles.emojiWrap}>
             <Text style={styles.emojiText}>{vehicle.emoji}</Text>
           </View>
         </LinearGradient>
 
-        {/* ── Text bottom area ── */}
+        {/* ── Text bottom ── */}
         <View style={styles.textZone}>
           <Text
             style={[styles.cardName, { color: selected ? D.primary : D.textPrimary }]}
@@ -189,19 +226,16 @@ function VehicleCard({
               },
             ]}
           >
-            <Feather
-              name="tag"
-              size={10}
-              color={selected ? D.primary : D.textMuted}
-            />
             <Text
               style={[styles.infoText, { color: selected ? D.primary : D.textMuted }]}
               numberOfLines={1}
             >
-              {vehicle.seatLabel}
+              {vehicle.capacity}
             </Text>
-            <View style={styles.infoDivider} />
-            <Text style={[styles.priceText, { color: selected ? D.primary : "#374151" }]}>
+            <View style={styles.infoDot} />
+            <Text
+              style={[styles.priceText, { color: selected ? D.primary : "#374151" }]}
+            >
               {vehicle.price}
             </Text>
           </View>
@@ -227,24 +261,65 @@ function StepDot({ filled }: { filled: boolean }) {
   );
 }
 
+// ─── Category Chip ────────────────────────────────────────────────────────────
+function CategoryChip({
+  label,
+  active,
+  onPress,
+}: {
+  label:   string;
+  active:  boolean;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.75}
+      style={[
+        styles.chip,
+        active
+          ? { backgroundColor: D.chipSelected, borderColor: D.chipSelected }
+          : { backgroundColor: D.white,        borderColor: D.border },
+      ]}
+    >
+      <Text style={[styles.chipText, { color: active ? D.white : D.textMuted }]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function VehicleSelectionScreen() {
-  const insets  = useSafeAreaInsets();
-  const router  = useRouter();
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { setVehicle } = useDriver();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const { width: screenW } = useWindowDimensions();
+
+  const [selectedId,      setSelectedId]      = useState<string | null>(null);
+  const [activeCategory,  setActiveCategory]  = useState<Category>("All");
 
   const selectedVehicle = VEHICLES.find((v) => v.id === selectedId) ?? null;
+
+  // 2-column card width
+  const H_PAD    = 14;
+  const COL_GAP  = 12;
+  const cardWidth = Math.floor((screenW - H_PAD * 2 - COL_GAP) / 2);
+
+  // Filter + pair into rows
+  const filtered =
+    activeCategory === "All"
+      ? VEHICLES
+      : VEHICLES.filter((v) => v.category === activeCategory);
+
+  const rows: VehicleOption[][] = [];
+  for (let i = 0; i < filtered.length; i += 2) rows.push(filtered.slice(i, i + 2));
 
   function handleContinue() {
     if (!selectedId || !selectedVehicle) return;
     setVehicle({ id: selectedVehicle.id, name: selectedVehicle.name });
     router.push({ pathname: "/profile-setup", params: { vehicle: selectedId } });
   }
-
-  // Build 2-column rows
-  const rows: VehicleOption[][] = [];
-  for (let i = 0; i < VEHICLES.length; i += 2) rows.push(VEHICLES.slice(i, i + 2));
 
   return (
     <View style={[styles.root, { backgroundColor: D.bg }]}>
@@ -282,24 +357,63 @@ export default function VehicleSelectionScreen() {
         <StepDot filled={false} />
       </View>
 
+      {/* ── Category chips ── */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.chipScroll}
+        contentContainerStyle={styles.chipContent}
+      >
+        {CATEGORIES.map((cat) => (
+          <CategoryChip
+            key={cat}
+            label={cat}
+            active={activeCategory === cat}
+            onPress={() => {
+              setActiveCategory(cat);
+              // clear selection if selected vehicle doesn't belong to new category
+              if (
+                cat !== "All" &&
+                selectedVehicle &&
+                selectedVehicle.category !== cat
+              ) {
+                setSelectedId(null);
+              }
+            }}
+          />
+        ))}
+      </ScrollView>
+
       {/* ── Grid ── */}
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 190 }]}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: insets.bottom + 188 },
+        ]}
         showsVerticalScrollIndicator={false}
       >
-        {rows.map((row, ri) => (
-          <View key={ri} style={styles.row}>
-            {row.map((v) => (
-              <VehicleCard
-                key={v.id}
-                vehicle={v}
-                selected={selectedId === v.id}
-                onPress={() => setSelectedId(v.id)}
-              />
-            ))}
-            {row.length === 1 && <View style={styles.cardWrap} />}
+        {rows.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyEmoji}>🔍</Text>
+            <Text style={styles.emptyText}>No vehicles in this category</Text>
           </View>
-        ))}
+        ) : (
+          rows.map((row, ri) => (
+            <View key={ri} style={[styles.row, { gap: COL_GAP }]}>
+              {row.map((v) => (
+                <VehicleCard
+                  key={v.id}
+                  vehicle={v}
+                  selected={selectedId === v.id}
+                  onPress={() => setSelectedId(v.id)}
+                  cardWidth={cardWidth}
+                />
+              ))}
+              {/* spacer so odd last card stays left-aligned */}
+              {row.length === 1 && <View style={{ width: cardWidth }} />}
+            </View>
+          ))
+        )}
       </ScrollView>
 
       {/* ── Sticky footer ── */}
@@ -312,11 +426,10 @@ export default function VehicleSelectionScreen() {
           },
         ]}
       >
-        {/* Selection summary */}
+        {/* Summary card */}
         <View style={styles.summaryCard}>
           {selectedVehicle ? (
             <>
-              {/* Gradient mini badge */}
               <LinearGradient
                 colors={
                   selectedVehicle.gradMid
@@ -332,18 +445,20 @@ export default function VehicleSelectionScreen() {
 
               <View style={{ flex: 1 }}>
                 <Text style={styles.summaryLabel}>Selected</Text>
-                <Text style={styles.summaryName}>{selectedVehicle.name}</Text>
+                <Text style={styles.summaryName} numberOfLines={1}>
+                  {selectedVehicle.name}
+                </Text>
               </View>
 
               <View style={styles.summaryRight}>
-                <Text style={styles.summarySeat}>{selectedVehicle.seatLabel}</Text>
+                <Text style={styles.summaryCap}>{selectedVehicle.capacity}</Text>
                 <Text style={styles.summaryPrice}>{selectedVehicle.price}</Text>
               </View>
             </>
           ) : (
             <View style={styles.summaryEmpty}>
-              <Feather name="grid" size={18} color={D.mutedFg} />
-              <Text style={styles.summaryEmptyText}>Select a vehicle to continue</Text>
+              <Feather name="grid" size={16} color={D.mutedFg} />
+              <Text style={styles.summaryEmptyText}>No vehicle selected</Text>
             </View>
           )}
         </View>
@@ -354,7 +469,7 @@ export default function VehicleSelectionScreen() {
           disabled={!selectedId}
           style={({ pressed }) => [
             styles.ctaWrap,
-            { opacity: pressed && selectedId ? 0.88 : 1 },
+            { opacity: pressed && !!selectedId ? 0.88 : 1 },
           ]}
         >
           <LinearGradient
@@ -368,7 +483,7 @@ export default function VehicleSelectionScreen() {
             </Text>
             <Feather
               name="arrow-right"
-              size={20}
+              size={18}
               color={selectedId ? D.white : D.mutedFg}
             />
           </LinearGradient>
@@ -390,29 +505,29 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   backBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 11,
     borderWidth: 1,
     borderColor: "#E5E7EB",
     backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
-    shadowOpacity: 0.07,
-    shadowRadius: 8,
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
+    elevation: 2,
   },
   headerCenter: { flex: 1, alignItems: "center" },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "800",
     letterSpacing: -0.3,
     color: "#0F172A",
   },
   headerSub: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "500",
     color: "#6B7280",
     marginTop: 1,
@@ -425,11 +540,11 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
     backgroundColor: "#FFFFFF",
     paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 12,
+    paddingVertical: 6,
+    borderRadius: 11,
     shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
@@ -440,13 +555,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 32,
-    paddingBottom: 14,
+    paddingBottom: 12,
     paddingTop: 2,
   },
   stepDot: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -457,84 +572,98 @@ const styles = StyleSheet.create({
     marginHorizontal: -2,
   },
 
-  // Grid
-  scroll:       { paddingHorizontal: 14, paddingTop: 6, gap: 14 },
-  row:          { flexDirection: "row", gap: 14 },
-
-  // Card
-  cardWrap: {
-    flex: 1,
+  // Category chips
+  chipScroll: { maxHeight: 44 },
+  chipContent: {
+    paddingHorizontal: 14,
+    paddingBottom: 10,
+    gap: 8,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
     borderRadius: 20,
-    shadowOffset: { width: 0, height: 3 },
+    borderWidth: 1,
+  },
+  chipText: { fontSize: 12, fontWeight: "700" },
+
+  // Grid
+  scroll:      { paddingHorizontal: 14, paddingTop: 6, gap: 12 },
+  row:         { flexDirection: "row" },
+
+  // Card outer
+  cardWrap: {
+    borderRadius: 18,
   },
   card: {
-    flex: 1,
-    borderRadius: 20,
+    borderRadius: 18,
     overflow: "hidden",
   },
 
   // Gradient top
-  gradientTop: {
-    height: 130,
+  gradTop: {
+    height: 88,
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
   },
   badge: {
     position: "absolute",
-    top: 9,
-    left: 9,
-    backgroundColor: "rgba(255,255,255,0.25)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
+    top: 7,
+    left: 7,
+    backgroundColor: "rgba(255,255,255,0.28)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
   },
   badgeText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "700",
     color: "#FFFFFF",
     letterSpacing: 0.2,
   },
   checkCircle: {
     position: "absolute",
-    top: 9,
-    right: 9,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    top: 7,
+    right: 7,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: "#E8336C",
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#E8336C",
-    shadowOpacity: 0.5,
-    shadowRadius: 6,
+    shadowOpacity: 0.55,
+    shadowRadius: 5,
     shadowOffset: { width: 0, height: 2 },
     elevation: 4,
   },
   emojiWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: "rgba(255,255,255,0.22)",
     alignItems: "center",
     justifyContent: "center",
   },
-  emojiText: { fontSize: 38 },
+  emojiText: { fontSize: 30 },
 
   // Text zone
   textZone: {
-    paddingHorizontal: 12,
-    paddingTop: 11,
-    paddingBottom: 12,
-    gap: 4,
+    paddingHorizontal: 10,
+    paddingTop: 9,
+    paddingBottom: 10,
+    gap: 3,
   },
   cardName: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: "800",
     letterSpacing: -0.2,
   },
   cardTagline: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "500",
     color: "#6B7280",
   },
@@ -542,15 +671,25 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    borderRadius: 7,
     borderWidth: 1,
     marginTop: 4,
   },
-  infoText:    { fontSize: 10, fontWeight: "600", flex: 1 },
-  infoDivider: { width: 1, height: 10, backgroundColor: "#E5E7EB" },
-  priceText:   { fontSize: 11, fontWeight: "800" },
+  infoText:  { fontSize: 9,  fontWeight: "600", flex: 1 },
+  infoDot:   { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "#D1D5DB" },
+  priceText: { fontSize: 10, fontWeight: "800" },
+
+  // Empty state
+  emptyState: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 60,
+    gap: 10,
+  },
+  emptyEmoji: { fontSize: 40 },
+  emptyText:  { fontSize: 14, fontWeight: "600", color: "#9CA3AF" },
 
   // Footer
   footer: {
@@ -560,15 +699,15 @@ const styles = StyleSheet.create({
     right: 0,
     paddingHorizontal: 16,
     paddingTop: 14,
-    gap: 12,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    gap: 10,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
     borderTopWidth: 1,
     borderTopColor: "#E5E7EB",
     backgroundColor: "#FFFFFF",
     shadowOpacity: 0.10,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: -6 },
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: -5 },
     elevation: 12,
     ...Platform.select({ web: { backdropFilter: "blur(12px)" } as object }),
   },
@@ -578,69 +717,68 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#F9FAFB",
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: "#E5E7EB",
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    gap: 12,
-    minHeight: 60,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 10,
+    minHeight: 56,
   },
   summaryThumb: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
-  summaryEmoji: { fontSize: 24 },
+  summaryEmoji: { fontSize: 22 },
   summaryLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "500",
     color: "#6B7280",
-    marginBottom: 1,
   },
   summaryName: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "800",
     color: "#0F172A",
     letterSpacing: -0.2,
   },
-  summaryRight: { alignItems: "flex-end", gap: 2 },
-  summarySeat:  { fontSize: 11, fontWeight: "600", color: "#6B7280" },
-  summaryPrice: { fontSize: 15, fontWeight: "800", color: "#E8336C" },
+  summaryRight: { alignItems: "flex-end", gap: 1 },
+  summaryCap:   { fontSize: 10, fontWeight: "600", color: "#6B7280" },
+  summaryPrice: { fontSize: 14, fontWeight: "800", color: "#E8336C" },
   summaryEmpty: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
+    gap: 7,
   },
   summaryEmptyText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "500",
     color: "#9CA3AF",
   },
 
-  // CTA button
+  // CTA
   ctaWrap: {
-    borderRadius: 16,
+    borderRadius: 14,
     shadowColor: "#E8336C",
-    shadowOpacity: 0.30,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 6,
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
   },
   ctaGradient: {
-    height: 56,
-    borderRadius: 16,
+    height: 52,
+    borderRadius: 14,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    gap: 9,
   },
   ctaText: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: "800",
     color: "#FFFFFF",
     letterSpacing: 0.3,
