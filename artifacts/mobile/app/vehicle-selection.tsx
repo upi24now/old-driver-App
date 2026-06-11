@@ -1,8 +1,9 @@
-import { SafeInlineIcon, SafeIconName, PremiumButton3D } from "@/components/SafeIcon";
+import { SafeInlineIcon, SafeIconName } from "@/components/SafeIcon";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Animated,
   Platform,
   Pressable,
@@ -301,7 +302,7 @@ export default function VehicleSelectionScreen() {
   console.log("[SCREEN_MOUNT] vehicle-selection");
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { setVehicle } = useDriver();
+  const { setVehicle, driverUid } = useDriver();
   const { width: screenW } = useWindowDimensions();
 
   const [selectedId,      setSelectedId]      = useState<string | null>(null);
@@ -324,9 +325,24 @@ export default function VehicleSelectionScreen() {
   for (let i = 0; i < filtered.length; i += 2) rows.push(filtered.slice(i, i + 2));
 
   function handleContinue() {
-    if (!selectedId || !selectedVehicle) return;
-    setVehicle({ id: selectedVehicle.id, name: selectedVehicle.name });
-    router.push({ pathname: "/profile-setup", params: { vehicle: selectedId } });
+    console.log("[VEHICLE_CONTINUE] pressed");
+    if (!selectedId || !selectedVehicle) {
+      console.log("[VEHICLE_CONTINUE] guard — no vehicle selected");
+      return;
+    }
+    console.log("[VEHICLE_CONTINUE] selectedVehicle =", selectedId);
+    console.log("[VEHICLE_CONTINUE] driverUid =", driverUid ?? "null");
+    try {
+      console.log("[VEHICLE_CONTINUE] saving start");
+      setVehicle({ id: selectedVehicle.id, name: selectedVehicle.name });
+      console.log("[VEHICLE_CONTINUE] saving success");
+      console.log("[VEHICLE_CONTINUE] route /profile-setup");
+      router.replace("/profile-setup");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.log("[VEHICLE_CONTINUE] error =", msg);
+      Alert.alert("Error", "Could not save vehicle. Please try again.");
+    }
   }
 
   return (
@@ -471,14 +487,27 @@ export default function VehicleSelectionScreen() {
           )}
         </View>
 
-        {/* Continue button */}
-        <PremiumButton3D
-          title="Continue"
-          disabled={!selectedId}
+        {/* Continue button — plain Pressable for reliability */}
+        <Pressable
           onPress={handleContinue}
-          rightIcon="arrow"
-          style={styles.ctaWrap}
-        />
+          disabled={!selectedId}
+          style={({ pressed }) => [
+            styles.ctaWrap,
+            { opacity: pressed && !!selectedId ? 0.88 : 1 },
+          ]}
+        >
+          <LinearGradient
+            colors={selectedId ? ["#FF6B9D", "#E8336C"] : ["#E5E7EB", "#E5E7EB"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.ctaGradient}
+          >
+            <Text style={[styles.ctaText, !selectedId && { color: D.mutedFg }]}>
+              Continue
+            </Text>
+            <SafeInlineIcon name="arrow" size={18} color={selectedId ? D.white : D.mutedFg} />
+          </LinearGradient>
+        </Pressable>
       </View>
     </View>
   );
