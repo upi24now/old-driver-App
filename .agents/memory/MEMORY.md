@@ -3,3 +3,4 @@
 - [Bike Courier colour system](bike-courier-colours.md) — semantic token architecture; brand constants pattern used in active-delivery.tsx.
 - [Phase 2 dispatch model](phase2-dispatch.md) — activeOfferDriverUids array-contains replaces driverUid==uid AND status==dispatched; accept writes driver_assigned; reject/timeout use arrayRemove.
 - [api-server rebuild required](api-server-rebuild.md) — restart_workflow does NOT recompile; must run build explicitly before restarting.
+- [Cold-start session restore navigation](cold-start-session-restore.md) — after app kill, Stack always starts at initialRouteName="login"; must navigate BEFORE setAuthLoading(false) to avoid flash of login screen.

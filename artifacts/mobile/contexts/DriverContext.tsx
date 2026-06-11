@@ -472,8 +472,15 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // below is kept so that state is pre-populated for the post-OTP dashboard
   // (avoids a visible re-fetch after confirmOtp).
   useEffect(() => {
+    // Cold-start diagnostics — logged once when DriverProvider mounts.
+    console.log("[AUTH_COLD_START] app opened");
+    console.log("[AUTH_COLD_START] firebase currentUser immediate =", firebaseAuth.currentUser?.uid ?? null);
+    void AsyncStorage.getItem(SESSION_VERIFIED_KEY).then((uid) =>
+      console.log("[AUTH_COLD_START] storedVerifiedUid =", uid ?? "(none)"),
+    );
+
     const unsub = onAuthStateChanged(firebaseAuth, (user) => {
-      console.log("[AUTH_STATE] onAuthStateChanged fired uid =", user?.uid ?? null);
+      console.log("[AUTH_STATE] onAuthStateChanged uid =", user?.uid ?? null);
       console.log("[AUTH_STATE] no user =", !user);
 
       if (!user) {
@@ -490,16 +497,15 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       setPhoneState(phoneFromUid);
 
       void (async () => {
-        // ── Session restore ─────────────────────────────────────────────────
-        // Approved drivers returning after backgrounding or cold-start must
-        // not be forced to re-OTP. If this uid was previously OTP-verified
-        // (written to AsyncStorage by confirmOtp), restore isOtpVerified BEFORE
-        // authLoading=false so _layout.tsx sees the correct value on first render.
+        // ── 1. Session restore check ─────────────────────────────────────────
+        // Determine whether this Firebase user has a previously OTP-verified
+        // session stored in AsyncStorage from a prior login.
+        let sessionValid = false;
         try {
           const storedUid = await AsyncStorage.getItem(SESSION_VERIFIED_KEY);
           console.log("[SESSION_RESTORE] firebaseUid =", user.uid);
           console.log("[SESSION_RESTORE] storedVerifiedUid =", storedUid);
-          const sessionValid = storedUid === user.uid;
+          sessionValid = storedUid === user.uid;
           console.log("[SESSION_RESTORE] sessionValid =", sessionValid);
           if (sessionValid) {
             setIsOtpVerified(true);
@@ -508,17 +514,30 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           // AsyncStorage read failed — falls back to OTP gate (safe default).
         }
 
-        // Unblock the layout AFTER the session restore check so routing always
-        // sees the final isOtpVerified value in the same render cycle.
-        console.log("[AUTH_STATE] setAuthLoading false");
-        setAuthLoading(false);
+        // ── 2. No-restore fast path ──────────────────────────────────────────
+        // No saved session: unblock the layout immediately so the login screen
+        // appears. Firestore reads below pre-populate state in the background.
+        if (!sessionValid) {
+          console.log("[AUTH_STATE] setAuthLoading false (no session restore)");
+          setAuthLoading(false);
+        }
+        // Session restore path: keep authLoading=true (spinner overlay stays up)
+        // while we fetch the driver doc and navigate to the correct screen. This
+        // prevents any flash of the login screen between auth restore and
+        // navigation. A 3.5 s doc-fetch timeout keeps us safely under the 5 s
+        // safety timeout so the overlay never hangs indefinitely.
 
-        // ── Background hydration ─────────────────────────────────────────────
-        // Firestore reads happen after authLoading=false so they never block
-        // the login screen from appearing. They pre-populate profile/vehicle
-        // state so the dashboard doesn't need a fresh fetch after OTP.
+        // ── 3. Firestore hydration ───────────────────────────────────────────
+        let driverDoc: DriverDoc | null = null;
         try {
-          const driverDoc = await getDriverDoc(user.uid);
+          const docFetch = getDriverDoc(user.uid);
+          driverDoc = sessionValid
+            ? await Promise.race([
+                docFetch,
+                new Promise<null>((r) => setTimeout(() => r(null), 3500)),
+              ])
+            : await docFetch;
+
           if (driverDoc) {
             if (driverDoc.name) {
               setProfileState({
@@ -577,7 +596,20 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           }
         } catch (firestoreErr) {
           console.error("[Auth] background Firestore hydration failed:", firestoreErr);
-          // Non-fatal: authLoading is already false; routing already resolved.
+        }
+
+        // ── 4. Session restore navigation ────────────────────────────────────
+        // Navigate to the correct screen BEFORE calling setAuthLoading(false).
+        // This ensures the auth overlay disappears onto the dashboard (or the
+        // correct onboarding step), never onto the login screen.
+        if (sessionValid) {
+          const nextRoute = driverDoc
+            ? await deriveNextRoute(driverDoc)
+            : "/(tabs)";
+          console.log("[AUTH_ROUTE] chosenRoute =", nextRoute, "(session restore)");
+          router.replace(nextRoute as never);
+          console.log("[AUTH_STATE] setAuthLoading false (session restore)");
+          setAuthLoading(false);
         }
 
         // Register FCM push token — fire-and-forget.

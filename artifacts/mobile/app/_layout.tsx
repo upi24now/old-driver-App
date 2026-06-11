@@ -41,17 +41,19 @@ function RootLayoutNav() {
 
   // ── Auth-policy routing ───────────────────────────────────────────────────
   //
-  // Session restore (app resume / cold start with valid Firebase session):
-  //   DriverContext reads SESSION_VERIFIED_KEY from AsyncStorage and, if the
-  //   stored uid matches the current Firebase user, sets isOtpVerified=true
-  //   BEFORE authLoading=false fires — no re-OTP required for valid sessions.
+  // Session restore (app kill + cold restart with a valid Firebase session):
+  //   onAuthStateChanged fires → AsyncStorage check → sessionValid=true →
+  //   DriverContext fetches Firestore doc → calls deriveNextRoute → calls
+  //   router.replace(nextRoute) → THEN calls setAuthLoading(false).
+  //   The overlay disappears onto the correct screen, never onto /login.
   //
   // New device / fresh install / explicit sign-out:
-  //   SESSION_VERIFIED_KEY is absent or mismatched → isOtpVerified stays false
-  //   → route to /login where the OTP-first policy applies.
+  //   SESSION_VERIFIED_KEY absent or mismatched → isOtpVerified stays false
+  //   → this effect routes to /login where the OTP-first policy applies.
   //
-  // Firebase auth state (+ AsyncStorage check) is guaranteed to resolve
-  // within 5 s by the safety timeout in DriverContext.
+  // Post-OTP fresh login:
+  //   otp.tsx calls router.replace(nextRoute) after confirmOtp() succeeds.
+  //   This effect is a no-op in that path (isOtpVerified=true, just logs).
   useEffect(() => {
     if (authLoading) return;
 
@@ -67,7 +69,9 @@ function RootLayoutNav() {
       return;
     }
 
-    console.log("[AUTH_ROUTE] chosenRoute = post-otp (session restored or fresh OTP)");
+    // isOtpVerified=true: navigation was already handled by either
+    // otp.tsx (fresh OTP) or onAuthStateChanged (session restore).
+    console.log("[AUTH_ROUTE] chosenRoute = (handled upstream — session restore or fresh OTP)");
   }, [authLoading, driverUid, isOtpVerified]);
 
   // Auth-loading overlay — disappears when authLoading becomes false.
