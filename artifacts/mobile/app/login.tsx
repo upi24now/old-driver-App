@@ -47,13 +47,14 @@ const TRUCK_IMG      = require("@/assets/images/truck-delivery.png");
 const SERVICES: Array<{
   artType:    VehicleArtType;
   image?:     ReturnType<typeof require>;
+  imgScale?:  number;
   title:      string;
   sub:        string;
   accent:     string;
   accentSoft: string;
 }> = [
   { artType: "bike",      image: BIKE_IMG,       title: "2-Wheeler", sub: "Express", accent: B.orange, accentSoft: "#FFF3E0" },
-  { artType: "autoCargo", image: AUTO_CARGO_IMG,  title: "3W Loader", sub: "Economy", accent: B.amber,  accentSoft: "#FFFBEB" },
+  { artType: "autoCargo", image: AUTO_CARGO_IMG,  imgScale: 1.45, title: "3W Loader", sub: "Economy", accent: B.amber,  accentSoft: "#FFFBEB" },
   { artType: "truck",     image: TRUCK_IMG,        title: "4W Loader", sub: "Cargo",   accent: B.indigo, accentSoft: "#EEF2FF" },
 ];
 
@@ -65,12 +66,16 @@ const CHIPS: Array<{ icon: SafeIconName; label: string; color: string; bg: strin
 ];
 
 // ─── ServiceCard ──────────────────────────────────────────────────────────────
-function ServiceCard({ artType, image, title, sub, accent }: typeof SERVICES[number]) {
+function ServiceCard({ artType, image, imgScale, title, sub, accent }: typeof SERVICES[number]) {
   return (
     <View style={styles.serviceCard}>
       <View style={[styles.accentDot, { backgroundColor: accent }]} />
       {image
-        ? <Image source={image} style={styles.serviceImg} resizeMode="contain" />
+        ? <Image
+            source={image}
+            style={[styles.serviceImg, imgScale ? { transform: [{ scale: imgScale }] } : undefined]}
+            resizeMode="contain"
+          />
         : <VehicleArt type={artType} size={62} />
       }
       <Text style={styles.serviceTitle} numberOfLines={1}>{title}</Text>
