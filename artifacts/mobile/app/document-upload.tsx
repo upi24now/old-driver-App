@@ -247,7 +247,7 @@ function showSourceSheet(
   onCamera: () => void,
   onGallery: () => void,
 ) {
-  console.log("[UPLOAD] source sheet opened, isSelfie =", isSelfie);
+  console.log("[UPLOAD_FLOW] opening source sheet, isSelfie =", isSelfie);
   const cameraLabel = isSelfie ? "Take Selfie (Front Camera)" : "Take Photo (Camera)";
   Alert.alert(
     isSelfie ? "Upload Selfie" : "Upload Document",
@@ -256,14 +256,14 @@ function showSourceSheet(
       {
         text: cameraLabel,
         onPress: () => {
-          console.log("[UPLOAD] camera selected");
+          console.log("[UPLOAD_FLOW] camera selected");
           onCamera();
         },
       },
       {
         text: "Choose from Gallery",
         onPress: () => {
-          console.log("[UPLOAD] gallery selected");
+          console.log("[UPLOAD_FLOW] gallery selected");
           onGallery();
         },
       },
@@ -468,7 +468,7 @@ function DocumentCard({
               <View style={[styles.previewBar, { backgroundColor: "rgba(220,38,38,0.88)" }]}>
                 <Text style={styles.previewBarText}>Previous upload (rejected)</Text>
                 <View style={{ flex: 1 }} />
-                <TouchableOpacity style={styles.barBtn} onPress={() => { Alert.alert("TOUCH WORKING", doc.id); console.log("[FORENSIC_TOUCH]", doc.id, "state=reupload-replace"); }} activeOpacity={0.8}>
+                <TouchableOpacity style={styles.barBtn} onPress={() => { console.log("[UPLOAD_FLOW] button pressed", doc.id, "state=reupload-replace"); onUpload(); }} activeOpacity={0.8}>
                   <SafeInlineIcon name="refresh" size={11} color="#fff" />
                   <Text style={styles.barBtnText}>Replace</Text>
                 </TouchableOpacity>
@@ -481,7 +481,7 @@ function DocumentCard({
                 { borderColor: colors.error, backgroundColor: colors.errorSoft },
               ]}
             >
-              <TouchableOpacity style={styles.uploadBtn} onPress={() => { Alert.alert("TOUCH WORKING", doc.id); console.log("[FORENSIC_TOUCH]", doc.id, "state=reupload-empty"); }} activeOpacity={0.82}>
+              <TouchableOpacity style={styles.uploadBtn} onPress={() => { console.log("[UPLOAD_FLOW] button pressed", doc.id, "state=reupload-empty"); onUpload(); }} activeOpacity={0.82}>
                 <View style={[styles.uploadBtnSolid, { backgroundColor: colors.error }]}>
                   <SafeInlineIcon name="arrow" size={17} color="#fff" />
                   <Text style={styles.uploadBtnText}>
@@ -512,7 +512,7 @@ function DocumentCard({
               {doc.isSelfie ? "Selfie saved" : "Document saved"}
             </Text>
             <View style={{ flex: 1 }} />
-            <TouchableOpacity style={styles.barBtn} onPress={() => { Alert.alert("TOUCH WORKING", doc.id); console.log("[FORENSIC_TOUCH]", doc.id, "state=uploaded-retake"); }} activeOpacity={0.8}>
+            <TouchableOpacity style={styles.barBtn} onPress={() => { console.log("[UPLOAD_FLOW] button pressed", doc.id, "state=uploaded-retake"); onUpload(); }} activeOpacity={0.8}>
               <SafeInlineIcon name="refresh" size={11} color="#fff" />
               <Text style={styles.barBtnText}>Retake</Text>
             </TouchableOpacity>
@@ -535,7 +535,7 @@ function DocumentCard({
             { borderColor: colors.primary, backgroundColor: colors.primarySoft },
           ]}
         >
-          <TouchableOpacity style={styles.uploadBtn} onPress={() => { Alert.alert("TOUCH WORKING", doc.id); console.log("[FORENSIC_TOUCH]", doc.id, "state=empty"); }} activeOpacity={0.82}>
+          <TouchableOpacity style={styles.uploadBtn} onPress={() => { console.log("[UPLOAD_FLOW] button pressed", doc.id, "state=empty"); onUpload(); }} activeOpacity={0.82}>
             <View style={[styles.uploadBtnSolid, { backgroundColor: colors.primary }]}>
               <SafeInlineIcon name="camera" size={17} color="#fff" />
               <Text style={styles.uploadBtnText}>
@@ -637,12 +637,12 @@ export default function DocumentUploadScreen() {
       const uri = await pickFn();
       if (uri) {
         patch(id, { uri, uploadedAt: Date.now(), loading: false, freshUpload: true });
-        console.log("[UPLOAD] patch success, id =", id, "uri =", uri);
+        console.log("[UPLOAD_FLOW] upload success, id =", id, "uri =", uri);
       } else {
         patch(id, { loading: false });
       }
     } catch (error) {
-      console.error("[UPLOAD] runPicker failed", error);
+      console.error("[UPLOAD_FLOW] upload error, id =", id, String(error));
       Alert.alert(
         "Upload Error",
         String(error instanceof Error ? error.message : error),
@@ -652,10 +652,10 @@ export default function DocumentUploadScreen() {
   }
 
   function handleUpload(doc: DocSpec) {
-    console.log("[UPLOAD] button pressed, doc id =", doc.id);
+    console.log("[UPLOAD_FLOW] button pressed, doc id =", doc.id);
     const st = docs[doc.id];
     const lock = normalizeLock(st.status, !!st.uri);
-    console.log("[UPLOAD] lock result =", lock);
+    console.log("[UPLOAD_FLOW] lock =", lock);
     // Defensive guard — buttons are hidden for locked/waiting, but guard anyway
     if (lock === "locked" || lock === "waiting") return;
     showSourceSheet(
