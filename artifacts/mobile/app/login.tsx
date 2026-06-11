@@ -40,8 +40,9 @@ const B = {
 } as const;
 
 // ─── Service cards data ───────────────────────────────────────────────────────
-const BIKE_IMG      = require("@/assets/images/bike-delivery.png");
+const BIKE_IMG       = require("@/assets/images/bike-delivery.png");
 const AUTO_CARGO_IMG = require("@/assets/images/auto-cargo-delivery.png");
+const TRUCK_IMG      = require("@/assets/images/truck-delivery.png");
 
 const SERVICES: Array<{
   artType:    VehicleArtType;
@@ -53,7 +54,7 @@ const SERVICES: Array<{
 }> = [
   { artType: "bike",      image: BIKE_IMG,       title: "2-Wheeler", sub: "Express", accent: B.orange, accentSoft: "#FFF3E0" },
   { artType: "autoCargo", image: AUTO_CARGO_IMG,  title: "3W Loader", sub: "Economy", accent: B.amber,  accentSoft: "#FFFBEB" },
-  { artType: "truck",                             title: "4W Loader", sub: "Cargo",   accent: B.indigo, accentSoft: "#EEF2FF" },
+  { artType: "truck",     image: TRUCK_IMG,        title: "4W Loader", sub: "Cargo",   accent: B.indigo, accentSoft: "#EEF2FF" },
 ];
 
 // ─── Trust chips data ─────────────────────────────────────────────────────────
