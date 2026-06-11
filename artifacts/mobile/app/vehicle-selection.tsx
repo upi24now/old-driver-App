@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Animated,
+  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -46,6 +47,7 @@ type VehicleOption = {
   capacity:     string;
   price:        string;
   artType:      VehicleArtType;
+  image?:       ReturnType<typeof require>;
   capacityType: "passenger" | "cargo";
   category:     Exclude<Category, "All">;
   popular?:     boolean;
@@ -54,11 +56,13 @@ type VehicleOption = {
   gradMid?:     string;
 };
 
+const BIKE_IMG = require("@/assets/images/bike-delivery.png");
+
 const VEHICLES: VehicleOption[] = [
   {
     id: "bike",        name: "Bike Delivery",  tagline: "Quick parcel rides",
     capacity: "1 Parcel",  price: "₹6/km",   artType: "bike",      capacityType: "cargo",
-    category: "2 Wheeler", popular: true,
+    category: "2 Wheeler", popular: true,     image: BIKE_IMG,
     gradStart: "#FF6B9D",  gradMid: "#E8336C",  gradEnd: "#9B59B6",
   },
   {
@@ -204,7 +208,10 @@ function VehicleCard({
             </View>
           )}
 
-          <VehicleArt type={vehicle.artType} size={82} />
+          {vehicle.image
+            ? <Image source={vehicle.image} style={styles.vehicleImg} resizeMode="contain" />
+            : <VehicleArt type={vehicle.artType} size={82} />
+          }
         </LinearGradient>
 
         {/* ── Text bottom ── */}
@@ -627,6 +634,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
+  },
+  vehicleImg: {
+    width:  90,
+    height: 78,
   },
   badge: {
     position: "absolute",
