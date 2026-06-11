@@ -455,7 +455,7 @@ function DocumentCard({
               <View style={[styles.previewBar, { backgroundColor: "rgba(220,38,38,0.88)" }]}>
                 <Text style={styles.previewBarText}>Previous upload (rejected)</Text>
                 <View style={{ flex: 1 }} />
-                <TouchableOpacity style={styles.barBtn} onPress={onUpload} activeOpacity={0.8}>
+                <TouchableOpacity style={styles.barBtn} onPress={() => { console.log("[UPLOAD_TOUCH] visible button tapped", doc.id, "state=reupload-replace"); onUpload(); }} activeOpacity={0.8}>
                   <Feather name="refresh-cw" size={11} color="#fff" />
                   <Text style={styles.barBtnText}>Replace</Text>
                 </TouchableOpacity>
@@ -468,7 +468,7 @@ function DocumentCard({
                 { borderColor: colors.error, backgroundColor: colors.errorSoft },
               ]}
             >
-              <TouchableOpacity style={styles.uploadBtn} onPress={onUpload} activeOpacity={0.82}>
+              <TouchableOpacity style={styles.uploadBtn} onPress={() => { console.log("[UPLOAD_TOUCH] visible button tapped", doc.id, "state=reupload-empty"); onUpload(); }} activeOpacity={0.82}>
                 <View style={[styles.uploadBtnSolid, { backgroundColor: colors.error }]}>
                   <Feather name="upload" size={17} color="#fff" />
                   <Text style={styles.uploadBtnText}>
@@ -499,7 +499,7 @@ function DocumentCard({
               {doc.isSelfie ? "Selfie saved" : "Document saved"}
             </Text>
             <View style={{ flex: 1 }} />
-            <TouchableOpacity style={styles.barBtn} onPress={onUpload} activeOpacity={0.8}>
+            <TouchableOpacity style={styles.barBtn} onPress={() => { console.log("[UPLOAD_TOUCH] visible button tapped", doc.id, "state=uploaded-retake"); onUpload(); }} activeOpacity={0.8}>
               <Feather name="refresh-cw" size={11} color="#fff" />
               <Text style={styles.barBtnText}>Retake</Text>
             </TouchableOpacity>
@@ -522,7 +522,7 @@ function DocumentCard({
             { borderColor: colors.primary, backgroundColor: colors.primarySoft },
           ]}
         >
-          <TouchableOpacity style={styles.uploadBtn} onPress={onUpload} activeOpacity={0.82}>
+          <TouchableOpacity style={styles.uploadBtn} onPress={() => { console.log("[UPLOAD_TOUCH] visible button tapped", doc.id, "state=empty"); onUpload(); }} activeOpacity={0.82}>
             <View style={[styles.uploadBtnSolid, { backgroundColor: colors.primary }]}>
               <Feather name="camera" size={17} color="#fff" />
               <Text style={styles.uploadBtnText}>
@@ -798,6 +798,7 @@ export default function DocumentUploadScreen() {
 
       {/* ────── Scroll content ────── */}
       <ScrollView
+        style={{ flex: 1 }}
         contentContainerStyle={[
           styles.scroll,
           { paddingBottom: insets.bottom + 180 },
@@ -875,7 +876,10 @@ export default function DocumentUploadScreen() {
       </ScrollView>
 
       {/* ────── Sticky footer ────── */}
+      {/* pointerEvents="box-none": footer background is touch-transparent so cards
+          scrolled behind it still receive taps; child buttons remain interactive. */}
       <View
+        pointerEvents="box-none"
         style={[
           styles.footer,
           {
@@ -1109,16 +1113,21 @@ const styles = StyleSheet.create({
   rejectedBannerText: { fontSize: 13, fontWeight: "700" },
 
   // Upload zone — bg/border injected inline
+  // NOTE: borderStyle:"dashed" is intentionally NOT used — on Android it uses a
+  // special canvas path that silently blocks all touch events on children.
   uploadZone: {
     borderWidth: 1.5,
-    borderStyle: "dashed",
+    borderStyle: "solid",
     borderRadius: 14,
     paddingVertical: 16,
     paddingHorizontal: 14,
     alignItems: "center",
     gap: 10,
   },
-  uploadBtn:      { width: "100%", borderRadius: 12, overflow: "hidden" },
+  // NOTE: overflow:"hidden" is on the inner solid View, NOT on the TouchableOpacity.
+  // On Android New Architecture (RN 0.81+) overflow:"hidden" on a TouchableOpacity
+  // clips the touch ripple area and can prevent press registration entirely.
+  uploadBtn:      { width: "100%", borderRadius: 12 },
   uploadBtnSolid: {
     flexDirection: "row",
     alignItems: "center",
@@ -1126,6 +1135,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 14,
     borderRadius: 12,
+    overflow: "hidden",
   },
   uploadBtnText: { fontSize: 15, fontWeight: "700", color: "#fff" },
   uploadHint:    { fontSize: 12, textAlign: "center" },
