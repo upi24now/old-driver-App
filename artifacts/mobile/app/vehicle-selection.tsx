@@ -61,7 +61,7 @@ const VEHICLES: VehicleOption[] = [
   },
   {
     id: "scooter",     name: "Scooter",        tagline: "Light delivery rides",
-    capacity: "1 Parcel",  price: "₹5/km",   mcIcon: "motorbike",  capacityType: "cargo",
+    capacity: "1 Parcel",  price: "₹5/km",   mcIcon: "scooter",    capacityType: "cargo",
     category: "2 Wheeler",
     gradStart: "#FF8C69",  gradEnd: "#FFA726",
   },

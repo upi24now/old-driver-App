@@ -123,7 +123,7 @@ const DOCS: DocSpec[] = [
     id: "rc",
     title: "Vehicle RC",
     description: "Registration Certificate of your vehicle",
-    icon: "file",
+    icon: "file-text",
     hint: "RC book / smart card — all details clearly visible",
   },
   {

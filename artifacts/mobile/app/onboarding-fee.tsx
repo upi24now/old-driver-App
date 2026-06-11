@@ -19,7 +19,7 @@
  */
 
 import { LinearGradient } from "expo-linear-gradient";
-import { Feather } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -64,10 +64,10 @@ const FALLBACK_CONFIG: OnboardingFeeConfig = {
 };
 
 const CHECKLIST = [
-  { icon: "file-text" as const, label: "Document verification" },
-  { icon: "shield"    as const, label: "Verified driver badge" },
-  { icon: "map-pin"   as const, label: "Unlimited order access" },
-  { icon: "headphones"as const, label: "Priority support" },
+  { icon: "file-text"  as const, label: "Document verification" },
+  { icon: "award"      as const, label: "Verified driver badge" },
+  { icon: "package"    as const, label: "Unlimited order access" },
+  { icon: "headphones" as const, label: "Priority support" },
 ];
 
 export default function OnboardingFeeScreen() {
@@ -267,10 +267,10 @@ export default function OnboardingFeeScreen() {
         {/* ── Main compact activation card ── */}
         <View style={s.card}>
 
-          {/* Card header — shield + title */}
+          {/* Card header — shield-check + title */}
           <View style={s.cardHeaderRow}>
             <LinearGradient colors={[PINK, HOT_PINK]} style={s.cardIconBox}>
-              <Feather name="shield" size={22} color="#fff" />
+              <MaterialCommunityIcons name="shield-check" size={22} color="#fff" />
             </LinearGradient>
             <View style={{ flex: 1 }}>
               <Text style={s.cardTitle}>Driver Account Activation</Text>
@@ -327,7 +327,7 @@ export default function OnboardingFeeScreen() {
                 <>
                   <Feather name="lock" size={15} color="#fff" />
                   <Text style={s.payBtnText}>Pay ₹{amount} — Activate Account</Text>
-                  <Text style={s.payArrow}>→</Text>
+                  <Feather name="arrow-right" size={15} color="#fff" />
                 </>
               )}
             </LinearGradient>
@@ -543,7 +543,6 @@ const s = StyleSheet.create({
     paddingVertical: 16, gap: 7, borderRadius: 14,
   },
   payBtnText: { fontSize: 15, fontWeight: "800", color: "#fff", fontFamily: "Inter_700Bold" },
-  payArrow:   { fontSize: 16, fontWeight: "900", color: "#fff" },
 
   trustLineRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 10 },
   trustLine: { textAlign: "center", fontSize: 11, color: MUTED, fontFamily: "Inter_400Regular" },

@@ -596,7 +596,7 @@ export default function ProfileSetupScreen() {
 
         {/* ─── 4. Vehicle Details Card ─── */}
         <SectionCard>
-          <CardTitle label="Vehicle Details" icon="key" />
+          <CardTitle label="Vehicle Details" icon="hash" />
 
           <FieldInput
             label="Vehicle Number"
@@ -620,7 +620,7 @@ export default function ProfileSetupScreen() {
         {/* ─── 5. Verification Info Card ─── */}
         <View style={styles.verifyCard}>
           <View style={styles.verifyIconWrap}>
-            <Feather name="shield" size={20} color="#047857" />
+            <MaterialCommunityIcons name="shield-check" size={20} color="#047857" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.verifyTitle}>Verification Process</Text>
