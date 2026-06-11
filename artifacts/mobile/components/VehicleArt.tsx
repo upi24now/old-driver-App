@@ -1,5 +1,12 @@
 import React from "react";
-import { View, StyleSheet } from "react-native";
+import Svg, {
+  Circle,
+  Ellipse,
+  G,
+  Line,
+  Path,
+  Rect,
+} from "react-native-svg";
 
 export type VehicleArtType =
   | "bike"
@@ -9,194 +16,415 @@ export type VehicleArtType =
   | "car"
   | "truck";
 
-type Props = {
+interface Props {
   type: VehicleArtType;
   size?: number;
-};
+}
 
+// viewBox is 100 × 72 for all vehicles.
+// Wheels sit on a virtual ground at y ≈ 67.
 export function VehicleArt({ type, size = 74 }: Props) {
-  const scale = size / 74;
-
   return (
-    <View style={[styles.wrap, { width: size, height: size }]}>
-      <View style={styles.glow} />
-
-      {type === "bike"      ? <Bike      scale={scale} /> : null}
-      {type === "scooter"   ? <Scooter   scale={scale} /> : null}
-      {type === "auto"      ? <Auto      scale={scale} /> : null}
-      {type === "autoCargo" ? <AutoCargo scale={scale} /> : null}
-      {type === "car"       ? <Car       scale={scale} /> : null}
-      {type === "truck"     ? <Truck     scale={scale} /> : null}
-    </View>
-  );
-}
-
-function Wheel({ left, top, scale }: { left: number; top: number; scale: number }) {
-  return (
-    <View
-      style={[
-        styles.wheel,
-        {
-          left:         left   * scale,
-          top:          top    * scale,
-          width:        13     * scale,
-          height:       13     * scale,
-          borderRadius: 7      * scale,
-        },
-      ]}
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 100 72"
+      preserveAspectRatio="xMidYMid meet"
     >
-      <View
-        style={[
-          styles.wheelInner,
-          {
-            width:        6 * scale,
-            height:       6 * scale,
-            borderRadius: 3 * scale,
-          },
-        ]}
+      {type === "bike"      ? <BikeArt />      : null}
+      {type === "scooter"   ? <ScooterArt />   : null}
+      {type === "auto"      ? <AutoArt />      : null}
+      {type === "autoCargo" ? <AutoCargoArt /> : null}
+      {type === "car"       ? <CarArt />       : null}
+      {type === "truck"     ? <TruckArt />     : null}
+    </Svg>
+  );
+}
+
+// ─── Shared wheel component ───────────────────────────────────────────────────
+function Wheel({ cx, cy, r }: { cx: number; cy: number; r: number }) {
+  return (
+    <G>
+      <Circle cx={cx} cy={cy} r={r}           fill="#1F2937" />
+      <Circle cx={cx} cy={cy} r={r * 0.55}    fill="#374151" />
+      <Circle cx={cx} cy={cy} r={r * 0.22}    fill="#9CA3AF" />
+    </G>
+  );
+}
+
+// ─── Bike (delivery motorcycle + rear cargo box) ──────────────────────────────
+// rear-wheel cx=23 cy=55 r=12   front-wheel cx=77 cy=57 r=10
+function BikeArt() {
+  return (
+    <G>
+      {/* — cargo box (orange, mounted rear) — */}
+      <Rect x="4"  y="20" width="23" height="18" rx="2.5" fill="#F97316" />
+      <Rect x="4"  y="20" width="23" height="5"  rx="2.5" fill="#C2410C" />
+      <Rect x="8"  y="27" width="15" height="2"  rx="1"   fill="rgba(255,255,255,0.45)" />
+      <Rect x="8"  y="31" width="15" height="2"  rx="1"   fill="rgba(255,255,255,0.45)" />
+
+      {/* — rear fender arc over rear wheel — */}
+      <Path
+        d="M11 43 Q17 36 23 36 Q29 36 34 41"
+        fill="none" stroke="#DC2626" strokeWidth="3"
+        strokeLinecap="round"
       />
-    </View>
+
+      {/* — seat — */}
+      <Rect x="27" y="23" width="31" height="9" rx="4.5" fill="#111827" />
+      <Rect x="29" y="24" width="27" height="4" rx="2"   fill="#374151" />
+
+      {/* — engine / mid body panel — */}
+      <Path
+        d="M26 32 L57 28 L62 43 L42 47 L26 44 Z"
+        fill="#EF4444"
+      />
+      {/* subtle highlight on body */}
+      <Path
+        d="M28 32 L56 28 L59 35 L30 36 Z"
+        fill="#F87171"
+      />
+
+      {/* — rear swingarm — */}
+      <Line
+        x1="23" y1="55" x2="40" y2="47"
+        stroke="#374151" strokeWidth="3" strokeLinecap="round"
+      />
+
+      {/* — upper frame (top tube) — */}
+      <Line
+        x1="56" y1="29" x2="66" y2="29"
+        stroke="#374151" strokeWidth="3" strokeLinecap="round"
+      />
+
+      {/* — head tube — */}
+      <Rect x="63" y="24" width="5" height="16" rx="2.5" fill="#374151" />
+
+      {/* — front fork — */}
+      <Path
+        d="M66 40 L77 57"
+        stroke="#374151" strokeWidth="4" strokeLinecap="round"
+      />
+      <Path
+        d="M68 40 L79 57"
+        stroke="#4B5563" strokeWidth="2" strokeLinecap="round"
+      />
+
+      {/* — handlebar — */}
+      <Rect x="57" y="19" width="18" height="5" rx="2.5" fill="#111827" />
+
+      {/* — headlight — */}
+      <Ellipse cx="81" cy="54" rx="4" ry="3.5" fill="#FDE68A" />
+      <Ellipse cx="81" cy="54" rx="2" ry="2"   fill="#FFF"    opacity="0.6" />
+
+      {/* — exhaust pipe — */}
+      <Path
+        d="M38 53 Q30 58 22 59"
+        fill="none" stroke="#6B7280" strokeWidth="2" strokeLinecap="round"
+      />
+
+      {/* — wheels on top — */}
+      <Wheel cx={23} cy={55} r={12} />
+      <Wheel cx={77} cy={57} r={10} />
+    </G>
   );
 }
 
-function Bike({ scale }: { scale: number }) {
+// ─── Scooter (step-through delivery scooter + small rear box) ─────────────────
+// rear cx=26 cy=57 r=11   front cx=74 cy=57 r=11
+function ScooterArt() {
   return (
-    <View style={StyleSheet.absoluteFill}>
-      <Wheel left={13} top={48} scale={scale} />
-      <Wheel left={48} top={48} scale={scale} />
-      <View style={[styles.bikeBody,   scaled({ left: 22, top: 36, width: 31, height: 10, borderRadius: 7 }, scale)]} />
-      <View style={[styles.bikeSeat,   scaled({ left: 29, top: 29, width: 18, height:  6, borderRadius: 4 }, scale)]} />
-      <View style={[styles.bikeFront,  scaled({ left: 48, top: 28, width:  5, height: 22, borderRadius: 3 }, scale)]} />
-      <View style={[styles.bikeHandle, scaled({ left: 50, top: 25, width: 15, height:  4, borderRadius: 3 }, scale)]} />
-      <View style={[styles.bikeBox,    scaled({ left: 18, top: 28, width: 13, height: 13, borderRadius: 3 }, scale)]} />
-    </View>
+    <G>
+      {/* — small cargo box (rear, pink-orange) — */}
+      <Rect x="7"  y="28" width="18" height="14" rx="2.5" fill="#F97316" />
+      <Rect x="7"  y="28" width="18" height="4"  rx="2.5" fill="#C2410C" />
+      <Rect x="10" y="34" width="12" height="2"  rx="1"   fill="rgba(255,255,255,0.45)" />
+
+      {/* — rear panel / fender — */}
+      <Path
+        d="M10 46 Q18 38 26 38 Q32 38 37 43"
+        fill="none" stroke="#DB2777" strokeWidth="3" strokeLinecap="round"
+      />
+
+      {/* — floorboard / step-through deck — */}
+      <Rect x="25" y="50" width="48" height="7" rx="3.5" fill="#EC4899" />
+
+      {/* — rear body cowl — */}
+      <Path
+        d="M25 42 L50 36 L56 44 L40 50 L25 50 Z"
+        fill="#EC4899"
+      />
+      <Path
+        d="M26 42 L49 36 L54 41 L30 43 Z"
+        fill="#F472B6"
+      />
+
+      {/* — front shield / legshield — */}
+      <Path
+        d="M68 33 L74 31 L76 46 L68 48 Z"
+        fill="#DB2777"
+      />
+
+      {/* — handlebar — */}
+      <Rect x="64" y="22" width="18" height="5" rx="2.5" fill="#111827" />
+
+      {/* — head tube — */}
+      <Rect x="68" y="27" width="5" height="22" rx="2.5" fill="#374151" />
+
+      {/* — seat — */}
+      <Rect x="34" y="30" width="26" height="8" rx="4" fill="#111827" />
+      <Rect x="36" y="31" width="22" height="4" rx="2" fill="#374151" />
+
+      {/* — headlight — */}
+      <Ellipse cx="77" cy="43" rx="4" ry="3.5" fill="#FDE68A" />
+      <Ellipse cx="77" cy="43" rx="2" ry="2"   fill="#FFF"    opacity="0.6" />
+
+      {/* — wheels — */}
+      <Wheel cx={26} cy={57} r={11} />
+      <Wheel cx={74} cy={57} r={11} />
+    </G>
   );
 }
 
-function Scooter({ scale }: { scale: number }) {
+// ─── Auto (auto-rickshaw passenger) ──────────────────────────────────────────
+// rear cx=28 cy=58 r=11   front cx=75 cy=59 r=9
+function AutoArt() {
   return (
-    <View style={StyleSheet.absoluteFill}>
-      <Wheel left={17} top={50} scale={scale} />
-      <Wheel left={48} top={50} scale={scale} />
-      <View style={[styles.scooterDeck,  scaled({ left: 22, top: 43, width: 36, height:  8, borderRadius: 8 }, scale)]} />
-      <View style={[styles.scooterFront, scaled({ left: 50, top: 25, width:  8, height: 25, borderRadius: 5 }, scale)]} />
-      <View style={[styles.scooterSeat,  scaled({ left: 27, top: 32, width: 22, height:  7, borderRadius: 4 }, scale)]} />
-      <View style={[styles.scooterBox,   scaled({ left: 19, top: 27, width: 13, height: 14, borderRadius: 4 }, scale)]} />
-    </View>
+    <G>
+      {/* — roof — */}
+      <Rect x="22" y="12" width="48" height="5" rx="2.5" fill="#111827" />
+
+      {/* — main cabin body — */}
+      <Path
+        d="M22 17 L22 52 L70 52 L70 18 Z"
+        fill="#FACC15"
+      />
+
+      {/* — windscreen (front, right side) — */}
+      <Path
+        d="M63 18 L70 18 L70 40 L63 42 Z"
+        fill="#BAE6FD"
+      />
+      {/* windscreen frame */}
+      <Path
+        d="M63 18 L70 18 L70 40 L63 42 Z"
+        fill="none" stroke="#A16207" strokeWidth="1.5"
+      />
+
+      {/* — window (side open — typical auto) — */}
+      <Path
+        d="M26 18 L60 18 L60 38 L26 38 Z"
+        fill="rgba(255,255,255,0.18)"
+      />
+      {/* window frame lines */}
+      <Line
+        x1="26" y1="38" x2="60" y2="38"
+        stroke="#A16207" strokeWidth="1.5"
+      />
+      <Line
+        x1="43" y1="18" x2="43" y2="38"
+        stroke="#A16207" strokeWidth="1.5"
+      />
+
+      {/* — cabin floor / step — */}
+      <Rect x="22" y="50" width="48" height="5" rx="0" fill="#CA8A04" />
+
+      {/* — front hood / cowl — */}
+      <Path
+        d="M70 28 L82 28 L82 50 L70 50 Z"
+        fill="#111827"
+      />
+      {/* — headlight (front) — */}
+      <Ellipse cx="83" cy="46" rx="4" ry="3.5" fill="#FDE68A" />
+      <Ellipse cx="83" cy="46" rx="2" ry="2"   fill="#FFF"    opacity="0.6" />
+
+      {/* — handlebar (partially visible inside) — */}
+      <Rect x="71" y="32" width="8" height="3" rx="1.5" fill="#374151" />
+
+      {/* — roof strut lines — */}
+      <Line x1="22" y1="17" x2="22" y2="52" stroke="#A16207" strokeWidth="1.5" />
+      <Line x1="62" y1="17" x2="62" y2="52" stroke="#A16207" strokeWidth="1.5" />
+
+      {/* — rear wheel — */}
+      <Wheel cx={28} cy={58} r={11} />
+      {/* — front wheel — */}
+      <Wheel cx={75} cy={59} r={9} />
+    </G>
   );
 }
 
-function Auto({ scale }: { scale: number }) {
+// ─── Auto Cargo (3-wheeler cargo loader) ─────────────────────────────────────
+// rear cx=26 cy=57 r=12   front cx=78 cy=58 r=9
+function AutoCargoArt() {
   return (
-    <View style={StyleSheet.absoluteFill}>
-      <Wheel left={14} top={49} scale={scale} />
-      <Wheel left={48} top={49} scale={scale} />
-      <View style={[styles.autoBase,   scaled({ left: 14, top: 36, width: 48, height: 17, borderRadius: 6 }, scale)]} />
-      <View style={[styles.autoCab,    scaled({ left: 24, top: 22, width: 28, height: 18, borderRadius: 7 }, scale)]} />
-      <View style={[styles.autoWindow, scaled({ left: 31, top: 26, width: 14, height: 10, borderRadius: 3 }, scale)]} />
-      <View style={[styles.autoRoof,   scaled({ left: 21, top: 19, width: 34, height:  6, borderRadius: 5 }, scale)]} />
-    </View>
+    <G>
+      {/* — cargo box (main, orange) — */}
+      <Rect x="4"  y="18" width="46" height="34" rx="3" fill="#F97316" />
+      {/* box top panel (darker) */}
+      <Rect x="4"  y="18" width="46" height="6"  rx="3" fill="#C2410C" />
+      {/* cargo stripes */}
+      <Rect x="9"  y="27" width="36" height="3"  rx="1.5" fill="rgba(255,255,255,0.4)" />
+      <Rect x="9"  y="34" width="36" height="3"  rx="1.5" fill="rgba(255,255,255,0.4)" />
+      <Rect x="9"  y="41" width="36" height="3"  rx="1.5" fill="rgba(255,255,255,0.4)" />
+      {/* door line */}
+      <Line
+        x1="27" y1="24" x2="27" y2="52"
+        stroke="rgba(0,0,0,0.25)" strokeWidth="2"
+      />
+
+      {/* — cab (green, right side) — */}
+      <Rect x="48" y="26" width="28" height="26" rx="3" fill="#16A34A" />
+      {/* cab window */}
+      <Rect x="52" y="30" width="20" height="15" rx="2" fill="#BAE6FD" />
+      <Rect x="52" y="30" width="20" height="15" rx="2"
+            fill="none" stroke="#15803D" strokeWidth="1.5" />
+      {/* window reflections */}
+      <Line
+        x1="55" y1="30" x2="55" y2="45"
+        stroke="rgba(255,255,255,0.4)" strokeWidth="1.5"
+      />
+
+      {/* — front hood — */}
+      <Path
+        d="M74 38 L82 38 L82 52 L74 52 Z"
+        fill="#111827"
+      />
+      {/* headlight */}
+      <Ellipse cx="83" cy="49" rx="4" ry="3.5" fill="#FDE68A" />
+      <Ellipse cx="83" cy="49" rx="2" ry="2"   fill="#FFF"    opacity="0.6" />
+
+      {/* — floor panel — */}
+      <Rect x="4" y="50" width="74" height="5" rx="0" fill="#15803D" />
+
+      {/* — wheels — */}
+      <Wheel cx={26} cy={57} r={12} />
+      <Wheel cx={78} cy={58} r={9}  />
+    </G>
   );
 }
 
-function AutoCargo({ scale }: { scale: number }) {
+// ─── Car (compact sedan) ──────────────────────────────────────────────────────
+// rear cx=20 cy=57 r=11   front cx=78 cy=57 r=11
+function CarArt() {
   return (
-    <View style={StyleSheet.absoluteFill}>
-      <Wheel left={13} top={50} scale={scale} />
-      <Wheel left={51} top={50} scale={scale} />
-      <View style={[styles.cargoBox,    scaled({ left: 12, top: 27, width: 28, height: 25, borderRadius: 5 }, scale)]} />
-      <View style={[styles.cargoCab,    scaled({ left: 40, top: 34, width: 21, height: 18, borderRadius: 5 }, scale)]} />
-      <View style={[styles.cargoWindow, scaled({ left: 45, top: 37, width: 10, height:  8, borderRadius: 2 }, scale)]} />
-      <View style={[styles.cargoLine,   scaled({ left: 17, top: 33, width: 18, height:  3, borderRadius: 2 }, scale)]} />
-      <View style={[styles.cargoLine,   scaled({ left: 17, top: 40, width: 18, height:  3, borderRadius: 2 }, scale)]} />
-    </View>
+    <G>
+      {/* — body lower (sill / floor) — */}
+      <Rect x="10" y="46" width="80" height="14" rx="5" fill="#2563EB" />
+
+      {/* — body upper (cabin) — */}
+      <Path
+        d="M28 46 C30 28 40 20 56 20 C68 20 76 26 80 36 L80 46 Z"
+        fill="#3B82F6"
+      />
+      {/* cabin roof highlight */}
+      <Path
+        d="M32 44 C34 30 42 23 56 23 C66 23 73 28 77 38 L77 44 Z"
+        fill="#60A5FA"
+      />
+
+      {/* — windscreen — */}
+      <Path
+        d="M56 23 C67 23 73 28 76 37 L59 37 Z"
+        fill="#BAE6FD"
+      />
+      <Path
+        d="M56 23 C67 23 73 28 76 37 L59 37 Z"
+        fill="none" stroke="#1E40AF" strokeWidth="1.5"
+      />
+
+      {/* — rear window — */}
+      <Path
+        d="M32 44 C34 30 40 24 52 23 L52 37 L32 44 Z"
+        fill="#BAE6FD"
+        opacity="0.85"
+      />
+      <Path
+        d="M32 44 C34 30 40 24 52 23 L52 37 L32 44 Z"
+        fill="none" stroke="#1E40AF" strokeWidth="1.5"
+      />
+
+      {/* — side window — */}
+      <Rect x="53" y="24" width="5" height="13" rx="1" fill="#93C5FD" />
+
+      {/* — door line — */}
+      <Line
+        x1="54" y1="37" x2="54" y2="46"
+        stroke="#1D4ED8" strokeWidth="1.5"
+      />
+
+      {/* — headlight — */}
+      <Ellipse cx="86" cy="47" rx="5" ry="3.5" fill="#FDE68A" />
+      <Ellipse cx="86" cy="47" rx="2.5" ry="2" fill="#FFF"    opacity="0.7" />
+
+      {/* — tail-light — */}
+      <Ellipse cx="12" cy="47" rx="4" ry="3" fill="#FCA5A5" />
+
+      {/* — door handles — */}
+      <Rect x="37" y="43" width="8" height="2" rx="1" fill="#1E40AF" />
+      <Rect x="61" y="43" width="8" height="2" rx="1" fill="#1E40AF" />
+
+      {/* — wheels — */}
+      <Wheel cx={20} cy={57} r={11} />
+      <Wheel cx={78} cy={57} r={11} />
+    </G>
   );
 }
 
-function Car({ scale }: { scale: number }) {
+// ─── Truck (delivery mini-truck) ─────────────────────────────────────────────
+// rear cx=20 cy=55 r=13   front cx=79 cy=56 r=10
+function TruckArt() {
   return (
-    <View style={StyleSheet.absoluteFill}>
-      <Wheel left={17} top={49} scale={scale} />
-      <Wheel left={48} top={49} scale={scale} />
-      <View style={[styles.carBase,   scaled({ left: 14, top: 39, width: 48, height: 16, borderRadius: 8 }, scale)]} />
-      <View style={[styles.carTop,    scaled({ left: 25, top: 28, width: 28, height: 16, borderRadius: 7 }, scale)]} />
-      <View style={[styles.carWindow, scaled({ left: 30, top: 31, width: 18, height:  8, borderRadius: 3 }, scale)]} />
-      <View style={[styles.carLight,  scaled({ left: 57, top: 44, width:  5, height:  4, borderRadius: 2 }, scale)]} />
-    </View>
+    <G>
+      {/* — cargo box (main body, orange) — */}
+      <Rect x="4"  y="14" width="52" height="40" rx="3" fill="#F97316" />
+      {/* roof highlight */}
+      <Rect x="4"  y="14" width="52" height="7"  rx="3" fill="#C2410C" />
+      {/* horizontal stripes (branding) */}
+      <Rect x="8"  y="25" width="44" height="4"  rx="2" fill="rgba(255,255,255,0.35)" />
+      <Rect x="8"  y="33" width="44" height="4"  rx="2" fill="rgba(255,255,255,0.35)" />
+      <Rect x="8"  y="41" width="44" height="4"  rx="2" fill="rgba(255,255,255,0.35)" />
+      {/* rear doors split */}
+      <Line
+        x1="30" y1="21" x2="30" y2="54"
+        stroke="rgba(0,0,0,0.2)" strokeWidth="2"
+      />
+      {/* rear door handles */}
+      <Rect x="19" y="38" width="6" height="2.5" rx="1.5" fill="rgba(0,0,0,0.3)" />
+      <Rect x="32" y="38" width="6" height="2.5" rx="1.5" fill="rgba(0,0,0,0.3)" />
+
+      {/* — cab (blue) — */}
+      <Rect x="54" y="24" width="30" height="30" rx="4" fill="#2563EB" />
+      {/* cab window */}
+      <Rect x="58" y="28" width="22" height="16" rx="2" fill="#BAE6FD" />
+      <Rect x="58" y="28" width="22" height="16" rx="2"
+            fill="none" stroke="#1D4ED8" strokeWidth="1.5" />
+      {/* window highlight */}
+      <Line
+        x1="62" y1="28" x2="62" y2="44"
+        stroke="rgba(255,255,255,0.45)" strokeWidth="2"
+      />
+
+      {/* — front bumper / hood — */}
+      <Rect x="82" y="38" width="8" height="16" rx="3" fill="#1E40AF" />
+      {/* headlight */}
+      <Ellipse cx="87" cy="48" rx="4.5" ry="3.5" fill="#FDE68A" />
+      <Ellipse cx="87" cy="48" rx="2"   ry="2"   fill="#FFF"    opacity="0.7" />
+
+      {/* — roof cap (joins cab to box) — */}
+      <Path
+        d="M54 24 L54 28 L58 28 L58 24 Z"
+        fill="#1D4ED8"
+      />
+
+      {/* — floor sill — */}
+      <Rect x="4" y="52" width="86" height="5" rx="0" fill="#1D4ED8" />
+
+      {/* — fuel tank (small, under cab) — */}
+      <Rect x="56" y="51" width="14" height="5" rx="2" fill="#1E40AF" />
+
+      {/* — wheels — */}
+      <Wheel cx={20} cy={55} r={13} />
+      <Wheel cx={79} cy={56} r={10} />
+    </G>
   );
 }
-
-function Truck({ scale }: { scale: number }) {
-  return (
-    <View style={StyleSheet.absoluteFill}>
-      <Wheel left={14} top={50} scale={scale} />
-      <Wheel left={51} top={50} scale={scale} />
-      <View style={[styles.truckBox,    scaled({ left: 10, top: 25, width: 34, height: 27, borderRadius: 5 }, scale)]} />
-      <View style={[styles.truckCab,    scaled({ left: 43, top: 34, width: 20, height: 18, borderRadius: 5 }, scale)]} />
-      <View style={[styles.truckWindow, scaled({ left: 48, top: 37, width: 10, height:  8, borderRadius: 2 }, scale)]} />
-      <View style={[styles.truckStripe, scaled({ left: 15, top: 33, width: 24, height:  4, borderRadius: 2 }, scale)]} />
-    </View>
-  );
-}
-
-function scaled(base: Record<string, number>, scale: number): Record<string, number> {
-  const result: Record<string, number> = {};
-  for (const key of Object.keys(base)) {
-    result[key] = base[key]! * scale;
-  }
-  return result;
-}
-
-const styles = StyleSheet.create({
-  wrap: {
-    alignItems:      "center",
-    justifyContent:  "center",
-  },
-  glow: {
-    position:        "absolute",
-    width:           "86%",
-    height:          "86%",
-    borderRadius:    999,
-    backgroundColor: "rgba(255,255,255,0.22)",
-  },
-  wheel: {
-    position:        "absolute",
-    backgroundColor: "#111827",
-    alignItems:      "center",
-    justifyContent:  "center",
-  },
-  wheelInner: {
-    backgroundColor: "#CBD5E1",
-  },
-
-  bikeBody:   { position: "absolute", backgroundColor: "#EF4444" },
-  bikeSeat:   { position: "absolute", backgroundColor: "#111827" },
-  bikeFront:  { position: "absolute", backgroundColor: "#111827" },
-  bikeHandle: { position: "absolute", backgroundColor: "#111827" },
-  bikeBox:    { position: "absolute", backgroundColor: "#F97316" },
-
-  scooterDeck:  { position: "absolute", backgroundColor: "#EC4899" },
-  scooterFront: { position: "absolute", backgroundColor: "#111827" },
-  scooterSeat:  { position: "absolute", backgroundColor: "#111827" },
-  scooterBox:   { position: "absolute", backgroundColor: "#F97316" },
-
-  autoBase:   { position: "absolute", backgroundColor: "#16A34A" },
-  autoCab:    { position: "absolute", backgroundColor: "#FACC15" },
-  autoWindow: { position: "absolute", backgroundColor: "#DBEAFE" },
-  autoRoof:   { position: "absolute", backgroundColor: "#111827" },
-
-  cargoBox:    { position: "absolute", backgroundColor: "#F97316" },
-  cargoCab:    { position: "absolute", backgroundColor: "#16A34A" },
-  cargoWindow: { position: "absolute", backgroundColor: "#DBEAFE" },
-  cargoLine:   { position: "absolute", backgroundColor: "rgba(255,255,255,0.75)" },
-
-  carBase:   { position: "absolute", backgroundColor: "#2563EB" },
-  carTop:    { position: "absolute", backgroundColor: "#60A5FA" },
-  carWindow: { position: "absolute", backgroundColor: "#DBEAFE" },
-  carLight:  { position: "absolute", backgroundColor: "#FACC15" },
-
-  truckBox:    { position: "absolute", backgroundColor: "#F97316" },
-  truckCab:    { position: "absolute", backgroundColor: "#2563EB" },
-  truckWindow: { position: "absolute", backgroundColor: "#DBEAFE" },
-  truckStripe: { position: "absolute", backgroundColor: "rgba(255,255,255,0.75)" },
-});
