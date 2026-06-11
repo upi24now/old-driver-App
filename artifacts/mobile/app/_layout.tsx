@@ -11,7 +11,7 @@ import * as Location from "expo-location";
 import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef, useState } from "react";
-import { Platform } from "react-native";
+import { ActivityIndicator, Platform, StyleSheet, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -23,6 +23,7 @@ import { ThemeProvider } from "@/contexts/ThemeContext";
 import { useNotifications } from "@/hooks/useNotifications";
 import { checkNotificationPermissions } from "@/utils/notifications";
 import { PERMISSION_SETUP_VERSION } from "@/utils/firestore";
+import { firebaseAuth } from "@/utils/firebase";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -49,15 +50,32 @@ function RootLayoutNav() {
   // /login even after the initial auth-restore has already run.
   const hasNavigated = useRef(false);
   useEffect(() => {
+    // ── Debug snapshot — logged on every dep change, including while loading ──
+    console.log("[_AUTH_ROUTE] authLoading =",          authLoading);
+    console.log("[_AUTH_ROUTE] firebaseUser =",         firebaseAuth.currentUser?.uid ?? null);
+    console.log("[_AUTH_ROUTE] driverUid =",            driverUid);
+    console.log("[_AUTH_ROUTE] vehicleId =",            vehicle?.id ?? null);
+    console.log("[_AUTH_ROUTE] profileName =",          profile?.name ?? null);
+    console.log("[_AUTH_ROUTE] documentsSubmitted =",   documentsSubmitted);
+    console.log("[_AUTH_ROUTE] onboardingFeeStatus =",  onboardingFeeStatus);
+    console.log("[_AUTH_ROUTE] verificationStatus =",   verificationStatus);
+
     if (authLoading) return;
+
+    // ── Safety net: cross-check React state against the live Firebase session ──
+    // Guards against stale driverUid state surviving a session expiry or any
+    // edge-case where the React state and Firebase diverge (e.g. a Firestore
+    // read failure that set driverUid without a valid session being present).
+    const firebaseUser = firebaseAuth.currentUser;
 
     // Unauthenticated — always redirect to /login.
     // Placed before the hasNavigated gate so that:
     //   (a) Fresh/logged-out app start → login screen.
     //   (b) Explicit signOut() call (driverUid → null) → login screen,
     //       even though hasNavigated is already true from the prior session.
-    if (!driverUid) {
-      console.log("[Auth] no session → login");
+    //   (c) Firebase session missing even though driverUid state is stale → login.
+    if (!driverUid || !firebaseUser) {
+      console.log("[_AUTH_ROUTE] chosenRoute = /login (uid:", driverUid, "firebase:", firebaseUser?.uid ?? null, ")");
       router.replace("/login");
       return;
     }
@@ -74,20 +92,37 @@ function RootLayoutNav() {
       documentsSubmitted, verificationStatus, backgroundSetupShown,
     });
 
-    if (!vehicle?.id)   { console.log("[Auth] → vehicle-selection"); router.replace("/vehicle-selection"); return; }
-    if (!profile?.name) { console.log("[Auth] → profile-setup");     router.replace("/profile-setup");     return; }
+    if (!vehicle?.id) {
+      console.log("[_AUTH_ROUTE] chosenRoute = /vehicle-selection");
+      router.replace("/vehicle-selection");
+      return;
+    }
+    if (!profile?.name) {
+      console.log("[_AUTH_ROUTE] chosenRoute = /profile-setup");
+      router.replace("/profile-setup");
+      return;
+    }
 
     // Approved/verified drivers skip document, fee, and verification-pending checks.
     // documentsSubmitted may be absent on manually-onboarded drivers — that must never
     // block an already-approved driver from reaching the dashboard.
     const isApproved = verificationStatus === "approved" || verificationStatus === "verified";
     if (!isApproved) {
-      if (!documentsSubmitted) { console.log("[Auth] → document-upload");      router.replace("/document-upload");      return; }
+      if (!documentsSubmitted) {
+        console.log("[_AUTH_ROUTE] chosenRoute = /document-upload");
+        router.replace("/document-upload");
+        return;
+      }
       // Fee screen: only when onboardingFeeApplies is explicitly true (brand-new signup).
       // Existing drivers never have this field set, so they always skip this branch.
       if (onboardingFeeApplies && onboardingFeeStatus !== "paid") {
-                                 console.log("[Auth] → onboarding-fee");       router.replace("/onboarding-fee");       return; }
-                                 console.log("[Auth] → verification-pending"); router.replace("/verification-pending"); return;
+        console.log("[_AUTH_ROUTE] chosenRoute = /onboarding-fee");
+        router.replace("/onboarding-fee");
+        return;
+      }
+      console.log("[_AUTH_ROUTE] chosenRoute = /verification-pending");
+      router.replace("/verification-pending");
+      return;
     }
 
     // Check real runtime permissions — backgroundSetupShown alone is not
@@ -98,7 +133,7 @@ function RootLayoutNav() {
       // or location APIs exist in the browser. Approved drivers go straight to
       // the dashboard. Android APK path is completely unchanged below.
       if (Platform.OS === "web") {
-        console.log("[Auth] web → (tabs) (permission check skipped)");
+        console.log("[_AUTH_ROUTE] chosenRoute = /(tabs) (web, permission check skipped)");
         router.replace("/(tabs)");
         return;
       }
@@ -115,11 +150,11 @@ function RootLayoutNav() {
         required: PERMISSION_SETUP_VERSION,
       });
       if (!permsGranted || !setupVersionOk) {
-        console.log("[Auth] → background-setup",
+        console.log("[_AUTH_ROUTE] chosenRoute = /background-setup",
           !permsGranted ? "(perms missing)" : "(version outdated)");
         router.replace("/background-setup");
       } else {
-        console.log("[Auth] → (tabs)");
+        console.log("[_AUTH_ROUTE] chosenRoute = /(tabs)");
         router.replace("/(tabs)");
       }
     })();
@@ -128,7 +163,20 @@ function RootLayoutNav() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, driverUid]);
 
+  // ── Auth-loading overlay ──────────────────────────────────────────────────
+  // Sits on top of the Stack while Firebase is resolving the persisted session.
+  // Prevents any route (vehicle-selection, profile-setup, etc.) that was last
+  // active in the previous session from being visible before the routing guard
+  // fires. Without this a fresh browser tab opened at /vehicle-selection would
+  // briefly — or permanently — show that screen before the login redirect lands.
+  const authOverlay = authLoading ? (
+    <View style={authStyles.overlay}>
+      <ActivityIndicator size="large" color="#F97316" />
+    </View>
+  ) : null;
+
   return (
+    <>
     <Stack
       initialRouteName="login"
       screenOptions={{ headerShown: false, animation: "slide_from_right" }}
@@ -175,8 +223,19 @@ function RootLayoutNav() {
         }}
       />
     </Stack>
+    {authOverlay}
+    </>
   );
 }
+
+const authStyles = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#FFF8F5",
+    alignItems:      "center",
+    justifyContent:  "center",
+  },
+});
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({

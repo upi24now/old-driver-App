@@ -442,6 +442,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // ─── Firebase Auth listener — restores session on app restart ──────────────
   useEffect(() => {
     const unsub = onAuthStateChanged(firebaseAuth, async (user) => {
+      console.log("[AUTH_STATE] user uid =", user?.uid ?? null);
+      console.log("[AUTH_STATE] no user =", !user);
       if (user) {
         setDriverUid(user.uid);
         console.log("AUTH UID =", firebaseAuth.currentUser?.uid);
