@@ -1,11 +1,10 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useEffect, useRef, useState } from "react";
+import { useRouter } from "expo-router";
+import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
-  Easing,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -21,83 +20,88 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDriver } from "@/contexts/DriverContext";
 import { sendOtp } from "@/utils/auth-api";
 
-// ─── Design tokens (self-contained — no theme dependency) ────────────────────
-const D = {
-  bg:            "#F6F7FB",
-  textPrimary:   "#0F172A",
-  textSecondary: "#6B7280",
-  cardBg:        "#FFFFFF",
-  activeCard:    "#FFF3BF",
-  gradStart:     "#FFD43B",
-  gradEnd:       "#FFA726",
-  greenLine:     "#22C55E",
-  border:        "#E5E7EB",
-  inputBorder:   "#D1D5DB",
-  error:         "#DC2626",
-  signUpGold:    "#F59E0B",
-  placeholder:   "#9CA3AF",
-  white:         "#FFFFFF",
+// ─── Brand tokens (screen-specific, no theme dependency) ─────────────────────
+const B = {
+  bg:           "#FFF8F5",
+  navy:         "#111827",
+  orange:       "#F97316",
+  pink:         "#E83272",
+  amber:        "#F59E0B",
+  indigo:       "#6366F1",
+  textSecondary:"#6B7280",
+  textMuted:    "#9CA3AF",
+  placeholder:  "#C4B5B0",
+  white:        "#FFFFFF",
+  cardBorder:   "#F3E8E2",
+  inputBorder:  "#E5D5CF",
+  error:        "#DC2626",
+  green:        "#10B981",
 } as const;
 
-const VEHICLES = [
-  { icon: "motorbike" as const, label: "Motorcycle" },
-  { icon: "car"       as const, label: "Auto"       },
-  { icon: "truck"     as const, label: "Truck"      },
+// ─── Service cards ────────────────────────────────────────────────────────────
+const SERVICES = [
+  {
+    mcIcon:     "motorbike" as const,
+    title:      "2-Wheeler",
+    sub:        "Express",
+    accent:     B.orange,
+    accentSoft: "#FFF3E0",
+  },
+  {
+    mcIcon:     "car-side"  as const,
+    title:      "3W Loader",
+    sub:        "Economy",
+    accent:     B.amber,
+    accentSoft: "#FFFBEB",
+  },
+  {
+    mcIcon:     "truck"     as const,
+    title:      "4W Loader",
+    sub:        "Cargo",
+    accent:     B.indigo,
+    accentSoft: "#EEF2FF",
+  },
 ] as const;
 
-// ─── Vehicle Card ─────────────────────────────────────────────────────────────
-function VehicleCard({
-  icon,
-  label,
-  active,
-  onPress,
-}: {
-  icon: string;
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}) {
-  const scale = useRef(new Animated.Value(active ? 1.06 : 1)).current;
+// ─── Trust chips ──────────────────────────────────────────────────────────────
+const CHIPS = [
+  { icon: "lock"    as const, label: "Secure OTP",     color: "#059669", bg: "#ECFDF5" },
+  { icon: "zap"     as const, label: "Instant Signup",  color: "#D97706", bg: "#FFFBEB" },
+  { icon: "bell-off"as const, label: "No Spam",         color: "#DC2626", bg: "#FFF1F2" },
+] as const;
 
-  useEffect(() => {
-    Animated.spring(scale, {
-      toValue: active ? 1.06 : 1,
-      useNativeDriver: true,
-      speed: 30,
-      bounciness: 8,
-    }).start();
-  }, [active]);
-
+// ─── ServiceCard ──────────────────────────────────────────────────────────────
+function ServiceCard({ mcIcon, title, sub, accent, accentSoft }: (typeof SERVICES)[number]) {
   return (
-    <Pressable onPress={onPress} style={styles.vehicleHitArea}>
-      <Animated.View
-        style={[
-          styles.vehicleCard,
-          active && styles.vehicleCardActive,
-          { transform: [{ scale }] },
-        ]}
-      >
+    <View style={styles.serviceCard}>
+      <View style={[styles.accentDot, { backgroundColor: accent }]} />
+      <View style={[styles.serviceIconWrap, { backgroundColor: accentSoft }]}>
         <MaterialCommunityIcons
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          name={icon as any}
-          size={30}
-          color={active ? D.textPrimary : D.textSecondary}
+          name={mcIcon as any}
+          size={26}
+          color={accent}
         />
-        <Text
-          style={[
-            styles.vehicleLabel,
-            active && styles.vehicleLabelActive,
-          ]}
-        >
-          {label}
-        </Text>
-      </Animated.View>
-    </Pressable>
+      </View>
+      <Text style={styles.serviceTitle}>{title}</Text>
+      <Text style={styles.serviceSub}>{sub}</Text>
+      <View style={[styles.accentLine, { backgroundColor: accent }]} />
+    </View>
   );
 }
 
-// ─── Login Button ─────────────────────────────────────────────────────────────
-function LoginButton({
+// ─── TrustChip ────────────────────────────────────────────────────────────────
+function TrustChip({ icon, label, color, bg }: (typeof CHIPS)[number]) {
+  return (
+    <View style={[styles.chip, { backgroundColor: bg, borderColor: `${color}40` }]}>
+      <Feather name={icon} size={11} color={color} />
+      <Text style={[styles.chipText, { color }]}>{label}</Text>
+    </View>
+  );
+}
+
+// ─── ContinueButton ───────────────────────────────────────────────────────────
+function ContinueButton({
   enabled,
   loading,
   onPress,
@@ -108,29 +112,43 @@ function LoginButton({
 }) {
   const scale = useRef(new Animated.Value(1)).current;
 
-  const pressIn  = () => Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, speed: 40, bounciness: 4 }).start();
-  const pressOut = () => Animated.spring(scale, { toValue: 1,    useNativeDriver: true, speed: 40, bounciness: 4 }).start();
+  const pressIn  = () =>
+    Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, speed: 40, bounciness: 4 }).start();
+  const pressOut = () =>
+    Animated.spring(scale, { toValue: 1,    useNativeDriver: true, speed: 40, bounciness: 4 }).start();
 
   return (
-    <Animated.View style={[styles.btnWrap, { transform: [{ scale }] }]}>
+    <Animated.View
+      style={[
+        styles.ctaWrap,
+        enabled && {
+          shadowColor:   B.orange,
+          shadowOpacity: 0.35,
+          shadowRadius:  14,
+          shadowOffset:  { width: 0, height: 6 },
+          elevation:     8,
+        },
+        { transform: [{ scale }] },
+      ]}
+    >
       <Pressable
         onPress={onPress}
         onPressIn={pressIn}
         onPressOut={pressOut}
         disabled={!enabled}
-        style={styles.btnPressable}
+        style={styles.ctaPressable}
       >
         <LinearGradient
-          colors={enabled ? [D.gradStart, D.gradEnd] : ["#D1D5DB", "#D1D5DB"]}
+          colors={enabled ? [B.orange, B.pink] : ["#E5E7EB", "#E5E7EB"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
-          style={styles.btnGradient}
+          style={styles.ctaGradient}
         >
           {loading ? (
-            <ActivityIndicator size="small" color={D.white} />
+            <ActivityIndicator size="small" color={B.white} />
           ) : (
-            <Text style={[styles.btnText, !enabled && { color: "#9CA3AF" }]}>
-              Login
+            <Text style={[styles.ctaText, !enabled && { color: B.textMuted }]}>
+              CONTINUE WITH OTP
             </Text>
           )}
         </LinearGradient>
@@ -149,15 +167,15 @@ export default function LoginScreen() {
   const [focused, setFocused] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
-  const [activeVehicle, setActiveVehicle] = useState(1);
 
   const { setPhone: setDriverPhone, driverUid, authLoading } = useDriver();
 
-  const isValid = phone.replace(/\D/g, "").length === 10;
+  const digits   = phone.replace(/\D/g, "");
+  const isValid  = digits.length === 10;
+  const charCount = digits.length;
 
   async function goToOtp() {
     if (loading) return;
-    const digits = phone.replace(/\D/g, "");
     if (!digits) {
       setError("Please enter your mobile number.");
       inputRef.current?.focus();
@@ -182,129 +200,162 @@ export default function LoginScreen() {
     setLoading(false);
     router.replace({
       pathname: "/otp",
-      params: { phone: digits, devOtp: result.devOtp ?? "" },
+      params:   { phone: digits, devOtp: result.devOtp ?? "" },
     });
   }
 
-  if (authLoading) {
+  if (authLoading || driverUid) {
     return (
-      <View style={[styles.root, { backgroundColor: D.bg, alignItems: "center", justifyContent: "center" }]}>
-        <ActivityIndicator size="large" color={D.gradEnd} />
-      </View>
-    );
-  }
-
-  if (driverUid) {
-    return (
-      <View style={[styles.root, { backgroundColor: D.bg, alignItems: "center", justifyContent: "center" }]}>
-        <ActivityIndicator size="large" color={D.gradEnd} />
+      <View style={[styles.root, { backgroundColor: B.bg, alignItems: "center", justifyContent: "center" }]}>
+        <ActivityIndicator size="large" color={B.orange} />
       </View>
     );
   }
 
   return (
     <KeyboardAvoidingView
-      style={[styles.root, { backgroundColor: D.bg }]}
+      style={[styles.root, { backgroundColor: B.bg }]}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
-          { paddingTop: insets.top + 32, paddingBottom: insets.bottom + 32 },
+          { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 36 },
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Brand heading ── */}
-        <Text style={styles.brandTitle}>Ride Partner</Text>
-        <Text style={styles.brandSubtitle}>Welcome back, driver</Text>
 
-        {/* ── Vehicle selector row ── */}
-        <View style={styles.vehicleRow}>
-          {VEHICLES.map((v, i) => (
-            <VehicleCard
-              key={v.label}
-              icon={v.icon}
-              label={v.label}
-              active={activeVehicle === i}
-              onPress={() => setActiveVehicle(i)}
-            />
+        {/* ── 1. Brand Hero ── */}
+        <View style={styles.hero}>
+          <LinearGradient
+            colors={[B.orange, B.pink]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.logoCircle}
+          >
+            <Text style={styles.logoText}>BC</Text>
+          </LinearGradient>
+
+          <View style={styles.titleRow}>
+            <Text style={styles.titleBike}>Bike</Text>
+            <Text style={styles.titleCourier}>Courier</Text>
+          </View>
+
+          <Text style={styles.subtitle}>FAST · RELIABLE · SECURE</Text>
+        </View>
+
+        {/* ── 2. Service Cards ── */}
+        <View style={styles.serviceRow}>
+          {SERVICES.map((s) => (
+            <ServiceCard key={s.title} {...s} />
           ))}
         </View>
 
-        {/* ── Login card ── */}
+        {/* ── 3. Login Card ── */}
         <View style={styles.loginCard}>
-          <Text style={styles.cardHeading}>Driver Login</Text>
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.headerDot} />
+            <Text style={styles.cardHeaderText}>MOBILE NUMBER</Text>
+          </View>
 
-          {/* Mobile Number field */}
-          <Text style={styles.fieldLabel}>Mobile Number</Text>
           <Pressable
             onPress={() => inputRef.current?.focus()}
-            style={[
-              styles.inputRow,
-              focused && styles.inputRowFocused,
-            ]}
+            style={[styles.inputRow, focused && styles.inputRowFocused]}
           >
+            <Text style={styles.countryFlag}>IN</Text>
             <Text style={styles.countryCode}>+91</Text>
             <View style={styles.inputDivider} />
             <TextInput
               ref={inputRef}
               style={styles.phoneInput}
               value={phone}
-              onChangeText={(t) => setPhone(t.replace(/\D/g, "").slice(0, 10))}
+              onChangeText={(t) => {
+                setPhone(t.replace(/\D/g, "").slice(0, 10));
+                setError("");
+              }}
               keyboardType="phone-pad"
               placeholder="Mobile Number"
-              placeholderTextColor={D.placeholder}
+              placeholderTextColor={B.placeholder}
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
               returnKeyType="done"
               onSubmitEditing={() => void goToOtp()}
               underlineColorAndroid="transparent"
-              selectionColor={D.gradEnd}
-              {...(Platform.OS === "web" ? { outlineWidth: 0 } as object : {})}
+              selectionColor={B.orange}
+              {...(Platform.OS === "web" ? ({ outlineWidth: 0 } as object) : {})}
             />
           </Pressable>
 
-          {/* Green progress line */}
-          <View style={styles.progressLine} />
+          {/* Progress bar */}
+          <View style={styles.progressTrack}>
+            <View
+              style={[
+                styles.progressFill,
+                {
+                  width:           `${(charCount / 10) * 100}%` as `${number}%`,
+                  backgroundColor: charCount === 10 ? B.green : B.orange,
+                },
+              ]}
+            />
+          </View>
 
-          {/* Error */}
-          {!!error && (
-            <Text style={styles.errorText}>{error}</Text>
-          )}
+          {/* Counter row */}
+          <View style={styles.counterRow}>
+            <Text style={styles.helperText}>
+              {charCount === 10
+                ? "Ready to continue!"
+                : focused || charCount > 0
+                  ? "Enter your 10-digit mobile number"
+                  : "Tap to enter your 10-digit number"}
+            </Text>
+            <Text style={[styles.counter, charCount === 10 && { color: B.green }]}>
+              {charCount}/10
+            </Text>
+          </View>
 
-          {/* Login button */}
-          <LoginButton
-            enabled={isValid && !loading}
-            loading={loading}
-            onPress={() => void goToOtp()}
-          />
+          {!!error && <Text style={styles.errorText}>{error}</Text>}
+        </View>
 
-          {/* Sign up row */}
-          <View style={styles.signupRow}>
-            <Text style={styles.signupGray}>New driver? </Text>
+        {/* ── 4. Continue Button ── */}
+        <ContinueButton
+          enabled={isValid && !loading}
+          loading={loading}
+          onPress={() => void goToOtp()}
+        />
+
+        {/* ── 5. Trust Chips ── */}
+        <View style={styles.chipsRow}>
+          {CHIPS.map((c) => (
+            <TrustChip key={c.label} {...c} />
+          ))}
+        </View>
+
+        {/* ── 6. Terms ── */}
+        <View style={styles.termsBlock}>
+          <View style={styles.termsRow}>
+            <Text style={styles.termsText}>By continuing, you agree to our </Text>
             <TouchableOpacity
-              activeOpacity={0.6}
-              hitSlop={8}
-              onPress={() => void goToOtp()}
-              disabled={loading}
+              activeOpacity={0.7}
+              hitSlop={6}
+              onPress={() => router.push("/terms-and-conditions")}
             >
-              <Text style={styles.signupGold}>Sign Up</Text>
+              <Text style={styles.termsLink}>Terms</Text>
+            </TouchableOpacity>
+            <Text style={styles.termsText}> & </Text>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              hitSlop={6}
+              onPress={() => router.push("/privacy-policy")}
+            >
+              <Text style={styles.termsLink}>Privacy Policy</Text>
             </TouchableOpacity>
           </View>
+          <Text style={styles.termsNote}>
+            New or existing user? Verify your mobile number with OTP.
+          </Text>
         </View>
 
-        {/* ── Terms ── */}
-        <View style={styles.termsRow}>
-          <Text style={styles.termsText}>By continuing you agree to our </Text>
-          <TouchableOpacity activeOpacity={0.7} hitSlop={6} onPress={() => router.push("/terms-and-conditions")}>
-            <Text style={styles.termsLink}>Terms</Text>
-          </TouchableOpacity>
-          <Text style={styles.termsText}> & </Text>
-          <TouchableOpacity activeOpacity={0.7} hitSlop={6} onPress={() => router.push("/privacy-policy")}>
-            <Text style={styles.termsLink}>Privacy Policy</Text>
-          </TouchableOpacity>
-        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -312,229 +363,328 @@ export default function LoginScreen() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root:  { flex: 1 },
 
   scroll: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    alignItems: "center",
+    flexGrow:         1,
+    paddingHorizontal: 0,
+    alignItems:       "center",
   },
 
-  // Brand
-  brandTitle: {
-    fontSize: 32,
-    fontWeight: "800",
-    color: D.textPrimary,
-    letterSpacing: -0.5,
-    textAlign: "center",
-    marginBottom: 6,
-  },
-  brandSubtitle: {
-    fontSize: 15,
-    fontWeight: "400",
-    color: D.textSecondary,
-    textAlign: "center",
-    marginBottom: 28,
-  },
-
-  // Vehicle row
-  vehicleRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "flex-end",
-    gap: 14,
-    marginBottom: 28,
-    width: "100%",
-  },
-  vehicleHitArea: {
-    flex: 1,
-    maxWidth: 100,
-    alignItems: "center",
-  },
-  vehicleCard: {
-    width: 82,
-    height: 82,
-    borderRadius: 20,
-    backgroundColor: D.white,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 4,
-    shadowColor: "#000",
-    shadowOpacity: 0.07,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
-  },
-  vehicleCardActive: {
-    backgroundColor: D.activeCard,
-    shadowColor: "#F59E0B",
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 6,
-  },
-  vehicleIcon: {
-    marginBottom: 2,
-  },
-  vehicleLabel: {
-    fontSize: 11,
-    fontWeight: "500",
-    color: D.textSecondary,
-    letterSpacing: 0.1,
-  },
-  vehicleLabelActive: {
-    color: D.textPrimary,
-    fontWeight: "600",
-  },
-
-  // Login card
-  loginCard: {
-    width: "100%",
-    backgroundColor: D.white,
-    borderRadius: 24,
-    paddingHorizontal: 24,
-    paddingTop: 28,
+  // ── Hero ──────────────────────────────────────────────────────────────────
+  hero: {
+    alignItems:   "center",
     paddingBottom: 24,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
-    marginBottom: 20,
-  },
-  cardHeading: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: D.textPrimary,
-    letterSpacing: -0.5,
-    marginBottom: 22,
+    width:        "100%",
   },
 
-  // Field
-  fieldLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: D.textSecondary,
-    marginBottom: 10,
-    letterSpacing: 0.1,
+  logoCircle: {
+    width:             72,
+    height:            72,
+    borderRadius:      36,
+    alignItems:        "center",
+    justifyContent:    "center",
+    shadowColor:       "#F97316",
+    shadowOpacity:     0.45,
+    shadowRadius:      18,
+    shadowOffset:      { width: 0, height: 6 },
+    elevation:         10,
   },
-  inputRow: {
+  logoText: {
+    fontSize:    26,
+    fontWeight:  "800",
+    color:       "#FFFFFF",
+    letterSpacing: -0.5,
+  },
+
+  titleRow: {
     flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1.5,
-    borderColor: D.inputBorder,
-    borderRadius: 14,
-    height: 56,
-    paddingHorizontal: 16,
-    backgroundColor: D.white,
+    alignItems:    "baseline",
+    marginTop:     14,
+    gap:           4,
+  },
+  titleBike: {
+    fontSize:     34,
+    fontWeight:   "800",
+    color:        "#111827",
+    letterSpacing: -1,
+  },
+  titleCourier: {
+    fontSize:     34,
+    fontWeight:   "800",
+    color:        "#F97316",
+    letterSpacing: -1,
+  },
+
+  subtitle: {
+    fontSize:      11,
+    fontWeight:    "600",
+    color:         "#9CA3AF",
+    letterSpacing: 3.5,
+    marginTop:     8,
+    textTransform: "uppercase",
+  },
+
+  // ── Service Cards ─────────────────────────────────────────────────────────
+  serviceRow: {
+    flexDirection:  "row",
+    paddingHorizontal: 20,
+    gap:            10,
+    width:          "100%",
+    marginBottom:   20,
+  },
+
+  serviceCard: {
+    flex:            1,
+    backgroundColor: "#FFFFFF",
+    borderRadius:    22,
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    alignItems:      "center",
+    shadowColor:     "#000",
+    shadowOpacity:   0.07,
+    shadowRadius:    10,
+    shadowOffset:    { width: 0, height: 4 },
+    elevation:       3,
+    overflow:        "visible",
+    position:        "relative",
+  },
+  accentDot: {
+    position:     "absolute",
+    top:          10,
+    right:        10,
+    width:        7,
+    height:       7,
+    borderRadius: 4,
+  },
+  serviceIconWrap: {
+    width:          48,
+    height:         48,
+    borderRadius:   14,
+    alignItems:     "center",
+    justifyContent: "center",
+    marginBottom:   8,
+  },
+  serviceTitle: {
+    fontSize:   11,
+    fontWeight: "700",
+    color:      "#111827",
+    textAlign:  "center",
+    marginTop:  2,
+  },
+  serviceSub: {
+    fontSize:  10,
+    color:     "#9CA3AF",
+    marginTop: 2,
+    textAlign: "center",
+  },
+  accentLine: {
+    width:        22,
+    height:       3,
+    borderRadius: 2,
+    marginTop:    10,
+  },
+
+  // ── Login Card ────────────────────────────────────────────────────────────
+  loginCard: {
+    width:           "100%",
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    backgroundColor: "#FFFFFF",
+    borderRadius:    24,
+    borderWidth:     1,
+    borderColor:     "#F3E8E2",
+    marginHorizontal: 20,
+    shadowColor:     "#F97316",
+    shadowOpacity:   0.08,
+    shadowRadius:    20,
+    shadowOffset:    { width: 0, height: 6 },
+    elevation:       5,
+    alignSelf:       "stretch",
+    marginLeft:      20,
+    marginRight:     20,
+  },
+
+  cardHeaderRow: {
+    flexDirection: "row",
+    alignItems:    "center",
+    gap:           8,
+    marginBottom:  16,
+  },
+  headerDot: {
+    width:        8,
+    height:       8,
+    borderRadius: 4,
+    backgroundColor: "#F97316",
+  },
+  cardHeaderText: {
+    fontSize:      11,
+    fontWeight:    "700",
+    color:         "#9CA3AF",
+    letterSpacing: 1.8,
+  },
+
+  inputRow: {
+    flexDirection:  "row",
+    alignItems:     "center",
+    borderWidth:    1.5,
+    borderColor:    "#E5D5CF",
+    borderRadius:   14,
+    height:         56,
+    paddingHorizontal: 14,
+    backgroundColor: "#FFF8F5",
   },
   inputRowFocused: {
-    borderColor: D.gradEnd,
+    borderColor:     "#F97316",
+    backgroundColor: "#FFFAF8",
+  },
+
+  countryFlag: {
+    fontSize:     12,
+    fontWeight:   "700",
+    color:        "#6B7280",
+    marginRight:  4,
+    letterSpacing: 0.5,
   },
   countryCode: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: D.textPrimary,
+    fontSize:     16,
+    fontWeight:   "700",
+    color:        "#111827",
+    marginRight:  10,
     letterSpacing: 0.2,
-    paddingRight: 12,
   },
   inputDivider: {
-    width: 1.5,
-    height: 22,
-    backgroundColor: D.inputBorder,
-    marginRight: 12,
+    width:           1.5,
+    height:          22,
+    backgroundColor: "#E5D5CF",
+    marginRight:     12,
   },
   phoneInput: {
-    flex: 1,
-    fontSize: 17,
+    flex:       1,
+    fontSize:   17,
     fontWeight: "600",
-    color: D.textPrimary,
-    height: "100%",
+    color:      "#111827",
+    height:     "100%",
     ...Platform.select({
-      web: { outlineWidth: 0, outlineStyle: "none" } as object,
+      web:     { outlineWidth: 0, outlineStyle: "none" } as object,
       default: {},
     }),
   },
 
-  // Progress line
-  progressLine: {
-    height: 3,
-    backgroundColor: D.greenLine,
+  progressTrack: {
+    height:          3,
+    backgroundColor: "#F3F4F6",
+    borderRadius:    2,
+    marginTop:       10,
+    overflow:        "hidden",
+  },
+  progressFill: {
+    height:       3,
     borderRadius: 2,
-    marginTop: 14,
-    marginBottom: 6,
   },
 
-  // Error
+  counterRow: {
+    flexDirection:  "row",
+    justifyContent: "space-between",
+    alignItems:     "center",
+    marginTop:      6,
+  },
+  helperText: {
+    fontSize: 11,
+    color:    "#9CA3AF",
+    flex:     1,
+  },
+  counter: {
+    fontSize:  12,
+    fontWeight:"600",
+    color:     "#9CA3AF",
+    marginLeft: 8,
+  },
+
   errorText: {
-    fontSize: 13,
+    fontSize:   13,
     fontWeight: "500",
-    color: D.error,
-    marginTop: 8,
-    marginBottom: 2,
+    color:      "#DC2626",
+    marginTop:  10,
   },
 
-  // Button
-  btnWrap: {
-    marginTop: 22,
-    borderRadius: 16,
-    shadowColor: D.gradEnd,
-    shadowOpacity: 0.32,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 6,
+  // ── Continue Button ───────────────────────────────────────────────────────
+  ctaWrap: {
+    width:        "100%",
+    paddingHorizontal: 20,
+    marginTop:    16,
+    borderRadius: 22,
+    alignSelf:    "stretch",
   },
-  btnPressable: {
-    borderRadius: 16,
-    overflow: "hidden",
+  ctaPressable: {
+    borderRadius: 22,
+    overflow:     "hidden",
   },
-  btnGradient: {
-    height: 56,
-    borderRadius: 16,
-    alignItems: "center",
+  ctaGradient: {
+    height:         58,
+    borderRadius:   22,
+    flexDirection:  "row",
+    alignItems:     "center",
     justifyContent: "center",
+    gap:            8,
   },
-  btnText: {
-    fontSize: 17,
-    fontWeight: "800",
-    color: D.white,
-    letterSpacing: 0.3,
+  ctaText: {
+    fontSize:      16,
+    fontWeight:    "800",
+    color:         "#FFFFFF",
+    letterSpacing: 0.8,
   },
 
-  // Sign up
-  signupRow: {
-    flexDirection: "row",
-    alignItems: "center",
+  // ── Trust Chips ───────────────────────────────────────────────────────────
+  chipsRow: {
+    flexDirection:  "row",
     justifyContent: "center",
-    marginTop: 20,
+    flexWrap:       "wrap",
+    gap:            8,
+    marginTop:      18,
+    paddingHorizontal: 20,
   },
-  signupGray: {
-    fontSize: 14,
-    fontWeight: "400",
-    color: D.textSecondary,
+  chip: {
+    flexDirection:   "row",
+    alignItems:      "center",
+    gap:             5,
+    paddingHorizontal: 12,
+    paddingVertical:   7,
+    borderRadius:    20,
+    borderWidth:     1,
   },
-  signupGold: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: D.signUpGold,
+  chipText: {
+    fontSize:   12,
+    fontWeight: "600",
   },
 
-  // Terms
+  // ── Terms ─────────────────────────────────────────────────────────────────
+  termsBlock: {
+    marginTop:       20,
+    paddingHorizontal: 20,
+    alignItems:      "center",
+    width:           "100%",
+  },
   termsRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 16,
-    gap: 1,
+    flexWrap:      "wrap",
+    alignItems:    "center",
+    justifyContent:"center",
+    gap:           1,
   },
   termsText: {
     fontSize: 12,
-    color: D.textSecondary,
+    color:    "#6B7280",
   },
   termsLink: {
-    fontSize: 12,
+    fontSize:   12,
     fontWeight: "700",
-    color: D.signUpGold,
+    color:      "#F97316",
+  },
+  termsNote: {
+    fontSize:   11,
+    color:      "#9CA3AF",
+    marginTop:  8,
+    textAlign:  "center",
   },
 });
