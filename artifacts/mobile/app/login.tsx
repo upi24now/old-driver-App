@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDriver } from "@/contexts/DriverContext";
 import { sendOtp } from "@/utils/auth-api";
 
-// ─── Brand tokens (screen-specific, no theme dependency) ─────────────────────
+// ─── Brand tokens ─────────────────────────────────────────────────────────────
 const B = {
   bg:           "#FFF8F5",
   navy:         "#111827",
@@ -38,7 +38,7 @@ const B = {
   green:        "#10B981",
 } as const;
 
-// ─── Service cards ────────────────────────────────────────────────────────────
+// ─── Service cards data ───────────────────────────────────────────────────────
 const SERVICES = [
   {
     mcIcon:     "motorbike" as const,
@@ -63,7 +63,7 @@ const SERVICES = [
   },
 ] as const;
 
-// ─── Trust chips ──────────────────────────────────────────────────────────────
+// ─── Trust chips data ─────────────────────────────────────────────────────────
 const CHIPS = [
   { icon: "lock"    as const, label: "Secure OTP",     color: "#059669", bg: "#ECFDF5" },
   { icon: "zap"     as const, label: "Instant Signup",  color: "#D97706", bg: "#FFFBEB" },
@@ -83,8 +83,8 @@ function ServiceCard({ mcIcon, title, sub, accent, accentSoft }: (typeof SERVICE
           color={accent}
         />
       </View>
-      <Text style={styles.serviceTitle}>{title}</Text>
-      <Text style={styles.serviceSub}>{sub}</Text>
+      <Text style={styles.serviceTitle} numberOfLines={1}>{title}</Text>
+      <Text style={styles.serviceSub}   numberOfLines={1}>{sub}</Text>
       <View style={[styles.accentLine, { backgroundColor: accent }]} />
     </View>
   );
@@ -170,8 +170,8 @@ export default function LoginScreen() {
 
   const { setPhone: setDriverPhone, driverUid, authLoading } = useDriver();
 
-  const digits   = phone.replace(/\D/g, "");
-  const isValid  = digits.length === 10;
+  const digits    = phone.replace(/\D/g, "");
+  const isValid   = digits.length === 10;
   const charCount = digits.length;
 
   async function goToOtp() {
@@ -206,7 +206,7 @@ export default function LoginScreen() {
 
   if (authLoading || driverUid) {
     return (
-      <View style={[styles.root, { backgroundColor: B.bg, alignItems: "center", justifyContent: "center" }]}>
+      <View style={[styles.root, { alignItems: "center", justifyContent: "center" }]}>
         <ActivityIndicator size="large" color={B.orange} />
       </View>
     );
@@ -214,7 +214,7 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.root, { backgroundColor: B.bg }]}
+      style={styles.root}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView
@@ -363,91 +363,92 @@ export default function LoginScreen() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root:  { flex: 1 },
+  root: {
+    flex:            1,
+    backgroundColor: B.bg,
+  },
 
   scroll: {
-    flexGrow:         1,
-    paddingHorizontal: 0,
-    alignItems:       "center",
+    flexGrow:  1,
+    alignItems:"center",
   },
 
   // ── Hero ──────────────────────────────────────────────────────────────────
   hero: {
-    alignItems:   "center",
+    alignItems:    "center",
     paddingBottom: 24,
-    width:        "100%",
+    width:         "100%",
   },
 
   logoCircle: {
-    width:             72,
-    height:            72,
-    borderRadius:      36,
-    alignItems:        "center",
-    justifyContent:    "center",
-    shadowColor:       "#F97316",
-    shadowOpacity:     0.45,
-    shadowRadius:      18,
-    shadowOffset:      { width: 0, height: 6 },
-    elevation:         10,
+    width:          64,
+    height:         64,
+    borderRadius:   32,
+    alignItems:     "center",
+    justifyContent: "center",
+    shadowColor:    B.orange,
+    shadowOpacity:  0.40,
+    shadowRadius:   16,
+    shadowOffset:   { width: 0, height: 5 },
+    elevation:      8,
   },
   logoText: {
-    fontSize:    26,
-    fontWeight:  "800",
-    color:       "#FFFFFF",
+    fontSize:      24,
+    fontWeight:    "800",
+    color:         B.white,
     letterSpacing: -0.5,
   },
 
   titleRow: {
     flexDirection: "row",
     alignItems:    "baseline",
-    marginTop:     14,
-    gap:           4,
+    marginTop:     12,
+    gap:           3,
   },
   titleBike: {
-    fontSize:     34,
-    fontWeight:   "800",
-    color:        "#111827",
+    fontSize:      32,
+    fontWeight:    "800",
+    color:         B.navy,
     letterSpacing: -1,
   },
   titleCourier: {
-    fontSize:     34,
-    fontWeight:   "800",
-    color:        "#F97316",
+    fontSize:      32,
+    fontWeight:    "800",
+    color:         B.orange,
     letterSpacing: -1,
   },
 
   subtitle: {
     fontSize:      11,
     fontWeight:    "600",
-    color:         "#9CA3AF",
-    letterSpacing: 3.5,
-    marginTop:     8,
+    color:         B.textMuted,
+    letterSpacing: 3,
+    marginTop:     7,
     textTransform: "uppercase",
   },
 
   // ── Service Cards ─────────────────────────────────────────────────────────
   serviceRow: {
-    flexDirection:  "row",
+    flexDirection:     "row",
     paddingHorizontal: 20,
-    gap:            10,
-    width:          "100%",
-    marginBottom:   20,
+    gap:               10,
+    width:             "100%",
+    marginBottom:      20,
   },
 
   serviceCard: {
-    flex:            1,
-    backgroundColor: "#FFFFFF",
-    borderRadius:    22,
-    paddingVertical: 16,
+    flex:              1,
+    backgroundColor:   B.white,
+    borderRadius:      22,
+    paddingVertical:   16,
     paddingHorizontal: 8,
-    alignItems:      "center",
-    shadowColor:     "#000",
-    shadowOpacity:   0.07,
-    shadowRadius:    10,
-    shadowOffset:    { width: 0, height: 4 },
-    elevation:       3,
-    overflow:        "visible",
-    position:        "relative",
+    alignItems:        "center",
+    shadowColor:       "#000",
+    shadowOpacity:     0.07,
+    shadowRadius:      10,
+    shadowOffset:      { width: 0, height: 4 },
+    elevation:         3,
+    overflow:          "visible",
   },
   accentDot: {
     position:     "absolute",
@@ -463,18 +464,18 @@ const styles = StyleSheet.create({
     borderRadius:   14,
     alignItems:     "center",
     justifyContent: "center",
-    marginBottom:   8,
+    marginBottom:   6,
   },
   serviceTitle: {
-    fontSize:   11,
-    fontWeight: "700",
-    color:      "#111827",
-    textAlign:  "center",
-    marginTop:  2,
+    fontSize:  11,
+    fontWeight:"700",
+    color:     B.navy,
+    textAlign: "center",
+    marginTop: 2,
   },
   serviceSub: {
     fontSize:  10,
-    color:     "#9CA3AF",
+    color:     B.textMuted,
     marginTop: 2,
     textAlign: "center",
   },
@@ -486,23 +487,22 @@ const styles = StyleSheet.create({
   },
 
   // ── Login Card ────────────────────────────────────────────────────────────
+  // FIX: removed width:"100%" — conflicts with alignSelf:stretch + marginHorizontal
+  // FIX: removed duplicate marginLeft/marginRight (marginHorizontal is the sole authority)
   loginCard: {
-    width:           "100%",
+    alignSelf:         "stretch",
+    marginHorizontal:  20,
     paddingHorizontal: 20,
-    paddingVertical: 20,
-    backgroundColor: "#FFFFFF",
-    borderRadius:    24,
-    borderWidth:     1,
-    borderColor:     "#F3E8E2",
-    marginHorizontal: 20,
-    shadowColor:     "#F97316",
-    shadowOpacity:   0.08,
-    shadowRadius:    20,
-    shadowOffset:    { width: 0, height: 6 },
-    elevation:       5,
-    alignSelf:       "stretch",
-    marginLeft:      20,
-    marginRight:     20,
+    paddingVertical:   20,
+    backgroundColor:   B.white,
+    borderRadius:      24,
+    borderWidth:       1,
+    borderColor:       B.cardBorder,
+    shadowColor:       B.orange,
+    shadowOpacity:     0.08,
+    shadowRadius:      20,
+    shadowOffset:      { width: 0, height: 6 },
+    elevation:         5,
   },
 
   cardHeaderRow: {
@@ -512,58 +512,58 @@ const styles = StyleSheet.create({
     marginBottom:  16,
   },
   headerDot: {
-    width:        8,
-    height:       8,
-    borderRadius: 4,
-    backgroundColor: "#F97316",
+    width:           8,
+    height:          8,
+    borderRadius:    4,
+    backgroundColor: B.orange,
   },
   cardHeaderText: {
     fontSize:      11,
     fontWeight:    "700",
-    color:         "#9CA3AF",
+    color:         B.textMuted,
     letterSpacing: 1.8,
   },
 
   inputRow: {
-    flexDirection:  "row",
-    alignItems:     "center",
-    borderWidth:    1.5,
-    borderColor:    "#E5D5CF",
-    borderRadius:   14,
-    height:         56,
+    flexDirection:     "row",
+    alignItems:        "center",
+    borderWidth:       1.5,
+    borderColor:       B.inputBorder,
+    borderRadius:      14,
+    height:            56,
     paddingHorizontal: 14,
-    backgroundColor: "#FFF8F5",
+    backgroundColor:   B.bg,
   },
   inputRowFocused: {
-    borderColor:     "#F97316",
+    borderColor:     B.orange,
     backgroundColor: "#FFFAF8",
   },
 
   countryFlag: {
-    fontSize:     12,
-    fontWeight:   "700",
-    color:        "#6B7280",
-    marginRight:  4,
+    fontSize:      12,
+    fontWeight:    "700",
+    color:         B.textSecondary,
+    marginRight:   4,
     letterSpacing: 0.5,
   },
   countryCode: {
-    fontSize:     16,
-    fontWeight:   "700",
-    color:        "#111827",
-    marginRight:  10,
+    fontSize:      16,
+    fontWeight:    "700",
+    color:         B.navy,
+    marginRight:   10,
     letterSpacing: 0.2,
   },
   inputDivider: {
     width:           1.5,
     height:          22,
-    backgroundColor: "#E5D5CF",
+    backgroundColor: B.inputBorder,
     marginRight:     12,
   },
   phoneInput: {
     flex:       1,
     fontSize:   17,
     fontWeight: "600",
-    color:      "#111827",
+    color:      B.navy,
     height:     "100%",
     ...Platform.select({
       web:     { outlineWidth: 0, outlineStyle: "none" } as object,
@@ -591,30 +591,31 @@ const styles = StyleSheet.create({
   },
   helperText: {
     fontSize: 11,
-    color:    "#9CA3AF",
+    color:    B.textMuted,
     flex:     1,
   },
   counter: {
-    fontSize:  12,
-    fontWeight:"600",
-    color:     "#9CA3AF",
+    fontSize:   12,
+    fontWeight: "600",
+    color:      B.textMuted,
     marginLeft: 8,
   },
 
   errorText: {
     fontSize:   13,
     fontWeight: "500",
-    color:      "#DC2626",
+    color:      B.error,
     marginTop:  10,
   },
 
   // ── Continue Button ───────────────────────────────────────────────────────
+  // FIX: removed width:"100%", moved paddingHorizontal → marginHorizontal
+  // so the gradient and shadow share the same bounding box
   ctaWrap: {
-    width:        "100%",
-    paddingHorizontal: 20,
-    marginTop:    16,
-    borderRadius: 22,
-    alignSelf:    "stretch",
+    alignSelf:        "stretch",
+    marginHorizontal: 20,
+    marginTop:        16,
+    borderRadius:     22,
   },
   ctaPressable: {
     borderRadius: 22,
@@ -631,27 +632,27 @@ const styles = StyleSheet.create({
   ctaText: {
     fontSize:      16,
     fontWeight:    "800",
-    color:         "#FFFFFF",
+    color:         B.white,
     letterSpacing: 0.8,
   },
 
   // ── Trust Chips ───────────────────────────────────────────────────────────
   chipsRow: {
-    flexDirection:  "row",
-    justifyContent: "center",
-    flexWrap:       "wrap",
-    gap:            8,
-    marginTop:      18,
+    flexDirection:     "row",
+    justifyContent:    "center",
+    flexWrap:          "wrap",
+    gap:               8,
+    marginTop:         18,
     paddingHorizontal: 20,
   },
   chip: {
-    flexDirection:   "row",
-    alignItems:      "center",
-    gap:             5,
+    flexDirection:     "row",
+    alignItems:        "center",
+    gap:               5,
     paddingHorizontal: 12,
     paddingVertical:   7,
-    borderRadius:    20,
-    borderWidth:     1,
+    borderRadius:      20,
+    borderWidth:       1,
   },
   chipText: {
     fontSize:   12,
@@ -660,10 +661,10 @@ const styles = StyleSheet.create({
 
   // ── Terms ─────────────────────────────────────────────────────────────────
   termsBlock: {
-    marginTop:       20,
+    marginTop:         20,
     paddingHorizontal: 20,
-    alignItems:      "center",
-    width:           "100%",
+    alignItems:        "center",
+    width:             "100%",
   },
   termsRow: {
     flexDirection: "row",
@@ -674,16 +675,16 @@ const styles = StyleSheet.create({
   },
   termsText: {
     fontSize: 12,
-    color:    "#6B7280",
+    color:    B.textSecondary,
   },
   termsLink: {
     fontSize:   12,
     fontWeight: "700",
-    color:      "#F97316",
+    color:      B.orange,
   },
   termsNote: {
     fontSize:   11,
-    color:      "#9CA3AF",
+    color:      B.textMuted,
     marginTop:  8,
     textAlign:  "center",
   },
