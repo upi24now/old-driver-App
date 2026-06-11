@@ -20,7 +20,7 @@
  *  - null / missing       → upload allowed
  */
 
-import { SafeInlineIcon, SafeIconName, SafeIcon3D, PremiumButton3D } from "@/components/SafeIcon";
+import { SafeInlineIcon, SafeIconName, SafeIcon3D } from "@/components/SafeIcon";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
@@ -469,7 +469,7 @@ function DocumentCard({
               <View style={[styles.previewBar, { backgroundColor: "rgba(220,38,38,0.88)" }]}>
                 <Text style={styles.previewBarText}>Previous upload (rejected)</Text>
                 <View style={{ flex: 1 }} />
-                <TouchableOpacity style={styles.barBtn} onPress={() => { console.log("[UPLOAD_TOUCH] visible button tapped", doc.id, "state=reupload-replace"); onUpload(); }} activeOpacity={0.8}>
+                <TouchableOpacity style={styles.barBtn} onPress={() => { console.log("[UPLOAD_TOUCH_PROOF] visible upload button tapped", doc.id); console.log("[UPLOAD_TOUCH] visible button tapped", doc.id, "state=reupload-replace"); onUpload(); }} activeOpacity={0.8}>
                   <SafeInlineIcon name="refresh" size={11} color="#fff" />
                   <Text style={styles.barBtnText}>Replace</Text>
                 </TouchableOpacity>
@@ -482,7 +482,7 @@ function DocumentCard({
                 { borderColor: colors.error, backgroundColor: colors.errorSoft },
               ]}
             >
-              <TouchableOpacity style={styles.uploadBtn} onPress={() => { console.log("[UPLOAD_TOUCH] visible button tapped", doc.id, "state=reupload-empty"); onUpload(); }} activeOpacity={0.82}>
+              <TouchableOpacity style={styles.uploadBtn} onPress={() => { console.log("[UPLOAD_TOUCH_PROOF] visible upload button tapped", doc.id); console.log("[UPLOAD_TOUCH] visible button tapped", doc.id, "state=reupload-empty"); onUpload(); }} activeOpacity={0.82}>
                 <View style={[styles.uploadBtnSolid, { backgroundColor: colors.error }]}>
                   <SafeInlineIcon name="arrow" size={17} color="#fff" />
                   <Text style={styles.uploadBtnText}>
@@ -513,7 +513,7 @@ function DocumentCard({
               {doc.isSelfie ? "Selfie saved" : "Document saved"}
             </Text>
             <View style={{ flex: 1 }} />
-            <TouchableOpacity style={styles.barBtn} onPress={() => { console.log("[UPLOAD_TOUCH] visible button tapped", doc.id, "state=uploaded-retake"); onUpload(); }} activeOpacity={0.8}>
+            <TouchableOpacity style={styles.barBtn} onPress={() => { console.log("[UPLOAD_TOUCH_PROOF] visible upload button tapped", doc.id); console.log("[UPLOAD_TOUCH] visible button tapped", doc.id, "state=uploaded-retake"); onUpload(); }} activeOpacity={0.8}>
               <SafeInlineIcon name="refresh" size={11} color="#fff" />
               <Text style={styles.barBtnText}>Retake</Text>
             </TouchableOpacity>
@@ -536,7 +536,7 @@ function DocumentCard({
             { borderColor: colors.primary, backgroundColor: colors.primarySoft },
           ]}
         >
-          <TouchableOpacity style={styles.uploadBtn} onPress={() => { console.log("[UPLOAD_TOUCH] visible button tapped", doc.id, "state=empty"); onUpload(); }} activeOpacity={0.82}>
+          <TouchableOpacity style={styles.uploadBtn} onPress={() => { console.log("[UPLOAD_TOUCH_PROOF] visible upload button tapped", doc.id); console.log("[UPLOAD_TOUCH] visible button tapped", doc.id, "state=empty"); onUpload(); }} activeOpacity={0.82}>
             <View style={[styles.uploadBtnSolid, { backgroundColor: colors.primary }]}>
               <SafeInlineIcon name="camera" size={17} color="#fff" />
               <Text style={styles.uploadBtnText}>
@@ -917,14 +917,34 @@ export default function DocumentUploadScreen() {
           </Text>
         </View>
 
-        <PremiumButton3D
-          title="Submit for Verification"
-          loading={submitting}
-          disabled={!allReady || submitting}
+        <TouchableOpacity
           onPress={() => void handleSubmit()}
-          rightIcon="arrow"
-          style={styles.submitBtn}
-        />
+          disabled={!allReady || submitting}
+          activeOpacity={0.85}
+          style={{ borderRadius: 14 }}
+        >
+          <LinearGradient
+            colors={
+              allReady && !submitting
+                ? ["#FF6B9D", "#E8336C"]
+                : ["#E5E7EB", "#E5E7EB"]
+            }
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.submitGrad}
+          >
+            {submitting ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Text style={[styles.submitText, !allReady && { color: "#9CA3AF" }]}>
+                  Submit for Verification
+                </Text>
+                <SafeInlineIcon name="arrow" size={18} color={allReady ? "#fff" : "#9CA3AF"} />
+              </>
+            )}
+          </LinearGradient>
+        </TouchableOpacity>
       </View>
     </View>
   );

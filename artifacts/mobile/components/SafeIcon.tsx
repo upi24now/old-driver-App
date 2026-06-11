@@ -159,6 +159,7 @@ export function SafeIcon3D({
 }: Props & { glow?: string }) {
   return (
     <View
+      pointerEvents="none"
       style={[
         styles.icon3dShadow,
         { shadowColor: glow, borderRadius: rounded },
