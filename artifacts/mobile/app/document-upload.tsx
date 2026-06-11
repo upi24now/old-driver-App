@@ -193,7 +193,7 @@ async function requestGallery(): Promise<boolean> {
 //   activity often returns without data, making the whole pick silently fail.
 //   Keeping it false is the only reliable cross-device fix.
 
-async function openCamera(front: boolean): Promise<string | null> {
+async function openCamera(front: boolean): Promise<ImagePicker.ImagePickerAsset | null> {
   const ok = await requestCamera();
   if (!ok) return null;
   console.log("[UPLOAD] launch camera start, front =", front);
@@ -208,9 +208,9 @@ async function openCamera(front: boolean): Promise<string | null> {
     });
     console.log("[UPLOAD] launch camera result =", JSON.stringify({ canceled: result.canceled, assets: result.assets?.length ?? 0 }));
     if (result.canceled || !result.assets?.length) return null;
-    const uri = result.assets[0].uri;
-    console.log("[UPLOAD] selected uri =", uri);
-    return uri;
+    const asset = result.assets[0];
+    console.log("[UPLOAD] selected uri =", asset.uri);
+    return asset;
   } catch (e) {
     console.warn("[UPLOAD] openCamera error", e);
     Alert.alert("Camera error", "Could not open camera. Please try again.");
@@ -218,7 +218,7 @@ async function openCamera(front: boolean): Promise<string | null> {
   }
 }
 
-async function openGallery(): Promise<string | null> {
+async function openGallery(): Promise<ImagePicker.ImagePickerAsset | null> {
   const ok = await requestGallery();
   if (!ok) return null;
   console.log("[UPLOAD] launch gallery start");
@@ -230,9 +230,9 @@ async function openGallery(): Promise<string | null> {
     });
     console.log("[UPLOAD] launch gallery result =", JSON.stringify({ canceled: result.canceled, assets: result.assets?.length ?? 0 }));
     if (result.canceled || !result.assets?.length) return null;
-    const uri = result.assets[0].uri;
-    console.log("[UPLOAD] selected uri =", uri);
-    return uri;
+    const asset = result.assets[0];
+    console.log("[UPLOAD] selected uri =", asset.uri);
+    return asset;
   } catch (e) {
     console.warn("[UPLOAD] openGallery error", e);
     Alert.alert("Gallery error", "Could not open gallery. Please try again.");
@@ -311,6 +311,10 @@ function DocumentCard({
 }) {
   const colors = useColors();
   const uploaded = !!state.uri;
+  const previewUri =
+    typeof state.uri === "string" && state.uri.length > 0
+      ? state.uri
+      : null;
   const [previewError, setPreviewError] = useState(false);
 
   // Reset error flag whenever a new image URI arrives (fresh upload)
@@ -407,16 +411,23 @@ function DocumentCard({
         /* ── LOCKED — approved / verified ── */
         uploaded ? (
           <View style={[styles.previewWrap, doc.isSelfie && styles.previewWrapSquare]}>
-            <RNImage
-              source={{ uri: String(state.uri!) }}
-              style={styles.previewImg}
-              resizeMode="cover"
-              onLoad={() => console.log("[RN_PREVIEW] loaded", doc.id)}
-              onError={(e) => { setPreviewError(true); console.log("[RN_PREVIEW] error", doc.id, e.nativeEvent); }}
-            />
+            {previewUri ? (
+              <RNImage
+                key={previewUri}
+                source={{ uri: previewUri }}
+                style={styles.previewImg}
+                resizeMode="cover"
+                onLoad={() => console.log("[RN_PREVIEW] loaded", doc.id, previewUri)}
+                onError={(e) => { setPreviewError(true); console.log("[RN_PREVIEW] error", doc.id, previewUri, e.nativeEvent); }}
+              />
+            ) : (
+              <View style={styles.previewFallback}>
+                <Text style={styles.previewFallbackText}>No preview URI found</Text>
+              </View>
+            )}
             {previewError && (
               <View style={styles.previewFallback}>
-                <Text style={styles.previewFallbackText}>Preview unavailable — upload saved</Text>
+                <Text style={styles.previewFallbackText}>{"Preview unavailable\nUpload saved successfully"}</Text>
               </View>
             )}
             <View style={[styles.previewBar, { backgroundColor: "rgba(5,150,105,0.90)" }]}>
@@ -443,16 +454,23 @@ function DocumentCard({
         /* ── WAITING — pending / submitted ── */
         uploaded ? (
           <View style={[styles.previewWrap, doc.isSelfie && styles.previewWrapSquare]}>
-            <RNImage
-              source={{ uri: String(state.uri!) }}
-              style={styles.previewImg}
-              resizeMode="cover"
-              onLoad={() => console.log("[RN_PREVIEW] loaded", doc.id)}
-              onError={(e) => { setPreviewError(true); console.log("[RN_PREVIEW] error", doc.id, e.nativeEvent); }}
-            />
+            {previewUri ? (
+              <RNImage
+                key={previewUri}
+                source={{ uri: previewUri }}
+                style={styles.previewImg}
+                resizeMode="cover"
+                onLoad={() => console.log("[RN_PREVIEW] loaded", doc.id, previewUri)}
+                onError={(e) => { setPreviewError(true); console.log("[RN_PREVIEW] error", doc.id, previewUri, e.nativeEvent); }}
+              />
+            ) : (
+              <View style={styles.previewFallback}>
+                <Text style={styles.previewFallbackText}>No preview URI found</Text>
+              </View>
+            )}
             {previewError && (
               <View style={styles.previewFallback}>
-                <Text style={styles.previewFallbackText}>Preview unavailable — upload saved</Text>
+                <Text style={styles.previewFallbackText}>{"Preview unavailable\nUpload saved successfully"}</Text>
               </View>
             )}
             <View style={[styles.previewBar, { backgroundColor: "rgba(217,119,6,0.90)" }]}>
@@ -491,16 +509,23 @@ function DocumentCard({
           </View>
           {uploaded ? (
             <View style={[styles.previewWrap, doc.isSelfie && styles.previewWrapSquare]}>
-              <RNImage
-                source={{ uri: String(state.uri!) }}
-                style={styles.previewImg}
-                resizeMode="cover"
-                onLoad={() => console.log("[RN_PREVIEW] loaded", doc.id)}
-                onError={(e) => { setPreviewError(true); console.log("[RN_PREVIEW] error", doc.id, e.nativeEvent); }}
-              />
+              {previewUri ? (
+                <RNImage
+                  key={previewUri}
+                  source={{ uri: previewUri }}
+                  style={styles.previewImg}
+                  resizeMode="cover"
+                  onLoad={() => console.log("[RN_PREVIEW] loaded", doc.id, previewUri)}
+                  onError={(e) => { setPreviewError(true); console.log("[RN_PREVIEW] error", doc.id, previewUri, e.nativeEvent); }}
+                />
+              ) : (
+                <View style={styles.previewFallback}>
+                  <Text style={styles.previewFallbackText}>No preview URI found</Text>
+                </View>
+              )}
               {previewError && (
                 <View style={styles.previewFallback}>
-                  <Text style={styles.previewFallbackText}>Preview unavailable — upload saved</Text>
+                  <Text style={styles.previewFallbackText}>{"Preview unavailable\nUpload saved successfully"}</Text>
                 </View>
               )}
               <View style={[styles.previewBar, { backgroundColor: "rgba(220,38,38,0.88)" }]}>
@@ -538,16 +563,23 @@ function DocumentCard({
 
         /* ── UPLOADED — normal, no status yet ── */
         <View style={[styles.previewWrap, doc.isSelfie && styles.previewWrapSquare]}>
-          <RNImage
-            source={{ uri: String(state.uri!) }}
-            style={styles.previewImg}
-            resizeMode="cover"
-            onLoad={() => console.log("[RN_PREVIEW] loaded", doc.id)}
-            onError={(e) => { setPreviewError(true); console.log("[RN_PREVIEW] error", doc.id, e.nativeEvent); }}
-          />
+          {previewUri ? (
+            <RNImage
+              key={previewUri}
+              source={{ uri: previewUri }}
+              style={styles.previewImg}
+              resizeMode="cover"
+              onLoad={() => console.log("[RN_PREVIEW] loaded", doc.id, previewUri)}
+              onError={(e) => { setPreviewError(true); console.log("[RN_PREVIEW] error", doc.id, previewUri, e.nativeEvent); }}
+            />
+          ) : (
+            <View style={styles.previewFallback}>
+              <Text style={styles.previewFallbackText}>No preview URI found</Text>
+            </View>
+          )}
           {previewError && (
             <View style={styles.previewFallback}>
-              <Text style={styles.previewFallbackText}>Preview unavailable — upload saved</Text>
+              <Text style={styles.previewFallbackText}>{"Preview unavailable\nUpload saved successfully"}</Text>
             </View>
           )}
           <View style={styles.previewBar}>
@@ -608,6 +640,15 @@ function DocumentCard({
           </View>
         </View>
 
+      )}
+
+      {/* ── Preview URI debug (temporary — remove after preview confirmed) ── */}
+      {uploaded && (
+        <View style={styles.previewDebug}>
+          <Text style={styles.previewDebugText}>URI TYPE: {typeof state.uri}</Text>
+          <Text style={styles.previewDebugText}>URI PREFIX: {String(state.uri).slice(0, 50)}</Text>
+          <Text style={styles.previewDebugText}>HAS URI: {state.uri ? "YES" : "NO"}</Text>
+        </View>
       )}
     </View>
   );
@@ -675,21 +716,27 @@ export default function DocumentUploadScreen() {
    * Must be called from inside an Alert.alert callback — not from
    * a sync context — so that the Alert dismisses before the picker opens.
    */
-  async function runPicker(id: DocId, pickFn: () => Promise<string | null>) {
+  async function runPicker(id: DocId, pickFn: () => Promise<ImagePicker.ImagePickerAsset | null>) {
     patch(id, { loading: true });
     try {
-      const uri = await pickFn();
-      if (uri) {
+      const asset = await pickFn();
+      if (asset) {
+        console.log("[PICKER_ASSET_FULL]", JSON.stringify(asset, null, 2));
         console.log("[PICKER_RESULT]", {
           id,
-          uri,
-          uriType: typeof uri,
-          startsFile: uri?.startsWith("file://"),
-          startsContent: uri?.startsWith("content://"),
-          length: uri?.length,
+          uri:       asset.uri,
+          width:     asset.width,
+          height:    asset.height,
+          fileName:  asset.fileName,
+          mimeType:  asset.mimeType,
+          assetId:   asset.assetId,
+          uriType:   typeof asset.uri,
+          startsFile:    asset.uri?.startsWith("file://"),
+          startsContent: asset.uri?.startsWith("content://"),
+          length:    asset.uri?.length,
         });
-        patch(id, { uri, uploadedAt: Date.now(), loading: false, freshUpload: true });
-        console.log("[UPLOAD_FLOW] upload success, id =", id, "uri =", uri);
+        patch(id, { uri: asset.uri, uploadedAt: Date.now(), loading: false, freshUpload: true });
+        console.log("[UPLOAD_FLOW] upload success, id =", id, "finalUri =", asset.uri);
       } else {
         patch(id, { loading: false });
       }
@@ -1239,6 +1286,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "500" as const,
     textAlign: "center" as const,
+  },
+  previewDebug: {
+    backgroundColor: "#FEF9C3",
+    borderWidth: 1,
+    borderColor: "#FDE047",
+    borderRadius: 8,
+    padding: 8,
+    gap: 3,
+  },
+  previewDebugText: {
+    fontSize: 10,
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    color: "#713F12",
   },
   previewBar: {
     position: "absolute",
