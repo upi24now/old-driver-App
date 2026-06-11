@@ -240,10 +240,19 @@ router.post("/driver-plans/verify-payment", async (req, res) => {
   }
 });
 
+// ── Registration fee floor ────────────────────────────────────────────────────
+//
+// This constant is the minimum the server will ever charge, regardless of what
+// Firestore app_config/driver_onboarding contains. If a stale remote config still
+// has amount: 5, it will be clamped up to REGISTRATION_FEE_MIN_INR.
+// To change the fee, update this constant AND the Firestore document together.
+const REGISTRATION_FEE_MIN_INR = 10;
+
 // ─── POST /api/driver-plans/onboarding-fee/create-order ──────────────────────
 //
 // Creates a Razorpay order for the one-time onboarding registration fee.
-// Amount is read from Firestore app_config/driver_onboarding (fallback: ₹5).
+// Amount is read from Firestore app_config/driver_onboarding, then floored
+// to REGISTRATION_FEE_MIN_INR (₹10) so stale configs can never undercharge.
 // Validates that the driver's onboardingFeeApplies = true and fee is unpaid.
 
 router.post("/driver-plans/onboarding-fee/create-order", async (req, res) => {
@@ -263,8 +272,11 @@ router.post("/driver-plans/onboarding-fee/create-order", async (req, res) => {
 
   const db = await adminFirestore();
 
-  // ── Read fee config from Firestore, fall back to ₹10 ─────────────────────
-  let amountInr = 10;
+  // ── Read fee config from Firestore, clamp to floor ───────────────────────
+  // ROOT-CAUSE FIX: Firestore app_config/driver_onboarding may still contain
+  // amount: 5 from before the fee change. We ALWAYS clamp up to
+  // REGISTRATION_FEE_MIN_INR so a stale remote config can never undercharge.
+  let amountInr = REGISTRATION_FEE_MIN_INR;
   let currency  = "INR";
   try {
     const configSnap = await db.doc("app_config/driver_onboarding").get();
@@ -278,8 +290,11 @@ router.post("/driver-plans/onboarding-fee/create-order", async (req, res) => {
       }
     }
   } catch (err) {
-    req.log.warn({ err }, "Failed to read onboarding fee config, using default ₹10");
+    req.log.warn({ err }, "Failed to read onboarding fee config, using floor ₹10");
   }
+
+  // Floor: Firestore config (e.g. stale amount: 5) must never go below ₹10.
+  amountInr = Math.max(amountInr, REGISTRATION_FEE_MIN_INR);
 
   // ── Validate driver eligibility ────────────────────────────────────────────
   try {
@@ -312,9 +327,11 @@ router.post("/driver-plans/onboarding-fee/create-order", async (req, res) => {
   const amountPaise = Math.round(amountInr * 100);
   const receipt     = `onboarding-${driverUid}-${Date.now()}`;
 
+  req.log.info({ driverUid, amountInr, amountPaise }, "[FeeDebug] server amountInr = " + String(amountInr) + " | server amountPaise = " + String(amountPaise));
+
   try {
     const order = await rzp.client.orders.create({ amount: amountPaise, currency, receipt });
-    req.log.info({ driverUid, amountInr, orderId: order.id }, "Onboarding fee Razorpay order created");
+    req.log.info({ driverUid, amountInr, amountPaise, orderId: order.id, orderAmount: order.amount }, "[FeeDebug] razorpay order response amount = " + String(order.amount));
     res.json({ razorpayOrderId: order.id, amount: amountPaise, currency, keyId: rzp.keyId });
   } catch (err) {
     req.log.error({ err }, "Razorpay onboarding-fee order creation failed");

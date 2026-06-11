@@ -5,18 +5,15 @@
  * Guard: onboardingFeeApplies === true AND onboardingFeeStatus !== "paid"
  *        AND verificationStatus !== "approved"
  *
- * Existing / approved / old drivers are NEVER routed here:
- *   - deriveNextRoute() requires onboardingFeeApplies === true (set at createDriverDoc)
- *   - _layout.tsx auth-restore guard uses the same condition
- *   - Existing drivers never have onboardingFeeApplies in their Firestore doc
- *
  * Payment flow:
  *   1. Fetch fee config from Firestore (app_config/driver_onboarding)
  *   2. POST /api/driver-plans/onboarding-fee/create-order → Razorpay order
+ *      Server enforces REGISTRATION_FEE_MIN_INR floor (₹10); stale ₹5 configs
+ *      are clamped up automatically.
  *   3. Open RazorpayWebCheckout modal
  *   4. onSuccess → POST /api/driver-plans/onboarding-fee/verify-payment
- *      Server verifies HMAC, writes driver_payments record + marks driver doc paid
- *   5. markOnboardingFeePaidLocally() → show success modal → router.replace("/verification-pending")
+ *      Server verifies HMAC, writes driver_payments + marks driver doc paid
+ *   5. markOnboardingFeePaidLocally() → premium success modal → /verification-pending
  *
  * onboardingFeeStatus is NEVER set to "paid" without a verified Razorpay payment.
  */
@@ -42,24 +39,22 @@ import { useDriver } from "@/contexts/DriverContext";
 import { firebaseAuth } from "@/utils/firebase";
 import { getOnboardingFeeConfig, type OnboardingFeeConfig } from "@/utils/firestore";
 
-// ── Premium brand constants (screen-specific, intentionally outside the token system) ──
-// Mirrors the pattern used in active-delivery.tsx for module-level brand constants.
-const PINK         = "#E83272";
-const HOT_PINK     = "#F43F8F";
-const DEEP_PURPLE  = "#1F1235";
-const SUCCESS      = "#10B981";
-const GOLD         = "#F59E0B";
-const CARD_BG      = "#FFFFFF";
-const MUTED        = "#6B7280";
-const PINK_SOFT    = "rgba(232,50,114,0.10)";
-const SUCCESS_SOFT = "rgba(16,185,129,0.12)";
+// ── Premium brand constants (screen-specific, outside token system) ──────────
+const PINK        = "#E83272";
+const HOT_PINK    = "#F43F8F";
+const DEEP_PURPLE = "#1F1235";
+const SUCCESS     = "#10B981";
+const GOLD        = "#F59E0B";
+const MUTED       = "#6B7280";
+const PINK_SOFT   = "rgba(232,50,114,0.10)";
+const SUCCESS_SOFT= "rgba(16,185,129,0.12)";
 
 const DOMAIN   = process.env["EXPO_PUBLIC_DOMAIN"] ?? "";
 const API_BASE = DOMAIN ? `https://${DOMAIN}/api` : "/api";
 
-// ── Registration fee = ₹10 ────────────────────────────────────────────────────
-// Firestore app_config/driver_onboarding is the authoritative source.
-// This fallback is used only when that doc is absent or unreachable.
+// ── REGISTRATION_FEE constant ─────────────────────────────────────────────────
+// Client-side floor. The server enforces its own REGISTRATION_FEE_MIN_INR = 10.
+// Firestore remote config may still show 5 (stale); both sides ignore it.
 const REGISTRATION_FEE = 10;
 
 const FALLBACK_CONFIG: OnboardingFeeConfig = {
@@ -69,44 +64,12 @@ const FALLBACK_CONFIG: OnboardingFeeConfig = {
   title:    "One-time onboarding fee",
 };
 
-const BENEFITS: {
-  icon:     "shield" | "map-pin" | "headphones" | "trending-up";
-  title:    string;
-  subtitle: string;
-  color:    string;
-  bg:       string;
-}[] = [
-  {
-    icon:     "shield",
-    title:    "Verified Driver Badge",
-    subtitle: "Your profile is marked as background-verified for customers",
-    color:    PINK,
-    bg:       PINK_SOFT,
-  },
-  {
-    icon:     "map-pin",
-    title:    "Unlimited Order Access",
-    subtitle: "Receive delivery orders across your city with no restrictions",
-    color:    "#6366F1",
-    bg:       "rgba(99,102,241,0.10)",
-  },
-  {
-    icon:     "headphones",
-    title:    "Priority Driver Support",
-    subtitle: "Dedicated helpline and faster issue resolution",
-    color:    "#0EA5E9",
-    bg:       "rgba(14,165,233,0.10)",
-  },
-  {
-    icon:     "trending-up",
-    title:    "Bonus Earnings Programme",
-    subtitle: "Eligible for weekly streak bonuses, referral rewards, and surge pay",
-    color:    GOLD,
-    bg:       "rgba(245,158,11,0.12)",
-  },
+const CHECKLIST = [
+  { icon: "file-text" as const, label: "Document verification" },
+  { icon: "shield"    as const, label: "Verified driver badge" },
+  { icon: "map-pin"   as const, label: "Unlimited order access" },
+  { icon: "headphones"as const, label: "Priority support" },
 ];
-
-const MINI_BADGES = ["✓  Verified", "🛡  Trusted", "★  Premium Support"];
 
 export default function OnboardingFeeScreen() {
   const insets = useSafeAreaInsets();
@@ -128,19 +91,28 @@ export default function OnboardingFeeScreen() {
 
   useEffect(() => {
     getOnboardingFeeConfig()
-      .then(setConfig)
-      .catch(() => setConfig(FALLBACK_CONFIG))
+      .then((cfg) => {
+        // Client-side floor: clamp stale ₹5 config up to REGISTRATION_FEE.
+        const clamped = { ...cfg, amount: Math.max(cfg.amount, REGISTRATION_FEE) };
+        console.log("[FeeDebug] mobile fee amount =", clamped.amount);
+        setConfig(clamped);
+      })
+      .catch(() => {
+        console.log("[FeeDebug] mobile fee amount = (fallback)", REGISTRATION_FEE);
+        setConfig(FALLBACK_CONFIG);
+      })
       .finally(() => setConfigLoading(false));
   }, []);
 
-  // Firestore config is authoritative; fall back to driver-doc stamp, then constant.
-  const amount   = config?.amount   ?? onboardingFeeAmount ?? REGISTRATION_FEE;
+  // Firestore config (clamped) → driver-doc stamp → constant floor.
+  const amount   = config?.amount   ?? Math.max(onboardingFeeAmount ?? 0, REGISTRATION_FEE);
   const currency = config?.currency ?? "INR";
 
-  // ── Create Razorpay order on server ──────────────────────────────────────────
+  // ── Create Razorpay order ─────────────────────────────────────────────────
   const handlePay = useCallback(async () => {
     if (!driverUid || creatingOrder || verifying) return;
     setCreatingOrder(true);
+    console.log("[FeeDebug] order create payload = { driverUid:", driverUid, "}");
     try {
       const user = firebaseAuth.currentUser;
       if (!user) {
@@ -163,6 +135,8 @@ export default function OnboardingFeeScreen() {
         error?:           string;
       };
 
+      console.log("[FeeDebug] razorpay order response amount =", data.amount, "(paise) =", data.amount != null ? data.amount / 100 : "?", "INR");
+
       if (!res.ok || !data.razorpayOrderId || data.amount == null || !data.keyId) {
         Alert.alert("Error", data.error ?? "Could not start payment. Please try again.");
         return;
@@ -184,9 +158,7 @@ export default function OnboardingFeeScreen() {
     }
   }, [driverUid, phone, creatingOrder, verifying]);
 
-  // ── Verify Razorpay payment on server, then show success modal ────────────
-  // IMPORTANT: onboardingFeeStatus is only set to "paid" after the server has
-  // verified the Razorpay HMAC signature and written the payment record.
+  // ── Verify payment, then show success modal ───────────────────────────────
   const handlePaymentSuccess = useCallback(async (
     paymentId: string,
     orderId:   string,
@@ -221,8 +193,6 @@ export default function OnboardingFeeScreen() {
         return;
       }
 
-      // Server verified + wrote all Firestore fields. Update local state then
-      // show the success modal (navigation happens from inside the modal).
       markOnboardingFeePaidLocally();
       setShowSuccess(true);
     } catch {
@@ -232,7 +202,6 @@ export default function OnboardingFeeScreen() {
     }
   }, [driverUid, markOnboardingFeePaidLocally]);
 
-  // ── Cancel / failure ──────────────────────────────────────────────────────
   const handlePaymentCancel = useCallback(() => {
     Alert.alert(
       "Payment cancelled",
@@ -254,136 +223,90 @@ export default function OnboardingFeeScreen() {
 
   const isBusy = creatingOrder || verifying;
 
-  const currentDate = new Date().toLocaleDateString("en-IN", {
+  const currentDate = new Date().toLocaleString("en-IN", {
     day: "numeric", month: "long", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
   });
 
   if (configLoading) {
     return (
       <View style={[s.loadingRoot, { paddingTop: insets.top }]}>
         <ActivityIndicator size="large" color={PINK} />
-        <Text style={s.loadingText}>Loading fee details…</Text>
+        <Text style={s.loadingText}>Loading…</Text>
       </View>
     );
   }
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]}>
-
-      {/* ── Premium Header ── */}
-      <LinearGradient colors={["#FFF0F6", "#FFF7FB", "#FAFAFC"]} style={s.header}>
-
-        <View style={s.badgeRow}>
-          <View style={s.badge}>
-            <Text style={s.badgeText}>One-time fee</Text>
-          </View>
-        </View>
-
-        <View style={s.heroRow}>
-          {/* Shield hero — icon only, no image assets */}
-          <View style={s.shieldWrap}>
-            <LinearGradient colors={[PINK, HOT_PINK]} style={s.shieldGrad}>
-              <Feather name="shield" size={28} color="#fff" />
-            </LinearGradient>
-            <View style={s.shieldCheck}>
-              <Text style={{ fontSize: 10, color: "#fff", fontWeight: "900" }}>✓</Text>
-            </View>
-          </View>
-
-          <View style={{ flex: 1 }}>
-            <Text style={s.title}>Registration Fee</Text>
-            <View style={s.amountRow}>
-              <Text style={s.amountCurrency}>₹</Text>
-              <Text style={s.amountValue}>{amount}</Text>
-              <View style={s.onceTag}>
-                <Text style={s.onceTagText}>one-time</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        <Text style={s.subtitle}>
-          A one-time ₹{amount} activation fee is required to activate your driver account.
-          This covers document verification and onboarding support.
-        </Text>
-
-      </LinearGradient>
-
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={[s.scroll, { paddingBottom: insets.bottom + 40 }]}
+        contentContainerStyle={[s.scroll, { paddingBottom: insets.bottom + 32 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
 
-        {/* ── Fee Summary Card ── */}
-        <View style={s.feeCard}>
-          <View style={s.feeCardHeader}>
-            <Feather name="file-text" size={15} color={PINK} />
-            <Text style={s.feeCardTitle}>Fee Summary</Text>
+        {/* ── Top header area ── */}
+        <View style={s.topHeader}>
+          <View style={s.pillBadge}>
+            <Text style={s.pillText}>One-time fee</Text>
           </View>
-          <View style={s.feeDivider} />
-          <View style={s.feeRow}>
-            <Text style={s.feeLabel}>One-time onboarding fee</Text>
-            <Text style={s.feeAmt}>₹{amount}</Text>
+          <Text style={s.pageTitle}>Registration Fee</Text>
+          <View style={s.amountRow}>
+            <Text style={s.amountSymbol}>₹</Text>
+            <Text style={s.amountFigure}>{amount}</Text>
+            <View style={s.oncePill}>
+              <Text style={s.oncePillText}>one-time</Text>
+            </View>
           </View>
-          <View style={s.feeDivider} />
-          <View style={s.feeRow}>
-            <Text style={[s.feeLabel, s.feeLabelBold]}>Total due today</Text>
-            <Text style={s.feeTotalAmt}>₹{amount}</Text>
-          </View>
-          <View style={s.feeNote}>
-            <Feather name="info" size={12} color={MUTED} />
-            <Text style={s.feeNoteText}>
-              This is a non-refundable, one-time activation fee. You will not be charged again.
-            </Text>
-          </View>
+          <Text style={s.pageSubtitle}>
+            Activate your driver account and start verification.
+          </Text>
         </View>
 
-        {/* ── Benefits ── */}
-        <Text style={s.sectionTitle}>What you get</Text>
+        {/* ── Main compact activation card ── */}
+        <View style={s.card}>
 
-        {BENEFITS.map((b) => (
-          <View key={b.title} style={s.benefitCard}>
-            <View style={[s.benefitIconBox, { backgroundColor: b.bg }]}>
-              <Feather name={b.icon} size={20} color={b.color} />
-            </View>
-            <View style={s.benefitBody}>
-              <Text style={s.benefitTitle}>{b.title}</Text>
-              <Text style={s.benefitSub}>{b.subtitle}</Text>
-            </View>
-            <View style={[s.checkBadge, { backgroundColor: SUCCESS_SOFT }]}>
-              <Feather name="check" size={13} color={SUCCESS} />
-            </View>
-          </View>
-        ))}
-
-        {/* ── Premium Activation Card (dark gradient) ── */}
-        <LinearGradient
-          colors={[DEEP_PURPLE, "#2D1B5C", "#3A1F6E"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={s.activationCard}
-        >
-          <View style={s.activationTop}>
-            <LinearGradient colors={[PINK, HOT_PINK]} style={s.activationIconBox}>
-              <Feather name="zap" size={20} color="#fff" />
+          {/* Card header — shield + title */}
+          <View style={s.cardHeaderRow}>
+            <LinearGradient colors={[PINK, HOT_PINK]} style={s.cardIconBox}>
+              <Feather name="shield" size={22} color="#fff" />
             </LinearGradient>
             <View style={{ flex: 1 }}>
-              <Text style={s.activationTitle}>Activate & Start Earning</Text>
-              <Text style={s.activationSubtitle}>
-                Complete your registration and unlock all benefits instantly.
+              <Text style={s.cardTitle}>Driver Account Activation</Text>
+              <Text style={s.cardAmountLine}>
+                <Text style={s.cardAmountBig}>₹{amount}  </Text>
+                <Text style={s.cardAmountSub}>One-time verification fee</Text>
               </Text>
             </View>
           </View>
 
-          <View style={s.miniBadgesRow}>
-            {MINI_BADGES.map((b) => (
-              <View key={b} style={s.miniBadge}>
-                <Text style={s.miniBadgeText}>{b}</Text>
+          <View style={s.divider} />
+
+          {/* Compact checklist */}
+          <Text style={s.includesLabel}>Includes</Text>
+          {CHECKLIST.map((item) => (
+            <View key={item.label} style={s.checkRow}>
+              <View style={s.checkIconBox}>
+                <Feather name={item.icon} size={13} color={PINK} />
               </View>
-            ))}
+              <Text style={s.checkLabel}>{item.label}</Text>
+              <Feather name="check-circle" size={15} color={SUCCESS} />
+            </View>
+          ))}
+
+          <View style={s.divider} />
+
+          {/* Fee summary inline */}
+          <View style={s.summaryRow}>
+            <Text style={s.summaryLabel}>Total due today</Text>
+            <Text style={s.summaryAmount}>₹{amount}</Text>
           </View>
+          <Text style={s.summaryNote}>
+            Non-refundable · one-time only · no recurring charges
+          </Text>
+
+          <View style={{ height: 14 }} />
 
           {/* Gradient CTA button */}
           <TouchableOpacity
@@ -402,18 +325,34 @@ export default function OnboardingFeeScreen() {
                 <ActivityIndicator color="#fff" />
               ) : (
                 <>
-                  <Feather name="lock" size={16} color="#fff" />
-                  <Text style={s.payBtnText}>Pay ₹{amount} — Activate Account  →</Text>
+                  <Feather name="lock" size={15} color="#fff" />
+                  <Text style={s.payBtnText}>Pay ₹{amount} — Activate Account</Text>
+                  <Text style={s.payArrow}>→</Text>
                 </>
               )}
             </LinearGradient>
           </TouchableOpacity>
 
-          <Text style={s.secureNote}>
+          {/* Trust line */}
+          <Text style={s.trustLine}>
             🔒  Secure payment via Razorpay · ₹{amount} {currency}
           </Text>
 
-        </LinearGradient>
+        </View>
+
+        {/* ── Mini trust badges row ── */}
+        <View style={s.badgesRow}>
+          {[
+            { icon: "shield"      as const, text: "Verified" },
+            { icon: "check-circle"as const, text: "Trusted" },
+            { icon: "star"        as const, text: "Premium Support" },
+          ].map((b) => (
+            <View key={b.text} style={s.trustBadge}>
+              <Feather name={b.icon} size={12} color={PINK} />
+              <Text style={s.trustBadgeText}>{b.text}</Text>
+            </View>
+          ))}
+        </View>
 
       </ScrollView>
 
@@ -443,54 +382,54 @@ export default function OnboardingFeeScreen() {
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
 
-            {/* Sparkle row — icon-only decoration */}
+            {/* Sparkle decoration — icon only */}
             <View style={s.sparkleRow}>
-              <Text style={[s.sparkle, { fontSize: 10, color: GOLD }]}>✦</Text>
-              <Text style={[s.sparkle, { fontSize: 14, color: PINK }]}>✦</Text>
-              <Text style={[s.sparkle, { fontSize: 9, color: SUCCESS }]}>✦</Text>
+              <Text style={[s.sparkle, { color: GOLD,    fontSize: 10 }]}>✦</Text>
+              <Text style={[s.sparkle, { color: PINK,    fontSize: 14 }]}>✦</Text>
+              <Text style={[s.sparkle, { color: SUCCESS, fontSize: 9  }]}>✦</Text>
             </View>
 
-            {/* Green triple-ring check badge */}
-            <View style={s.successBadgeOuter}>
-              <View style={s.successBadgeMid}>
-                <View style={s.successBadgeInner}>
-                  <Feather name="check" size={34} color="#fff" />
+            {/* Triple-ring green check badge */}
+            <View style={s.successRingOuter}>
+              <View style={s.successRingMid}>
+                <View style={s.successRingInner}>
+                  <Feather name="check" size={32} color="#fff" />
                 </View>
               </View>
             </View>
 
             <Text style={s.modalTitle}>Payment Successful</Text>
-            <Text style={s.modalSubtitle}>
-              Your driver onboarding has been submitted successfully.
-            </Text>
+            <Text style={s.modalPaid}>₹{amount} paid</Text>
 
-            <Text style={s.modalDateText}>
-              Your documents were submitted on{" "}
-              <Text style={{ fontWeight: "700", color: "#1a1a1a" }}>{currentDate}</Text>.
-              {" "}Our verification team will review your profile within 24 hours.
-            </Text>
-
-            {/* Status highlight card */}
-            <View style={s.statusCard}>
-              <View style={s.statusRow}>
-                <View style={s.statusDot} />
-                <View>
-                  <Text style={s.statusLabel}>Verification Status</Text>
-                  <Text style={s.statusValue}>Pending Review</Text>
+            {/* Documents submitted row */}
+            <View style={s.modalInfoCard}>
+              <View style={s.modalInfoRow}>
+                <View style={[s.modalIconBox, { backgroundColor: PINK_SOFT }]}>
+                  <Feather name="file-text" size={14} color={PINK} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.modalInfoTitle}>Documents Submitted</Text>
+                  <Text style={s.modalInfoSub}>Submitted on: {currentDate}</Text>
                 </View>
               </View>
-              <View style={s.statusDivider} />
-              <View style={s.statusRow}>
-                <Feather name="clock" size={14} color={GOLD} />
-                <View style={{ marginLeft: 10 }}>
-                  <Text style={s.statusLabel}>Expected Approval</Text>
-                  <Text style={s.statusValue}>Within 24 hours</Text>
+
+              <View style={s.modalDivider} />
+
+              <View style={s.modalInfoRow}>
+                <View style={[s.modalIconBox, { backgroundColor: SUCCESS_SOFT }]}>
+                  <Feather name="clock" size={14} color={SUCCESS} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.modalInfoTitle}>Verification Pending</Text>
+                  <Text style={s.modalInfoSub}>
+                    Your documents will be verified within 24 hours.
+                  </Text>
                 </View>
               </View>
             </View>
 
             <Text style={s.modalNote}>
-              You will be notified once your account is verified. After approval, you can go online and start receiving orders.
+              You will be notified once your account is approved. After approval, go online and start receiving orders.
             </Text>
 
             <TouchableOpacity
@@ -507,8 +446,8 @@ export default function OnboardingFeeScreen() {
                 end={{ x: 1, y: 0 }}
                 style={s.dashBtnGrad}
               >
-                <Feather name="home" size={16} color="#fff" />
-                <Text style={s.dashBtnText}>Go to Dashboard</Text>
+                <Feather name="clock" size={15} color="#fff" />
+                <Text style={s.dashBtnText}>Go to Verification Status</Text>
               </LinearGradient>
             </TouchableOpacity>
 
@@ -525,166 +464,141 @@ const s = StyleSheet.create({
   loadingRoot: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, backgroundColor: "#FFF7FB" },
   loadingText: { fontSize: 14, color: MUTED, fontFamily: "Inter_400Regular" },
 
-  // ── Header ──
-  header: {
-    paddingHorizontal: 22,
-    paddingTop:        16,
-    paddingBottom:     24,
-  },
-  badgeRow:  { flexDirection: "row", marginBottom: 16 },
-  badge:     { backgroundColor: PINK_SOFT, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 },
-  badgeText: { fontSize: 12, fontWeight: "700", color: PINK, fontFamily: "Inter_700Bold" },
+  scroll: { paddingHorizontal: 18, paddingTop: 24, gap: 16 },
 
-  heroRow: { flexDirection: "row", alignItems: "center", gap: 18, marginBottom: 14 },
-
-  shieldWrap: { position: "relative" },
-  shieldGrad: {
-    width: 60, height: 60, borderRadius: 20,
-    alignItems: "center", justifyContent: "center",
-    shadowColor: PINK, shadowOpacity: 0.35, shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+  // ── Top header ──
+  topHeader: { alignItems: "center", gap: 6 },
+  pillBadge: {
+    backgroundColor: PINK_SOFT, paddingHorizontal: 14, paddingVertical: 5,
+    borderRadius: 20, marginBottom: 2,
   },
-  shieldCheck: {
-    position: "absolute", bottom: -5, right: -5,
-    width: 22, height: 22, borderRadius: 11,
-    backgroundColor: SUCCESS,
-    alignItems: "center", justifyContent: "center",
-    borderWidth: 2.5, borderColor: "#fff",
-  },
-
-  title:          { fontSize: 24, fontWeight: "800", color: "#1a1a1a", fontFamily: "Inter_700Bold" },
-  amountRow:      { flexDirection: "row", alignItems: "baseline", gap: 2, marginTop: 4 },
-  amountCurrency: { fontSize: 22, fontWeight: "700", color: PINK, fontFamily: "Inter_700Bold" },
-  amountValue:    { fontSize: 44, fontWeight: "800", color: PINK, fontFamily: "Inter_700Bold", lineHeight: 52 },
-  onceTag: {
+  pillText:     { fontSize: 12, fontWeight: "700", color: PINK, fontFamily: "Inter_700Bold" },
+  pageTitle:    { fontSize: 26, fontWeight: "800", color: "#1a1a1a", fontFamily: "Inter_700Bold" },
+  amountRow:    { flexDirection: "row", alignItems: "baseline", gap: 2 },
+  amountSymbol: { fontSize: 24, fontWeight: "700", color: PINK, fontFamily: "Inter_700Bold" },
+  amountFigure: { fontSize: 52, fontWeight: "900", color: PINK, fontFamily: "Inter_700Bold", lineHeight: 60 },
+  oncePill: {
     backgroundColor: PINK_SOFT, paddingHorizontal: 8, paddingVertical: 3,
-    borderRadius: 8, marginLeft: 6, alignSelf: "flex-end", marginBottom: 7,
+    borderRadius: 8, marginLeft: 6, alignSelf: "flex-end", marginBottom: 8,
   },
-  onceTagText: { fontSize: 11, fontWeight: "600", color: PINK, fontFamily: "Inter_600SemiBold" },
-  subtitle:    { fontSize: 13, color: "#4B5563", fontFamily: "Inter_400Regular", lineHeight: 20 },
+  oncePillText:  { fontSize: 11, fontWeight: "600", color: PINK, fontFamily: "Inter_600SemiBold" },
+  pageSubtitle:  { fontSize: 13, color: MUTED, fontFamily: "Inter_400Regular", textAlign: "center" },
 
-  // ── Scroll ──
-  scroll: { paddingHorizontal: 18, paddingTop: 20, gap: 14 },
-
-  // ── Fee card ──
-  feeCard: {
-    backgroundColor: CARD_BG, borderRadius: 20, padding: 18,
-    shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
+  // ── Main card ──
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 24,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOpacity: 0.07,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
-  feeCardHeader: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 12 },
-  feeCardTitle:  { fontSize: 13, fontWeight: "700", color: "#1a1a1a", fontFamily: "Inter_700Bold" },
-  feeDivider:    { height: StyleSheet.hairlineWidth, backgroundColor: "#F0F0F0", marginVertical: 12 },
-  feeRow:        { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  feeLabel:      { fontSize: 13, color: MUTED, fontFamily: "Inter_400Regular" },
-  feeLabelBold:  { fontWeight: "700", color: "#1a1a1a", fontFamily: "Inter_700Bold", fontSize: 14 },
-  feeAmt:        { fontSize: 14, fontWeight: "600", color: "#1a1a1a", fontFamily: "Inter_600SemiBold" },
-  feeTotalAmt:   { fontSize: 26, fontWeight: "800", color: PINK, fontFamily: "Inter_700Bold" },
-  feeNote: {
-    flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: 14,
-    backgroundColor: "#F9FAFB", padding: 10, borderRadius: 10,
+  cardHeaderRow: { flexDirection: "row", alignItems: "center", gap: 14, marginBottom: 16 },
+  cardIconBox: {
+    width: 52, height: 52, borderRadius: 16,
+    alignItems: "center", justifyContent: "center",
+    shadowColor: PINK, shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
   },
-  feeNoteText: { flex: 1, fontSize: 12, color: MUTED, fontFamily: "Inter_400Regular", lineHeight: 17 },
+  cardTitle:     { fontSize: 15, fontWeight: "700", color: "#1a1a1a", fontFamily: "Inter_700Bold", marginBottom: 2 },
+  cardAmountLine:{ flexDirection: "row", alignItems: "baseline", flexWrap: "wrap" },
+  cardAmountBig: { fontSize: 20, fontWeight: "800", color: PINK, fontFamily: "Inter_700Bold" },
+  cardAmountSub: { fontSize: 12, color: MUTED, fontFamily: "Inter_400Regular" },
 
-  // ── Section title ──
-  sectionTitle: { fontSize: 16, fontWeight: "700", color: "#1a1a1a", fontFamily: "Inter_700Bold", marginTop: 4 },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: "#F0F0F0", marginVertical: 14 },
 
-  // ── Benefit cards ──
-  benefitCard: {
-    flexDirection: "row", alignItems: "center", gap: 14,
-    backgroundColor: CARD_BG, borderRadius: 18, padding: 16,
-    shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+  includesLabel: { fontSize: 12, fontWeight: "700", color: "#1a1a1a", fontFamily: "Inter_700Bold", marginBottom: 10, letterSpacing: 0.5, textTransform: "uppercase" },
+
+  checkRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 6 },
+  checkIconBox: {
+    width: 26, height: 26, borderRadius: 8,
+    backgroundColor: PINK_SOFT, alignItems: "center", justifyContent: "center",
   },
-  benefitIconBox: { width: 46, height: 46, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  benefitBody:    { flex: 1 },
-  benefitTitle:   { fontSize: 14, fontWeight: "700", color: "#1a1a1a", fontFamily: "Inter_700Bold", marginBottom: 2 },
-  benefitSub:     { fontSize: 12, color: MUTED, fontFamily: "Inter_400Regular", lineHeight: 17 },
-  checkBadge:     { width: 28, height: 28, borderRadius: 9, alignItems: "center", justifyContent: "center" },
+  checkLabel: { flex: 1, fontSize: 13, color: "#374151", fontFamily: "Inter_400Regular" },
 
-  // ── Premium activation card ──
-  activationCard: {
-    borderRadius: 24, padding: 22, gap: 16,
-    shadowColor: DEEP_PURPLE, shadowOpacity: 0.3, shadowRadius: 16, shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
-  },
-  activationTop:      { flexDirection: "row", alignItems: "flex-start", gap: 14 },
-  activationIconBox:  { width: 48, height: 48, borderRadius: 15, alignItems: "center", justifyContent: "center" },
-  activationTitle:    { fontSize: 17, fontWeight: "800", color: "#fff", fontFamily: "Inter_700Bold", marginBottom: 4 },
-  activationSubtitle: { fontSize: 13, color: "rgba(255,255,255,0.75)", fontFamily: "Inter_400Regular", lineHeight: 19 },
+  summaryRow:    { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  summaryLabel:  { fontSize: 13, fontWeight: "600", color: "#1a1a1a", fontFamily: "Inter_600SemiBold" },
+  summaryAmount: { fontSize: 20, fontWeight: "800", color: PINK, fontFamily: "Inter_700Bold" },
+  summaryNote:   { fontSize: 11, color: MUTED, fontFamily: "Inter_400Regular", marginTop: 3 },
 
-  miniBadgesRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
-  miniBadge: {
-    backgroundColor: "rgba(255,255,255,0.12)", paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 20, borderWidth: 1, borderColor: "rgba(255,255,255,0.20)",
-  },
-  miniBadgeText: { fontSize: 12, fontWeight: "600", color: "#fff", fontFamily: "Inter_600SemiBold" },
-
-  // ── Pay button ──
-  payBtn:     { borderRadius: 16, overflow: "hidden" },
+  payBtn:     { borderRadius: 14, overflow: "hidden" },
   payBtnGrad: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
-    paddingVertical: 17, gap: 8, borderRadius: 16,
+    paddingVertical: 16, gap: 7, borderRadius: 14,
   },
-  payBtnText:  { fontSize: 16, fontWeight: "800", color: "#fff", fontFamily: "Inter_700Bold" },
-  secureNote:  { textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.60)", fontFamily: "Inter_400Regular" },
+  payBtnText: { fontSize: 15, fontWeight: "800", color: "#fff", fontFamily: "Inter_700Bold" },
+  payArrow:   { fontSize: 16, fontWeight: "900", color: "#fff" },
+
+  trustLine: { textAlign: "center", fontSize: 11, color: MUTED, fontFamily: "Inter_400Regular", marginTop: 10 },
+
+  // ── Mini trust badges ──
+  badgesRow: { flexDirection: "row", justifyContent: "center", gap: 10 },
+  trustBadge: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    backgroundColor: "#fff", paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 12,
+    shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 4, shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  trustBadgeText: { fontSize: 11, fontWeight: "600", color: "#374151", fontFamily: "Inter_600SemiBold" },
 
   // ── Success modal ──
   modalOverlay: {
-    flex: 1, backgroundColor: "rgba(0,0,0,0.58)",
+    flex: 1, backgroundColor: "rgba(0,0,0,0.55)",
     alignItems: "center", justifyContent: "center", paddingHorizontal: 20,
   },
   modalCard: {
-    backgroundColor: CARD_BG, borderRadius: 28, padding: 26,
-    width: "100%", maxWidth: 400,
+    backgroundColor: "#fff", borderRadius: 28, padding: 24,
+    width: "100%", maxWidth: 400, alignItems: "center", gap: 12,
     shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 30, shadowOffset: { width: 0, height: 10 },
-    elevation: 20, alignItems: "center", gap: 12,
+    elevation: 20,
   },
 
   sparkleRow: { flexDirection: "row", gap: 6, alignItems: "center" },
-  sparkle:    { fontSize: 12, fontWeight: "900" },
+  sparkle:    { fontWeight: "900" },
 
-  successBadgeOuter: {
-    width: 96, height: 96, borderRadius: 48,
+  successRingOuter: {
+    width: 90, height: 90, borderRadius: 45,
     backgroundColor: "rgba(16,185,129,0.08)",
     alignItems: "center", justifyContent: "center",
   },
-  successBadgeMid: {
-    width: 78, height: 78, borderRadius: 39,
-    backgroundColor: "rgba(16,185,129,0.16)",
+  successRingMid: {
+    width: 72, height: 72, borderRadius: 36,
+    backgroundColor: "rgba(16,185,129,0.15)",
     alignItems: "center", justifyContent: "center",
   },
-  successBadgeInner: {
-    width: 62, height: 62, borderRadius: 31,
+  successRingInner: {
+    width: 56, height: 56, borderRadius: 28,
     backgroundColor: SUCCESS,
     alignItems: "center", justifyContent: "center",
-    shadowColor: SUCCESS, shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    shadowColor: SUCCESS, shadowOpacity: 0.4, shadowRadius: 10, shadowOffset: { width: 0, height: 3 },
+    elevation: 5,
   },
 
-  modalTitle:    { fontSize: 22, fontWeight: "800", color: "#1a1a1a", fontFamily: "Inter_700Bold", textAlign: "center" },
-  modalSubtitle: { fontSize: 14, color: "#4B5563", fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 21 },
-  modalDateText: { fontSize: 13, color: MUTED, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 20 },
+  modalTitle: { fontSize: 21, fontWeight: "800", color: "#1a1a1a", fontFamily: "Inter_700Bold", textAlign: "center" },
+  modalPaid:  { fontSize: 28, fontWeight: "900", color: SUCCESS, fontFamily: "Inter_700Bold" },
 
-  statusCard: {
-    backgroundColor: "#F0FDF9", borderRadius: 16, padding: 16,
-    width: "100%", borderWidth: 1, borderColor: "rgba(16,185,129,0.22)", gap: 12,
+  modalInfoCard: {
+    backgroundColor: "#F8FAFC", borderRadius: 16, padding: 14,
+    width: "100%", borderWidth: 1, borderColor: "#E5E7EB", gap: 10,
   },
-  statusRow:    { flexDirection: "row", alignItems: "center", gap: 10 },
-  statusDot:    { width: 10, height: 10, borderRadius: 5, backgroundColor: GOLD },
-  statusDivider:{ height: StyleSheet.hairlineWidth, backgroundColor: "rgba(16,185,129,0.22)" },
-  statusLabel:  { fontSize: 11, color: MUTED, fontFamily: "Inter_400Regular" },
-  statusValue:  { fontSize: 14, fontWeight: "700", color: "#1a1a1a", fontFamily: "Inter_700Bold" },
+  modalInfoRow:  { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  modalIconBox:  { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  modalInfoTitle:{ fontSize: 13, fontWeight: "700", color: "#1a1a1a", fontFamily: "Inter_700Bold", marginBottom: 1 },
+  modalInfoSub:  { fontSize: 12, color: MUTED, fontFamily: "Inter_400Regular", lineHeight: 17 },
+  modalDivider:  { height: StyleSheet.hairlineWidth, backgroundColor: "#E5E7EB" },
 
   modalNote: {
     fontSize: 12, color: MUTED, fontFamily: "Inter_400Regular",
     textAlign: "center", lineHeight: 18,
   },
 
-  dashBtn:     { width: "100%", borderRadius: 16, overflow: "hidden" },
+  dashBtn:     { width: "100%", borderRadius: 14, overflow: "hidden" },
   dashBtnGrad: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
-    paddingVertical: 16, gap: 8,
+    paddingVertical: 15, gap: 8,
   },
-  dashBtnText: { fontSize: 16, fontWeight: "700", color: "#fff", fontFamily: "Inter_700Bold" },
+  dashBtnText: { fontSize: 15, fontWeight: "700", color: "#fff", fontFamily: "Inter_700Bold" },
 });
