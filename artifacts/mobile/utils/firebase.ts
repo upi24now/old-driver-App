@@ -8,6 +8,7 @@ import {
   memoryLruGarbageCollector,
   CACHE_SIZE_UNLIMITED,
 } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const firebaseConfig = {
@@ -87,3 +88,6 @@ try {
 }
 
 export { db };
+
+// ─── Firebase Storage ─────────────────────────────────────────────────────────
+export const storage = getStorage(app);

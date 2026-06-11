@@ -44,6 +44,7 @@ import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 import { registerDriverKeys } from "@/utils/driver-api";
 import { getDriverDoc, submitDriverDocuments } from "@/utils/firestore";
+import { uploadDocumentImage, isRemoteUrl } from "@/utils/storage";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -772,13 +773,24 @@ export default function DocumentUploadScreen() {
         return;
       }
 
-      // ── Collect URIs for every non-locked doc ─────────────────────────────
+      // ── Upload local images to Firebase Storage, then collect download URLs ──
       // locked = already admin-verified; skip to avoid overwriting admin status.
+      // Docs that already have a remote HTTPS URL (loaded back from Firestore on a
+      // re-submission) are passed through as-is — no re-upload needed.
       const docUris: Record<string, string | null> = {};
       for (const d of DOCS) {
         const st   = docs[d.id];
         const lock = normalizeLock(st.status, !!st.uri);
-        if (lock !== "locked") {
+        if (lock === "locked") continue;
+
+        if (st.uri && !isRemoteUrl(st.uri)) {
+          // Local file:// or content:// path — upload to Firebase Storage first
+          console.log(`[document-upload] uploading ${d.id} to Storage…`);
+          const downloadURL = await uploadDocumentImage(driverUid, d.id, st.uri);
+          console.log(`[document-upload] ${d.id} → ${downloadURL.slice(0, 60)}…`);
+          docUris[d.id] = downloadURL;
+        } else {
+          // null or already a Firebase Storage URL
           docUris[d.id] = st.uri;
         }
       }
