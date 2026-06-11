@@ -3,6 +3,14 @@
  *
  * Firebase Storage helpers for KYC document uploads.
  *
+ * Upload method — Firebase Storage REST API with base64 body:
+ *   The Firebase Web Storage SDK (uploadBytes / uploadString) internally
+ *   constructs Blob/ArrayBuffer, which React Native/Expo does not support.
+ *   Workaround: read the file as base64 with expo-file-system/legacy, then
+ *   POST directly to the Firebase Storage REST endpoint with the raw base64
+ *   string as the body and Content-Transfer-Encoding: base64.
+ *   No Blob, no ArrayBuffer, no XMLHttpRequest blob.
+ *
  * Storage paths:
  *   drivers/{uid}/selfie.jpg
  *   drivers/{uid}/aadhaar.jpg
@@ -11,20 +19,24 @@
  *   drivers/{uid}/rc.jpg
  *   drivers/{uid}/insurance.jpg
  *
- * Upload method — base64 via Expo FileSystem:
- *   Blob / XHR blob both fail on Android Expo Go with storage/unknown.
- *   FileSystem.readAsStringAsync + uploadString("base64") is the only
- *   method that reliably works on React Native / Expo SDK 54.
+ * Firebase Storage rules required:
+ *   match /drivers/{uid}/{fileName} {
+ *     allow read:  if request.auth != null;
+ *     allow write: if request.auth != null && request.auth.uid == uid;
+ *   }
  */
 
 import * as FileSystem from "expo-file-system/legacy";
-import { getDownloadURL, ref, uploadString } from "firebase/storage";
-import { firebaseAuth, storage } from "./firebase";
+import { firebaseAuth } from "./firebase";
+
+// ─── Bucket ───────────────────────────────────────────────────────────────────
+
+const BUCKET = process.env["EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET"] ?? "";
 
 // ─── Content-type detection ───────────────────────────────────────────────────
 
 function contentTypeFromUri(uri: string): string {
-  const lower = (uri.toLowerCase().split("?")[0] ?? "");
+  const lower = uri.toLowerCase().split("?")[0] ?? "";
   if (lower.endsWith(".png"))  return "image/png";
   if (lower.endsWith(".webp")) return "image/webp";
   if (lower.endsWith(".gif"))  return "image/gif";
@@ -34,12 +46,13 @@ function contentTypeFromUri(uri: string): string {
 // ─── Main upload helper ───────────────────────────────────────────────────────
 
 /**
- * Upload a local image URI (file:// or content://) to Firebase Storage using
- * Expo FileSystem base64 encoding and return the permanent HTTPS download URL.
+ * Upload a local image URI to Firebase Storage using the REST API + base64.
+ * No Blob, no ArrayBuffer, no Firebase Storage SDK upload methods.
  *
  * @param uid      - Driver UID (must match Firebase Auth UID for Storage rules)
- * @param docId    - Document slot identifier used as the filename stem
- * @param localUri - Local file:// or content:// path from ImagePicker / app cache
+ * @param docId    - Document slot identifier used as the filename stem (e.g. "selfie")
+ * @param localUri - Local file:// or content:// path from ImagePicker / cache
+ * @returns        - Permanent HTTPS download URL
  */
 export async function uploadDocumentImage(
   uid:      string,
@@ -47,26 +60,33 @@ export async function uploadDocumentImage(
   localUri: string,
 ): Promise<string> {
   const authUid     = firebaseAuth.currentUser?.uid ?? null;
-  const storagePath = `drivers/${uid}/${docId}.jpg`;
+  const objectPath  = `drivers/${uid}/${docId}.jpg`;
+  const encodedPath = encodeURIComponent(objectPath);
   const contentType = contentTypeFromUri(localUri);
+  const bucket      = BUCKET;
 
   console.log("[storage] uploadDocumentImage ─────────────────────");
   console.log("[storage]   uid        :", uid);
   console.log("[storage]   authUid    :", authUid ?? "(null — unauthenticated!)");
   console.log("[storage]   match      :", authUid === uid);
   console.log("[storage]   docId      :", docId);
-  console.log("[storage]   storagePath:", storagePath);
+  console.log("[storage]   objectPath :", objectPath);
   console.log("[storage]   contentType:", contentType);
+  console.log("[storage]   bucket     :", bucket || "(EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET not set!)");
   console.log("[storage]   localUri   :", localUri.slice(0, 120));
 
+  // ── Guards ────────────────────────────────────────────────────────────────
   if (!authUid) {
     throw new Error("storage/unauthenticated: no Firebase Auth session before upload");
+  }
+  if (!bucket) {
+    throw new Error("storage/no-bucket: EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET env var is not set");
   }
   if (authUid !== uid) {
     console.warn(`[storage] WARNING: authUid "${authUid}" !== uid "${uid}" — Storage rules will reject`);
   }
 
-  // ── Read file as base64 ────────────────────────────────────────────────────
+  // ── Read file as base64 ───────────────────────────────────────────────────
   console.log("[storage] reading file as base64 via FileSystem…");
   let base64: string;
   try {
@@ -78,31 +98,66 @@ export async function uploadDocumentImage(
     console.error("[storage] FileSystem.readAsStringAsync FAILED:", e?.message);
     throw new Error(`Could not read local file: ${e?.message ?? String(err)}`);
   }
-  console.log("[storage] base64 length:", base64.length, "(chars ~", Math.round(base64.length * 0.75 / 1024), "KB uncompressed)");
+  console.log("[storage] base64 length:", base64.length,
+    "(~" + Math.round(base64.length * 0.75 / 1024) + " KB)");
   if (!base64 || base64.length === 0) {
     throw new Error(`FileSystem returned empty base64 for ${localUri}`);
   }
 
-  // ── Upload via uploadString ────────────────────────────────────────────────
-  const fileRef = ref(storage, storagePath);
-  console.log("[storage] uploadString start…");
+  // ── Get Firebase ID token ─────────────────────────────────────────────────
+  let idToken: string;
   try {
-    await uploadString(fileRef, base64, "base64", { contentType });
-    console.log("[storage] uploadString OK");
+    idToken = await firebaseAuth.currentUser!.getIdToken();
   } catch (err) {
-    const e = err as Error & { code?: string; customData?: unknown; serverResponse?: string };
-    console.error("[storage] uploadString FAILED ─────────────────");
-    console.error("[storage]   code          :", e?.code);
-    console.error("[storage]   message       :", e?.message);
-    console.error("[storage]   customData    :", JSON.stringify(e?.customData));
-    console.error("[storage]   serverResponse:", e?.serverResponse);
-    console.error("[storage]   stack         :", e?.stack);
-    throw err;
+    const e = err as Error;
+    console.error("[storage] getIdToken FAILED:", e?.message);
+    throw new Error(`Could not get auth token: ${e?.message ?? String(err)}`);
   }
 
-  // ── Get download URL ───────────────────────────────────────────────────────
-  const downloadURL = await getDownloadURL(fileRef);
-  console.log("[storage] downloadURL:", downloadURL.slice(0, 80));
+  // ── Upload via Firebase Storage REST API ──────────────────────────────────
+  const uploadUrl =
+    `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodedPath}` +
+    `?uploadType=media&name=${encodedPath}`;
+
+  console.log("[storage] REST upload start…");
+  console.log("[storage]   url:", uploadUrl.slice(0, 120));
+
+  let res: Response;
+  try {
+    res = await fetch(uploadUrl, {
+      method: "POST",
+      headers: {
+        "Authorization":            `Bearer ${idToken}`,
+        "Content-Type":             contentType,
+        "Content-Transfer-Encoding":"base64",
+      },
+      body: base64,
+    });
+  } catch (err) {
+    const e = err as Error;
+    console.error("[storage] fetch THREW:", e?.message);
+    throw new Error(`Storage REST network error: ${e?.message ?? String(err)}`);
+  }
+
+  console.log("[storage] response status:", res.status, res.statusText);
+
+  if (!res.ok) {
+    let text = "";
+    try { text = await res.text(); } catch { /* ignore */ }
+    console.error("[storage] REST upload FAILED ─────────────────");
+    console.error("[storage]   status      :", res.status);
+    console.error("[storage]   statusText  :", res.statusText);
+    console.error("[storage]   responseText:", text);
+    throw new Error(`Storage REST upload failed ${res.status}: ${text}`);
+  }
+
+  console.log("[storage] REST upload OK");
+
+  // ── Build download URL ────────────────────────────────────────────────────
+  const downloadURL =
+    `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodedPath}?alt=media`;
+
+  console.log("[storage] downloadURL:", downloadURL.slice(0, 100));
   return downloadURL;
 }
 
