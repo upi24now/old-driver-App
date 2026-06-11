@@ -1,4 +1,5 @@
-import { SafeIcon, SafeInlineIcon, SafeIconName, PremiumButton3D } from "@/components/SafeIcon";
+import { SafeInlineIcon, SafeIconName, PremiumButton3D } from "@/components/SafeIcon";
+import { VehicleArt, VehicleArtType } from "@/components/VehicleArt";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
@@ -39,15 +40,15 @@ const B = {
 
 // ─── Service cards data ───────────────────────────────────────────────────────
 const SERVICES: Array<{
-  safeIcon:   SafeIconName;
+  artType:    VehicleArtType;
   title:      string;
   sub:        string;
   accent:     string;
   accentSoft: string;
 }> = [
-  { safeIcon: "bike",  title: "2-Wheeler", sub: "Express", accent: B.orange, accentSoft: "#FFF3E0" },
-  { safeIcon: "auto",  title: "3W Loader", sub: "Economy", accent: B.amber,  accentSoft: "#FFFBEB" },
-  { safeIcon: "truck", title: "4W Loader", sub: "Cargo",   accent: B.indigo, accentSoft: "#EEF2FF" },
+  { artType: "bike",      title: "2-Wheeler", sub: "Express", accent: B.orange, accentSoft: "#FFF3E0" },
+  { artType: "autoCargo", title: "3W Loader", sub: "Economy", accent: B.amber,  accentSoft: "#FFFBEB" },
+  { artType: "truck",     title: "4W Loader", sub: "Cargo",   accent: B.indigo, accentSoft: "#EEF2FF" },
 ];
 
 // ─── Trust chips data ─────────────────────────────────────────────────────────
@@ -58,11 +59,11 @@ const CHIPS: Array<{ icon: SafeIconName; label: string; color: string; bg: strin
 ];
 
 // ─── ServiceCard ──────────────────────────────────────────────────────────────
-function ServiceCard({ safeIcon, title, sub, accent, accentSoft }: typeof SERVICES[number]) {
+function ServiceCard({ artType, title, sub, accent }: typeof SERVICES[number]) {
   return (
     <View style={styles.serviceCard}>
       <View style={[styles.accentDot, { backgroundColor: accent }]} />
-      <SafeIcon name={safeIcon} size={48} bg={accentSoft} color={accent} rounded={14} />
+      <VehicleArt type={artType} size={62} />
       <Text style={styles.serviceTitle} numberOfLines={1}>{title}</Text>
       <Text style={styles.serviceSub}   numberOfLines={1}>{sub}</Text>
       <View style={[styles.accentLine, { backgroundColor: accent }]} />

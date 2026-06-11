@@ -1,4 +1,5 @@
-import { SafeInlineIcon, SafeIconName } from "@/components/SafeIcon";
+import { SafeInlineIcon } from "@/components/SafeIcon";
+import { VehicleArt, VehicleArtType } from "@/components/VehicleArt";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -44,7 +45,7 @@ type VehicleOption = {
   tagline:      string;
   capacity:     string;
   price:        string;
-  safeIcon:     SafeIconName;
+  artType:      VehicleArtType;
   capacityType: "passenger" | "cargo";
   category:     Exclude<Category, "All">;
   popular?:     boolean;
@@ -56,73 +57,73 @@ type VehicleOption = {
 const VEHICLES: VehicleOption[] = [
   {
     id: "bike",        name: "Bike Delivery",  tagline: "Quick parcel rides",
-    capacity: "1 Parcel",  price: "₹6/km",   safeIcon: "bike",    capacityType: "cargo",
+    capacity: "1 Parcel",  price: "₹6/km",   artType: "bike",      capacityType: "cargo",
     category: "2 Wheeler", popular: true,
     gradStart: "#FF6B9D",  gradMid: "#E8336C",  gradEnd: "#9B59B6",
   },
   {
     id: "scooter",     name: "Scooter",        tagline: "Light delivery rides",
-    capacity: "1 Parcel",  price: "₹5/km",   safeIcon: "scooter", capacityType: "cargo",
+    capacity: "1 Parcel",  price: "₹5/km",   artType: "scooter",   capacityType: "cargo",
     category: "2 Wheeler",
     gradStart: "#FF8C69",  gradEnd: "#FFA726",
   },
   {
     id: "auto-pass",   name: "Auto Passenger", tagline: "3-seater city rides",
-    capacity: "3 Seats",   price: "₹10/km",  safeIcon: "auto",    capacityType: "passenger",
+    capacity: "3 Seats",   price: "₹10/km",  artType: "auto",      capacityType: "passenger",
     category: "3 Wheeler",
     gradStart: "#FFD43B",  gradEnd: "#FFA726",
   },
   {
     id: "auto-cargo",  name: "Auto Cargo",     tagline: "Small goods delivery",
-    capacity: "300 kg",    price: "₹12/km",  safeIcon: "truck",   capacityType: "cargo",
+    capacity: "300 kg",    price: "₹12/km",  artType: "autoCargo", capacityType: "cargo",
     category: "3 Wheeler",
     gradStart: "#FB923C",  gradEnd: "#F59E0B",
   },
   {
     id: "mini-car",    name: "Mini Car",       tagline: "Compact comfort",
-    capacity: "4 Seats",   price: "₹14/km",  safeIcon: "car",     capacityType: "passenger",
+    capacity: "4 Seats",   price: "₹14/km",  artType: "car",       capacityType: "passenger",
     category: "4 Wheeler",
     gradStart: "#38BDF8",  gradEnd: "#2563EB",
   },
   {
     id: "sedan",       name: "Sedan",          tagline: "Premium comfort",
-    capacity: "4 Seats",   price: "₹18/km",  safeIcon: "car",     capacityType: "passenger",
+    capacity: "4 Seats",   price: "₹18/km",  artType: "car",       capacityType: "passenger",
     category: "4 Wheeler",
     gradStart: "#818CF8",  gradEnd: "#4338CA",
   },
   {
     id: "suv",         name: "SUV",            tagline: "Family rides",
-    capacity: "6 Seats",   price: "₹22/km",  safeIcon: "car",     capacityType: "passenger",
+    capacity: "6 Seats",   price: "₹22/km",  artType: "car",       capacityType: "passenger",
     category: "4 Wheeler",
     gradStart: "#2DD4BF",  gradEnd: "#0D9488",
   },
   {
     id: "tata-ace",    name: "Tata Ace",       tagline: "Mini goods carrier",
-    capacity: "750 kg",    price: "₹16/km",  safeIcon: "truck",   capacityType: "cargo",
+    capacity: "750 kg",    price: "₹16/km",  artType: "truck",     capacityType: "cargo",
     category: "Cargo",
     gradStart: "#4ADE80",  gradEnd: "#16A34A",
   },
   {
     id: "pickup",      name: "Pickup Truck",   tagline: "Heavy parcel delivery",
-    capacity: "1 Ton",     price: "₹20/km",  safeIcon: "truck",   capacityType: "cargo",
+    capacity: "1 Ton",     price: "₹20/km",  artType: "truck",     capacityType: "cargo",
     category: "Cargo",
     gradStart: "#A3E635",  gradEnd: "#65A30D",
   },
   {
     id: "mini-truck",  name: "Mini Truck",     tagline: "Bulk goods transport",
-    capacity: "1.5 Ton",   price: "₹24/km",  safeIcon: "truck",   capacityType: "cargo",
+    capacity: "1.5 Ton",   price: "₹24/km",  artType: "truck",     capacityType: "cargo",
     category: "Cargo",
     gradStart: "#22D3EE",  gradEnd: "#0EA5E9",
   },
   {
     id: "eicher",      name: "Eicher Truck",   tagline: "Commercial transport",
-    capacity: "3 Ton",     price: "₹32/km",  safeIcon: "truck",   capacityType: "cargo",
+    capacity: "3 Ton",     price: "₹32/km",  artType: "truck",     capacityType: "cargo",
     category: "Heavy",
     gradStart: "#94A3B8",  gradEnd: "#3B82F6",
   },
   {
     id: "truck-14ft",  name: "14 Feet Truck",  tagline: "Large goods movement",
-    capacity: "5 Ton",     price: "₹40/km",  safeIcon: "truck",   capacityType: "cargo",
+    capacity: "5 Ton",     price: "₹40/km",  artType: "truck",     capacityType: "cargo",
     category: "Heavy",
     gradStart: "#C084FC",  gradEnd: "#6D28D9",
   },
@@ -203,9 +204,7 @@ function VehicleCard({
             </View>
           )}
 
-          <View style={styles.emojiWrap}>
-            <SafeInlineIcon name={vehicle.safeIcon} size={22} color="#fff" />
-          </View>
+          <VehicleArt type={vehicle.artType} size={82} />
         </LinearGradient>
 
         {/* ── Text bottom ── */}
@@ -464,7 +463,7 @@ export default function VehicleSelectionScreen() {
                 end={{ x: 1, y: 1 }}
                 style={styles.summaryThumb}
               >
-                <SafeInlineIcon name={selectedVehicle.safeIcon} size={22} color="#fff" />
+                <VehicleArt type={selectedVehicle.artType} size={44} />
               </LinearGradient>
 
               <View style={{ flex: 1 }}>
