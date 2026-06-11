@@ -195,6 +195,7 @@ export default function TabLayout() {
   // URL before auth finished), redirect them immediately to avoid showing
   // authenticated screens to unauthenticated users.
   if (authLoading) {
+    console.log("[SPINNER_PROOF] component = TabsSpinner — authLoading=true");
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background }}>
         <ActivityIndicator size="large" color={colors.primary} />

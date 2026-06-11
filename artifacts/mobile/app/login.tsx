@@ -204,7 +204,10 @@ export default function LoginScreen() {
     });
   }
 
-  if (authLoading || driverUid) {
+  console.log("[SCREEN_MOUNT] login — authLoading =", authLoading, "driverUid =", driverUid);
+
+  if (authLoading) {
+    console.log("[SPINNER_PROOF] component = LoginSpinner — authLoading=true (brief)");
     return (
       <View style={[styles.root, { alignItems: "center", justifyContent: "center" }]}>
         <ActivityIndicator size="large" color={B.orange} />

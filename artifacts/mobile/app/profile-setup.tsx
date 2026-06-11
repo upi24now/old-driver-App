@@ -285,6 +285,7 @@ type Fields = {
 };
 
 export default function ProfileSetupScreen() {
+  console.log("[SCREEN_MOUNT] profile-setup");
   const insets  = useSafeAreaInsets();
   const router  = useRouter();
   const scrollRef = useRef<ScrollView>(null);

@@ -19,10 +19,14 @@ export default function Index() {
   const { authLoading, driverUid } = useDriver();
   const colors = useColors();
 
+  console.log("[SCREEN_MOUNT] index — authLoading =", authLoading, "driverUid =", driverUid);
+
   if (!authLoading && !driverUid) {
+    console.log("[SCREEN_MOUNT] index — redirecting to /login");
     return <Redirect href="/login" />;
   }
 
+  console.log("[SPINNER_PROOF] component = IndexSpinner — reason:", authLoading ? "authLoading=true" : "driverUid=" + driverUid);
   return (
     <View
       style={{

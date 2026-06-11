@@ -303,6 +303,7 @@ function CategoryChip({
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function VehicleSelectionScreen() {
+  console.log("[SCREEN_MOUNT] vehicle-selection");
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { setVehicle } = useDriver();
