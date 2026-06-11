@@ -161,8 +161,10 @@ const blankDoc = (): DocState => ({ uri: null, uploadedAt: null, loading: false,
 // ─── Permission helpers ───────────────────────────────────────────────────────
 
 async function requestCamera(): Promise<boolean> {
+  console.log("[UPLOAD] request camera start");
   const { status, canAskAgain } =
     await ImagePicker.requestCameraPermissionsAsync();
+  console.log("[UPLOAD] request camera result =", status);
   if (status === "granted") return true;
   const msg = canAskAgain
     ? "Camera permission is needed to take a photo. Please allow it."
@@ -172,8 +174,10 @@ async function requestCamera(): Promise<boolean> {
 }
 
 async function requestGallery(): Promise<boolean> {
+  console.log("[UPLOAD] request gallery start");
   const { status, canAskAgain } =
     await ImagePicker.requestMediaLibraryPermissionsAsync();
+  console.log("[UPLOAD] request gallery result =", status);
   if (status === "granted") return true;
   const msg = canAskAgain
     ? "Photo library permission is needed to choose an image."
@@ -192,6 +196,7 @@ async function requestGallery(): Promise<boolean> {
 async function openCamera(front: boolean): Promise<string | null> {
   const ok = await requestCamera();
   if (!ok) return null;
+  console.log("[UPLOAD] launch camera start, front =", front);
   try {
     const result = await ImagePicker.launchCameraAsync({
       cameraType: front
@@ -201,10 +206,13 @@ async function openCamera(front: boolean): Promise<string | null> {
       allowsEditing: false,
       quality: 0.85,
     });
+    console.log("[UPLOAD] launch camera result =", JSON.stringify({ canceled: result.canceled, assets: result.assets?.length ?? 0 }));
     if (result.canceled || !result.assets?.length) return null;
-    return result.assets[0].uri;
+    const uri = result.assets[0].uri;
+    console.log("[UPLOAD] selected uri =", uri);
+    return uri;
   } catch (e) {
-    console.warn("openCamera error", e);
+    console.warn("[UPLOAD] openCamera error", e);
     Alert.alert("Camera error", "Could not open camera. Please try again.");
     return null;
   }
@@ -213,16 +221,20 @@ async function openCamera(front: boolean): Promise<string | null> {
 async function openGallery(): Promise<string | null> {
   const ok = await requestGallery();
   if (!ok) return null;
+  console.log("[UPLOAD] launch gallery start");
   try {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsEditing: false,
       quality: 0.85,
     });
+    console.log("[UPLOAD] launch gallery result =", JSON.stringify({ canceled: result.canceled, assets: result.assets?.length ?? 0 }));
     if (result.canceled || !result.assets?.length) return null;
-    return result.assets[0].uri;
+    const uri = result.assets[0].uri;
+    console.log("[UPLOAD] selected uri =", uri);
+    return uri;
   } catch (e) {
-    console.warn("openGallery error", e);
+    console.warn("[UPLOAD] openGallery error", e);
     Alert.alert("Gallery error", "Could not open gallery. Please try again.");
     return null;
   }
@@ -235,13 +247,26 @@ function showSourceSheet(
   onCamera: () => void,
   onGallery: () => void,
 ) {
+  console.log("[UPLOAD] source sheet opened, isSelfie =", isSelfie);
   const cameraLabel = isSelfie ? "Take Selfie (Front Camera)" : "Take Photo (Camera)";
   Alert.alert(
     isSelfie ? "Upload Selfie" : "Upload Document",
     "Choose how to add your photo",
     [
-      { text: cameraLabel, onPress: onCamera },
-      { text: "Choose from Gallery", onPress: onGallery },
+      {
+        text: cameraLabel,
+        onPress: () => {
+          console.log("[UPLOAD] camera selected");
+          onCamera();
+        },
+      },
+      {
+        text: "Choose from Gallery",
+        onPress: () => {
+          console.log("[UPLOAD] gallery selected");
+          onGallery();
+        },
+      },
       { text: "Cancel", style: "cancel" },
     ],
     { cancelable: true },
@@ -599,17 +624,25 @@ export default function DocumentUploadScreen() {
       const uri = await pickFn();
       if (uri) {
         patch(id, { uri, uploadedAt: Date.now(), loading: false, freshUpload: true });
+        console.log("[UPLOAD] patch success, id =", id, "uri =", uri);
       } else {
         patch(id, { loading: false });
       }
-    } catch {
+    } catch (error) {
+      console.error("[UPLOAD] runPicker failed", error);
+      Alert.alert(
+        "Upload Error",
+        String(error instanceof Error ? error.message : error),
+      );
       patch(id, { loading: false });
     }
   }
 
   function handleUpload(doc: DocSpec) {
+    console.log("[UPLOAD] button pressed, doc id =", doc.id);
     const st = docs[doc.id];
     const lock = normalizeLock(st.status, !!st.uri);
+    console.log("[UPLOAD] lock result =", lock);
     // Defensive guard — buttons are hidden for locked/waiting, but guard anyway
     if (lock === "locked" || lock === "waiting") return;
     showSourceSheet(
