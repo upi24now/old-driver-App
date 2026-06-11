@@ -2,3 +2,4 @@
 - [Expo Go Android image picker](expo-go-android.md) — allowsEditing: true causes UCrop silent drop on Android; always use false.
 - [Bike Courier colour system](bike-courier-colours.md) — semantic token architecture; brand constants pattern used in active-delivery.tsx.
 - [Phase 2 dispatch model](phase2-dispatch.md) — activeOfferDriverUids array-contains replaces driverUid==uid AND status==dispatched; accept writes driver_assigned; reject/timeout use arrayRemove.
+- [api-server rebuild required](api-server-rebuild.md) — restart_workflow does NOT recompile; must run build explicitly before restarting.
