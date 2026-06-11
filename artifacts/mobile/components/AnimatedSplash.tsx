@@ -31,8 +31,28 @@ export function AnimatedSplash({ isReady, onAnimationComplete }: AnimatedSplashP
 
   const screenOpacity = useRef(new Animated.Value(1)).current;
 
+  // Guard: ensure onAnimationComplete is called exactly once, regardless of
+  // whether the normal animation path or the 4-second timeout fires first.
+  const hasFinishedRef     = useRef(false);
+  const onCompleteRef      = useRef(onAnimationComplete);
+  useEffect(() => { onCompleteRef.current = onAnimationComplete; }, [onAnimationComplete]);
+
   useEffect(() => {
     console.log("[SPLASH] mounted");
+  }, []);
+
+  // Hard 4-second cutoff — if isReady never becomes true (font load failure,
+  // slow network, cold bundle) the splash is force-dismissed immediately so
+  // the app is never stuck on a black/gradient screen.
+  useEffect(() => {
+    const tid = setTimeout(() => {
+      if (hasFinishedRef.current) return;
+      hasFinishedRef.current = true;
+      console.log("[SPLASH_TIMEOUT_FALLBACK] fired — forcing splash dismiss after 4s");
+      screenOpacity.setValue(0);
+      onCompleteRef.current();
+    }, 4000);
+    return () => clearTimeout(tid);
   }, []);
 
   useEffect(() => {
@@ -81,8 +101,10 @@ export function AnimatedSplash({ isReady, onAnimationComplete }: AnimatedSplashP
       easing: Easing.in(Easing.ease),
       useNativeDriver: true,
     }).start(() => {
+      if (hasFinishedRef.current) return; // timeout already fired
+      hasFinishedRef.current = true;
       console.log("[SPLASH] finished");
-      onAnimationComplete();
+      onCompleteRef.current();
     });
   }, [isReady]);
 

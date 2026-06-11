@@ -562,6 +562,24 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     return unsub;
   }, []);
 
+  // ─── Auth-loading safety timeout ──────────────────────────────────────────
+  // Hard guarantee: if onAuthStateChanged does not fire within 5 seconds
+  // (cold Firebase init, network down, Expo Go quirks on real device),
+  // force authLoading=false so the login screen always appears.
+  // setAuthLoading functional form lets us log ONLY when the timeout
+  // actually fires (i.e. auth state had not already resolved).
+  useEffect(() => {
+    const tid = setTimeout(() => {
+      setAuthLoading((prev) => {
+        if (prev) {
+          console.log("[AUTH_TIMEOUT_FALLBACK] fired — forcing authLoading=false after 5s");
+        }
+        return false;
+      });
+    }, 5000);
+    return () => clearTimeout(tid);
+  }, []);
+
   // ─── FCM token refresh on foreground ──────────────────────────────────────
   // Re-registers the FCM token whenever the app returns to the foreground.
   // Uses driverUidRef (kept in sync above) so the listener is registered once

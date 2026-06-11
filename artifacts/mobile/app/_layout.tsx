@@ -35,11 +35,12 @@ function RootLayoutNav() {
   const { authLoading, driverUid, isOtpVerified } = useDriver();
 
   // ── BOOT diagnostics — logged on every render ─────────────────────────────
-  console.log("[BOOT] layout render");
-  console.log("[BOOT] authLoading =",    authLoading);
-  console.log("[BOOT] driverUid =",      driverUid);
-  console.log("[BOOT] isOtpVerified =",  isOtpVerified);
-  console.log("[BOOT] firebaseUser =",   firebaseAuth.currentUser?.uid ?? null);
+  console.log("[BOOT] render");
+  console.log("[BOOT] authLoading =",   authLoading);
+  console.log("[BOOT] showOverlay =",   authLoading);
+  console.log("[BOOT] driverUid =",     driverUid);
+  console.log("[BOOT] isOtpVerified =", isOtpVerified);
+  console.log("[BOOT] firebaseUser =",  firebaseAuth.currentUser?.uid ?? null);
 
   // ── Auth-policy routing ───────────────────────────────────────────────────
   //
@@ -68,17 +69,13 @@ function RootLayoutNav() {
     if (authLoading) return;
 
     if (!driverUid || !firebaseAuth.currentUser) {
-      // No session at all — fresh install, logged-out state.
-      console.log("[AUTH_POLICY] app_start_show_login = true");
+      console.log("[AUTH_POLICY] route login — no_session");
       router.replace("/login");
       return;
     }
 
     if (!isOtpVerified) {
-      // Firebase session exists (restored on cold start) but OTP not yet
-      // verified in this session. Block and force through login.
-      console.log("[AUTH_POLICY] firebase_session_found_but_login_required =", driverUid);
-      console.log("[_AUTH_ROUTE] blocked_auto_restore_route = true");
+      console.log("[AUTH_POLICY] route login — session_exists_otp_required uid =", driverUid);
       router.replace("/login");
       return;
     }
@@ -95,7 +92,6 @@ function RootLayoutNav() {
   // active in the previous session from being visible before the routing guard
   // fires. Without this a fresh browser tab opened at /vehicle-selection would
   // briefly — or permanently — show that screen before the login redirect lands.
-  console.log("[BOOT] showing overlay =", authLoading);
   const authOverlay = authLoading ? (
     <View style={authStyles.overlay}>
       <ActivityIndicator size="large" color="#F97316" />
@@ -176,6 +172,9 @@ export default function RootLayout() {
 
   const [splashVisible, setSplashVisible] = useState(true);
   const isReady = !!(fontsLoaded || fontError);
+
+  console.log("[BOOT] showSplash =", splashVisible);
+  console.log("[BOOT] fontsLoaded =", fontsLoaded, "fontError =", !!fontError);
 
   useEffect(() => {
     if (isReady) {
