@@ -21,6 +21,7 @@
  */
 
 import { SafeInlineIcon, SafeIconName, SafeIcon } from "@/components/SafeIcon";
+import { File, Paths } from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
@@ -237,6 +238,35 @@ async function openGallery(): Promise<ImagePicker.ImagePickerAsset | null> {
     console.warn("[UPLOAD] openGallery error", e);
     Alert.alert("Gallery error", "Could not open gallery. Please try again.");
     return null;
+  }
+}
+
+// ─── Image copy helper ────────────────────────────────────────────────────────
+// ImagePicker returns a short-lived temp URI inside Expo Go's own sandbox.
+// RNImage sometimes fails to render those transient paths. Copying to our own
+// cache directory gives us a stable file:// URI that RNImage can always read.
+
+async function copyPickedImageToAppCache(
+  uri: string,
+  id: string,
+): Promise<string> {
+  if (!uri) return uri;
+  const lower = uri.toLowerCase();
+  const ext = lower.includes(".png")
+    ? "png"
+    : lower.includes(".webp")
+      ? "webp"
+      : "jpg";
+  const fileName = `driver-doc-${id}-${Date.now()}.${ext}`;
+  const target = new File(Paths.cache, fileName);
+  const source = new File(uri);
+  try {
+    await source.copy(target);
+    console.log("[PREVIEW_COPY]", { id, from: uri, to: target.uri });
+    return target.uri;
+  } catch (e) {
+    console.warn("[PREVIEW_COPY] copy failed, using original uri:", e);
+    return uri;
   }
 }
 
@@ -735,8 +765,14 @@ export default function DocumentUploadScreen() {
           startsContent: asset.uri?.startsWith("content://"),
           length:    asset.uri?.length,
         });
-        patch(id, { uri: asset.uri, uploadedAt: Date.now(), loading: false, freshUpload: true });
-        console.log("[UPLOAD_FLOW] upload success, id =", id, "finalUri =", asset.uri);
+        const previewUri = await copyPickedImageToAppCache(asset.uri, id);
+        patch(id, { uri: previewUri, uploadedAt: Date.now(), loading: false, freshUpload: true });
+        console.log("[PICKER_RESULT]", {
+          id,
+          originalUri: asset.uri,
+          previewUri,
+          previewUriPrefix: previewUri.slice(0, 60),
+        });
       } else {
         patch(id, { loading: false });
       }
