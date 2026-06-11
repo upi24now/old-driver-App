@@ -1,5 +1,6 @@
 import { router } from "expo-router";
 import * as IntentLauncher from "expo-intent-launcher";
+import * as Location from "expo-location";
 import {
   createContext,
   type ReactNode,
@@ -43,6 +44,7 @@ export type { AcceptOrderResult };
 import { verifyOtpApi } from "@/utils/auth-api";
 import {
   cancelIncomingOrderNotification,
+  checkNotificationPermissions,
   registerDriverPushToken,
   registerOrderActionHandlers,
   sendDriverAlertNotification,
@@ -147,6 +149,11 @@ type ConfirmOtpResult = {
 type DriverState = {
   driverUid:        string | null;
   authLoading:      boolean;
+  // True ONLY after a successful confirmOtp() call in the current session.
+  // A persisted Firebase session (onAuthStateChanged restore) does NOT set this.
+  // _layout.tsx routes to /login whenever isOtpVerified is false, regardless of
+  // whether driverUid is set — forcing every cold start through the OTP gate.
+  isOtpVerified:    boolean;
   phone:            string | null;
   isAuthenticated:  boolean;
   profile:          Profile | null;
@@ -371,9 +378,12 @@ function isOrderTerminal(status: OrderStatus | null): boolean {
 }
 
 export function DriverProvider({ children }: { children: ReactNode }) {
-  const [driverUid,   setDriverUid]   = useState<string | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [phone,       setPhoneState]  = useState<string | null>(null);
+  const [driverUid,     setDriverUid]     = useState<string | null>(null);
+  const [authLoading,   setAuthLoading]   = useState(true);
+  // isOtpVerified: only set true by confirmOtp(); never by onAuthStateChanged.
+  // Resets to false on signOut() and on every cold start (React state default).
+  const [isOtpVerified, setIsOtpVerified] = useState(false);
+  const [phone,         setPhoneState]    = useState<string | null>(null);
   const [profile,     setProfileState]= useState<Profile | null>(null);
   const [vehicle,     setVehicleState]= useState<Vehicle | null>(null);
   const [verificationStatus, setVerifStatus]  = useState<string | null>(null);
@@ -705,37 +715,47 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
   /**
    * Derive the correct next screen based on the driver's onboarding state.
-   * Applied consistently after OTP verify and after auth restore.
+   * Called ONLY from confirmOtp() after a successful OTP verification.
    *
    * Priority order:
-   *   1. No vehicleId         → pick a vehicle
-   *   2. No name              → complete profile
-   *   3. Docs not submitted   → upload documents
-   *   4. Not yet approved     → await verification
-   *   5. Approved             → main app
+   *   1. No vehicleId              → pick a vehicle
+   *   2. No name                   → complete profile
+   *   3. Docs not submitted        → upload documents
+   *   4. Fee applies and unpaid    → onboarding fee
+   *   5. Not yet approved          → await verification
+   *   6. Approved + perms missing  → background-setup (native only)
+   *   7. Approved + perms ok       → main app
    */
-  function deriveNextRoute(d: DriverDoc): OnboardingRoute {
+  async function deriveNextRoute(d: DriverDoc): Promise<OnboardingRoute> {
     if (!d.vehicleId) return "/vehicle-selection";
     if (!d.name)      return "/profile-setup";
 
     // Approved/verified drivers skip document, fee, and verification-pending checks.
-    // documentsSubmitted may be absent on manually-onboarded drivers — that must never
-    // block an already-approved driver from reaching the dashboard.
     const isApproved =
       d.verificationStatus === "approved" || d.verificationStatus === "verified";
     if (!isApproved) {
       if (!d.documentsSubmitted) return "/document-upload";
-      // Show the fee screen ONLY when ALL three conditions are true:
-      //   1. onboardingFeeApplies is explicitly true (set at createDriverDoc time)
-      //   2. fee has not been paid yet
-      //   3. driver is not yet approved (approved = already past onboarding)
-      // Existing drivers NEVER have onboardingFeeApplies set, so they skip entirely.
+      // Fee screen: only when onboardingFeeApplies is explicitly true (brand-new signup).
       if (d.onboardingFeeApplies === true && d.onboardingFeeStatus !== "paid") {
         return "/onboarding-fee";
       }
       return "/verification-pending";
     }
-    if ((d.permissionSetupVersion ?? 0) < PERMISSION_SETUP_VERSION) return "/background-setup";
+
+    // Approved — check real-time permissions on native.
+    // Web preview skips hardware permission checks entirely.
+    if (Platform.OS !== "web") {
+      const setupVersionOk = (d.permissionSetupVersion ?? 0) >= PERMISSION_SETUP_VERSION;
+      if (!setupVersionOk) return "/background-setup";
+      const [notifOk, locStatus] = await Promise.all([
+        checkNotificationPermissions().catch(() => false),
+        Location.getForegroundPermissionsAsync().catch(() => ({ granted: false })),
+      ]);
+      const permsGranted = notifOk && locStatus.granted;
+      if (!permsGranted) return "/background-setup";
+    } else {
+      if ((d.permissionSetupVersion ?? 0) < PERMISSION_SETUP_VERSION) return "/background-setup";
+    }
     return "/(tabs)";
   }
 
@@ -806,7 +826,25 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       }
 
       const profileComplete = !!(driverDoc.name && driverDoc.vehicleId);
-      const nextRoute       = deriveNextRoute(driverDoc);
+      const nextRoute       = await deriveNextRoute(driverDoc);
+
+      // ── OTP_ROUTE logs — required by auth policy ──────────────────────────
+      console.log("[OTP_ROUTE] otp_success_uid =", uid);
+      console.log("[OTP_ROUTE] driver_doc =", JSON.stringify({
+        vehicleId:          driverDoc.vehicleId          ?? null,
+        name:               driverDoc.name               ?? null,
+        documentsSubmitted: driverDoc.documentsSubmitted ?? false,
+        verificationStatus: driverDoc.verificationStatus ?? null,
+        onboardingFeeStatus: driverDoc.onboardingFeeStatus ?? null,
+        permissionSetupVersion: driverDoc.permissionSetupVersion ?? 0,
+      }));
+      console.log("[OTP_ROUTE] chosenRoute =", nextRoute);
+
+      // Mark OTP as verified — this is the ONLY place this flag is set true.
+      // _layout.tsx reads it to decide whether to gate on /login or allow the
+      // post-OTP route chosen above.
+      setIsOtpVerified(true);
+
       return { ok: true, profileComplete, nextRoute };
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Sign-in failed.";
@@ -868,6 +906,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     activeOrderListenersRef.current.clear();
 
     setDriverUid(null);
+    setIsOtpVerified(false);   // ← reset OTP gate so next cold start forces /login
     setPhoneState(null);
     setProfileState(null);
     setVehicleState(null);
@@ -1396,6 +1435,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       value={{
         driverUid,
         authLoading,
+        isOtpVerified,
         phone,
         isAuthenticated,
         profile,
