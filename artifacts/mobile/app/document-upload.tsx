@@ -20,7 +20,7 @@
  *  - null / missing       → upload allowed
  */
 
-import { SafeInlineIcon, SafeIconName, SafeIcon3D } from "@/components/SafeIcon";
+import { SafeInlineIcon, SafeIconName, SafeIcon } from "@/components/SafeIcon";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
@@ -353,12 +353,11 @@ function DocumentCard({
 
       {/* ── Header row ── */}
       <View style={styles.cardHeader}>
-        <SafeIcon3D
+        <SafeIcon
           name={doc.icon}
           size={44}
-          bg={iconBg}
           color={iconColor}
-          glow={iconColor}
+          bg={iconBg}
           rounded={13}
         />
         <View style={styles.cardHeaderText}>
@@ -469,7 +468,7 @@ function DocumentCard({
               <View style={[styles.previewBar, { backgroundColor: "rgba(220,38,38,0.88)" }]}>
                 <Text style={styles.previewBarText}>Previous upload (rejected)</Text>
                 <View style={{ flex: 1 }} />
-                <TouchableOpacity style={styles.barBtn} onPress={() => { console.log("[UPLOAD_TOUCH_PROOF] visible upload button tapped", doc.id); console.log("[UPLOAD_TOUCH] visible button tapped", doc.id, "state=reupload-replace"); onUpload(); }} activeOpacity={0.8}>
+                <TouchableOpacity style={styles.barBtn} onPress={() => { Alert.alert("TOUCH WORKING", doc.id); console.log("[FORENSIC_TOUCH]", doc.id, "state=reupload-replace"); }} activeOpacity={0.8}>
                   <SafeInlineIcon name="refresh" size={11} color="#fff" />
                   <Text style={styles.barBtnText}>Replace</Text>
                 </TouchableOpacity>
@@ -482,7 +481,7 @@ function DocumentCard({
                 { borderColor: colors.error, backgroundColor: colors.errorSoft },
               ]}
             >
-              <TouchableOpacity style={styles.uploadBtn} onPress={() => { console.log("[UPLOAD_TOUCH_PROOF] visible upload button tapped", doc.id); console.log("[UPLOAD_TOUCH] visible button tapped", doc.id, "state=reupload-empty"); onUpload(); }} activeOpacity={0.82}>
+              <TouchableOpacity style={styles.uploadBtn} onPress={() => { Alert.alert("TOUCH WORKING", doc.id); console.log("[FORENSIC_TOUCH]", doc.id, "state=reupload-empty"); }} activeOpacity={0.82}>
                 <View style={[styles.uploadBtnSolid, { backgroundColor: colors.error }]}>
                   <SafeInlineIcon name="arrow" size={17} color="#fff" />
                   <Text style={styles.uploadBtnText}>
@@ -513,7 +512,7 @@ function DocumentCard({
               {doc.isSelfie ? "Selfie saved" : "Document saved"}
             </Text>
             <View style={{ flex: 1 }} />
-            <TouchableOpacity style={styles.barBtn} onPress={() => { console.log("[UPLOAD_TOUCH_PROOF] visible upload button tapped", doc.id); console.log("[UPLOAD_TOUCH] visible button tapped", doc.id, "state=uploaded-retake"); onUpload(); }} activeOpacity={0.8}>
+            <TouchableOpacity style={styles.barBtn} onPress={() => { Alert.alert("TOUCH WORKING", doc.id); console.log("[FORENSIC_TOUCH]", doc.id, "state=uploaded-retake"); }} activeOpacity={0.8}>
               <SafeInlineIcon name="refresh" size={11} color="#fff" />
               <Text style={styles.barBtnText}>Retake</Text>
             </TouchableOpacity>
@@ -536,7 +535,7 @@ function DocumentCard({
             { borderColor: colors.primary, backgroundColor: colors.primarySoft },
           ]}
         >
-          <TouchableOpacity style={styles.uploadBtn} onPress={() => { console.log("[UPLOAD_TOUCH_PROOF] visible upload button tapped", doc.id); console.log("[UPLOAD_TOUCH] visible button tapped", doc.id, "state=empty"); onUpload(); }} activeOpacity={0.82}>
+          <TouchableOpacity style={styles.uploadBtn} onPress={() => { Alert.alert("TOUCH WORKING", doc.id); console.log("[FORENSIC_TOUCH]", doc.id, "state=empty"); }} activeOpacity={0.82}>
             <View style={[styles.uploadBtnSolid, { backgroundColor: colors.primary }]}>
               <SafeInlineIcon name="camera" size={17} color="#fff" />
               <Text style={styles.uploadBtnText}>
@@ -822,14 +821,9 @@ export default function DocumentUploadScreen() {
       >
         {/* Security banner */}
         <View style={styles.banner}>
-          <SafeIcon3D
-            name="shield"
-            size={44}
-            bg="#A7F3D0"
-            color="#10B981"
-            glow="#10B981"
-            rounded={13}
-          />
+          <View style={styles.bannerIcon}>
+            <SafeIcon name="shield" size={26} color="#10B981" bg="#A7F3D0" rounded={13} />
+          </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.bannerTitle}>Your documents are safe</Text>
             <Text style={styles.bannerSub}>
