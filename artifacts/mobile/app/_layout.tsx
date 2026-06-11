@@ -34,6 +34,13 @@ function RootLayoutNav() {
   const router = useRouter();
   const { authLoading, driverUid, isOtpVerified } = useDriver();
 
+  // ── BOOT diagnostics — logged on every render ─────────────────────────────
+  console.log("[BOOT] layout render");
+  console.log("[BOOT] authLoading =",    authLoading);
+  console.log("[BOOT] driverUid =",      driverUid);
+  console.log("[BOOT] isOtpVerified =",  isOtpVerified);
+  console.log("[BOOT] firebaseUser =",   firebaseAuth.currentUser?.uid ?? null);
+
   // ── Auth-policy routing ───────────────────────────────────────────────────
   //
   // NEW STRICT RULE: Every app launch always starts from /login.
@@ -88,6 +95,7 @@ function RootLayoutNav() {
   // active in the previous session from being visible before the routing guard
   // fires. Without this a fresh browser tab opened at /vehicle-selection would
   // briefly — or permanently — show that screen before the login redirect lands.
+  console.log("[BOOT] showing overlay =", authLoading);
   const authOverlay = authLoading ? (
     <View style={authStyles.overlay}>
       <ActivityIndicator size="large" color="#F97316" />

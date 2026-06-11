@@ -450,16 +450,48 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   useEffect(() => { driverTripsRef.current   = driverTrips;    }, [driverTrips]);
 
   // ─── Firebase Auth listener — restores session on app restart ──────────────
+  //
+  // CRITICAL BOOT PATH — keep this fast:
+  //
+  // setAuthLoading(false) is called immediately after the auth state is known
+  // (uid present or null), BEFORE any Firestore reads. This ensures the login
+  // screen appears in ~1-2 s regardless of network conditions.
+  //
+  // Previously setAuthLoading(false) was called AFTER getDriverDoc() AND
+  // getActiveOrdersForDriver(), which could take 10-30 s or hang forever on a
+  // slow/offline connection, leaving the auth overlay spinning indefinitely.
+  //
+  // Under the OTP-gated auth policy, session-restore Firestore data is not
+  // needed for routing — the user is always sent to /login, and confirmOtp()
+  // re-reads a fresh driver doc after the OTP succeeds. The background hydration
+  // below is kept so that state is pre-populated for the post-OTP dashboard
+  // (avoids a visible re-fetch after confirmOtp).
   useEffect(() => {
-    const unsub = onAuthStateChanged(firebaseAuth, async (user) => {
-      console.log("[AUTH_STATE] user uid =", user?.uid ?? null);
+    const unsub = onAuthStateChanged(firebaseAuth, (user) => {
+      console.log("[AUTH_STATE] onAuthStateChanged fired uid =", user?.uid ?? null);
       console.log("[AUTH_STATE] no user =", !user);
+
       if (user) {
+        // Set auth identity synchronously — unblocks routing immediately.
         setDriverUid(user.uid);
         console.log("AUTH UID =", firebaseAuth.currentUser?.uid);
         console.log("DRIVER UID =", user.uid);
         const phoneFromUid = user.uid.startsWith("91") ? user.uid.slice(2) : user.uid;
         setPhoneState(phoneFromUid);
+      } else {
+        setDriverUid(null);
+      }
+
+      // Unblock the layout BEFORE touching Firestore.
+      console.log("[AUTH_STATE] setAuthLoading false");
+      setAuthLoading(false);
+
+      // ── Background hydration ─────────────────────────────────────────────
+      // Firestore reads happen after authLoading=false so they never block
+      // the login screen from appearing. They pre-populate profile/vehicle
+      // state so the dashboard doesn't need a fresh fetch after OTP.
+      if (!user) return;
+      void (async () => {
         try {
           const driverDoc = await getDriverDoc(user.uid);
           if (driverDoc) {
@@ -475,8 +507,6 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             if (driverDoc.vehicleId) {
               setVehicleState({ id: driverDoc.vehicleId, name: driverDoc.vehicleName ?? "" });
             }
-            // Restore persisted online status and subscription.
-            // Suspended/blocked accounts are always forced offline on restore.
             setAccountStatus(driverDoc.accountStatus ?? null);
             {
               const isSuspended =
@@ -484,21 +514,15 @@ export function DriverProvider({ children }: { children: ReactNode }) {
                 driverDoc.accountStatus === "blocked";
               setOnlineState(isSuspended ? false : (driverDoc.isOnline ?? false));
             }
-            if (driverDoc.subscriptionPlan) {
-              setSubPlan(driverDoc.subscriptionPlan as SubPlan);
-            }
-            if (driverDoc.subscriptionExpiresAt) {
-              setSubExp(driverDoc.subscriptionExpiresAt);
-            }
-            // Restore wallet — apply daily reset if todayDate has changed
+            if (driverDoc.subscriptionPlan)      setSubPlan(driverDoc.subscriptionPlan as SubPlan);
+            if (driverDoc.subscriptionExpiresAt) setSubExp(driverDoc.subscriptionExpiresAt);
             {
-              const today     = new Date().toISOString().slice(0, 10);
-              const sameDay   = driverDoc.todayDate === today;
+              const today   = new Date().toISOString().slice(0, 10);
+              const sameDay = driverDoc.todayDate === today;
               setBalance(driverDoc.walletBalance ?? 0);
               setTodayEarnings(sameDay ? (driverDoc.todayEarnings ?? 0) : 0);
               setTripsToday   (sameDay ? (driverDoc.tripsToday    ?? 0) : 0);
             }
-            // Document verification status
             setVerifStatus(driverDoc.verificationStatus ?? null);
             setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
             setBackgroundSetupShown(driverDoc.backgroundSetupShown ?? false);
@@ -509,42 +533,31 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             setDriverRating(driverDoc.rating ?? "5.0");
             setDriverTrips(driverDoc.totalTrips ?? 0);
           }
-          // Restore up to 3 active orders if driver app was restarted mid-delivery.
-          // getActiveOrdersForDriver returns newest-first, capped at MAX_ACTIVE_ORDERS.
+          // Restore active orders (mid-delivery app restart).
           try {
             const activeOrderDocs = await getActiveOrdersForDriver(user.uid, MAX_ACTIVE_ORDERS);
             if (activeOrderDocs.length > 0) {
               const restoredRides: ActiveRide[] = activeOrderDocs.map((doc) => {
                 const ride = orderDocToRide(doc);
-                // Use the real Firestore acceptedAt so ElapsedTimer shows true elapsed time
-                // after an app restart. Firestore Timestamps expose .toMillis(); fall back
-                // to Date.now() only if the field is missing (e.g. very old orders).
                 const acceptedAtMs =
                   (doc.acceptedAt as { toMillis?: () => number })?.toMillis?.() ??
                   Date.now();
                 return { ...ride, acceptedAt: acceptedAtMs, orderStatus: doc.status };
               });
               setActiveOrders(restoredRides);
-              // Focus the newest order (index 0 — sorted by acceptedAt desc).
               setCurrentActiveOrderId(restoredRides[0]!.id);
             }
           } catch {
-            // Active order restore failed — driver sees no active delivery after restart
+            // Active order restore failed — driver sees no active delivery after restart.
           }
         } catch (firestoreErr) {
-          console.error("[Auth] Firestore read failed after sign-in:", firestoreErr);
-          // User remains authenticated; profile/vehicle stay null. _layout.tsx
-          // will route to /vehicle-selection because state is at defaults.
+          console.error("[Auth] background Firestore hydration failed:", firestoreErr);
+          // Non-fatal: authLoading is already false; routing already resolved.
         }
 
-        // Register FCM push token on session restore and fresh login.
-        // Fire-and-forget; no-ops safely in Expo Go and when google-services.json
-        // is absent from the build.
+        // Register FCM push token — fire-and-forget.
         registerDriverPushToken(user.uid).catch(console.error);
-      } else {
-        setDriverUid(null);
-      }
-      setAuthLoading(false);
+      })();
     });
     return unsub;
   }, []);

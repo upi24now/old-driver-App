@@ -32,6 +32,10 @@ export function AnimatedSplash({ isReady, onAnimationComplete }: AnimatedSplashP
   const screenOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
+    console.log("[SPLASH] mounted");
+  }, []);
+
+  useEffect(() => {
     Animated.sequence([
       Animated.parallel([
         Animated.timing(logoOpacity, {
@@ -76,7 +80,10 @@ export function AnimatedSplash({ isReady, onAnimationComplete }: AnimatedSplashP
       delay: 300,
       easing: Easing.in(Easing.ease),
       useNativeDriver: true,
-    }).start(() => onAnimationComplete());
+    }).start(() => {
+      console.log("[SPLASH] finished");
+      onAnimationComplete();
+    });
   }, [isReady]);
 
   return (
