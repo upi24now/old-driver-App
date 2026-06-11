@@ -23,6 +23,7 @@
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -99,8 +100,8 @@ const DOCS: DocSpec[] = [
   },
   {
     id: "aadhaar",
-    title: "Aadhaar Card",
-    description: "Government-issued identity card (front side)",
+    title: "Aadhaar Front",
+    description: "Government ID — front side",
     emoji: "🪪",
     hint: "All 12 digits and full name must be visible",
   },
@@ -127,10 +128,10 @@ const DOCS: DocSpec[] = [
   },
   {
     id: "insurance",
-    title: "Insurance",
-    description: "Valid vehicle insurance certificate",
-    emoji: "🛡️",
-    hint: "Policy number and expiry date must be visible",
+    title: "Aadhaar Back",
+    description: "Government ID — back side",
+    emoji: "🪪",
+    hint: "Back side clearly visible — expiry and address readable",
   },
 ];
 
@@ -708,46 +709,56 @@ export default function DocumentUploadScreen() {
         style={[
           styles.header,
           {
-            paddingTop:        insets.top + 12,
-            backgroundColor:   colors.surface,
-            borderBottomColor: colors.border,
+            paddingTop:        insets.top + 10,
+            backgroundColor:   "#FFFFFF",
+            borderBottomColor: "#E5E7EB",
           },
         ]}
       >
         <View style={styles.headerRow}>
           <TouchableOpacity
             onPress={() => router.back()}
-            style={[styles.backBtn, { backgroundColor: colors.muted }]}
+            style={styles.backBtn}
             activeOpacity={0.7}
           >
-            <Feather name="arrow-left" size={19} color={colors.foreground} />
+            <Feather name="arrow-left" size={18} color="#111827" />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-              Upload Documents
-            </Text>
-            <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
-              Step 4 · Verification
-            </Text>
+            <Text style={styles.headerTitle}>Upload Documents</Text>
+            <Text style={styles.headerSub}>Step 4 of 4</Text>
           </View>
           <View style={{ width: 38 }} />
         </View>
 
-        {/* Progress bar */}
+        {/* Dot-and-line progress (all 4 filled) */}
         <View style={styles.progressRow}>
-          <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
+          {[1, 2, 3, 4].map((s, i) => (
+            <View key={s} style={styles.progressSegment}>
+              <View style={[styles.stepDot, { backgroundColor: "#E83272" }]}>
+                <Feather name="check" size={9} color="#fff" />
+              </View>
+              {i < 3 && (
+                <View style={[styles.progressLine, { backgroundColor: "#E83272" }]} />
+              )}
+            </View>
+          ))}
+        </View>
+
+        {/* Upload count */}
+        <View style={styles.uploadCountRow}>
+          <View style={[styles.uploadTrack, { backgroundColor: "#F3F4F6" }]}>
             <View
               style={[
-                styles.progressFill,
+                styles.uploadFill,
                 {
                   width:           `${Math.max(progress * 100, 3)}%`,
-                  backgroundColor: progress >= 1 ? colors.success : colors.primary,
+                  backgroundColor: progress >= 1 ? "#10B981" : "#E83272",
                 },
               ]}
             />
           </View>
-          <Text style={[styles.progressLabel, { color: colors.foreground }]}>
-            {uploadedCount}/{total}
+          <Text style={styles.uploadCountLabel}>
+            {uploadedCount}/{total} uploaded
           </Text>
         </View>
       </View>
@@ -756,26 +767,19 @@ export default function DocumentUploadScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
-          { paddingBottom: insets.bottom + 110 },
+          { paddingBottom: insets.bottom + 180 },
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
         {/* Security banner */}
-        <View
-          style={[
-            styles.banner,
-            { borderColor: colors.success, backgroundColor: colors.successSoft },
-          ]}
-        >
-          <View style={[styles.bannerIcon, { backgroundColor: colors.moneySoft }]}>
-            <Feather name="shield" size={16} color={colors.success} />
+        <View style={styles.banner}>
+          <View style={styles.bannerIcon}>
+            <Text style={{ fontSize: 20 }}>🛡️</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.bannerTitle, { color: colors.foreground }]}>
-              Your documents are safe
-            </Text>
-            <Text style={[styles.bannerSub, { color: colors.mutedForeground }]}>
+            <Text style={styles.bannerTitle}>Your documents are safe</Text>
+            <Text style={styles.bannerSub}>
               End-to-end encrypted · Used only for driver verification
             </Text>
           </View>
@@ -862,21 +866,28 @@ export default function DocumentUploadScreen() {
         </View>
 
         <TouchableOpacity
-          style={[styles.submitBtn, { opacity: allReady && !submitting ? 1 : 0.45 }]}
+          style={[styles.submitBtn, { opacity: allReady && !submitting ? 1 : 0.55 }]}
           onPress={() => void handleSubmit()}
           activeOpacity={0.85}
           disabled={!allReady || submitting}
         >
-          <View style={[styles.submitGrad, { backgroundColor: colors.primary }]}>
+          <LinearGradient
+            colors={allReady ? ["#F43F8F", "#E83272"] : ["#E5E7EB", "#E5E7EB"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.submitGrad}
+          >
             {submitting ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
               <>
-                <Text style={styles.submitText}>Submit for Verification</Text>
-                <Feather name="arrow-right" size={18} color="#fff" />
+                <Text style={[styles.submitText, !allReady && { color: "#9CA3AF" }]}>
+                  Submit for Verification
+                </Text>
+                <Feather name="arrow-right" size={18} color={allReady ? "#fff" : "#9CA3AF"} />
               </>
             )}
-          </View>
+          </LinearGradient>
         </TouchableOpacity>
       </View>
     </View>
@@ -890,9 +901,9 @@ const styles = StyleSheet.create({
 
   // Header
   header: {
-    paddingHorizontal: 20,
-    paddingBottom: 14,
-    gap: 14,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    gap: 10,
     borderBottomWidth: 1,
   },
   headerRow: {
@@ -901,20 +912,74 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   backBtn: {
-    width: 38,
-    height: 38,
+    width: 36,
+    height: 36,
     borderRadius: 11,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  headerCenter: { alignItems: "center" },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: "#111827",
+    letterSpacing: -0.3,
+  },
+  headerSub: {
+    fontSize: 11,
+    fontWeight: "500",
+    color: "#6B7280",
+    marginTop: 1,
+  },
+
+  // Dot-and-line progress
+  progressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+  },
+  progressSegment: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  stepDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
-  headerCenter: { alignItems: "center" },
-  headerTitle:  { fontSize: 16, fontWeight: "700" },
-  headerSub:    { fontSize: 12, marginTop: 1 },
+  progressLine: {
+    flex: 1,
+    height: 3,
+    borderRadius: 2,
+    marginHorizontal: -1,
+  },
 
-  progressRow:  { flexDirection: "row", alignItems: "center", gap: 10 },
-  progressTrack: { flex: 1, height: 6, borderRadius: 3, overflow: "hidden" },
-  progressFill: { height: "100%", borderRadius: 3 },
-  progressLabel: { fontSize: 12, fontWeight: "700" },
+  // Upload count bar
+  uploadCountRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 4,
+  },
+  uploadTrack: {
+    flex: 1,
+    height: 5,
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  uploadFill: { height: "100%", borderRadius: 3 },
+  uploadCountLabel: { fontSize: 12, fontWeight: "700", color: "#111827" },
 
   // Scroll
   scroll: { paddingHorizontal: 16, paddingTop: 14, gap: 14 },
@@ -923,20 +988,23 @@ const styles = StyleSheet.create({
   banner: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    padding: 12,
-    borderRadius: 12,
+    gap: 12,
+    padding: 14,
+    borderRadius: 16,
     borderWidth: 1,
+    borderColor: "#6EE7B7",
+    backgroundColor: "#D1FAE5",
   },
   bannerIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 13,
+    backgroundColor: "#A7F3D0",
     alignItems: "center",
     justifyContent: "center",
   },
-  bannerTitle: { fontSize: 13, fontWeight: "700" },
-  bannerSub:   { fontSize: 11, marginTop: 2 },
+  bannerTitle: { fontSize: 14, fontWeight: "800", color: "#065F46", marginBottom: 2 },
+  bannerSub:   { fontSize: 12, fontWeight: "500", color: "#047857", lineHeight: 17 },
 
   // Doc list
   docList: { gap: 12 },

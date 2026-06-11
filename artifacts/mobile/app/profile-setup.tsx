@@ -1,6 +1,17 @@
+/**
+ * profile-setup.tsx — Step 3 of 4
+ *
+ * UI redesign: card-based layout with gradient Driver Profile card,
+ * personal info card, selected vehicle card, vehicle details card,
+ * and verification info card.
+ *
+ * All Firebase/Firestore/navigation logic is unchanged.
+ */
+
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import {
@@ -8,6 +19,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -18,34 +30,40 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
-import { useColors } from "@/hooks/useColors";
-import { TS } from "@/constants/typography";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Design tokens (matches vehicle-selection style) ─────────────────────────
+const D = {
+  bg:          "#F8FAFC",
+  white:       "#FFFFFF",
+  primary:     "#E83272",
+  primarySoft: "#FFF1F5",
+  primaryBold: "#C41E5A",
+  success:     "#10B981",
+  successBg:   "#D1FAE5",
+  textDark:    "#111827",
+  textMuted:   "#6B7280",
+  border:      "#E5E7EB",
+  muted:       "#F3F4F6",
+  mutedFg:     "#9CA3AF",
+  placeholder: "#B0B8C1",
+} as const;
 
 const CITIES = [
   "Mumbai", "Delhi", "Bangalore", "Hyderabad", "Chennai",
   "Pune", "Kolkata", "Ahmedabad", "Jaipur", "Surat",
 ];
 
-const GENDERS = ["Male", "Female", "Other"];
+const GENDERS = ["Male", "Female", "Other"] as const;
 
-// ─── DOB masking ─────────────────────────────────────────────────────────────
-// Formats raw digit input into "DD / MM / YYYY" as the user types.
-// allowsEditing:false means we never hit the Android UCrop bug.
-
+// ─── DOB formatter ────────────────────────────────────────────────────────────
 function formatDob(raw: string): string {
-  // Keep only digits, cap at 8 (DDMMYYYY)
   const d = raw.replace(/\D/g, "").slice(0, 8);
   if (d.length <= 2) return d;
   if (d.length <= 4) return `${d.slice(0, 2)} / ${d.slice(2)}`;
   return `${d.slice(0, 2)} / ${d.slice(2, 4)} / ${d.slice(4)}`;
 }
 
-// ─── Image picker helpers (Expo Go-compatible) ────────────────────────────────
-// allowsEditing: false — prevents Android UCrop activity from silently
-// dropping the result in Expo Go (the #1 cause of "image not returned").
-
+// ─── Image picker helpers (allowsEditing: false = avoids Android UCrop bug) ──
 async function requestCamera(): Promise<boolean> {
   const { status, canAskAgain } = await ImagePicker.requestCameraPermissionsAsync();
   if (status === "granted") return true;
@@ -78,7 +96,7 @@ async function fromCamera(): Promise<string | null> {
     const r = await ImagePicker.launchCameraAsync({
       cameraType: ImagePicker.CameraType.front,
       mediaTypes: ["images"],
-      allowsEditing: false, // ← critical: avoids Android UCrop result-drop bug
+      allowsEditing: false,
       quality: 0.85,
     });
     if (r.canceled || !r.assets?.length) return null;
@@ -94,7 +112,7 @@ async function fromGallery(): Promise<string | null> {
   try {
     const r = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
-      allowsEditing: false, // ← critical: avoids Android UCrop result-drop bug
+      allowsEditing: false,
       quality: 0.85,
     });
     if (r.canceled || !r.assets?.length) return null;
@@ -105,94 +123,155 @@ async function fromGallery(): Promise<string | null> {
   }
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function StepBar({ step, total }: { step: number; total: number }) {
-  const colors = useColors();
+// ─── Progress dot-and-line (4 steps) ─────────────────────────────────────────
+function ProgressDots({ step }: { step: number }) {
   return (
-    <View style={styles.stepBar}>
-      {Array.from({ length: total }).map((_, i) => (
-        <View
-          key={i}
-          style={[
-            styles.stepSegment,
-            { backgroundColor: i < step ? colors.primary : colors.border, flex: 1 },
-          ]}
-        />
+    <View style={styles.progressRow}>
+      {[1, 2, 3, 4].map((s, i) => (
+        <View key={s} style={styles.progressSegment}>
+          <View
+            style={[
+              styles.stepDot,
+              s <= step
+                ? { backgroundColor: D.primary }
+                : { backgroundColor: D.border, borderWidth: 2, borderColor: "#D1D5DB" },
+            ]}
+          >
+            {s <= step && <Feather name="check" size={9} color="#fff" />}
+          </View>
+          {i < 3 && (
+            <View
+              style={[
+                styles.progressLine,
+                { backgroundColor: s < step ? D.primary : D.border },
+              ]}
+            />
+          )}
+        </View>
       ))}
     </View>
   );
 }
 
-function FormField({
-  label,
-  icon,
-  children,
-  required,
-}: {
-  label: string;
-  icon: string;
-  children: React.ReactNode;
-  required?: boolean;
-}) {
-  const colors = useColors();
+// ─── Section card wrapper ─────────────────────────────────────────────────────
+function SectionCard({ children, style }: { children: React.ReactNode; style?: object }) {
+  return <View style={[styles.card, style]}>{children}</View>;
+}
+
+function CardTitle({ label, emoji }: { label: string; emoji?: string }) {
   return (
-    <View style={styles.fieldGroup}>
-      <View style={styles.fieldLabelRow}>
-        <Feather name={icon as any} size={13} color={colors.mutedForeground} />
-        <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>
-          {label}
-          {required && <Text style={{ color: colors.primary }}> *</Text>}
-        </Text>
-      </View>
-      {children}
+    <View style={styles.cardTitleRow}>
+      {emoji && <Text style={styles.cardTitleEmoji}>{emoji}</Text>}
+      <Text style={styles.cardTitleText}>{label}</Text>
     </View>
   );
 }
 
-function TextFieldInput({
+// ─── Form input ───────────────────────────────────────────────────────────────
+function FieldInput({
+  label,
   value,
   onChangeText,
   placeholder,
   keyboardType,
   autoCapitalize,
   maxLength,
+  required,
 }: {
+  label: string;
   value: string;
   onChangeText: (t: string) => void;
   placeholder: string;
-  keyboardType?: any;
-  autoCapitalize?: any;
+  keyboardType?: "default" | "numeric" | "email-address";
+  autoCapitalize?: "none" | "words" | "characters";
   maxLength?: number;
+  required?: boolean;
 }) {
-  const colors = useColors();
   const [focused, setFocused] = useState(false);
   return (
-    <TextInput
-      style={[
-        styles.textInput,
-        {
-          borderColor:     focused ? colors.primary         : colors.border,
-          backgroundColor: focused ? colors.primarySoft     : colors.surfaceElevated,
-          color:           colors.foreground,
-        },
-      ]}
-      value={value}
-      onChangeText={onChangeText}
-      placeholder={placeholder}
-      placeholderTextColor={colors.textPlaceholder}
-      keyboardType={keyboardType}
-      autoCapitalize={autoCapitalize ?? "words"}
-      maxLength={maxLength}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
-    />
+    <View style={styles.fieldGroup}>
+      <Text style={styles.fieldLabel}>
+        {label}
+        {required && <Text style={{ color: D.primary }}> *</Text>}
+      </Text>
+      <TextInput
+        style={[
+          styles.textInput,
+          {
+            borderColor:     focused ? D.primary   : D.border,
+            backgroundColor: focused ? D.primarySoft : D.muted,
+            color: D.textDark,
+          },
+        ]}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={D.placeholder}
+        keyboardType={keyboardType ?? "default"}
+        autoCapitalize={autoCapitalize ?? "words"}
+        maxLength={maxLength}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+      />
+    </View>
   );
 }
 
-// ─── Main screen ──────────────────────────────────────────────────────────────
+// ─── DOB input ────────────────────────────────────────────────────────────────
+function DobInput({ value, onChangeText }: { value: string; onChangeText: (t: string) => void }) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <View style={styles.fieldGroup}>
+      <Text style={styles.fieldLabel}>Date of Birth</Text>
+      <TextInput
+        style={[
+          styles.textInput,
+          {
+            borderColor:     focused ? D.primary    : D.border,
+            backgroundColor: focused ? D.primarySoft: D.muted,
+            color: D.textDark,
+            letterSpacing: 0.5,
+          },
+        ]}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder="DD / MM / YYYY"
+        placeholderTextColor={D.placeholder}
+        keyboardType="numeric"
+        autoCapitalize="none"
+        maxLength={14}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+      />
+    </View>
+  );
+}
 
-type Field = {
+// ─── Vehicle data for the summary card ───────────────────────────────────────
+const VEHICLE_META: Record<string, { emoji: string; gradStart: string; gradEnd: string }> = {
+  bike:        { emoji: "🏍",  gradStart: "#FF6B9D", gradEnd: "#9B59B6" },
+  scooter:     { emoji: "🛵",  gradStart: "#FF8C69", gradEnd: "#FFA726" },
+  "auto-pass": { emoji: "🛺",  gradStart: "#FFD43B", gradEnd: "#FFA726" },
+  "auto-cargo":{ emoji: "🛺",  gradStart: "#FB923C", gradEnd: "#F59E0B" },
+  "mini-car":  { emoji: "🚗",  gradStart: "#38BDF8", gradEnd: "#2563EB" },
+  sedan:       { emoji: "🚘",  gradStart: "#818CF8", gradEnd: "#4338CA" },
+  suv:         { emoji: "🚙",  gradStart: "#2DD4BF", gradEnd: "#0D9488" },
+  "tata-ace":  { emoji: "🚚",  gradStart: "#4ADE80", gradEnd: "#16A34A" },
+  pickup:      { emoji: "🛻",  gradStart: "#A3E635", gradEnd: "#65A30D" },
+  "mini-truck":{ emoji: "🚛",  gradStart: "#22D3EE", gradEnd: "#0EA5E9" },
+  eicher:      { emoji: "🚛",  gradStart: "#94A3B8", gradEnd: "#3B82F6" },
+  "truck-14ft":{ emoji: "🚚",  gradStart: "#C084FC", gradEnd: "#6D28D9" },
+  // legacy ids from the old 4-vehicle screen
+  auto:        { emoji: "🛺",  gradStart: "#FFD43B", gradEnd: "#FFA726" },
+  truck:       { emoji: "🚚",  gradStart: "#4ADE80", gradEnd: "#16A34A" },
+};
+
+function vehicleMeta(id: string) {
+  return VEHICLE_META[id] ?? { emoji: "🚗", gradStart: "#94A3B8", gradEnd: "#6B7280" };
+}
+
+// ─── Main screen ──────────────────────────────────────────────────────────────
+type Fields = {
   name: string;
   city: string;
   dob: string;
@@ -202,31 +281,28 @@ type Field = {
 };
 
 export default function ProfileSetupScreen() {
-  const colors  = useColors();
   const insets  = useSafeAreaInsets();
   const router  = useRouter();
   const scrollRef = useRef<ScrollView>(null);
-  const { setProfile } = useDriver();
+  const { setProfile, vehicle } = useDriver();
 
-  const [photo, setPhoto]             = useState<string | null>(null);
+  const [photo,        setPhoto]        = useState<string | null>(null);
   const [photoLoading, setPhotoLoading] = useState(false);
+  const [cityOpen,     setCityOpen]     = useState(false);
 
-  const [fields, setFields] = useState<Field>({
+  const [fields, setFields] = useState<Fields>({
     name: "", city: "", dob: "", gender: "",
     vehicleNumber: "", licenseNumber: "",
   });
-  const [cityOpen, setCityOpen] = useState(false);
 
-  function set(key: keyof Field) {
+  function set(key: keyof Fields) {
     return (val: string) => setFields((f) => ({ ...f, [key]: val }));
   }
 
-  // DOB: strip non-digits then reformat on every keystroke
   function handleDobChange(raw: string) {
     setFields((f) => ({ ...f, dob: formatDob(raw) }));
   }
 
-  // ── Photo picker ──
   function handlePickPhoto() {
     Alert.alert(
       "Profile Photo",
@@ -270,109 +346,128 @@ export default function ProfileSetupScreen() {
     router.push("/document-upload");
   }
 
-  // ── Render ──
+  const vMeta = vehicle ? vehicleMeta(vehicle.id) : null;
+
   return (
     <KeyboardAvoidingView
-      style={[styles.root, { backgroundColor: colors.background }]}
+      style={[styles.root, { backgroundColor: D.bg }]}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={0}
     >
       {/* ── Header ── */}
-      <View
-        style={[
-          styles.header,
-          {
-            paddingTop:        insets.top + 12,
-            backgroundColor:   colors.surface,
-            borderBottomColor: colors.border,
-          },
-        ]}
-      >
-        <View style={styles.headerTop}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+        <View style={styles.headerRow}>
           <TouchableOpacity
             onPress={() => router.back()}
-            style={[styles.backBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}
+            style={styles.backBtn}
+            activeOpacity={0.7}
           >
-            <Feather name="arrow-left" size={19} color={colors.foreground} />
+            <Feather name="arrow-left" size={18} color={D.textDark} />
           </TouchableOpacity>
-          <View style={styles.headerTitle}>
-            <Text style={[styles.headerLabel, { color: colors.foreground }]}>Profile Setup</Text>
-            <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
-              Step 3 of 3
-            </Text>
+
+          <View style={styles.headerCenter}>
+            <Text style={styles.headerTitle}>Profile Setup</Text>
+            <Text style={styles.headerSub}>Step 3 of 4</Text>
           </View>
+
           <View style={{ width: 38 }} />
         </View>
-        <StepBar step={3} total={3} />
+
+        <ProgressDots step={3} />
       </View>
 
       {/* ── Scroll ── */}
       <ScrollView
         ref={scrollRef}
-        contentContainerStyle={[styles.scroll, { paddingBottom: 24 }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 180 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Profile photo */}
-        <View style={styles.photoSection}>
-          <TouchableOpacity
-            onPress={handlePickPhoto}
-            activeOpacity={0.8}
-            style={styles.photoWrap}
-            disabled={photoLoading}
+        {/* ─── 1. Driver Profile Card ─── */}
+        <SectionCard>
+          {/* Gradient banner */}
+          <LinearGradient
+            colors={["#F43F8F", "#E83272"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.profileBanner}
           >
-            {photoLoading ? (
-              <View style={[styles.photoPlaceholder, { backgroundColor: colors.muted }]}>
-                <ActivityIndicator size="small" color={colors.primary} />
-              </View>
-            ) : photo ? (
-              <Image source={{ uri: photo }} style={styles.photoImg} contentFit="cover" transition={200} />
-            ) : (
-              <View style={[styles.photoPlaceholder, { backgroundColor: colors.muted }]}>
-                <Feather name="user" size={36} color={colors.mutedForeground} />
-              </View>
-            )}
-            <View style={[styles.cameraBtn, { backgroundColor: colors.primary }]}>
-              <Feather name="camera" size={14} color="#fff" />
-            </View>
-          </TouchableOpacity>
+            <Text style={styles.profileBannerTitle}>Driver Profile</Text>
+            <Text style={styles.profileBannerSub}>Add your basic driver info</Text>
+          </LinearGradient>
 
-          <Text style={[styles.photoHint, { color: colors.mutedForeground }]}>
-            {photo ? "Tap to change photo" : "Tap to add profile photo"}
-          </Text>
+          {/* Photo section */}
+          <View style={styles.photoSection}>
+            <TouchableOpacity
+              onPress={handlePickPhoto}
+              activeOpacity={0.8}
+              style={styles.photoWrap}
+              disabled={photoLoading}
+            >
+              {photoLoading ? (
+                <View style={styles.photoCircle}>
+                  <ActivityIndicator size="small" color={D.primary} />
+                </View>
+              ) : photo ? (
+                <Image
+                  source={{ uri: photo }}
+                  style={styles.photoImg}
+                  contentFit="cover"
+                  transition={200}
+                />
+              ) : (
+                <View style={styles.photoCircle}>
+                  <Text style={{ fontSize: 36 }}>👤</Text>
+                </View>
+              )}
+              <View style={styles.cameraChip}>
+                <Feather name="camera" size={12} color="#fff" />
+              </View>
+            </TouchableOpacity>
 
-          {/* Source tags */}
-          <View style={styles.photoTags}>
-            <View style={styles.photoTag}>
-              <Feather name="camera" size={9} color={colors.mutedForeground} />
-              <Text style={[styles.photoTagText, { color: colors.mutedForeground }]}>Camera</Text>
-            </View>
-            <View style={[styles.photoTagDot, { backgroundColor: colors.borderStrong }]} />
-            <View style={styles.photoTag}>
-              <Feather name="image" size={9} color={colors.mutedForeground} />
-              <Text style={[styles.photoTagText, { color: colors.mutedForeground }]}>Gallery</Text>
+            <Text style={styles.photoHint}>
+              {photo ? "Tap to change photo" : "Upload Profile Photo"}
+            </Text>
+
+            <View style={styles.photoTagsRow}>
+              <View style={styles.photoTag}>
+                <Feather name="camera" size={10} color={D.textMuted} />
+                <Text style={styles.photoTagText}>Camera</Text>
+              </View>
+              <View style={styles.photoTagDot} />
+              <View style={styles.photoTag}>
+                <Feather name="image" size={10} color={D.textMuted} />
+                <Text style={styles.photoTagText}>Gallery</Text>
+              </View>
             </View>
           </View>
-        </View>
+        </SectionCard>
 
-        {/* Form */}
-        <View style={styles.form}>
-          <FormField label="Full Name" icon="user" required>
-            <TextFieldInput
-              value={fields.name}
-              onChangeText={set("name")}
-              placeholder="Enter your full name"
-              autoCapitalize="words"
-            />
-          </FormField>
+        {/* ─── 2. Personal Information Card ─── */}
+        <SectionCard>
+          <CardTitle label="Personal Information" emoji="📋" />
 
-          <FormField label="City" icon="map-pin" required>
+          <FieldInput
+            label="Full Name"
+            required
+            value={fields.name}
+            onChangeText={set("name")}
+            placeholder="Enter your full name"
+            autoCapitalize="words"
+          />
+
+          {/* City dropdown */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>
+              City <Text style={{ color: D.primary }}>*</Text>
+            </Text>
             <TouchableOpacity
               style={[
-                styles.selectInput,
+                styles.textInput,
+                styles.selectRow,
                 {
-                  borderColor:     cityOpen ? colors.primary         : colors.border,
-                  backgroundColor: cityOpen ? colors.primarySoft     : colors.surfaceElevated,
+                  borderColor:     cityOpen ? D.primary : D.border,
+                  backgroundColor: cityOpen ? D.primarySoft : D.muted,
                 },
               ]}
               onPress={() => setCityOpen((o) => !o)}
@@ -381,7 +476,7 @@ export default function ProfileSetupScreen() {
               <Text
                 style={[
                   styles.selectText,
-                  { color: fields.city ? colors.foreground : colors.textPlaceholder },
+                  { color: fields.city ? D.textDark : D.placeholder },
                 ]}
               >
                 {fields.city || "Select your city"}
@@ -389,62 +484,44 @@ export default function ProfileSetupScreen() {
               <Feather
                 name={cityOpen ? "chevron-up" : "chevron-down"}
                 size={16}
-                color={colors.mutedForeground}
+                color={D.textMuted}
               />
             </TouchableOpacity>
 
             {cityOpen && (
-              <View
-                style={[
-                  styles.dropdown,
-                  { borderColor: colors.border, backgroundColor: colors.surface },
-                ]}
-              >
+              <View style={styles.dropdown}>
                 {CITIES.map((c) => (
                   <TouchableOpacity
                     key={c}
                     style={[
                       styles.dropdownItem,
-                      {
-                        backgroundColor:  fields.city === c ? colors.primarySoft : "transparent",
-                        borderBottomColor: colors.border,
-                      },
+                      fields.city === c && { backgroundColor: D.primarySoft },
                     ]}
                     onPress={() => { set("city")(c); setCityOpen(false); }}
                   >
                     <Text
                       style={[
                         styles.dropdownText,
-                        {
-                          color:      fields.city === c ? colors.primary : colors.foreground,
-                          fontWeight: fields.city === c ? "700" : "400",
-                        },
+                        { color: fields.city === c ? D.primary : D.textDark, fontWeight: fields.city === c ? "700" : "400" },
                       ]}
                     >
                       {c}
                     </Text>
-                    {fields.city === c && (
-                      <Feather name="check" size={14} color={colors.primary} />
-                    )}
+                    {fields.city === c && <Feather name="check" size={14} color={D.primary} />}
                   </TouchableOpacity>
                 ))}
               </View>
             )}
-          </FormField>
+          </View>
 
           {/* DOB + Gender row */}
-          <View style={styles.row}>
+          <View style={styles.twoColRow}>
             <View style={{ flex: 1 }}>
-              <FormField label="Date of Birth" icon="calendar">
-                {/* Dedicated DOB input — numeric keyboard, auto-formatted */}
-                <DobInput
-                  value={fields.dob}
-                  onChangeText={handleDobChange}
-                />
-              </FormField>
+              <DobInput value={fields.dob} onChangeText={handleDobChange} />
             </View>
             <View style={{ flex: 1 }}>
-              <FormField label="Gender" icon="users">
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>Gender</Text>
                 <View style={styles.genderRow}>
                   {GENDERS.map((g) => (
                     <TouchableOpacity
@@ -452,16 +529,17 @@ export default function ProfileSetupScreen() {
                       style={[
                         styles.genderChip,
                         {
-                          borderColor:     fields.gender === g ? colors.primary         : colors.border,
-                          backgroundColor: fields.gender === g ? colors.primarySoft     : colors.surfaceElevated,
+                          backgroundColor: fields.gender === g ? D.primary : D.muted,
+                          borderColor:     fields.gender === g ? D.primary : D.border,
                         },
                       ]}
                       onPress={() => set("gender")(g)}
+                      activeOpacity={0.75}
                     >
                       <Text
                         style={[
-                          styles.genderText,
-                          { color: fields.gender === g ? colors.primary : colors.mutedForeground },
+                          styles.genderChipText,
+                          { color: fields.gender === g ? "#fff" : D.textMuted },
                         ]}
                       >
                         {g}
@@ -469,300 +547,525 @@ export default function ProfileSetupScreen() {
                     </TouchableOpacity>
                   ))}
                 </View>
-              </FormField>
+              </View>
             </View>
           </View>
+        </SectionCard>
 
-          <FormField label="Vehicle Number" icon="hash">
-            <TextFieldInput
-              value={fields.vehicleNumber}
-              onChangeText={(t) => set("vehicleNumber")(t.toUpperCase())}
-              placeholder="e.g. MH 01 AB 1234"
-              autoCapitalize="characters"
-              maxLength={13}
-            />
-          </FormField>
+        {/* ─── 3. Selected Vehicle Card ─── */}
+        <SectionCard>
+          <CardTitle label="Selected Vehicle" emoji="🚗" />
 
-          <FormField label="License Number" icon="credit-card">
-            <TextFieldInput
-              value={fields.licenseNumber}
-              onChangeText={(t) => set("licenseNumber")(t.toUpperCase())}
-              placeholder="e.g. MH0120240001234"
-              autoCapitalize="characters"
-              maxLength={16}
-            />
-          </FormField>
+          {vehicle && vMeta ? (
+            <View style={styles.vehicleRow}>
+              <LinearGradient
+                colors={[vMeta.gradStart, vMeta.gradEnd]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.vehicleThumb}
+              >
+                <Text style={{ fontSize: 22 }}>{vMeta.emoji}</Text>
+              </LinearGradient>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.vehicleName}>{vehicle.name}</Text>
+                <Text style={styles.vehicleId}>Vehicle type selected in Step 2</Text>
+              </View>
+              <View style={styles.vehicleCheck}>
+                <Feather name="check" size={14} color={D.success} />
+              </View>
+            </View>
+          ) : (
+            <View style={styles.vehicleEmpty}>
+              <Feather name="alert-circle" size={16} color={D.mutedFg} />
+              <Text style={styles.vehicleEmptyText}>
+                No vehicle selected — go back and choose a vehicle
+              </Text>
+            </View>
+          )}
+        </SectionCard>
 
-          <View
-            style={[
-              styles.infoBox,
-              { backgroundColor: colors.primarySoft, borderColor: colors.primary },
-            ]}
-          >
-            <Feather name="info" size={14} color={colors.primary} />
-            <Text style={[styles.infoText, { color: colors.foreground }]}>
-              Your documents will be verified within 24 hours before you can go online.
+        {/* ─── 4. Vehicle Details Card ─── */}
+        <SectionCard>
+          <CardTitle label="Vehicle Details" emoji="🔑" />
+
+          <FieldInput
+            label="Vehicle Number"
+            value={fields.vehicleNumber}
+            onChangeText={(t) => set("vehicleNumber")(t.toUpperCase())}
+            placeholder="e.g. MH 01 AB 1234"
+            autoCapitalize="characters"
+            maxLength={13}
+          />
+
+          <FieldInput
+            label="License Number"
+            value={fields.licenseNumber}
+            onChangeText={(t) => set("licenseNumber")(t.toUpperCase())}
+            placeholder="e.g. MH0120240001234"
+            autoCapitalize="characters"
+            maxLength={16}
+          />
+        </SectionCard>
+
+        {/* ─── 5. Verification Info Card ─── */}
+        <View style={styles.verifyCard}>
+          <View style={styles.verifyIconWrap}>
+            <Text style={{ fontSize: 22 }}>🛡️</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.verifyTitle}>Verification Process</Text>
+            <Text style={styles.verifySub}>
+              Your profile and documents will be reviewed before you can go online.
+              Expected approval within 24 hours.
             </Text>
           </View>
         </View>
       </ScrollView>
 
-      {/* ── Footer ── */}
+      {/* ── Sticky Footer ── */}
       <View
         style={[
           styles.footer,
-          {
-            paddingBottom:   insets.bottom + 16,
-            borderTopColor:  colors.border,
-            backgroundColor: colors.surface,
-          },
+          { paddingBottom: insets.bottom + 14 },
         ]}
       >
-        <View style={styles.footerMeta}>
+        <View style={styles.footerHint}>
           <Feather
-            name="check-circle"
+            name={isValid ? "check-circle" : "info"}
             size={13}
-            color={isValid ? colors.primary : colors.border}
+            color={isValid ? D.success : D.mutedFg}
           />
-          <Text style={[styles.footerMetaText, { color: colors.mutedForeground }]}>
+          <Text style={styles.footerHintText}>
             {isValid
-              ? "Looks good! You can continue."
+              ? "Looks good! Ready to continue."
               : "Fill in your name and city to continue."}
           </Text>
         </View>
 
-        <TouchableOpacity
-          style={[
-            styles.continueBtn,
-            {
-              backgroundColor: isValid ? colors.primary : colors.muted,
-              shadowColor:     isValid ? colors.primary : "transparent",
-              shadowOpacity:   isValid ? 0.28 : 0,
-              elevation:       isValid ? 6    : 0,
-            },
-          ]}
+        <Pressable
           onPress={handleContinue}
-          activeOpacity={0.85}
           disabled={!isValid}
+          style={({ pressed }) => [
+            styles.ctaWrap,
+            { opacity: pressed && isValid ? 0.88 : 1 },
+          ]}
         >
-          <Text style={[styles.continueBtnText, !isValid && { color: colors.mutedForeground }]}>
-            Continue to Dashboard
-          </Text>
-          {isValid && <Feather name="arrow-right" size={18} color="#fff" />}
-        </TouchableOpacity>
+          <LinearGradient
+            colors={isValid ? ["#F43F8F", "#E83272"] : ["#E5E7EB", "#E5E7EB"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.ctaGradient}
+          >
+            <Text style={[styles.ctaText, !isValid && { color: D.mutedFg }]}>
+              Continue to Documents
+            </Text>
+            <Feather
+              name="arrow-right"
+              size={18}
+              color={isValid ? "#fff" : D.mutedFg}
+            />
+          </LinearGradient>
+        </Pressable>
       </View>
     </KeyboardAvoidingView>
   );
 }
 
-// ─── DOB input component ──────────────────────────────────────────────────────
-// Separate component so it can manage its own focus state cleanly.
-// maxLength = 14 → "DD / MM / YYYY"
-
-function DobInput({
-  value,
-  onChangeText,
-}: {
-  value: string;
-  onChangeText: (raw: string) => void;
-}) {
-  const colors = useColors();
-  const [focused, setFocused] = useState(false);
-
-  return (
-    <TextInput
-      style={[
-        styles.textInput,
-        {
-          borderColor:     focused ? colors.primary     : colors.border,
-          backgroundColor: focused ? colors.primarySoft : colors.surfaceElevated,
-          color:           colors.foreground,
-          letterSpacing:   0.5,
-        },
-      ]}
-      value={value}
-      onChangeText={onChangeText}
-      placeholder="DD / MM / YYYY"
-      placeholderTextColor={colors.textPlaceholder}
-      keyboardType="numeric"
-      autoCapitalize="none"
-      maxLength={14}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
-    />
-  );
-}
-
 // ─── Styles ───────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   root: { flex: 1 },
 
-  // Header — bg/border injected inline
+  // Header
   header: {
-    paddingHorizontal: 20,
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 16,
     paddingBottom: 12,
-    gap: 12,
     borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+    gap: 10,
     zIndex: 10,
   },
-  headerTop: {
+  headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
   },
   backBtn: {
-    width: 38,
-    height: 38,
+    width: 36,
+    height: 36,
     borderRadius: 11,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
-  headerTitle: { alignItems: "center" },
-  headerLabel: { ...TS.h3 },
-  headerSub:   { ...TS.bodySm, marginTop: 2 },
+  headerCenter: { flex: 1, alignItems: "center" },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: "#111827",
+    letterSpacing: -0.3,
+  },
+  headerSub: {
+    fontSize: 11,
+    fontWeight: "500",
+    color: "#6B7280",
+    marginTop: 1,
+  },
 
-  stepBar: {
+  // Progress
+  progressRow: {
     flexDirection: "row",
-    gap: 5,
-    height: 4,
-    borderRadius: 2,
-    overflow: "hidden",
+    alignItems: "center",
+    paddingHorizontal: 16,
   },
-  stepSegment: { height: 4, borderRadius: 2 },
+  progressSegment: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  stepDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  progressLine: {
+    flex: 1,
+    height: 3,
+    borderRadius: 2,
+    marginHorizontal: -1,
+  },
 
   // Scroll
-  scroll: { paddingHorizontal: 20, paddingTop: 24, gap: 22 },
+  scroll: { paddingHorizontal: 16, paddingTop: 16, gap: 14 },
 
-  // Photo section
-  photoSection: { alignItems: "center", gap: 8 },
-  photoWrap:    { width: 100, height: 100, position: "relative" },
-  photoImg:     { width: 100, height: 100, borderRadius: 50 },
-  photoPlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+  // Card
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+  cardTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+  },
+  cardTitleEmoji: { fontSize: 18 },
+  cardTitleText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#111827",
+    letterSpacing: -0.2,
+  },
+
+  // Driver profile card
+  profileBanner: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 3,
+  },
+  profileBannerTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: -0.2,
+  },
+  profileBannerSub: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "rgba(255,255,255,0.85)",
+  },
+
+  photoSection: {
+    alignItems: "center",
+    paddingVertical: 18,
+    gap: 8,
+  },
+  photoWrap: {
+    width: 90,
+    height: 90,
+    position: "relative",
+  },
+  photoCircle: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "#F3F4F6",
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#E5E7EB",
   },
-  cameraBtn: {
+  photoImg: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+  },
+  cameraChip: {
     position: "absolute",
     bottom: 2,
     right: 2,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#E83272",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2.5,
-    borderColor: "#fff",
+    borderColor: "#FFFFFF",
   },
-  photoHint: { ...TS.bodySm },
-  photoTags: { flexDirection: "row", alignItems: "center", gap: 6 },
-  photoTag:  { flexDirection: "row", alignItems: "center", gap: 3 },
-  photoTagText: { ...TS.label, fontSize: 10, textTransform: "none", letterSpacing: 0 },
-  photoTagDot:  { width: 3, height: 3, borderRadius: 1.5 },
+  photoHint: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
+  photoTagsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  photoTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  photoTagText: {
+    fontSize: 11,
+    fontWeight: "500",
+    color: "#9CA3AF",
+  },
+  photoTagDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: "#D1D5DB",
+  },
 
-  // Form
-  form:          { gap: 18 },
-  fieldGroup:    { gap: 7 },
-  fieldLabelRow: { flexDirection: "row", alignItems: "center", gap: 5 },
-  fieldLabel:    { ...TS.bodySm, fontWeight: "600", letterSpacing: 0.2 },
-
-  // Text input — bg/border/color injected inline
+  // Form fields
+  fieldGroup: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    gap: 6,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B7280",
+    letterSpacing: 0.3,
+    textTransform: "uppercase",
+  },
   textInput: {
-    height: 52,
+    height: 50,
     borderWidth: 1.5,
-    borderRadius: 14,
+    borderRadius: 13,
     paddingHorizontal: 14,
     fontSize: 15,
     fontWeight: "500",
   },
-
-  // City select — bg/border injected inline
-  selectInput: {
-    height: 52,
-    borderWidth: 1.5,
-    borderRadius: 14,
-    paddingHorizontal: 14,
+  selectRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    height: 50,
   },
-  selectText: { fontSize: 15, fontWeight: "500" },
-
-  // Dropdown — bg/border injected inline
+  selectText: {
+    fontSize: 15,
+    fontWeight: "500",
+  },
   dropdown: {
     borderWidth: 1.5,
-    borderRadius: 14,
+    borderColor: "#E5E7EB",
+    borderRadius: 13,
     marginTop: 4,
     overflow: "hidden",
-    maxHeight: 220,
+    maxHeight: 200,
+    backgroundColor: "#FFFFFF",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
   },
   dropdownItem: {
     paddingHorizontal: 14,
     paddingVertical: 11,
     borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
   dropdownText: { fontSize: 14 },
 
-  // Row (DOB + Gender)
-  row:       { flexDirection: "row", gap: 12 },
-  genderRow: { flexDirection: "column", gap: 6 },
+  twoColRow: {
+    flexDirection: "row",
+    gap: 0,
+  },
+  genderRow: {
+    flexDirection: "row",
+    gap: 6,
+    flexWrap: "wrap",
+  },
   genderChip: {
-    height: 36,
-    borderWidth: 1.5,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
     paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  genderText: { ...TS.bodySm, fontWeight: "600" },
+  genderChipText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
 
-  // Info box — bg/border injected inline
-  infoBox: {
+  // Selected vehicle card
+  vehicleRow: {
     flexDirection: "row",
-    gap: 10,
-    borderWidth: 1,
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    gap: 12,
+  },
+  vehicleThumb: {
+    width: 48,
+    height: 48,
     borderRadius: 14,
-    padding: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  vehicleName: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#111827",
+    letterSpacing: -0.2,
+  },
+  vehicleId: {
+    fontSize: 11,
+    fontWeight: "500",
+    color: "#6B7280",
+    marginTop: 2,
+  },
+  vehicleCheck: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#D1FAE5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  vehicleEmpty: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+  },
+  vehicleEmptyText: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#9CA3AF",
+    flex: 1,
+  },
+
+  // Verification card
+  verifyCard: {
+    flexDirection: "row",
     alignItems: "flex-start",
-  },
-  infoText: { ...TS.bodySm, flex: 1, lineHeight: 19 },
-
-  // Footer — bg/border injected inline
-  footer: {
-    paddingHorizontal: 20,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    gap: 10,
-  },
-  footerMeta:     { flexDirection: "row", alignItems: "center", gap: 6 },
-  footerMetaText: { ...TS.bodySm },
-
-  // Continue button — bg/shadow injected inline
-  continueBtn: {
-    height: 56,
+    gap: 12,
+    backgroundColor: "#D1FAE5",
     borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#6EE7B7",
+    padding: 14,
+  },
+  verifyIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#A7F3D0",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  verifyTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#065F46",
+    marginBottom: 4,
+  },
+  verifySub: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#047857",
+    lineHeight: 18,
+  },
+
+  // Footer
+  footer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    gap: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 10,
+  },
+  footerHint: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  footerHintText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#6B7280",
+    flex: 1,
+  },
+  ctaWrap: {
+    borderRadius: 14,
+    shadowColor: "#E83272",
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+  },
+  ctaGradient: {
+    height: 52,
+    borderRadius: 14,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
+    gap: 9,
   },
-  continueBtnText: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#fff",
+  ctaText: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: 0.3,
   },
 });
