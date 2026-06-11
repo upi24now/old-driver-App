@@ -199,7 +199,7 @@ export type OnboardingFeeConfig = {
 
 const DEFAULT_FEE_CONFIG: OnboardingFeeConfig = {
   enabled:  true,
-  amount:   5,
+  amount:   10,
   currency: "INR",
   title:    "One-time onboarding fee",
 };

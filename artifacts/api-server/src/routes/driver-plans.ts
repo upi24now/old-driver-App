@@ -263,8 +263,8 @@ router.post("/driver-plans/onboarding-fee/create-order", async (req, res) => {
 
   const db = await adminFirestore();
 
-  // ── Read fee config from Firestore, fall back to ₹5 ──────────────────────
-  let amountInr = 5;
+  // ── Read fee config from Firestore, fall back to ₹10 ─────────────────────
+  let amountInr = 10;
   let currency  = "INR";
   try {
     const configSnap = await db.doc("app_config/driver_onboarding").get();
@@ -278,7 +278,7 @@ router.post("/driver-plans/onboarding-fee/create-order", async (req, res) => {
       }
     }
   } catch (err) {
-    req.log.warn({ err }, "Failed to read onboarding fee config, using default ₹5");
+    req.log.warn({ err }, "Failed to read onboarding fee config, using default ₹10");
   }
 
   // ── Validate driver eligibility ────────────────────────────────────────────
@@ -391,29 +391,67 @@ router.post("/driver-plans/onboarding-fee/verify-payment", async (req, res) => {
     const db  = await adminFirestore();
     const now = FieldValue.serverTimestamp();
 
+    // Read the fee amount that was stamped on the driver doc at signup.
+    // Falls back to 10 (₹10) if the field is absent.
+    let registrationFeeAmount = 10;
+    try {
+      const driverSnap = await db.doc(`drivers/${driverUid}`).get();
+      if (driverSnap.exists) {
+        const d = driverSnap.data() as Record<string, unknown>;
+        if (typeof d["onboardingFeeAmount"] === "number" && (d["onboardingFeeAmount"] as number) > 0) {
+          registrationFeeAmount = d["onboardingFeeAmount"] as number;
+        }
+      }
+    } catch {
+      // Non-fatal: we still complete the payment record with the fallback amount
+    }
+
     // 1. Immutable payment record
     await db.collection("driver_payments").add({
-      uid:               driverUid,
-      type:              "onboarding_fee",
+      uid:                  driverUid,
+      type:                 "onboarding_fee",
       razorpayOrderId,
       razorpayPaymentId,
-      status:            "paid",
-      createdAt:         now,
+      status:               "paid",
+      amountInr:            registrationFeeAmount,
+      createdAt:            now,
     });
 
-    // 2. Mark driver doc paid — this is what the routing guard reads
+    // 2. Mark driver doc paid + write all admin-visible onboarding fields.
+    //    - registrationFeePaid / registrationFeeAmount / registrationFeePaidAt
+    //      are the canonical admin-panel fields for "did this driver pay?"
+    //    - onboardingSubmittedAt marks when the full onboarding (docs + fee) completed
+    //    - verificationStatus / documentsSubmitted / documentsSubmittedAt may already
+    //      be set by submitDriverDocuments(); we write them here too so they are
+    //      guaranteed to be present even if the client skipped the call.
     await db.doc(`drivers/${driverUid}`).set(
       {
+        // Onboarding fee — routing guard reads onboardingFeeStatus
         onboardingFeeStatus:    "paid",
         onboardingFeePaidAt:    now,
         onboardingFeePaymentId: razorpayPaymentId,
         onboardingFeeUpdatedAt: now,
-        updatedAt:              now,
+
+        // Registration fee — admin-panel / KYC canonical fields
+        registrationFeePaid:     true,
+        registrationFeeAmount:   registrationFeeAmount,
+        registrationFeePaidAt:   now,
+
+        // Onboarding submission timestamp
+        onboardingSubmittedAt: now,
+
+        // Verification pipeline — admin sets verificationStatus to "approved"
+        // to unlock the driver; we only ever write "pending" here.
+        verificationStatus:   "pending",
+        documentsSubmitted:   true,
+        documentsSubmittedAt: now,
+
+        updatedAt: now,
       },
       { merge: true },
     );
 
-    req.log.info({ driverUid, razorpayPaymentId }, "Onboarding fee paid and recorded");
+    req.log.info({ driverUid, razorpayPaymentId, registrationFeeAmount }, "Onboarding fee paid and recorded");
     res.json({ ok: true });
   } catch (err) {
     req.log.error({ err }, "Firestore write failed after onboarding fee signature verify");
