@@ -311,6 +311,20 @@ function DocumentCard({
 }) {
   const colors = useColors();
   const uploaded = !!state.uri;
+  const [previewError, setPreviewError] = useState(false);
+
+  // Reset error flag whenever a new image URI arrives (fresh upload)
+  useEffect(() => { setPreviewError(false); }, [state.uri]);
+
+  // Preview debug — fires whenever the rendered URI changes
+  useEffect(() => {
+    if (!uploaded) return;
+    console.log("[PREVIEW_DEBUG] doc id =", doc.id);
+    console.log("[PREVIEW_DEBUG] uri =", state.uri);
+    console.log("[PREVIEW_DEBUG] uri type =", typeof state.uri);
+    console.log("[PREVIEW_DEBUG] uploaded state =", uploaded, "lock =", lockState);
+    console.log("[PREVIEW_DEBUG] render Image = true");
+  }, [doc.id, state.uri, uploaded, lockState]);
 
   const cardBorderColor = {
     locked:   colors.success,
@@ -391,8 +405,15 @@ function DocumentCard({
               source={{ uri: state.uri! }}
               style={styles.previewImg}
               contentFit="cover"
-              transition={250}
+              cachePolicy="none"
+              onLoad={() => console.log("[PREVIEW_DEBUG] image loaded", doc.id)}
+              onError={(e) => { setPreviewError(true); console.log("[PREVIEW_DEBUG] image error", doc.id, e.error); }}
             />
+            {previewError && (
+              <View style={styles.previewFallback}>
+                <Text style={styles.previewFallbackText}>Preview unavailable — upload saved</Text>
+              </View>
+            )}
             <View style={[styles.previewBar, { backgroundColor: "rgba(5,150,105,0.90)" }]}>
               <SafeInlineIcon name="lock" size={13} color="#fff" />
               <Text style={styles.previewBarText}>Verified — changes locked</Text>
@@ -421,8 +442,15 @@ function DocumentCard({
               source={{ uri: state.uri! }}
               style={styles.previewImg}
               contentFit="cover"
-              transition={250}
+              cachePolicy="none"
+              onLoad={() => console.log("[PREVIEW_DEBUG] image loaded", doc.id)}
+              onError={(e) => { setPreviewError(true); console.log("[PREVIEW_DEBUG] image error", doc.id, e.error); }}
             />
+            {previewError && (
+              <View style={styles.previewFallback}>
+                <Text style={styles.previewFallbackText}>Preview unavailable — upload saved</Text>
+              </View>
+            )}
             <View style={[styles.previewBar, { backgroundColor: "rgba(217,119,6,0.90)" }]}>
               <SafeInlineIcon name="clock" size={13} color="#fff" />
               <Text style={styles.previewBarText}>Pending verification</Text>
@@ -463,8 +491,15 @@ function DocumentCard({
                 source={{ uri: state.uri! }}
                 style={styles.previewImg}
                 contentFit="cover"
-                transition={250}
+                cachePolicy="none"
+                onLoad={() => console.log("[PREVIEW_DEBUG] image loaded", doc.id)}
+                onError={(e) => { setPreviewError(true); console.log("[PREVIEW_DEBUG] image error", doc.id, e.error); }}
               />
+              {previewError && (
+                <View style={styles.previewFallback}>
+                  <Text style={styles.previewFallbackText}>Preview unavailable — upload saved</Text>
+                </View>
+              )}
               <View style={[styles.previewBar, { backgroundColor: "rgba(220,38,38,0.88)" }]}>
                 <Text style={styles.previewBarText}>Previous upload (rejected)</Text>
                 <View style={{ flex: 1 }} />
@@ -504,8 +539,15 @@ function DocumentCard({
             source={{ uri: state.uri! }}
             style={styles.previewImg}
             contentFit="cover"
-            transition={250}
+            cachePolicy="none"
+            onLoad={() => console.log("[PREVIEW_DEBUG] image loaded", doc.id)}
+            onError={(e) => { setPreviewError(true); console.log("[PREVIEW_DEBUG] image error", doc.id, e.error); }}
           />
+          {previewError && (
+            <View style={styles.previewFallback}>
+              <Text style={styles.previewFallbackText}>Preview unavailable — upload saved</Text>
+            </View>
+          )}
           <View style={styles.previewBar}>
             <SafeInlineIcon name="check" size={13} color="#fff" />
             <Text style={styles.previewBarText}>
@@ -1165,7 +1207,33 @@ const styles = StyleSheet.create({
     backgroundColor: "#1a1a1a",
   },
   previewWrapSquare: { aspectRatio: 1 },
-  previewImg:        { width: "100%", height: "100%" },
+  // Absolute fill: expo-image does not resolve "100%" height against an
+  // aspectRatio-sized parent. Use position:absolute so the image always
+  // covers the entire previewWrap surface regardless of layout pass order.
+  previewImg: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  previewFallback: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "#1a1a1a",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 12,
+  },
+  previewFallbackText: {
+    color: "#9CA3AF",
+    fontSize: 12,
+    fontWeight: "500" as const,
+    textAlign: "center" as const,
+  },
   previewBar: {
     position: "absolute",
     bottom: 0,
