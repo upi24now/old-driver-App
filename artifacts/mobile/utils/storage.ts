@@ -17,7 +17,7 @@
  *   method that reliably works on React Native / Expo SDK 54.
  */
 
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { getDownloadURL, ref, uploadString } from "firebase/storage";
 import { firebaseAuth, storage } from "./firebase";
 
