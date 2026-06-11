@@ -1,0 +1,13 @@
+uploads = []
+
+[[generated]]
+id = "0X4Z50-LYjFIvJOOD3aH1"
+uri = "file://artifacts/mobile/assets/images/bike-icon.png"
+type = "image"
+title = "bike delivery icon transparent"
+
+[[outputs]]
+id = "DKhIS_gBYLC-IOymWli2m"
+uri = "file://artifacts/mobile/assets/images/bike-icon.png"
+type = "image"
+title = "Bike Delivery Icon (transparent PNG)"

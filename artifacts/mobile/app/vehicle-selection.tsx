@@ -56,7 +56,7 @@ type VehicleOption = {
   gradMid?:     string;
 };
 
-const BIKE_IMG = require("@/assets/images/bike-delivery.png");
+const BIKE_IMG = require("@/assets/images/bike-icon.png");
 
 const VEHICLES: VehicleOption[] = [
   {
