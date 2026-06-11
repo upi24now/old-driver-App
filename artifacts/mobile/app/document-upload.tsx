@@ -262,13 +262,10 @@ async function copyPickedImageToAppCache(
   const fileName = `driver-doc-${id}-${Date.now()}.${ext}`;
   const target = new File(Paths.cache, fileName);
   const source = new File(uri);
-  console.log("[PREVIEW_COPY_START]", { id, from: uri.slice(0, 80), targetName: fileName });
   try {
     await source.copy(target);
-    console.log("[PREVIEW_COPY_DONE]", { id, to: target.uri });
     return target.uri;
   } catch (e) {
-    console.warn("[PREVIEW_COPY] copy failed, using original uri:", String(e));
     return uri;
   }
 }
@@ -349,41 +346,6 @@ function DocumentCard({
     typeof state.uri === "string" && state.uri.length > 0
       ? state.uri
       : null;
-  const [previewError, setPreviewError] = useState(false);
-
-  // File existence proof — checks the actual file on disk whenever previewUri changes
-  const [fileInfo, setFileInfo] = useState<{ exists: boolean; size: number } | null>(null);
-  useEffect(() => {
-    if (!previewUri) { setFileInfo(null); return; }
-    try {
-      const f = new File(previewUri);
-      const info = { exists: f.exists, size: f.size };
-      setFileInfo(info);
-      console.log("[FILE_EXISTS]", { id: doc.id, uri: previewUri.slice(0, 70), exists: f.exists, size: f.size });
-    } catch (e) {
-      console.warn("[FILE_EXISTS] error:", String(e));
-      setFileInfo({ exists: false, size: 0 });
-    }
-  }, [previewUri, doc.id]);
-
-  // Reset error flag whenever a new image URI arrives (fresh upload)
-  useEffect(() => { setPreviewError(false); }, [state.uri]);
-
-  // Preview debug — fires whenever the rendered URI changes
-  useEffect(() => {
-    if (!uploaded) return;
-    console.log("[PREVIEW_DEBUG] doc id =", doc.id);
-    console.log("[PREVIEW_DEBUG] uri =", state.uri);
-    console.log("[PREVIEW_DEBUG] uri type =", typeof state.uri);
-    console.log("[PREVIEW_DEBUG] uploaded state =", uploaded, "lock =", lockState);
-    console.log("[PREVIEW_DEBUG] render Image = true");
-    console.log("[PREVIEW_RENDER]", {
-      id: doc.id,
-      uri: state.uri,
-      uriType: typeof state.uri,
-      hasUri: !!state.uri,
-    });
-  }, [doc.id, state.uri, uploaded, lockState]);
 
   const cardBorderColor = {
     locked:   colors.success,
@@ -465,8 +427,6 @@ function DocumentCard({
                 source={{ uri: previewUri ?? "" }}
                 style={styles.previewImg}
                 resizeMode="cover"
-                onLoad={() => console.log("[CARD_PREVIEW_OK]", doc.id)}
-                onError={(e) => console.log("[CARD_PREVIEW_ERROR]", doc.id, e.nativeEvent)}
               />
             </View>
             <View style={[styles.previewBar, { backgroundColor: "rgba(5,150,105,0.90)" }]}>
@@ -498,8 +458,6 @@ function DocumentCard({
                 source={{ uri: previewUri ?? "" }}
                 style={styles.previewImg}
                 resizeMode="cover"
-                onLoad={() => console.log("[CARD_PREVIEW_OK]", doc.id)}
-                onError={(e) => console.log("[CARD_PREVIEW_ERROR]", doc.id, e.nativeEvent)}
               />
             </View>
             <View style={[styles.previewBar, { backgroundColor: "rgba(217,119,6,0.90)" }]}>
@@ -543,8 +501,6 @@ function DocumentCard({
                   source={{ uri: previewUri ?? "" }}
                   style={styles.previewImg}
                   resizeMode="cover"
-                  onLoad={() => console.log("[CARD_PREVIEW_OK]", doc.id)}
-                  onError={(e) => console.log("[CARD_PREVIEW_ERROR]", doc.id, e.nativeEvent)}
                 />
               </View>
               <View style={[styles.previewBar, { backgroundColor: "rgba(220,38,38,0.88)" }]}>
@@ -587,8 +543,6 @@ function DocumentCard({
               source={{ uri: previewUri ?? "" }}
               style={styles.previewImg}
               resizeMode="cover"
-              onLoad={() => console.log("[CARD_PREVIEW_OK]", doc.id)}
-              onError={(e) => console.log("[CARD_PREVIEW_ERROR]", doc.id, e.nativeEvent)}
             />
           </View>
           <View style={styles.previewBar}>
@@ -651,29 +605,7 @@ function DocumentCard({
 
       )}
 
-      {/* ── Preview URI debug (temporary — remove after preview confirmed) ── */}
-      {uploaded && (
-        <View style={styles.previewDebug}>
-          <Text style={styles.previewDebugText}>
-            {"ORIGINAL: " + (state.originalUri ? state.originalUri.slice(0, 55) : "none (old load)")}
-          </Text>
-          <Text style={styles.previewDebugText}>
-            {"COPIED  : " + (state.freshUpload ? state.uri?.slice(0, 55) ?? "null" : "no fresh upload")}
-          </Text>
-          <Text style={styles.previewDebugText}>
-            {"DOC URI : " + (state.uri?.slice(0, 55) ?? "null")}
-          </Text>
-          <Text style={styles.previewDebugText}>
-            {"FRESH   : " + (state.freshUpload ? "YES" : "NO")}
-          </Text>
-          <Text style={styles.previewDebugText}>
-            {"EXISTS  : " + (fileInfo ? String(fileInfo.exists) : "checking…")}
-          </Text>
-          <Text style={styles.previewDebugText}>
-            {"SIZE    : " + (fileInfo ? fileInfo.size + " bytes" : "…")}
-          </Text>
-        </View>
-      )}
+
     </View>
   );
 }
@@ -745,22 +677,7 @@ export default function DocumentUploadScreen() {
     try {
       const asset = await pickFn();
       if (asset) {
-        console.log("[PICKER_ASSET_FULL]", JSON.stringify(asset, null, 2));
-        console.log("[PICKER_RESULT]", {
-          id,
-          uri:       asset.uri,
-          width:     asset.width,
-          height:    asset.height,
-          fileName:  asset.fileName,
-          mimeType:  asset.mimeType,
-          assetId:   asset.assetId,
-          uriType:   typeof asset.uri,
-          startsFile:    asset.uri?.startsWith("file://"),
-          startsContent: asset.uri?.startsWith("content://"),
-          length:    asset.uri?.length,
-        });
         const previewUri = await copyPickedImageToAppCache(asset.uri, id);
-        console.log("[PATCH_URI]", { id, previewUri, previewUriPrefix: previewUri.slice(0, 80) });
         patch(id, {
           uri: previewUri,
           originalUri: asset.uri,
@@ -768,7 +685,6 @@ export default function DocumentUploadScreen() {
           loading: false,
           freshUpload: true,
         });
-        console.log("[DOC_STATE_URI]", { id, willBe: previewUri.slice(0, 80) });
       } else {
         patch(id, { loading: false });
       }
@@ -821,9 +737,6 @@ export default function DocumentUploadScreen() {
    * valid file). Rejected docs with only an old file do NOT contribute.
    */
   const uploadedCount = DOCS.filter((d) => isDocReady(docs[d.id])).length;
-
-  // Global thumbnail — first fresh upload in this session, for top-of-screen rendering test
-  const freshUri = (Object.values(docs) as DocState[]).find(s => s.freshUpload && !!s.uri)?.uri ?? null;
 
   const total = DOCS.length;
   const progress = uploadedCount / total;
@@ -942,22 +855,6 @@ export default function DocumentUploadScreen() {
           </Text>
         </View>
       </View>
-
-      {/* ── GLOBAL THUMBNAIL DIAGNOSTIC (renders outside DocumentCard) ── */}
-      {freshUri && (
-        <View style={{ backgroundColor: "#111", paddingVertical: 6, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <RNImage
-            source={{ uri: freshUri }}
-            style={{ width: 60, height: 60, borderWidth: 2, borderColor: "#00FF00" }}
-            resizeMode="cover"
-            onLoad={() => console.log("[GLOBAL_THUMB_OK]", freshUri)}
-            onError={(e) => console.log("[GLOBAL_THUMB_ERROR]", freshUri, e.nativeEvent)}
-          />
-          <Text style={{ color: "#fff", fontSize: 8, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace", flex: 1 }} numberOfLines={4}>
-            {"GLOBAL THUMB\n" + freshUri.slice(0, 65)}
-          </Text>
-        </View>
-      )}
 
       {/* ────── Scroll content ────── */}
       <ScrollView
@@ -1338,26 +1235,7 @@ const styles = StyleSheet.create({
     fontWeight: "500" as const,
     textAlign: "center" as const,
   },
-  debugUriText: {
-    fontSize: 8,
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    color: "#b45309",
-    backgroundColor: "#FEF9C3",
-    padding: 4,
-  },
-  previewDebug: {
-    backgroundColor: "#FEF9C3",
-    borderWidth: 1,
-    borderColor: "#FDE047",
-    borderRadius: 8,
-    padding: 8,
-    gap: 3,
-  },
-  previewDebugText: {
-    fontSize: 10,
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    color: "#713F12",
-  },
+
   previewBar: {
     flexDirection: "row",
     alignItems: "center",
