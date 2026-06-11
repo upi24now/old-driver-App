@@ -293,17 +293,22 @@ export default function VerificationPendingScreen() {
           <View style={styles.timeline}>
             <TimelineStep
               status="done"
-              title="Documents Submitted"
-              description="All 3 documents received successfully"
+              title="Documents Uploaded"
+              description="All required documents received"
+            />
+            <TimelineStep
+              status="done"
+              title="Registration Fee Paid"
+              description="₹10 one-time activation fee verified"
             />
             <TimelineStep
               status="active"
-              title="Under Admin Review"
-              description="Our verification team is checking your details"
+              title="Verification Under Review"
+              description="Our team is reviewing your details"
             />
             <TimelineStep
               status="pending"
-              title="Verification Complete"
+              title="Account Approved"
               description="You'll be able to start accepting rides"
               isLast
             />
@@ -358,37 +363,20 @@ export default function VerificationPendingScreen() {
           style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
         >
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-            What you can do meanwhile
+            Meanwhile
           </Text>
           {[
-            {
-              icon: "smartphone",
-              title: "Keep notifications on",
-              desc: "We'll ping you the moment your account is approved.",
-            },
-            {
-              icon: "book-open",
-              title: "Read the driver handbook",
-              desc: "Learn best practices for top ratings and earnings.",
-            },
-            {
-              icon: "tool",
-              title: "Get your vehicle ready",
-              desc: "Service check, clean interiors, working AC.",
-            },
-          ].map((tip) => (
-            <View key={tip.title} style={styles.tipRow}>
-              <View style={[styles.tipIcon, { backgroundColor: colors.primarySoft }]}>
-                <Feather name={tip.icon as any} size={15} color={colors.primary} />
+            "Keep notifications enabled",
+            "Keep vehicle documents ready",
+            "Check application status anytime",
+          ].map((item) => (
+            <View key={item} style={styles.checklistRow}>
+              <View style={[styles.checklistDot, { backgroundColor: colors.primary }]}>
+                <Feather name="check" size={9} color="#fff" />
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.tipTitle, { color: colors.foreground }]}>
-                  {tip.title}
-                </Text>
-                <Text style={[styles.tipDesc, { color: colors.mutedForeground }]}>
-                  {tip.desc}
-                </Text>
-              </View>
+              <Text style={[styles.checklistText, { color: colors.foreground }]}>
+                {item}
+              </Text>
             </View>
           ))}
         </View>
@@ -464,7 +452,7 @@ export default function VerificationPendingScreen() {
         >
           <Feather name="bell" size={15} color={colors.foreground} />
           <Text style={[styles.ghostBtnText, { color: colors.foreground }]}>
-            Notify me when verified
+            Notify Me When Approved
           </Text>
         </TouchableOpacity>
       </View>
@@ -498,10 +486,10 @@ const styles = StyleSheet.create({
   // ── Hero card — bg injected inline (pending token) ──
   hero: {
     borderRadius: 24,
-    paddingVertical: 30,
-    paddingHorizontal: 24,
+    paddingVertical: 18,
+    paddingHorizontal: 20,
     alignItems: "center",
-    gap: 12,
+    gap: 10,
     overflow: "hidden",
     shadowColor: "#000",
     shadowOpacity: 0.15,
@@ -518,30 +506,30 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.3)",
   },
   heroAnimWrap: {
-    width: 130,
-    height: 130,
+    width: 90,
+    height: 90,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 6,
+    marginBottom: 2,
   },
   pulseRing: {
     position: "absolute",
-    width: 84,
-    height: 84,
-    borderRadius: 42,
+    width: 62,
+    height: 62,
+    borderRadius: 31,
     borderWidth: 2,
   },
   spinRing: {
     position: "absolute",
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 3,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    borderWidth: 2,
   },
   heroIconCircle: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1.5,
@@ -683,7 +671,7 @@ const styles = StyleSheet.create({
   },
   messageFooterText: { fontSize: 11, fontWeight: "500" },
 
-  // Tips
+  // Tips (kept for any future use)
   tipRow:  { flexDirection: "row", alignItems: "flex-start", gap: 10, paddingVertical: 4 },
   tipIcon: {
     width: 34,
@@ -694,6 +682,18 @@ const styles = StyleSheet.create({
   },
   tipTitle: { ...TS.bodySm, fontWeight: "700", marginBottom: 1 },
   tipDesc:  { ...TS.bodySm, lineHeight: 17 },
+
+  // Compact checklist (meanwhile card)
+  checklistRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 5 },
+  checklistDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  checklistText: { ...TS.bodySm, flex: 1 },
 
   // Support row — bg/border injected inline
   supportRow: {

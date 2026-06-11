@@ -38,89 +38,90 @@ const CATEGORIES: Category[] = ["All", "2 Wheeler", "3 Wheeler", "4 Wheeler", "C
 
 // ─── Vehicle definitions ──────────────────────────────────────────────────────
 type VehicleOption = {
-  id:        string;
-  name:      string;
-  tagline:   string;
-  capacity:  string;
-  price:     string;
-  mcIcon:    string;
-  category:  Exclude<Category, "All">;
-  popular?:  boolean;
-  gradStart: string;
-  gradEnd:   string;
-  gradMid?:  string;
+  id:           string;
+  name:         string;
+  tagline:      string;
+  capacity:     string;
+  price:        string;
+  mcIcon:       string;
+  capacityType: "passenger" | "cargo";
+  category:     Exclude<Category, "All">;
+  popular?:     boolean;
+  gradStart:    string;
+  gradEnd:      string;
+  gradMid?:     string;
 };
 
 const VEHICLES: VehicleOption[] = [
   {
     id: "bike",        name: "Bike Delivery",  tagline: "Quick parcel rides",
-    capacity: "1 Parcel",  price: "₹6/km",   mcIcon: "motorbike",
+    capacity: "1 Parcel",  price: "₹6/km",   mcIcon: "motorbike",  capacityType: "cargo",
     category: "2 Wheeler", popular: true,
     gradStart: "#FF6B9D",  gradMid: "#E8336C",  gradEnd: "#9B59B6",
   },
   {
     id: "scooter",     name: "Scooter",        tagline: "Light delivery rides",
-    capacity: "1 Parcel",  price: "₹5/km",   mcIcon: "motorbike",
+    capacity: "1 Parcel",  price: "₹5/km",   mcIcon: "motorbike",  capacityType: "cargo",
     category: "2 Wheeler",
     gradStart: "#FF8C69",  gradEnd: "#FFA726",
   },
   {
     id: "auto-pass",   name: "Auto Passenger", tagline: "3-seater city rides",
-    capacity: "3 Seats",   price: "₹10/km",  mcIcon: "car-side",
+    capacity: "3 Seats",   price: "₹10/km",  mcIcon: "car-side",   capacityType: "passenger",
     category: "3 Wheeler",
     gradStart: "#FFD43B",  gradEnd: "#FFA726",
   },
   {
     id: "auto-cargo",  name: "Auto Cargo",     tagline: "Small goods delivery",
-    capacity: "300 kg",    price: "₹12/km",  mcIcon: "truck-delivery",
+    capacity: "300 kg",    price: "₹12/km",  mcIcon: "truck-delivery", capacityType: "cargo",
     category: "3 Wheeler",
     gradStart: "#FB923C",  gradEnd: "#F59E0B",
   },
   {
     id: "mini-car",    name: "Mini Car",       tagline: "Compact comfort",
-    capacity: "4 Seats",   price: "₹14/km",  mcIcon: "car",
+    capacity: "4 Seats",   price: "₹14/km",  mcIcon: "car",        capacityType: "passenger",
     category: "4 Wheeler",
     gradStart: "#38BDF8",  gradEnd: "#2563EB",
   },
   {
     id: "sedan",       name: "Sedan",          tagline: "Premium comfort",
-    capacity: "4 Seats",   price: "₹18/km",  mcIcon: "car-side",
+    capacity: "4 Seats",   price: "₹18/km",  mcIcon: "car-side",   capacityType: "passenger",
     category: "4 Wheeler",
     gradStart: "#818CF8",  gradEnd: "#4338CA",
   },
   {
     id: "suv",         name: "SUV",            tagline: "Family rides",
-    capacity: "6 Seats",   price: "₹22/km",  mcIcon: "car",
+    capacity: "6 Seats",   price: "₹22/km",  mcIcon: "car",        capacityType: "passenger",
     category: "4 Wheeler",
     gradStart: "#2DD4BF",  gradEnd: "#0D9488",
   },
   {
     id: "tata-ace",    name: "Tata Ace",       tagline: "Mini goods carrier",
-    capacity: "750 kg",    price: "₹16/km",  mcIcon: "truck-delivery",
+    capacity: "750 kg",    price: "₹16/km",  mcIcon: "truck-delivery", capacityType: "cargo",
     category: "Cargo",
     gradStart: "#4ADE80",  gradEnd: "#16A34A",
   },
   {
     id: "pickup",      name: "Pickup Truck",   tagline: "Heavy parcel delivery",
-    capacity: "1 Ton",     price: "₹20/km",  mcIcon: "truck",
+    capacity: "1 Ton",     price: "₹20/km",  mcIcon: "truck",      capacityType: "cargo",
     category: "Cargo",
     gradStart: "#A3E635",  gradEnd: "#65A30D",
   },
   {
     id: "mini-truck",  name: "Mini Truck",     tagline: "Bulk goods transport",
-    capacity: "1.5 Ton",   price: "₹24/km",  mcIcon: "truck",
+    capacity: "1.5 Ton",   price: "₹24/km",  mcIcon: "truck",      capacityType: "cargo",
     category: "Cargo",
     gradStart: "#22D3EE",  gradEnd: "#0EA5E9",
   },
   {
     id: "eicher",      name: "Eicher Truck",   tagline: "Commercial transport",
-    capacity: "3 Ton",     price: "₹32/km",  mcIcon: "truck",
+    capacity: "3 Ton",     price: "₹32/km",  mcIcon: "truck",      capacityType: "cargo",
     category: "Heavy",
     gradStart: "#94A3B8",  gradEnd: "#3B82F6",
   },
   {
     id: "truck-14ft",  name: "14 Feet Truck",  tagline: "Large goods movement",
-    capacity: "5 Ton",     price: "₹40/km",  mcIcon: "truck",
+    capacity: "5 Ton",     price: "₹40/km",  mcIcon: "truck",      capacityType: "cargo",
     category: "Heavy",
     gradStart: "#C084FC",  gradEnd: "#6D28D9",
   },
@@ -232,6 +233,11 @@ function VehicleCard({
               },
             ]}
           >
+            <Feather
+              name={vehicle.capacityType === "passenger" ? "users" : "package"}
+              size={9}
+              color={selected ? D.primary : D.textMuted}
+            />
             <Text
               style={[styles.infoText, { color: selected ? D.primary : D.textMuted }]}
               numberOfLines={1}
@@ -340,7 +346,7 @@ export default function VehicleSelectionScreen() {
         </TouchableOpacity>
 
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Choose Vehicle 🚗</Text>
+          <Text style={styles.headerTitle}>Choose Vehicle</Text>
           <Text style={styles.headerSub}>Step 2 of 3</Text>
         </View>
 

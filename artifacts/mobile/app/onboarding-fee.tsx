@@ -227,6 +227,7 @@ export default function OnboardingFeeScreen() {
     day: "numeric", month: "long", year: "numeric",
     hour: "2-digit", minute: "2-digit",
   });
+  const appId = driverUid ? `DRV-${driverUid.slice(0, 6).toUpperCase()}` : "DRV-XXXXXX";
 
   if (configLoading) {
     return (
@@ -402,6 +403,7 @@ export default function OnboardingFeeScreen() {
             </View>
 
             <Text style={s.modalTitle}>Payment Successful</Text>
+            <Text style={s.modalWelcome}>Welcome to Sisko Driver Network</Text>
             <Text style={s.modalPaid}>₹{amount} paid</Text>
 
             {/* Documents submitted row */}
@@ -424,9 +426,19 @@ export default function OnboardingFeeScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.modalInfoTitle}>Verification Pending</Text>
-                  <Text style={s.modalInfoSub}>
-                    Your documents will be verified within 24 hours.
-                  </Text>
+                  <Text style={s.modalInfoSub}>Usually within 24 hours.</Text>
+                </View>
+              </View>
+
+              <View style={s.modalDivider} />
+
+              <View style={s.modalInfoRow}>
+                <View style={[s.modalIconBox, { backgroundColor: "rgba(99,102,241,0.10)" }]}>
+                  <Feather name="hash" size={14} color="#6366F1" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.modalInfoTitle}>Application ID</Text>
+                  <Text style={s.modalInfoSub}>{appId}</Text>
                 </View>
               </View>
             </View>
@@ -580,8 +592,9 @@ const s = StyleSheet.create({
     elevation: 5,
   },
 
-  modalTitle: { fontSize: 21, fontWeight: "800", color: "#1a1a1a", fontFamily: "Inter_700Bold", textAlign: "center" },
-  modalPaid:  { fontSize: 28, fontWeight: "900", color: SUCCESS, fontFamily: "Inter_700Bold" },
+  modalTitle:   { fontSize: 21, fontWeight: "800", color: "#1a1a1a", fontFamily: "Inter_700Bold", textAlign: "center" },
+  modalWelcome: { fontSize: 12, fontWeight: "600", color: MUTED, fontFamily: "Inter_600SemiBold", textAlign: "center", letterSpacing: 0.4 },
+  modalPaid:    { fontSize: 28, fontWeight: "900", color: SUCCESS, fontFamily: "Inter_700Bold" },
 
   modalInfoCard: {
     backgroundColor: "#F8FAFC", borderRadius: 16, padding: 14,
