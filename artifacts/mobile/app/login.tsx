@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -39,16 +40,19 @@ const B = {
 } as const;
 
 // ─── Service cards data ───────────────────────────────────────────────────────
+const BIKE_IMG = require("@/assets/images/bike-delivery.png");
+
 const SERVICES: Array<{
   artType:    VehicleArtType;
+  image?:     ReturnType<typeof require>;
   title:      string;
   sub:        string;
   accent:     string;
   accentSoft: string;
 }> = [
-  { artType: "bike",      title: "2-Wheeler", sub: "Express", accent: B.orange, accentSoft: "#FFF3E0" },
-  { artType: "autoCargo", title: "3W Loader", sub: "Economy", accent: B.amber,  accentSoft: "#FFFBEB" },
-  { artType: "truck",     title: "4W Loader", sub: "Cargo",   accent: B.indigo, accentSoft: "#EEF2FF" },
+  { artType: "bike",      image: BIKE_IMG, title: "2-Wheeler", sub: "Express", accent: B.orange, accentSoft: "#FFF3E0" },
+  { artType: "autoCargo",                  title: "3W Loader", sub: "Economy", accent: B.amber,  accentSoft: "#FFFBEB" },
+  { artType: "truck",                      title: "4W Loader", sub: "Cargo",   accent: B.indigo, accentSoft: "#EEF2FF" },
 ];
 
 // ─── Trust chips data ─────────────────────────────────────────────────────────
@@ -59,11 +63,14 @@ const CHIPS: Array<{ icon: SafeIconName; label: string; color: string; bg: strin
 ];
 
 // ─── ServiceCard ──────────────────────────────────────────────────────────────
-function ServiceCard({ artType, title, sub, accent }: typeof SERVICES[number]) {
+function ServiceCard({ artType, image, title, sub, accent }: typeof SERVICES[number]) {
   return (
     <View style={styles.serviceCard}>
       <View style={[styles.accentDot, { backgroundColor: accent }]} />
-      <VehicleArt type={artType} size={62} />
+      {image
+        ? <Image source={image} style={styles.serviceImg} resizeMode="contain" />
+        : <VehicleArt type={artType} size={62} />
+      }
       <Text style={styles.serviceTitle} numberOfLines={1}>{title}</Text>
       <Text style={styles.serviceSub}   numberOfLines={1}>{sub}</Text>
       <View style={[styles.accentLine, { backgroundColor: accent }]} />
@@ -416,6 +423,11 @@ const styles = StyleSheet.create({
     alignItems:     "center",
     justifyContent: "center",
     marginBottom:   6,
+  },
+  serviceImg: {
+    width:        72,
+    height:       62,
+    marginBottom: 2,
   },
   serviceTitle: {
     fontSize:  11,
