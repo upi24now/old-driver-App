@@ -140,6 +140,8 @@ const DOCS: DocSpec[] = [
 
 type DocState = {
   uri: string | null;
+  /** Raw asset.uri straight from ImagePicker — stored only for debug strip */
+  originalUri?: string | null;
   uploadedAt: number | null;
   /** true while permission request or picker is open */
   loading: boolean;
@@ -157,7 +159,7 @@ type DocState = {
   freshUpload?: boolean;
 };
 
-const blankDoc = (): DocState => ({ uri: null, uploadedAt: null, loading: false, freshUpload: false });
+const blankDoc = (): DocState => ({ uri: null, originalUri: null, uploadedAt: null, loading: false, freshUpload: false });
 
 // ─── Permission helpers ───────────────────────────────────────────────────────
 
@@ -260,12 +262,13 @@ async function copyPickedImageToAppCache(
   const fileName = `driver-doc-${id}-${Date.now()}.${ext}`;
   const target = new File(Paths.cache, fileName);
   const source = new File(uri);
+  console.log("[PREVIEW_COPY_START]", { id, from: uri.slice(0, 80), targetName: fileName });
   try {
     await source.copy(target);
-    console.log("[PREVIEW_COPY]", { id, from: uri, to: target.uri });
+    console.log("[PREVIEW_COPY_DONE]", { id, to: target.uri });
     return target.uri;
   } catch (e) {
-    console.warn("[PREVIEW_COPY] copy failed, using original uri:", e);
+    console.warn("[PREVIEW_COPY] copy failed, using original uri:", String(e));
     return uri;
   }
 }
@@ -675,9 +678,18 @@ function DocumentCard({
       {/* ── Preview URI debug (temporary — remove after preview confirmed) ── */}
       {uploaded && (
         <View style={styles.previewDebug}>
-          <Text style={styles.previewDebugText}>URI TYPE: {typeof state.uri}</Text>
-          <Text style={styles.previewDebugText}>URI PREFIX: {String(state.uri).slice(0, 50)}</Text>
-          <Text style={styles.previewDebugText}>HAS URI: {state.uri ? "YES" : "NO"}</Text>
+          <Text style={styles.previewDebugText}>
+            {"ORIGINAL: " + (state.originalUri ? state.originalUri.slice(0, 55) : "none (old load)")}
+          </Text>
+          <Text style={styles.previewDebugText}>
+            {"COPIED  : " + (state.freshUpload ? state.uri?.slice(0, 55) ?? "null" : "no fresh upload")}
+          </Text>
+          <Text style={styles.previewDebugText}>
+            {"DOC URI : " + (state.uri?.slice(0, 55) ?? "null")}
+          </Text>
+          <Text style={styles.previewDebugText}>
+            {"FRESH   : " + (state.freshUpload ? "YES" : "NO")}
+          </Text>
         </View>
       )}
     </View>
@@ -766,13 +778,15 @@ export default function DocumentUploadScreen() {
           length:    asset.uri?.length,
         });
         const previewUri = await copyPickedImageToAppCache(asset.uri, id);
-        patch(id, { uri: previewUri, uploadedAt: Date.now(), loading: false, freshUpload: true });
-        console.log("[PICKER_RESULT]", {
-          id,
+        console.log("[PATCH_URI]", { id, previewUri, previewUriPrefix: previewUri.slice(0, 80) });
+        patch(id, {
+          uri: previewUri,
           originalUri: asset.uri,
-          previewUri,
-          previewUriPrefix: previewUri.slice(0, 60),
+          uploadedAt: Date.now(),
+          loading: false,
+          freshUpload: true,
         });
+        console.log("[DOC_STATE_URI]", { id, willBe: previewUri.slice(0, 80) });
       } else {
         patch(id, { loading: false });
       }
