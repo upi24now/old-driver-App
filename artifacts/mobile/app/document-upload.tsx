@@ -329,6 +329,31 @@ function DocStatusChip({ lock }: { lock: NormalizedDocLock }) {
 
 // ─── DocumentCard ─────────────────────────────────────────────────────────────
 
+// ── Forensic preview image (temporary diagnostic) ────────────────────────────
+// Replace with final RNImage once rendering is confirmed working.
+function ForensicPreview({
+  previewUri,
+  docId,
+  onError,
+}: {
+  previewUri: string;
+  docId: string;
+  onError: () => void;
+}) {
+  return (
+    <View>
+      <Text style={styles.debugUriText} numberOfLines={4}>{"URI: " + previewUri}</Text>
+      <RNImage
+        source={{ uri: previewUri }}
+        style={{ width: 300, height: 200, borderWidth: 3, borderColor: "red", backgroundColor: "yellow" }}
+        resizeMode="cover"
+        onLoad={() => console.log("[IMAGE_LOAD_OK]", docId, previewUri)}
+        onError={(e) => { onError(); console.log("[IMAGE_LOAD_ERROR]", docId, previewUri, e.nativeEvent); }}
+      />
+    </View>
+  );
+}
+
 function DocumentCard({
   doc,
   state,
@@ -349,6 +374,21 @@ function DocumentCard({
       ? state.uri
       : null;
   const [previewError, setPreviewError] = useState(false);
+
+  // File existence proof — checks the actual file on disk whenever previewUri changes
+  const [fileInfo, setFileInfo] = useState<{ exists: boolean; size: number } | null>(null);
+  useEffect(() => {
+    if (!previewUri) { setFileInfo(null); return; }
+    try {
+      const f = new File(previewUri);
+      const info = { exists: f.exists, size: f.size };
+      setFileInfo(info);
+      console.log("[FILE_EXISTS]", { id: doc.id, uri: previewUri.slice(0, 70), exists: f.exists, size: f.size });
+    } catch (e) {
+      console.warn("[FILE_EXISTS] error:", String(e));
+      setFileInfo({ exists: false, size: 0 });
+    }
+  }, [previewUri, doc.id]);
 
   // Reset error flag whenever a new image URI arrives (fresh upload)
   useEffect(() => { setPreviewError(false); }, [state.uri]);
@@ -445,22 +485,15 @@ function DocumentCard({
         uploaded ? (
           <View style={[styles.previewWrap, doc.isSelfie && styles.previewWrapSquare]}>
             {previewUri ? (
-              <RNImage
-                key={previewUri}
-                source={{ uri: previewUri }}
-                style={styles.previewImg}
-                resizeMode="cover"
-                onLoad={() => console.log("[RN_PREVIEW] loaded", doc.id, previewUri)}
-                onError={(e) => { setPreviewError(true); console.log("[RN_PREVIEW] error", doc.id, previewUri, e.nativeEvent); }}
-              />
+              <ForensicPreview previewUri={previewUri} docId={doc.id} onError={() => setPreviewError(true)} />
             ) : (
               <View style={styles.previewFallback}>
-                <Text style={styles.previewFallbackText}>No preview URI found</Text>
+                <Text style={styles.previewFallbackText}>{"NO URI\nstate.uri: " + String(state.uri)}</Text>
               </View>
             )}
             {previewError && (
               <View style={styles.previewFallback}>
-                <Text style={styles.previewFallbackText}>{"Preview unavailable\nUpload saved successfully"}</Text>
+                <Text style={styles.previewFallbackText}>Load error — upload saved</Text>
               </View>
             )}
             <View style={[styles.previewBar, { backgroundColor: "rgba(5,150,105,0.90)" }]}>
@@ -488,22 +521,15 @@ function DocumentCard({
         uploaded ? (
           <View style={[styles.previewWrap, doc.isSelfie && styles.previewWrapSquare]}>
             {previewUri ? (
-              <RNImage
-                key={previewUri}
-                source={{ uri: previewUri }}
-                style={styles.previewImg}
-                resizeMode="cover"
-                onLoad={() => console.log("[RN_PREVIEW] loaded", doc.id, previewUri)}
-                onError={(e) => { setPreviewError(true); console.log("[RN_PREVIEW] error", doc.id, previewUri, e.nativeEvent); }}
-              />
+              <ForensicPreview previewUri={previewUri} docId={doc.id} onError={() => setPreviewError(true)} />
             ) : (
               <View style={styles.previewFallback}>
-                <Text style={styles.previewFallbackText}>No preview URI found</Text>
+                <Text style={styles.previewFallbackText}>{"NO URI\nstate.uri: " + String(state.uri)}</Text>
               </View>
             )}
             {previewError && (
               <View style={styles.previewFallback}>
-                <Text style={styles.previewFallbackText}>{"Preview unavailable\nUpload saved successfully"}</Text>
+                <Text style={styles.previewFallbackText}>Load error — upload saved</Text>
               </View>
             )}
             <View style={[styles.previewBar, { backgroundColor: "rgba(217,119,6,0.90)" }]}>
@@ -543,22 +569,15 @@ function DocumentCard({
           {uploaded ? (
             <View style={[styles.previewWrap, doc.isSelfie && styles.previewWrapSquare]}>
               {previewUri ? (
-                <RNImage
-                  key={previewUri}
-                  source={{ uri: previewUri }}
-                  style={styles.previewImg}
-                  resizeMode="cover"
-                  onLoad={() => console.log("[RN_PREVIEW] loaded", doc.id, previewUri)}
-                  onError={(e) => { setPreviewError(true); console.log("[RN_PREVIEW] error", doc.id, previewUri, e.nativeEvent); }}
-                />
+                <ForensicPreview previewUri={previewUri} docId={doc.id} onError={() => setPreviewError(true)} />
               ) : (
                 <View style={styles.previewFallback}>
-                  <Text style={styles.previewFallbackText}>No preview URI found</Text>
+                  <Text style={styles.previewFallbackText}>{"NO URI\nstate.uri: " + String(state.uri)}</Text>
                 </View>
               )}
               {previewError && (
                 <View style={styles.previewFallback}>
-                  <Text style={styles.previewFallbackText}>{"Preview unavailable\nUpload saved successfully"}</Text>
+                  <Text style={styles.previewFallbackText}>Load error — upload saved</Text>
                 </View>
               )}
               <View style={[styles.previewBar, { backgroundColor: "rgba(220,38,38,0.88)" }]}>
@@ -597,22 +616,15 @@ function DocumentCard({
         /* ── UPLOADED — normal, no status yet ── */
         <View style={[styles.previewWrap, doc.isSelfie && styles.previewWrapSquare]}>
           {previewUri ? (
-            <RNImage
-              key={previewUri}
-              source={{ uri: previewUri }}
-              style={styles.previewImg}
-              resizeMode="cover"
-              onLoad={() => console.log("[RN_PREVIEW] loaded", doc.id, previewUri)}
-              onError={(e) => { setPreviewError(true); console.log("[RN_PREVIEW] error", doc.id, previewUri, e.nativeEvent); }}
-            />
+            <ForensicPreview previewUri={previewUri} docId={doc.id} onError={() => setPreviewError(true)} />
           ) : (
             <View style={styles.previewFallback}>
-              <Text style={styles.previewFallbackText}>No preview URI found</Text>
+              <Text style={styles.previewFallbackText}>{"NO URI\nstate.uri: " + String(state.uri)}</Text>
             </View>
           )}
           {previewError && (
             <View style={styles.previewFallback}>
-              <Text style={styles.previewFallbackText}>{"Preview unavailable\nUpload saved successfully"}</Text>
+              <Text style={styles.previewFallbackText}>Load error — upload saved</Text>
             </View>
           )}
           <View style={styles.previewBar}>
@@ -689,6 +701,12 @@ function DocumentCard({
           </Text>
           <Text style={styles.previewDebugText}>
             {"FRESH   : " + (state.freshUpload ? "YES" : "NO")}
+          </Text>
+          <Text style={styles.previewDebugText}>
+            {"EXISTS  : " + (fileInfo ? String(fileInfo.exists) : "checking…")}
+          </Text>
+          <Text style={styles.previewDebugText}>
+            {"SIZE    : " + (fileInfo ? fileInfo.size + " bytes" : "…")}
           </Text>
         </View>
       )}
@@ -840,6 +858,9 @@ export default function DocumentUploadScreen() {
    */
   const uploadedCount = DOCS.filter((d) => isDocReady(docs[d.id])).length;
 
+  // Global thumbnail — first fresh upload in this session, for top-of-screen rendering test
+  const freshUri = (Object.values(docs) as DocState[]).find(s => s.freshUpload && !!s.uri)?.uri ?? null;
+
   const total = DOCS.length;
   const progress = uploadedCount / total;
 
@@ -957,6 +978,22 @@ export default function DocumentUploadScreen() {
           </Text>
         </View>
       </View>
+
+      {/* ── GLOBAL THUMBNAIL DIAGNOSTIC (renders outside DocumentCard) ── */}
+      {freshUri && (
+        <View style={{ backgroundColor: "#111", paddingVertical: 6, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <RNImage
+            source={{ uri: freshUri }}
+            style={{ width: 60, height: 60, borderWidth: 2, borderColor: "#00FF00" }}
+            resizeMode="cover"
+            onLoad={() => console.log("[GLOBAL_THUMB_OK]", freshUri)}
+            onError={(e) => console.log("[GLOBAL_THUMB_ERROR]", freshUri, e.nativeEvent)}
+          />
+          <Text style={{ color: "#fff", fontSize: 8, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace", flex: 1 }} numberOfLines={4}>
+            {"GLOBAL THUMB\n" + freshUri.slice(0, 65)}
+          </Text>
+        </View>
+      )}
 
       {/* ────── Scroll content ────── */}
       <ScrollView
@@ -1336,6 +1373,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "500" as const,
     textAlign: "center" as const,
+  },
+  debugUriText: {
+    fontSize: 8,
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    color: "#b45309",
+    backgroundColor: "#FEF9C3",
+    padding: 4,
   },
   previewDebug: {
     backgroundColor: "#FEF9C3",
