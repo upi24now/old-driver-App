@@ -3,7 +3,7 @@
 // This uses plain text labels + View shapes only, so it works on web, Expo Go, Android browser.
 
 import React from "react";
-import { View, Text, StyleSheet, ViewStyle, Pressable } from "react-native";
+import { View, Text, StyleSheet, ViewStyle, Pressable, ActivityIndicator } from "react-native";
 
 export type SafeIconName =
   | "bike"
@@ -194,11 +194,12 @@ export function SafeIcon3D({
 type PremiumButton3DProps = {
   title: string;
   disabled?: boolean;
+  loading?: boolean;
   onPress?: () => void;
   leftIcon?: SafeIconName;
   rightIcon?: SafeIconName;
   bg?: string;
-  bg2?: string;
+  bgDark?: string;
   textColor?: string;
   style?: ViewStyle;
 };
@@ -206,57 +207,62 @@ type PremiumButton3DProps = {
 export function PremiumButton3D({
   title,
   disabled,
+  loading,
   onPress,
   leftIcon,
   rightIcon = "arrow",
   bg = "#E83272",
+  bgDark = "#BE185D",
   textColor = "#FFFFFF",
   style,
 }: PremiumButton3DProps) {
-  const activeBg   = disabled ? "#E5E7EB" : bg;
-  const activeText = disabled ? "#9CA3AF" : textColor;
+  const isOff      = disabled || loading;
+  const activeBg   = isOff ? "#E5E7EB" : bg;
+  const activeDark = isOff ? "#CBD5E1" : bgDark;
+  const activeText = isOff ? "#9CA3AF" : textColor;
 
   return (
     <Pressable
-      disabled={disabled}
+      disabled={isOff}
       onPress={onPress}
       style={({ pressed }) => [
         styles.button3dWrap,
         {
-          opacity:       disabled ? 0.9 : 1,
-          transform:     [{ translateY: pressed && !disabled ? 3 : 0 }],
-          shadowOpacity: disabled ? 0.05 : pressed ? 0.12 : 0.28,
+          opacity:       isOff ? 0.9 : 1,
+          transform:     [{ translateY: pressed && !isOff ? 3 : 0 }],
+          shadowOpacity: isOff ? 0.05 : pressed ? 0.12 : 0.28,
         },
         style,
       ]}
     >
-      <View
-        style={[
-          styles.button3dBase,
-          { backgroundColor: disabled ? "#CBD5E1" : "#BE185D" },
-        ]}
-      >
+      <View style={[styles.button3dBase, { backgroundColor: activeDark }]}>
         <View style={[styles.button3dFace, { backgroundColor: activeBg }]}>
           <View
             style={[
               styles.button3dGloss,
               {
-                backgroundColor: disabled
+                backgroundColor: isOff
                   ? "rgba(255,255,255,0.25)"
                   : "rgba(255,255,255,0.22)",
               },
             ]}
           />
           <View style={styles.button3dContent}>
-            {leftIcon ? (
-              <SafeInlineIcon name={leftIcon} color={activeText} size={17} />
-            ) : null}
-            <Text numberOfLines={1} style={[styles.button3dText, { color: activeText }]}>
-              {title}
-            </Text>
-            {rightIcon ? (
-              <SafeInlineIcon name={rightIcon} color={activeText} size={17} />
-            ) : null}
+            {loading ? (
+              <ActivityIndicator size="small" color={textColor} />
+            ) : (
+              <>
+                {leftIcon ? (
+                  <SafeInlineIcon name={leftIcon} color={activeText} size={17} />
+                ) : null}
+                <Text numberOfLines={1} style={[styles.button3dText, { color: activeText }]}>
+                  {title}
+                </Text>
+                {rightIcon ? (
+                  <SafeInlineIcon name={rightIcon} color={activeText} size={17} />
+                ) : null}
+              </>
+            )}
           </View>
         </View>
       </View>

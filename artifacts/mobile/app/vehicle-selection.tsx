@@ -1,4 +1,4 @@
-import { SafeInlineIcon, SafeIconName } from "@/components/SafeIcon";
+import { SafeInlineIcon, SafeIconName, PremiumButton3D } from "@/components/SafeIcon";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -472,26 +472,13 @@ export default function VehicleSelectionScreen() {
         </View>
 
         {/* Continue button */}
-        <Pressable
-          onPress={handleContinue}
+        <PremiumButton3D
+          title="Continue"
           disabled={!selectedId}
-          style={({ pressed }) => [
-            styles.ctaWrap,
-            { opacity: pressed && !!selectedId ? 0.88 : 1 },
-          ]}
-        >
-          <LinearGradient
-            colors={selectedId ? ["#FF6B9D", "#E8336C"] : ["#E5E7EB", "#E5E7EB"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.ctaGradient}
-          >
-            <Text style={[styles.ctaText, !selectedId && { color: D.mutedFg }]}>
-              Continue
-            </Text>
-            <SafeInlineIcon name="arrow" size={18} color={selectedId ? D.white : D.mutedFg} />
-          </LinearGradient>
-        </Pressable>
+          onPress={handleContinue}
+          rightIcon="arrow"
+          style={styles.ctaWrap}
+        />
       </View>
     </View>
   );

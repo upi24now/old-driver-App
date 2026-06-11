@@ -20,7 +20,7 @@
  *  - null / missing       → upload allowed
  */
 
-import { SafeInlineIcon, SafeIconName } from "@/components/SafeIcon";
+import { SafeInlineIcon, SafeIconName, SafeIcon3D, PremiumButton3D } from "@/components/SafeIcon";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
@@ -353,9 +353,14 @@ function DocumentCard({
 
       {/* ── Header row ── */}
       <View style={styles.cardHeader}>
-        <View style={[styles.docIconWrap, { backgroundColor: iconBg }]}>
-          <SafeInlineIcon name={doc.icon} size={22} color={iconColor} />
-        </View>
+        <SafeIcon3D
+          name={doc.icon}
+          size={44}
+          bg={iconBg}
+          color={iconColor}
+          glow={iconColor}
+          rounded={13}
+        />
         <View style={styles.cardHeaderText}>
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>
             {doc.title}
@@ -817,9 +822,14 @@ export default function DocumentUploadScreen() {
       >
         {/* Security banner */}
         <View style={styles.banner}>
-          <View style={styles.bannerIcon}>
-            <SafeInlineIcon name="shield" size={20} color="#10B981" />
-          </View>
+          <SafeIcon3D
+            name="shield"
+            size={44}
+            bg="#A7F3D0"
+            color="#10B981"
+            glow="#10B981"
+            rounded={13}
+          />
           <View style={{ flex: 1 }}>
             <Text style={styles.bannerTitle}>Your documents are safe</Text>
             <Text style={styles.bannerSub}>
@@ -907,30 +917,14 @@ export default function DocumentUploadScreen() {
           </Text>
         </View>
 
-        <TouchableOpacity
-          style={[styles.submitBtn, { opacity: allReady && !submitting ? 1 : 0.55 }]}
-          onPress={() => void handleSubmit()}
-          activeOpacity={0.85}
+        <PremiumButton3D
+          title="Submit for Verification"
+          loading={submitting}
           disabled={!allReady || submitting}
-        >
-          <LinearGradient
-            colors={allReady ? ["#F43F8F", "#E83272"] : ["#E5E7EB", "#E5E7EB"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.submitGrad}
-          >
-            {submitting ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <Text style={[styles.submitText, !allReady && { color: "#9CA3AF" }]}>
-                  Submit for Verification
-                </Text>
-                <SafeInlineIcon name="arrow" size={18} color={allReady ? "#fff" : "#9CA3AF"} />
-              </>
-            )}
-          </LinearGradient>
-        </TouchableOpacity>
+          onPress={() => void handleSubmit()}
+          rightIcon="arrow"
+          style={styles.submitBtn}
+        />
       </View>
     </View>
   );

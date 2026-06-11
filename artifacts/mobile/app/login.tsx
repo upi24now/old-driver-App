@@ -1,4 +1,4 @@
-import { SafeIcon, SafeInlineIcon, SafeIconName } from "@/components/SafeIcon";
+import { SafeIcon, SafeInlineIcon, SafeIconName, PremiumButton3D } from "@/components/SafeIcon";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
@@ -91,50 +91,17 @@ function ContinueButton({
   loading: boolean;
   onPress: () => void;
 }) {
-  const scale = useRef(new Animated.Value(1)).current;
-
-  const pressIn  = () =>
-    Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, speed: 40, bounciness: 4 }).start();
-  const pressOut = () =>
-    Animated.spring(scale, { toValue: 1,    useNativeDriver: true, speed: 40, bounciness: 4 }).start();
-
   return (
-    <Animated.View
-      style={[
-        styles.ctaWrap,
-        enabled && {
-          shadowColor:   B.orange,
-          shadowOpacity: 0.35,
-          shadowRadius:  14,
-          shadowOffset:  { width: 0, height: 6 },
-          elevation:     8,
-        },
-        { transform: [{ scale }] },
-      ]}
-    >
-      <Pressable
-        onPress={onPress}
-        onPressIn={pressIn}
-        onPressOut={pressOut}
-        disabled={!enabled}
-        style={styles.ctaPressable}
-      >
-        <LinearGradient
-          colors={enabled ? [B.orange, B.pink] : ["#E5E7EB", "#E5E7EB"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.ctaGradient}
-        >
-          {loading ? (
-            <ActivityIndicator size="small" color={B.white} />
-          ) : (
-            <Text style={[styles.ctaText, !enabled && { color: B.textMuted }]}>
-              CONTINUE WITH OTP
-            </Text>
-          )}
-        </LinearGradient>
-      </Pressable>
-    </Animated.View>
+    <PremiumButton3D
+      title="CONTINUE WITH OTP"
+      loading={loading}
+      disabled={!enabled || loading}
+      onPress={onPress}
+      bg={B.orange}
+      bgDark="#C85A0D"
+      rightIcon={undefined}
+      style={styles.ctaWrap}
+    />
   );
 }
 

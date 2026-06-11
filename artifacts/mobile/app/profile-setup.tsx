@@ -8,7 +8,7 @@
  * All Firebase/Firestore/navigation logic is unchanged.
  */
 
-import { SafeInlineIcon, SafeIconName } from "@/components/SafeIcon";
+import { SafeInlineIcon, SafeIconName, SafeIcon3D, PremiumButton3D } from "@/components/SafeIcon";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
@@ -162,9 +162,14 @@ function CardTitle({ label, icon }: { label: string; icon?: SafeIconName }) {
   return (
     <View style={styles.cardTitleRow}>
       {icon && (
-        <View style={styles.cardTitleIconBox}>
-          <SafeInlineIcon name={icon} size={14} color={D.primary} />
-        </View>
+        <SafeIcon3D
+          name={icon}
+          size={26}
+          bg="rgba(232,50,114,0.10)"
+          color={D.primary}
+          glow={D.primary}
+          rounded={8}
+        />
       )}
       <Text style={styles.cardTitleText}>{label}</Text>
     </View>
@@ -610,9 +615,14 @@ export default function ProfileSetupScreen() {
 
         {/* ─── 5. Verification Info Card ─── */}
         <View style={styles.verifyCard}>
-          <View style={styles.verifyIconWrap}>
-            <SafeInlineIcon name="shield" size={20} color="#047857" />
-          </View>
+          <SafeIcon3D
+            name="shield"
+            size={40}
+            bg="#A7F3D0"
+            color="#047857"
+            glow="#059669"
+            rounded={12}
+          />
           <View style={{ flex: 1 }}>
             <Text style={styles.verifyTitle}>Verification Process</Text>
             <Text style={styles.verifySub}>
@@ -639,26 +649,13 @@ export default function ProfileSetupScreen() {
           </Text>
         </View>
 
-        <Pressable
-          onPress={handleContinue}
+        <PremiumButton3D
+          title="Continue to Documents"
           disabled={!isValid}
-          style={({ pressed }) => [
-            styles.ctaWrap,
-            { opacity: pressed && isValid ? 0.88 : 1 },
-          ]}
-        >
-          <LinearGradient
-            colors={isValid ? ["#F43F8F", "#E83272"] : ["#E5E7EB", "#E5E7EB"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.ctaGradient}
-          >
-            <Text style={[styles.ctaText, !isValid && { color: D.mutedFg }]}>
-              Continue to Documents
-            </Text>
-            <SafeInlineIcon name="arrow" size={18} color={isValid ? "#fff" : D.mutedFg} />
-          </LinearGradient>
-        </Pressable>
+          onPress={handleContinue}
+          rightIcon="arrow"
+          style={styles.ctaWrap}
+        />
       </View>
     </KeyboardAvoidingView>
   );

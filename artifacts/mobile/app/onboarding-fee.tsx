@@ -19,7 +19,7 @@
  */
 
 import { LinearGradient } from "expo-linear-gradient";
-import { SafeInlineIcon, SafeIconName } from "@/components/SafeIcon";
+import { SafeInlineIcon, SafeIconName, SafeIcon3D, PremiumButton3D } from "@/components/SafeIcon";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -269,9 +269,14 @@ export default function OnboardingFeeScreen() {
 
           {/* Card header — shield-check + title */}
           <View style={s.cardHeaderRow}>
-            <LinearGradient colors={[PINK, HOT_PINK]} style={s.cardIconBox}>
-              <SafeInlineIcon name="shield" size={22} color="#fff" />
-            </LinearGradient>
+            <SafeIcon3D
+              name="shield"
+              size={52}
+              bg={PINK}
+              color="#fff"
+              glow={PINK}
+              rounded={16}
+            />
             <View style={{ flex: 1 }}>
               <Text style={s.cardTitle}>Driver Account Activation</Text>
               <Text style={s.cardAmountLine}>
@@ -287,9 +292,14 @@ export default function OnboardingFeeScreen() {
           <Text style={s.includesLabel}>Includes</Text>
           {CHECKLIST.map((item) => (
             <View key={item.label} style={s.checkRow}>
-              <View style={s.checkIconBox}>
-                <SafeInlineIcon name={item.icon} size={13} color={PINK} />
-              </View>
+              <SafeIcon3D
+                name={item.icon}
+                size={26}
+                bg={PINK_SOFT}
+                color={PINK}
+                glow={PINK}
+                rounded={8}
+              />
               <Text style={s.checkLabel}>{item.label}</Text>
               <SafeInlineIcon name="check" size={15} color={SUCCESS} />
             </View>
@@ -309,29 +319,15 @@ export default function OnboardingFeeScreen() {
           <View style={{ height: 14 }} />
 
           {/* Gradient CTA button */}
-          <TouchableOpacity
-            style={[s.payBtn, isBusy && { opacity: 0.65 }]}
-            onPress={handlePay}
+          <PremiumButton3D
+            title={`Pay ₹${amount} — Activate Account`}
+            loading={isBusy}
             disabled={isBusy}
-            activeOpacity={0.88}
-          >
-            <LinearGradient
-              colors={[PINK, HOT_PINK]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={s.payBtnGrad}
-            >
-              {isBusy ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <>
-                  <SafeInlineIcon name="lock" size={15} color="#fff" />
-                  <Text style={s.payBtnText}>Pay ₹{amount} — Activate Account</Text>
-                  <SafeInlineIcon name="arrow" size={15} color="#fff" />
-                </>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
+            onPress={handlePay}
+            leftIcon="lock"
+            rightIcon="arrow"
+            style={s.payBtn}
+          />
 
           {/* Trust line */}
           <View style={s.trustLineRow}>
@@ -408,9 +404,7 @@ export default function OnboardingFeeScreen() {
             {/* Documents submitted row */}
             <View style={s.modalInfoCard}>
               <View style={s.modalInfoRow}>
-                <View style={[s.modalIconBox, { backgroundColor: PINK_SOFT }]}>
-                  <SafeInlineIcon name="doc" size={14} color={PINK} />
-                </View>
+                <SafeIcon3D name="doc" size={32} bg={PINK_SOFT} color={PINK} glow={PINK} rounded={10} />
                 <View style={{ flex: 1 }}>
                   <Text style={s.modalInfoTitle}>Documents Submitted</Text>
                   <Text style={s.modalInfoSub}>Submitted on: {currentDate}</Text>
@@ -420,9 +414,7 @@ export default function OnboardingFeeScreen() {
               <View style={s.modalDivider} />
 
               <View style={s.modalInfoRow}>
-                <View style={[s.modalIconBox, { backgroundColor: SUCCESS_SOFT }]}>
-                  <SafeInlineIcon name="clock" size={14} color={SUCCESS} />
-                </View>
+                <SafeIcon3D name="clock" size={32} bg={SUCCESS_SOFT} color={SUCCESS} glow={SUCCESS} rounded={10} />
                 <View style={{ flex: 1 }}>
                   <Text style={s.modalInfoTitle}>Verification Pending</Text>
                   <Text style={s.modalInfoSub}>Usually within 24 hours.</Text>
@@ -432,9 +424,7 @@ export default function OnboardingFeeScreen() {
               <View style={s.modalDivider} />
 
               <View style={s.modalInfoRow}>
-                <View style={[s.modalIconBox, { backgroundColor: "rgba(99,102,241,0.10)" }]}>
-                  <SafeInlineIcon name="hash" size={14} color="#6366F1" />
-                </View>
+                <SafeIcon3D name="hash" size={32} bg="rgba(99,102,241,0.10)" color="#6366F1" glow="#6366F1" rounded={10} />
                 <View style={{ flex: 1 }}>
                   <Text style={s.modalInfoTitle}>Application ID</Text>
                   <Text style={s.modalInfoSub}>{appId}</Text>
@@ -446,24 +436,17 @@ export default function OnboardingFeeScreen() {
               You will be notified once your account is approved. After approval, go online and start receiving orders.
             </Text>
 
-            <TouchableOpacity
-              style={s.dashBtn}
+            <PremiumButton3D
+              title="Go to Verification Status"
+              leftIcon="clock"
+              bg={SUCCESS}
+              bgDark="#047857"
               onPress={() => {
                 setShowSuccess(false);
                 router.replace("/verification-pending");
               }}
-              activeOpacity={0.88}
-            >
-              <LinearGradient
-                colors={[SUCCESS, "#059669"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={s.dashBtnGrad}
-              >
-                <SafeInlineIcon name="clock" size={15} color="#fff" />
-                <Text style={s.dashBtnText}>Go to Verification Status</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+              style={{ width: "100%" }}
+            />
 
           </View>
         </View>

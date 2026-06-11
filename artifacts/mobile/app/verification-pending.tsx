@@ -1,4 +1,4 @@
-import { SafeInlineIcon } from "@/components/SafeIcon";
+import { SafeInlineIcon, SafeIcon3D, PremiumButton3D } from "@/components/SafeIcon";
 import { useRouter } from "expo-router";
 import { callSupport } from "@/utils/support";
 import { useEffect, useRef } from "react";
@@ -323,11 +323,14 @@ export default function VerificationPendingScreen() {
           ]}
         >
           <View style={styles.messageHeader}>
-            <View
-              style={[styles.adminAvatar, { backgroundColor: colors.pendingSoft }]}
-            >
-              <SafeInlineIcon name="profile" size={16} color={colors.pending} />
-            </View>
+            <SafeIcon3D
+              name="profile"
+              size={38}
+              bg={colors.pendingSoft}
+              color={colors.pending}
+              glow={colors.pending}
+              rounded={19}
+            />
             <View style={{ flex: 1 }}>
               <View style={styles.messageHeaderRow}>
                 <Text style={[styles.messageAuthor, { color: colors.foreground }]}>
@@ -371,9 +374,14 @@ export default function VerificationPendingScreen() {
             "Check application status anytime",
           ].map((item) => (
             <View key={item} style={styles.checklistRow}>
-              <View style={[styles.checklistDot, { backgroundColor: colors.primary }]}>
-                <SafeInlineIcon name="check" size={9} color="#fff" />
-              </View>
+              <SafeIcon3D
+                name="check"
+                size={20}
+                bg={colors.primary}
+                color="#fff"
+                glow={colors.primary}
+                rounded={10}
+              />
               <Text style={[styles.checklistText, { color: colors.foreground }]}>
                 {item}
               </Text>
@@ -390,9 +398,14 @@ export default function VerificationPendingScreen() {
           activeOpacity={0.7}
           onPress={callSupport}
         >
-          <View style={[styles.supportIcon, { backgroundColor: colors.warningSoft }]}>
-            <SafeInlineIcon name="support" size={16} color={colors.warning} />
-          </View>
+          <SafeIcon3D
+            name="support"
+            size={36}
+            bg={colors.warningSoft}
+            color={colors.warning}
+            glow={colors.warning}
+            rounded={10}
+          />
           <View style={{ flex: 1 }}>
             <Text style={[styles.supportTitle, { color: colors.foreground }]}>
               Need help?
@@ -416,8 +429,12 @@ export default function VerificationPendingScreen() {
           },
         ]}
       >
-        <TouchableOpacity
-          style={[styles.primaryBtn, { backgroundColor: isApproved ? colors.primary : colors.muted }]}
+        <PremiumButton3D
+          title={isApproved ? "Go to Dashboard" : "Check Application Status"}
+          leftIcon={isApproved ? "check" : "refresh"}
+          bg={isApproved ? colors.primary : colors.muted}
+          bgDark={isApproved ? "#BE185D" : "#9CA3AF"}
+          textColor={isApproved ? "#fff" : colors.foreground}
           onPress={() => {
             if (isApproved) {
               router.replace("/(tabs)");
@@ -429,13 +446,7 @@ export default function VerificationPendingScreen() {
               );
             }
           }}
-          activeOpacity={0.85}
-        >
-          <SafeInlineIcon name={isApproved ? "check" : "refresh"} size={17} color={isApproved ? "#fff" : colors.foreground} />
-          <Text style={[styles.primaryBtnText, !isApproved && { color: colors.foreground }]}>
-            {isApproved ? "Go to Dashboard" : "Check Application Status"}
-          </Text>
-        </TouchableOpacity>
+        />
         <TouchableOpacity
           style={[styles.ghostBtn, { borderColor: colors.border }]}
           activeOpacity={0.7}
