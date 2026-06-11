@@ -41,28 +41,33 @@ function RootLayoutNav() {
 
   // ── Auth-policy routing ───────────────────────────────────────────────────
   //
-  // Every app launch always starts from /login.
-  // A persisted Firebase session does NOT bypass the login screen.
-  // Only a successful confirmOtp() call sets isOtpVerified=true.
+  // Session restore (app resume / cold start with valid Firebase session):
+  //   DriverContext reads SESSION_VERIFIED_KEY from AsyncStorage and, if the
+  //   stored uid matches the current Firebase user, sets isOtpVerified=true
+  //   BEFORE authLoading=false fires — no re-OTP required for valid sessions.
   //
-  // Firebase auth state resolution is guaranteed within 5 s by the timeout
-  // in DriverContext — authLoading=false is always reached.
+  // New device / fresh install / explicit sign-out:
+  //   SESSION_VERIFIED_KEY is absent or mismatched → isOtpVerified stays false
+  //   → route to /login where the OTP-first policy applies.
+  //
+  // Firebase auth state (+ AsyncStorage check) is guaranteed to resolve
+  // within 5 s by the safety timeout in DriverContext.
   useEffect(() => {
     if (authLoading) return;
 
     if (!driverUid || !firebaseAuth.currentUser) {
-      console.log("[AUTH_POLICY] route login — no_session");
+      console.log("[AUTH_ROUTE] chosenRoute = /login (no_session)");
       router.replace("/login");
       return;
     }
 
     if (!isOtpVerified) {
-      console.log("[AUTH_POLICY] route login — session_exists_otp_required uid =", driverUid);
+      console.log("[AUTH_ROUTE] chosenRoute = /login (otp_required uid =", driverUid, ")");
       router.replace("/login");
       return;
     }
 
-    console.log("[AUTH_POLICY] otp_verified — post-otp route owned by otp.tsx");
+    console.log("[AUTH_ROUTE] chosenRoute = post-otp (session restored or fresh OTP)");
   }, [authLoading, driverUid, isOtpVerified]);
 
   // Auth-loading overlay — disappears when authLoading becomes false.

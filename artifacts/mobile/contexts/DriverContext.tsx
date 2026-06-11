@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { AppState, Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   onAuthStateChanged,
   signInWithCustomToken,
@@ -51,6 +52,10 @@ import {
   sendIncomingOrderNotification,
   sendOrderUpdateNotification,
 } from "@/utils/notifications";
+
+// Key used to persist the last OTP-verified uid across cold starts.
+// A matching uid on app restore skips the OTP gate for approved sessions.
+const SESSION_VERIFIED_KEY = "@bike_courier/session_verified_uid";
 
 export type SubPlan = "daily" | "weekly" | "monthly";
 
@@ -471,27 +476,47 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       console.log("[AUTH_STATE] onAuthStateChanged fired uid =", user?.uid ?? null);
       console.log("[AUTH_STATE] no user =", !user);
 
-      if (user) {
-        // Set auth identity synchronously — unblocks routing immediately.
-        setDriverUid(user.uid);
-        console.log("AUTH UID =", firebaseAuth.currentUser?.uid);
-        console.log("DRIVER UID =", user.uid);
-        const phoneFromUid = user.uid.startsWith("91") ? user.uid.slice(2) : user.uid;
-        setPhoneState(phoneFromUid);
-      } else {
+      if (!user) {
         setDriverUid(null);
+        setAuthLoading(false);
+        return;
       }
 
-      // Unblock the layout BEFORE touching Firestore.
-      console.log("[AUTH_STATE] setAuthLoading false");
-      setAuthLoading(false);
+      // Set auth identity synchronously.
+      setDriverUid(user.uid);
+      console.log("AUTH UID =", firebaseAuth.currentUser?.uid);
+      console.log("DRIVER UID =", user.uid);
+      const phoneFromUid = user.uid.startsWith("91") ? user.uid.slice(2) : user.uid;
+      setPhoneState(phoneFromUid);
 
-      // ── Background hydration ─────────────────────────────────────────────
-      // Firestore reads happen after authLoading=false so they never block
-      // the login screen from appearing. They pre-populate profile/vehicle
-      // state so the dashboard doesn't need a fresh fetch after OTP.
-      if (!user) return;
       void (async () => {
+        // ── Session restore ─────────────────────────────────────────────────
+        // Approved drivers returning after backgrounding or cold-start must
+        // not be forced to re-OTP. If this uid was previously OTP-verified
+        // (written to AsyncStorage by confirmOtp), restore isOtpVerified BEFORE
+        // authLoading=false so _layout.tsx sees the correct value on first render.
+        try {
+          const storedUid = await AsyncStorage.getItem(SESSION_VERIFIED_KEY);
+          console.log("[SESSION_RESTORE] firebaseUid =", user.uid);
+          console.log("[SESSION_RESTORE] storedVerifiedUid =", storedUid);
+          const sessionValid = storedUid === user.uid;
+          console.log("[SESSION_RESTORE] sessionValid =", sessionValid);
+          if (sessionValid) {
+            setIsOtpVerified(true);
+          }
+        } catch {
+          // AsyncStorage read failed — falls back to OTP gate (safe default).
+        }
+
+        // Unblock the layout AFTER the session restore check so routing always
+        // sees the final isOtpVerified value in the same render cycle.
+        console.log("[AUTH_STATE] setAuthLoading false");
+        setAuthLoading(false);
+
+        // ── Background hydration ─────────────────────────────────────────────
+        // Firestore reads happen after authLoading=false so they never block
+        // the login screen from appearing. They pre-populate profile/vehicle
+        // state so the dashboard doesn't need a fresh fetch after OTP.
         try {
           const driverDoc = await getDriverDoc(user.uid);
           if (driverDoc) {
@@ -875,6 +900,13 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       // _layout.tsx reads it to decide whether to gate on /login or allow the
       // post-OTP route chosen above.
       setIsOtpVerified(true);
+      // Persist the verified uid so session survives app backgrounding / cold start.
+      try {
+        await AsyncStorage.setItem(SESSION_VERIFIED_KEY, uid);
+        console.log("[OTP_SESSION] saved uid =", uid);
+      } catch {
+        // Non-fatal — next cold start will require re-OTP.
+      }
 
       return { ok: true, profileComplete, nextRoute };
     } catch (err) {
@@ -917,10 +949,14 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         // intentionally ignored
       }
     }
-    // Await Firebase sign-out so the persisted session is cleared from
-    // AsyncStorage before the app can be killed. Fire-and-forget was the
-    // prior behaviour; a race between killing the app and this write completing
-    // allowed the session to survive a restart even after an explicit logout.
+    // Clear the persisted OTP session BEFORE Firebase sign-out so a crash
+    // between the two calls cannot leave the session key behind.
+    try {
+      await AsyncStorage.removeItem(SESSION_VERIFIED_KEY);
+      console.log("[SIGNOUT_SESSION] cleared");
+    } catch {
+      // Non-fatal — Firebase session is cleared below regardless.
+    }
     try {
       await firebaseSignOut(firebaseAuth);
     } catch (err) {
