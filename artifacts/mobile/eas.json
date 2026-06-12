@@ -42,7 +42,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "driver-app-upi24now.replit.app",
+        "EXPO_PUBLIC_DOMAIN": "api.bikecourierservice.com",
         "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyCZkidCyuTtSdQfX612b3aKshPp4TfCuP4",
         "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "bike-1-wap.firebaseapp.com",
         "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "bike-1-wap",
