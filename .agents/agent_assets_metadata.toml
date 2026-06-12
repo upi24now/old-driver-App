@@ -17,3 +17,9 @@ id = "MRHJtpTM_xtAgeljSPpCN"
 uri = "file://bike-courier-api.tar.gz"
 type = "unspecified"
 title = "bike-courier-api.tar.gz — includes Admin KYC routes"
+
+[[outputs]]
+id = "5t_tO_jRA3u8PxTjdGZkt"
+uri = "file://bike-courier-api-dist.tar.gz"
+type = "unspecified"
+title = "bike-courier-api-dist.tar.gz — built dist with dotenv fix"
