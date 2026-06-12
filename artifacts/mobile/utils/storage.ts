@@ -86,12 +86,16 @@ export async function uploadDocumentImage(
   // ── Get Firebase ID token ─────────────────────────────────────────────────
   let idToken: string;
   try {
-    idToken = await firebaseAuth.currentUser!.getIdToken();
+    idToken = await firebaseAuth.currentUser!.getIdToken(/* forceRefresh */ true);
   } catch (err) {
     const e = err as Error;
     console.error("[storage] getIdToken FAILED:", e?.message);
     throw new Error(`Could not get auth token: ${e?.message ?? String(err)}`);
   }
+
+  console.log("[UPLOAD_API_URL]", uploadUrl);
+  console.log("[UPLOAD_TOKEN_PRESENT]", idToken.length > 0 ? "yes" : "NO — empty token!");
+  console.log("[UPLOAD_TOKEN_UID]", authUid);
 
   // ── Read file as base64, then build a data URI for fetch ──────────────────
   //

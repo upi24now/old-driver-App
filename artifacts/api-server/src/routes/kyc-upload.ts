@@ -116,6 +116,11 @@ router.post("/kyc/upload",
     const authHeader  = req.headers["authorization"] ?? "";
     const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
 
+    req.log.info(
+      { headerPresent: !!authHeader, tokenPresent: !!bearerToken },
+      "[SERVER_AUTH_HEADER_PRESENT]",
+    );
+
     if (!bearerToken) {
       res.status(401).json({ ok: false, error: "Authorization header with Bearer token is required." });
       return;
@@ -126,8 +131,13 @@ router.post("/kyc/upload",
       const auth    = await adminAuth();
       const decoded = await auth.verifyIdToken(bearerToken);
       tokenUid = decoded.uid;
+      req.log.info({ tokenUid }, "[SERVER_VERIFY_TOKEN_OK]");
     } catch (err) {
-      req.log.warn({ err }, "kyc/upload: invalid Firebase ID token");
+      const e = err as Error & { code?: string };
+      req.log.warn(
+        { code: e?.code, message: e?.message, name: e?.name },
+        "[SERVER_VERIFY_TOKEN_FAIL]",
+      );
       res.status(401).json({ ok: false, error: "Invalid or expired token." });
       return;
     }
