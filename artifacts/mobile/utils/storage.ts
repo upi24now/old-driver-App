@@ -27,10 +27,16 @@
 import * as FileSystem from "expo-file-system/legacy";
 import { firebaseAuth } from "./firebase";
 
-// ─── Base URL (same pattern as auth-api.ts) ───────────────────────────────────
+// ─── Upload base URL ──────────────────────────────────────────────────────────
+//
+// Uses EXPO_PUBLIC_UPLOAD_DOMAIN when set (points at Hostinger VPS for KYC uploads).
+// Falls back to EXPO_PUBLIC_DOMAIN so EAS builds that don't set UPLOAD_DOMAIN
+// still work.  In dev (Expo Go) EXPO_PUBLIC_UPLOAD_DOMAIN=api.bikecourierservice.com
+// is injected by the dev script so uploads always go to the VPS, while auth/login
+// routes continue to use EXPO_PUBLIC_DOMAIN (the Replit dev domain).
 
-const DOMAIN   = process.env["EXPO_PUBLIC_DOMAIN"] ?? "";
-const BASE_URL = DOMAIN ? `https://${DOMAIN}/api` : "/api";
+const UPLOAD_DOMAIN = process.env["EXPO_PUBLIC_UPLOAD_DOMAIN"] ?? process.env["EXPO_PUBLIC_DOMAIN"] ?? "";
+const BASE_URL = UPLOAD_DOMAIN ? `https://${UPLOAD_DOMAIN}/api` : "/api";
 
 // ─── Content-type detection ───────────────────────────────────────────────────
 
