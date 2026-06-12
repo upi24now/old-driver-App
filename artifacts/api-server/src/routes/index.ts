@@ -5,6 +5,7 @@ import driverPlansRouter from "./driver-plans";
 import driversRouter from "./drivers";
 import ordersRouter from "./orders";
 import devRouter from "./dev";
+import kycUploadRouter from "./kyc-upload";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(driverPlansRouter);
 router.use(driversRouter);
 router.use(ordersRouter);
 router.use(devRouter);
+router.use(kycUploadRouter);
 
 export default router;
