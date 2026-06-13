@@ -65,15 +65,21 @@ export async function uploadDocumentImage(
   }
 
   // ── Get fresh ID token ─────────────────────────────────────────────────────
+  // forceRefresh: true — always fetches a fresh token from Firebase before
+  // the upload.  Using false (cached) risks sending an expired token when the
+  // app has been backgrounded or idle for > 1 hour, causing a 401.
   let token: string;
   try {
-    token = await currentUser.getIdToken(/* forceRefresh */ false);
-    console.log("[storage] ID token obtained, length:", token.length);
+    token = await currentUser.getIdToken(/* forceRefresh */ true);
+    console.log("[storage] ID token obtained (fresh), length:", token.length);
   } catch (err) {
     const e = err as Error;
     console.error("[storage] getIdToken FAILED:", e?.message);
     throw new Error(`Could not get auth token: ${e?.message ?? String(err)}`);
   }
+
+  const authHeader = `Bearer ${token}`;
+  console.log("[storage] Authorization header present:", true, "prefix:", authHeader.slice(0, 10) + "…");
 
   // ── Multipart upload ───────────────────────────────────────────────────────
   console.log("[storage] starting FileSystem.uploadAsync…");
@@ -85,7 +91,7 @@ export async function uploadDocumentImage(
       fieldName:   "file",
       mimeType:    "image/jpeg",
       parameters:  { uid, docId },
-      headers:     { Authorization: `Bearer ${token}` },
+      headers:     { Authorization: authHeader },
     });
     console.log("[storage] uploadAsync complete — status:", result.status);
     console.log("[storage] response body:", (result.body ?? "").slice(0, 200));
