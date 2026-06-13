@@ -195,25 +195,35 @@ async function sendOrderFcm(
     return;
   }
 
-  // ── 2. Resolve messaging client once ────────────────────────────────────
-  let messaging: Awaited<ReturnType<typeof adminMessaging>>;
-  try {
-    messaging = await adminMessaging();
-  } catch (err) {
-    logger.error({ err, orderId }, "[FCM dispatcher] Failed to init Firebase messaging");
-    await clearClaim(db, orderId, "Failed to init Firebase messaging");
-    return;
-  }
-
   const notifBody = order.earning !== "0" && order.distanceKm !== "0"
     ? `₹${order.earning} • ${order.distanceKm} km — ${order.customer || "New order"}`
     : order.customer || "You have a new delivery request";
 
-  // ── 3. Send FCM to each target UID independently ─────────────────────────
+  // ── 2. Send to each target UID independently ─────────────────────────────
+  //
+  // Token routing (detected by prefix):
+  //   ExponentPushToken[...] → Expo push relay  (Expo Go + dev/prod builds)
+  //   raw FCM token          → Firebase Admin SDK (future direct-FCM prod builds)
+  //
+  // WHY TWO PATHS:
+  //   getDevicePushTokenAsync() in Expo Go returns a token minted by Expo's own
+  //   Firebase sender ID, not the app's project, causing "SenderId mismatch".
+  //   Expo push tokens (getExpoPushTokenAsync) are always relayed by Expo's
+  //   servers using Expo's credentials, so they always match regardless of
+  //   which Firebase project the app belongs to.
+
+  // Lazy Firebase Admin Messaging — only initialised if a raw FCM token is
+  // encountered.  Expo push token sends never touch the Admin SDK.
+  let _messaging: Awaited<ReturnType<typeof adminMessaging>> | null = null;
+  const getAdminMessaging = async () => {
+    if (!_messaging) _messaging = await adminMessaging();
+    return _messaging;
+  };
+
   const results: SendResult[] = [];
 
   for (const driverUid of targetUids) {
-    // Read the driver's fcmToken.
+    // Read the driver's push token.
     let fcmToken: string | null = null;
     try {
       const driverSnap = await db.doc(`drivers/${driverUid}`).get();
@@ -231,47 +241,102 @@ async function sendOrderFcm(
       continue;
     }
 
-    // Send the push.
+    // Send the push — route by token type.
     try {
-      const messageId = await messaging.send({
-        token: fcmToken,
-        notification: {
-          title: "🛵 New Delivery Request",
-          body:  notifBody,
-        },
-        data: {
-          type:        "incoming_order",
-          orderId,
-          driverUid,
-          customer:    order.customer,
-          pickup:      order.pickup,
-          pickupCity:  order.pickupCity,
-          drop:        order.drop,
-          dropCity:    order.dropCity,
-          earning:     order.earning,
-          distanceKm:  order.distanceKm,
-          durationMin: order.durationMin,
-        },
-        android: {
-          priority: "high",
-          notification: {
-            channelId:           CHANNEL_ORDERS,
-            sound:               "ringtone",
-            visibility:          "public",
-            priority:            "max",
-            // Vibration pattern (ms): 0 delay, 1200 on, 200 off × 2, 500 tail.
-            // This fires once at notification delivery — the JS-layer
-            // Vibration.vibrate(pattern, true) loop takes over when the
-            // foreground screen mounts (ride-request / lock-alert).
-            vibrateTimingsMillis: [0, 1200, 200, 1200, 200, 1200, 500],
-            defaultVibrateTimings: false,
+      let messageId: string;
+
+      if (fcmToken.startsWith("ExponentPushToken[")) {
+        // ── Expo push relay ────────────────────────────────────────────────
+        // Works universally: Expo Go, dev builds, and production APK.
+        // Expo's servers relay the notification to the device via FCM using
+        // Expo's own sender credentials, so there is never a sender mismatch.
+        type ExpoTicket = { status: string; id?: string; message?: string; details?: unknown };
+        const expoRes = await fetch("https://exp.host/--/api/v2/push/send", {
+          method:  "POST",
+          headers: {
+            "Content-Type":    "application/json",
+            "Accept":          "application/json",
+            "Accept-Encoding": "gzip, deflate",
           },
-        },
-      });
+          body: JSON.stringify({
+            to:       fcmToken,
+            title:    "🛵 New Delivery Request",
+            body:     notifBody,
+            data: {
+              type:        "incoming_order",
+              orderId,
+              driverUid,
+              customer:    order.customer,
+              pickup:      order.pickup,
+              pickupCity:  order.pickupCity,
+              drop:        order.drop,
+              dropCity:    order.dropCity,
+              earning:     order.earning,
+              distanceKm:  order.distanceKm,
+              durationMin: order.durationMin,
+            },
+            channelId: CHANNEL_ORDERS,
+            sound:     "ringtone",
+            priority:  "high",
+            ttl:       30,
+          }),
+        });
+
+        const expoJson = (await expoRes.json()) as { data?: ExpoTicket; errors?: unknown[] };
+        const ticket   = expoJson.data;
+
+        if (!ticket || ticket.status !== "ok") {
+          throw new Error(
+            `Expo push error: ${ticket?.message ?? JSON.stringify(expoJson)}`,
+          );
+        }
+        messageId = ticket.id ?? "expo-ok";
+
+      } else {
+        // ── Firebase Admin SDK (raw FCM device token) ──────────────────────
+        // Used when the app registers via getDevicePushTokenAsync() from a
+        // production APK with a correctly baked-in google-services.json.
+        const messaging = await getAdminMessaging();
+        messageId = await messaging.send({
+          token: fcmToken,
+          notification: {
+            title: "🛵 New Delivery Request",
+            body:  notifBody,
+          },
+          data: {
+            type:        "incoming_order",
+            orderId,
+            driverUid,
+            customer:    order.customer,
+            pickup:      order.pickup,
+            pickupCity:  order.pickupCity,
+            drop:        order.drop,
+            dropCity:    order.dropCity,
+            earning:     order.earning,
+            distanceKm:  order.distanceKm,
+            durationMin: order.durationMin,
+          },
+          android: {
+            priority: "high",
+            notification: {
+              channelId:            CHANNEL_ORDERS,
+              sound:                "ringtone",
+              visibility:           "public",
+              priority:             "max",
+              // Vibration pattern (ms): 0 delay, 1200 on, 200 off × 2, 500 tail.
+              // This fires once at notification delivery — the JS-layer
+              // Vibration.vibrate(pattern, true) loop takes over when the
+              // foreground screen mounts (ride-request / lock-alert).
+              vibrateTimingsMillis: [0, 1200, 200, 1200, 200, 1200, 500],
+              defaultVibrateTimings: false,
+            },
+          },
+        });
+      }
 
       logger.info(
         { orderId, driverUid, messageId, instanceId: INSTANCE_ID, tokenPrefix: fcmToken.substring(0, 10) + "..." },
-        "[FCM dispatcher] FCM push sent",
+        "[FCM dispatcher] push sent",
       );
       results.push({ uid: driverUid, messageId });
     } catch (err) {

@@ -516,19 +516,31 @@ export async function clearBadge(): Promise<void> {
   }
 }
 
-// ─── FCM device push token registration ──────────────────────────────────────
+// ─── Push token registration ──────────────────────────────────────────────────
 /**
- * Collect the device's raw FCM push token and persist it to
+ * Collect the device's Expo push token and persist it to
  * drivers/{uid}.fcmToken in Firestore.
  *
- * Must be called after notification permission has been granted and after
- * google-services.json is baked into the build (EAS build / dev APK).
- * Fails safely in Expo Go (module unavailable) and when google-services.json
- * is absent — logs the error but never throws.
+ * Uses getExpoPushTokenAsync() which works universally:
+ *   - Expo Go (dev testing)  — Expo relays the push via its own FCM credentials
+ *   - Development builds     — same relay; raw FCM path available for prod
+ *   - Production APK         — same Expo relay
+ *
+ * WHY NOT getDevicePushTokenAsync():
+ *   In Expo Go the native layer uses Expo's own google-services.json, so
+ *   getDevicePushTokenAsync() returns a token registered to Expo's FCM sender
+ *   ID (not your app's project).  When the backend sends via Firebase Admin SDK
+ *   with your project credentials it gets "SenderId mismatch".
+ *   getExpoPushTokenAsync() always routes through Expo's relay so the token
+ *   and the sender always match — no mismatch possible.
  *
  * The token is intentionally NOT logged in full to avoid accidental exposure
  * in production log aggregators.
  */
+
+// EAS project ID from app.json extra.eas.projectId — required for getExpoPushTokenAsync.
+const EAS_PROJECT_ID = "3222bc75-37c6-45b2-a748-ca3a4a7f3a15";
+
 export async function registerDriverPushToken(uid: string): Promise<void> {
   if (!Notif || Platform.OS !== "android") return;
 
@@ -544,25 +556,26 @@ export async function registerDriverPushToken(uid: string): Promise<void> {
       return;
     }
 
-    // getDevicePushTokenAsync returns the raw FCM registration token on Android.
-    // Throws if google-services.json is absent or native FCM config is missing.
-    const tokenData = await Notif.getDevicePushTokenAsync();
+    // getExpoPushTokenAsync returns ExponentPushToken[...] — works in Expo Go,
+    // dev builds, and production.  The backend dispatcher routes these through
+    // Expo's push relay (https://exp.host/--/api/v2/push/send), which handles
+    // the FCM delivery using Expo's own credentials, eliminating sender mismatch.
+    const tokenData = await Notif.getExpoPushTokenAsync({ projectId: EAS_PROJECT_ID });
     if (!tokenData?.data) {
       console.warn("[Notifications] Push token empty — skipping Firestore write");
       return;
     }
 
     const { updateDriverPushToken } = await import("./firestore");
-    await updateDriverPushToken(uid, tokenData.data as string);
+    await updateDriverPushToken(uid, tokenData.data);
 
-    // Log only the token prefix so the entry is useful for debugging without
-    // exposing the full 152-character FCM token in plaintext logs.
-    const preview = (tokenData.data as string).slice(0, 8) + "…";
-    console.log(`[Notifications] FCM push token registered (${preview})`);
+    // Log only the token prefix so the entry is useful for debugging.
+    const preview = tokenData.data.slice(0, 22) + "…";
+    console.log(`[Notifications] Push token registered (${preview})`);
   } catch (err) {
-    // Common causes: google-services.json not baked into the build (Expo Go),
-    // no network, or Play Services unavailable on the device.
-    console.warn("[Notifications] Failed to register FCM push token:", err);
+    // Common causes: no network, Expo push service unavailable, or
+    // notification permission denied.
+    console.warn("[Notifications] Failed to register push token:", err);
   }
 }
 
