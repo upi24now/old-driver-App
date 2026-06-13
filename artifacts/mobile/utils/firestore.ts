@@ -47,6 +47,7 @@ export type DriverDoc = {
 
   // ── Documents ─────────────────────────────────────────────────────────────
   documentsSubmitted?:   boolean;  // true after submitDriverDocuments()
+  documentsSubmittedAt?: unknown;  // Firestore server Timestamp
   verificationStatus?:   string;   // "pending" | "approved" | "verified" | "rejected"
   documents?: {
     selfie?:    DriverDocEntry;
@@ -55,6 +56,16 @@ export type DriverDoc = {
     license?:   DriverDocEntry;
     rc?:        DriverDocEntry;
     insurance?: DriverDocEntry;
+  };
+  /** Flat map of Firebase Storage download URLs — written by submitDriverDocuments(). */
+  kycDocuments?: {
+    selfieUrl?:          string | null;
+    aadhaarFrontUrl?:    string | null;
+    aadhaarBackUrl?:     string | null;
+    panUrl?:             string | null;
+    drivingLicenseUrl?:  string | null;
+    vehicleRcUrl?:       string | null;
+    insuranceUrl?:       string | null;
   };
 
   // ── Wallet ────────────────────────────────────────────────────────────────
@@ -293,15 +304,33 @@ export async function updateDriverSubscription(
   }, { merge: true });
 }
 
+// ─── docId → kycDocuments field name ─────────────────────────────────────────
+// selfie/aadhaar/pan/license/rc map 1:1 to their URL fields.
+// The "insurance" slot is the Aadhaar Back photo (per DOCS definition in
+// document-upload.tsx) so it maps to aadhaarBackUrl.
+const DOC_ID_TO_KYC_FIELD: Record<string, string> = {
+  selfie:    "selfieUrl",
+  aadhaar:   "aadhaarFrontUrl",
+  insurance: "aadhaarBackUrl",
+  pan:       "panUrl",
+  license:   "drivingLicenseUrl",
+  rc:        "vehicleRcUrl",
+};
+
 /**
- * Mark the driver's document submission in Firestore and persist each doc's
- * Storage download URL alongside a "pending" status.
+ * Mark the driver's document submission in Firestore.
  *
- * Uses setDoc with merge:true instead of updateDoc so this succeeds even if
- * the driver document was never created (e.g. timing edge-case on first signup).
+ * Writes two complementary structures:
+ *   1. `documents.{id}.uri` + `documents.{id}.status = "pending"` — per-doc
+ *      status map used by the admin review flow (unchanged, backward-compat).
+ *   2. `kycDocuments.{field}` — flat URL map keyed by semantic field names
+ *      (selfieUrl, aadhaarFrontUrl, aadhaarBackUrl, panUrl, drivingLicenseUrl,
+ *      vehicleRcUrl) for the admin panel and any consumer that wants a simple
+ *      top-level map without nesting.
  *
- * Dot-notation field paths ensure existing admin-set fields on sibling docs
- * are not overwritten.
+ * Uses setDoc with merge:true so this succeeds even if the driver document was
+ * never created. Dot-notation field paths keep existing admin-set sibling
+ * fields intact.
  *
  * @param uid     - Driver UID (must match Firebase Auth UID)
  * @param docUris - Map of docId → Firebase Storage download URL (or null if skipped)
@@ -323,16 +352,23 @@ export async function submitDriverDocuments(
     documentsSubmittedAt: serverTimestamp(),
     updatedAt:            serverTimestamp(),
   };
+
   for (const [id, uri] of Object.entries(safeUris)) {
+    // Existing per-doc status structure (admin review flow)
     updates[`documents.${id}.uri`]    = uri;
     updates[`documents.${id}.status`] = "pending";
+
+    // New flat kycDocuments map — only write non-null URLs
+    const kycField = DOC_ID_TO_KYC_FIELD[id];
+    if (kycField && uri !== null) {
+      updates[`kycDocuments.${kycField}`] = uri;
+    }
   }
 
   console.log("[submitDriverDocuments] uid:", uid);
   console.log("[submitDriverDocuments] fields:", JSON.stringify(Object.keys(updates)));
 
   // setDoc with merge:true — safe whether the doc exists or not.
-  // updateDoc would throw NOT_FOUND if the doc is missing.
   await setDoc(doc(db, "drivers", uid), updates, { merge: true });
 
   console.log("[submitDriverDocuments] write completed");
