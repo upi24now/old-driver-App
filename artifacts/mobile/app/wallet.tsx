@@ -38,13 +38,6 @@ type Transaction = {
   date:     string;
 };
 
-// ─── Seed data (Phase 2 will replace with real Firestore reads) ───────────────
-const SEED_YESTERDAY: Transaction[] = [
-  { id: "t6", type: "earning",  title: "Trip · Airport → MG Road",      subtitle: "32 km · UPI",  amount:  478, status: "completed", time: "8:02 PM", date: "Yesterday" },
-  { id: "t7", type: "earning",  title: "Trip · Marathahalli → BTM",     subtitle: "12.3 km · UPI", amount: 215, status: "completed", time: "5:46 PM", date: "Yesterday" },
-  { id: "t8", type: "withdraw", title: "Withdrawal via UPI",             subtitle: "Pending review", amount: -1200, status: "pending", time: "4:20 PM", date: "Yesterday" },
-];
-
 // Semantic-token hex used at module level (no hook access here)
 const TYPE_META: Record<TxnType, { icon: string; color: string; bg: string }> = {
   earning:  { icon: "navigation",     color: "#059669", bg: "#D1FAE5" },  // money / successSoft
@@ -97,7 +90,7 @@ export default function WalletScreen() {
   const colors  = useColors();
   const insets  = useSafeAreaInsets();
   const router  = useRouter();
-  const { walletBalance, todayEarnings, transactions, requestWithdrawal, refreshWallet, driverUid } = useDriver();
+  const { walletBalance, lifetimeEarnings, todayEarnings, tripsToday, totalTrips, transactions, requestWithdrawal, refreshWallet, driverUid } = useDriver();
 
   const [filter, setFilter] = useState<Filter>("all");
 
@@ -113,6 +106,9 @@ export default function WalletScreen() {
 
   // ── Computed ────────────────────────────────────────────────────────────────
   const withdrawable   = Math.max(0, walletBalance - LOCKED_BALANCE);
+  const totalPaidOut   = transactions
+    .filter((t) => t.type === "withdraw")
+    .reduce((sum, t) => sum + Math.abs(t.amount), 0);
   const canWithdraw    = walletBalance > LOCKED_BALANCE;
   const parsedAmount   = parseFloat(amountText.replace(/,/g, "")) || 0;
   const upiValid       = UPI_REGEX.test(upiId.trim());
@@ -136,10 +132,7 @@ export default function WalletScreen() {
   };
 
   // ── Transactions list ────────────────────────────────────────────────────────
-  const allTxns: Transaction[] = [
-    ...(transactions as Transaction[]),
-    ...SEED_YESTERDAY,
-  ];
+  const allTxns: Transaction[] = transactions as Transaction[];
   const filtered = allTxns.filter((t) => {
     if (filter === "all")     return true;
     if (filter === "earning") return t.type === "earning" || t.type === "tip";
@@ -433,40 +426,42 @@ export default function WalletScreen() {
         </View>
 
 
-        {/* ── PERIOD STATS ──────────────────────────────────────────────────── */}
-        <View style={styles.periodRow}>
-          {[
-            { label: "This Week",  value: "12,480", delta: "+18%", days: "Mon – Sun"  },
-            { label: "This Month", value: "48,920", delta: "+24%", days: "Jun 2026"   },
-          ].map((p) => (
-            <TouchableOpacity
-              key={p.label}
-              style={[
-                styles.periodCard,
-                { borderColor: colors.border, backgroundColor: colors.surface },
-              ]}
-              activeOpacity={0.7}
-            >
-              <View style={styles.periodTopRow}>
-                <Text style={[styles.periodLabel, { color: colors.mutedForeground }]}>
-                  {p.label}
-                </Text>
-                <Feather name="chevron-right" size={14} color={colors.mutedForeground} />
-              </View>
-              <Text style={[styles.periodAmount, { color: colors.foreground }]}>
-                ₹{p.value}
-              </Text>
-              <View style={styles.periodBottom}>
-                <View style={[styles.deltaPill, { backgroundColor: colors.moneySoft }]}>
-                  <Feather name="trending-up" size={9} color={colors.money} />
-                  <Text style={[styles.deltaText, { color: colors.money }]}>{p.delta}</Text>
-                </View>
-                <Text style={[styles.periodDays, { color: colors.mutedForeground }]}>
-                  {p.days}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ))}
+        {/* ── STATS GRID ────────────────────────────────────────────────────── */}
+        <View style={styles.statsRow}>
+          <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.statIcon, { backgroundColor: "#D1FAE5" }]}>
+              <Feather name="trending-up" size={14} color="#059669" />
+            </View>
+            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>TOTAL EARNED</Text>
+            <Text style={[styles.statValue, { color: colors.foreground }]}>
+              ₹{lifetimeEarnings.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+            </Text>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.statIcon, { backgroundColor: "#DBEAFE" }]}>
+              <Feather name="send" size={14} color="#2563EB" />
+            </View>
+            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>TOTAL PAID OUT</Text>
+            <Text style={[styles.statValue, { color: colors.foreground }]}>
+              ₹{totalPaidOut.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.statsRow}>
+          <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.statIcon, { backgroundColor: "#EDE9FE" }]}>
+              <Feather name="map-pin" size={14} color="#7C3AED" />
+            </View>
+            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>TRIPS TODAY</Text>
+            <Text style={[styles.statValue, { color: colors.foreground }]}>{tripsToday}</Text>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.statIcon, { backgroundColor: "#FFF0F5" }]}>
+              <Feather name="award" size={14} color="#E8336C" />
+            </View>
+            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>TOTAL TRIPS</Text>
+            <Text style={[styles.statValue, { color: colors.foreground }]}>{totalTrips}</Text>
+          </View>
         </View>
 
         {/* ── TRANSACTIONS ──────────────────────────────────────────────────── */}
@@ -707,21 +702,12 @@ const styles = StyleSheet.create({
   },
   successNewBtnText: { fontSize: 13, fontWeight: "700" },
 
-  // Period stats
-  periodRow: { flexDirection: "row", gap: 10 },
-  periodCard: {
-    flex: 1, borderRadius: 14, borderWidth: 1, padding: 12, gap: 6,
-  },
-  periodTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  periodLabel: { fontSize: 11, fontWeight: "700", letterSpacing: 0.3 },
-  periodAmount: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3 },
-  periodBottom: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  deltaPill: {
-    flexDirection: "row", alignItems: "center", gap: 3,
-    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
-  },
-  deltaText: { fontSize: 10, fontWeight: "800" },
-  periodDays: { fontSize: 10, fontWeight: "500" },
+  // Stats grid
+  statsRow:  { flexDirection: "row", gap: 10 },
+  statCard:  { flex: 1, borderRadius: 14, borderWidth: 1, padding: 14, gap: 6 },
+  statIcon:  { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  statLabel: { fontSize: 9,  fontWeight: "800", letterSpacing: 0.5 },
+  statValue: { fontSize: 20, fontWeight: "800", letterSpacing: -0.5 },
 
   // Transactions
   transactionsSection: { gap: 12 },

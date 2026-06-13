@@ -34,6 +34,7 @@ import {
   rejectOrder,
   timeoutOrder,
   requestWithdrawal as fsRequestWithdrawal,
+  getDriverTransactions,
   updateDriverBackgroundSetup,
   PERMISSION_SETUP_VERSION,
   type DriverDoc,
@@ -126,15 +127,6 @@ export type Txn = {
 const PLAN_DAYS:  Record<SubPlan, number> = { daily: 0.5, weekly: 7,   monthly: 30  };
 const PLAN_PRICE: Record<SubPlan, number> = { daily: 3,  weekly: 19,  monthly: 100 };
 
-// Phase H-3: seed transactions will be replaced by Firestore reads.
-const SEED_TXNS: Txn[] = [
-  { id: "s1", type: "earning",  title: "Trip · Indiranagar → Whitefield",  subtitle: "9.6 km · UPI",        amount:  186,   status: "completed", time: "2:42 PM",  date: "Today"     },
-  { id: "s2", type: "tip",      title: "Tip from Priya S.",                subtitle: "Trip #4827",           amount:  24,    status: "completed", time: "2:42 PM",  date: "Today"     },
-  { id: "s3", type: "earning",  title: "Trip · HSR → Koramangala",         subtitle: "4.1 km · Cash",        amount:  92,    status: "completed", time: "1:18 PM",  date: "Today"     },
-  { id: "s4", type: "bonus",    title: "Daily streak bonus",               subtitle: "10 trips completed",   amount:  150,   status: "completed", time: "11:30 AM", date: "Today"     },
-  { id: "s5", type: "withdraw", title: "Withdrawal to HDFC ••2841",        subtitle: "Instant transfer",     amount: -2400,  status: "completed", time: "9:14 AM",  date: "Today"     },
-  { id: "s6", type: "earning",  title: "Trip · Airport → MG Road",         subtitle: "32 km · UPI",          amount:  478,   status: "completed", time: "8:02 PM",  date: "Yesterday" },
-];
 
 type OnboardingRoute =
   | "/(tabs)"
@@ -197,10 +189,12 @@ type DriverState = {
   pendingRides:  IncomingRide[];   // ALL simultaneously-dispatched orders (slider source)
   rideHistory:   ActiveRide[];
 
-  walletBalance:  number;
-  todayEarnings:  number;
-  tripsToday:     number;
-  transactions:   Txn[];
+  walletBalance:    number;
+  lifetimeEarnings: number;
+  todayEarnings:    number;
+  tripsToday:       number;
+  totalTrips:       number;
+  transactions:     Txn[];
 
   setPhone:   (p: string) => void;
   confirmOtp: (phone: string, otp: string) => Promise<ConfirmOtpResult>;
@@ -427,10 +421,11 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const [pendingRides,  setPendingRides] = useState<IncomingRide[]>([]);
   const [rideHistory,   setHistory]     = useState<ActiveRide[]>([]);
 
-  const [walletBalance,  setBalance]      = useState(0);
-  const [todayEarnings,  setTodayEarnings]= useState(0);
-  const [tripsToday,     setTripsToday]   = useState(0);
-  const [transactions,   setTxns]         = useState<Txn[]>(SEED_TXNS);
+  const [walletBalance,     setBalance]          = useState(0);
+  const [lifetimeEarnings,  setLifetimeEarnings] = useState(0);
+  const [todayEarnings,     setTodayEarnings]    = useState(0);
+  const [tripsToday,        setTripsToday]        = useState(0);
+  const [transactions,      setTxns]              = useState<Txn[]>([]);
   const [driverRating,   setDriverRating] = useState<number | string>("5.0");
   const [driverTrips,    setDriverTrips]  = useState<number>(0);
 
@@ -567,9 +562,11 @@ export function DriverProvider({ children }: { children: ReactNode }) {
               const today   = new Date().toISOString().slice(0, 10);
               const sameDay = driverDoc.todayDate === today;
               setBalance(driverDoc.walletBalance ?? 0);
+              setLifetimeEarnings(driverDoc.lifetimeEarnings ?? 0);
               setTodayEarnings(sameDay ? (driverDoc.todayEarnings ?? 0) : 0);
               setTripsToday   (sameDay ? (driverDoc.tripsToday    ?? 0) : 0);
             }
+            void loadDriverTransactions(user.uid);
             setVerifStatus(driverDoc.verificationStatus ?? null);
             setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
             setBackgroundSetupShown(driverDoc.backgroundSetupShown ?? false);
@@ -900,9 +897,11 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           const today   = new Date().toISOString().slice(0, 10);
           const sameDay = driverDoc.todayDate === today;
           setBalance(driverDoc.walletBalance ?? 0);
+          setLifetimeEarnings(driverDoc.lifetimeEarnings ?? 0);
           setTodayEarnings(sameDay ? (driverDoc.todayEarnings ?? 0) : 0);
           setTripsToday   (sameDay ? (driverDoc.tripsToday    ?? 0) : 0);
         }
+        void loadDriverTransactions(uid);
         // Restore verification/document state (needed for routing below)
         setVerifStatus(driverDoc.verificationStatus ?? null);
         setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
@@ -1176,10 +1175,88 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       const today   = new Date().toISOString().slice(0, 10);
       const sameDay = d.todayDate === today;
       setBalance(d.walletBalance ?? 0);
+      setLifetimeEarnings(d.lifetimeEarnings ?? 0);
       setTodayEarnings(sameDay ? (d.todayEarnings ?? 0) : 0);
       setTripsToday   (sameDay ? (d.tripsToday    ?? 0) : 0);
     } catch {
       // silent — optimistic values remain until next successful refresh
+    }
+  };
+
+  /**
+   * Load the driver's transaction ledger from Firestore and map to Txn shape.
+   *
+   * Called on auth, after OTP login, and after each withdrawal — ensures the
+   * wallet screen always shows real data with no fake seeds.
+   *
+   * Token mapping:  Firestore "withdrawal" → Txn "withdraw"  (type normalised here)
+   *                 Firestore amount is already negative for debits
+   */
+  const loadDriverTransactions = async (uid: string): Promise<void> => {
+    try {
+      const raw      = await getDriverTransactions(uid);
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const yestStr  = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
+      const fmtDate = (d: Date): string => {
+        const s = d.toISOString().slice(0, 10);
+        if (s === todayStr) return "Today";
+        if (s === yestStr)  return "Yesterday";
+        return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+      };
+      const fmtTime = (d: Date): string =>
+        d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true }).toUpperCase();
+
+      const txns: Txn[] = raw.map((r) => {
+        const ts      = r.createdAt as { toDate?: () => Date } | null;
+        const dt      = ts?.toDate?.();
+        const txnDate = dt ? fmtDate(dt) : "";
+        const txnTime = dt ? fmtTime(dt) : "";
+
+        if (r.type === "earning") {
+          return {
+            id:       r.id,
+            type:     "earning" as const,
+            title:    r.orderId
+              ? `Delivery #${(r.orderId as string).slice(-6).toUpperCase()}`
+              : "Delivery earning",
+            subtitle: (r.paymentMode as string | undefined) ?? "UPI",
+            amount:   r.amount as number,
+            status:   "completed" as const,
+            time:     txnTime,
+            date:     txnDate,
+          };
+        }
+        if (r.type === "withdrawal") {
+          return {
+            id:       r.id,
+            type:     "withdraw" as const,
+            title:    "Withdrawal via UPI",
+            subtitle: (r.note as string | undefined) ?? "Payout",
+            amount:   r.amount as number,   // already negative in Firestore
+            status:   (r.status as string) === "completed"
+              ? ("completed" as const)
+              : ("pending"   as const),
+            time:     txnTime,
+            date:     txnDate,
+          };
+        }
+        // bonus / adjustment
+        return {
+          id:       r.id,
+          type:     "bonus" as const,
+          title:    (r.note as string | undefined) ?? "Adjustment",
+          subtitle: "",
+          amount:   r.amount as number,
+          status:   "completed" as const,
+          time:     txnTime,
+          date:     txnDate,
+        };
+      });
+
+      setTxns(txns);
+    } catch (err) {
+      console.warn("[Wallet] Failed to load transactions:", err);
     }
   };
 
@@ -1569,8 +1646,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     try {
       await fsRequestWithdrawal(driverUid, amount, upiId);
       // Optimistic debit already applied by Firestore transaction —
-      // refresh to get the server-confirmed balance.
+      // refresh balance and reload transaction list.
       await refreshWallet();
+      void loadDriverTransactions(driverUid);
       return { ok: true };
     } catch (err) {
       const reason = err instanceof Error ? err.message : "Withdrawal failed";
@@ -1624,8 +1702,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         pendingRides,
         rideHistory,
         walletBalance,
+        lifetimeEarnings,
         todayEarnings,
         tripsToday,
+        totalTrips: driverTrips,
         transactions,
         addEarningLocally,
         refreshWallet,

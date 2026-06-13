@@ -981,6 +981,28 @@ export async function requestWithdrawal(
 }
 
 /**
+ * Fetch the most recent transaction ledger entries for a driver.
+ *
+ * Returns raw Firestore document data (newest-first).
+ * Callers map the raw shape to their own display types.
+ */
+export async function getDriverTransactions(
+  driverUid:  string,
+  limitCount = 50,
+): Promise<Array<Record<string, unknown> & { id: string }>> {
+  const q = query(
+    collection(db, "driver_transactions"),
+    where("driverUid", "==", driverUid),
+    orderBy("createdAt", "desc"),
+    limit(limitCount),
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(
+    (d) => ({ id: d.id, ...d.data() } as Record<string, unknown> & { id: string }),
+  );
+}
+
+/**
  * Driver-initiated pre-pickup cancellation.
  *
  * Sets status back to "pending" so the order re-enters the dispatch pool
