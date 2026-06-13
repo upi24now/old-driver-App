@@ -13,7 +13,7 @@
  * That URL is stored in Firestore by submitDriverDocuments() in firestore.ts.
  */
 
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 // FileSystemUploadType is not re-exported from the expo-file-system main index
 // in v56 — import from the legacy sub-path which is the stable, supported way.
 import { FileSystemUploadType } from "expo-file-system/legacy";
