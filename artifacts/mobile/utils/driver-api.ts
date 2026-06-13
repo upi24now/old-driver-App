@@ -3,6 +3,76 @@ import { firebaseAuth } from "@/utils/firebase";
 const DOMAIN   = process.env["EXPO_PUBLIC_DOMAIN"] ?? "";
 const BASE_URL = DOMAIN ? `https://${DOMAIN}/api` : "/api";
 
+async function getIdToken(): Promise<string | null> {
+  const user = firebaseAuth.currentUser;
+  if (!user) return null;
+  try {
+    return await user.getIdToken();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * PATCH /api/drivers/:uid/status
+ * Updates the driver's online/offline status on the server.
+ * Fire-and-forget safe — returns { ok: false } on any error.
+ */
+export async function patchDriverStatus(
+  uid:      string,
+  isOnline: boolean,
+): Promise<{ ok: boolean }> {
+  const idToken = await getIdToken();
+  if (!idToken) return { ok: false };
+  try {
+    const res  = await fetch(`${BASE_URL}/drivers/${uid}/status`, {
+      method:  "PATCH",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({ isOnline }),
+    });
+    const json = (await res.json()) as { ok?: boolean };
+    return { ok: !!json.ok };
+  } catch {
+    return { ok: false };
+  }
+}
+
+/**
+ * POST /api/drivers/:uid/location
+ * Posts the driver's current GPS coordinates to the server.
+ * Called every ~15 s while the driver is online (foreground only).
+ * Fire-and-forget safe — returns { ok: false } on any error.
+ */
+export async function postDriverLocation(
+  uid:    string,
+  coords: {
+    latitude:  number;
+    longitude: number;
+    isOnline:  boolean;
+    accuracy?: number;
+  },
+): Promise<{ ok: boolean }> {
+  const idToken = await getIdToken();
+  if (!idToken) return { ok: false };
+  try {
+    const res  = await fetch(`${BASE_URL}/drivers/${uid}/location`, {
+      method:  "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${idToken}`,
+      },
+      body: JSON.stringify(coords),
+    });
+    const json = (await res.json()) as { ok?: boolean };
+    return { ok: !!json.ok };
+  } catch {
+    return { ok: false };
+  }
+}
+
 export type RegisterKeysResult =
   | { ok: true }
   | { ok: false; error: string; message: string };

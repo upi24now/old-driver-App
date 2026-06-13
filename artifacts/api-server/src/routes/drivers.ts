@@ -129,4 +129,154 @@ router.post("/drivers/register-keys", async (req, res) => {
   }
 });
 
+/**
+ * PATCH /api/drivers/:uid/status
+ *
+ * Updates the driver's online status in Firestore.
+ * Called when the driver toggles the online/offline switch.
+ *
+ * Authentication:
+ *   Authorization: Bearer <Firebase ID token>
+ *   Token uid must match :uid.
+ *
+ * Body: { isOnline: boolean }
+ *
+ * Response 200: { ok: true }
+ * Response 400: { ok: false; error: "invalid_body" }
+ * Response 401: { ok: false; error: "missing_token" | "invalid_token" }
+ * Response 403: { ok: false; error: "uid_mismatch" }
+ * Response 500: { ok: false; error: "server_error" }
+ */
+router.patch("/drivers/:uid/status", async (req, res) => {
+  const { uid } = req.params as { uid: string };
+
+  const authHeader  = req.headers["authorization"] ?? "";
+  const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+  if (!bearerToken) {
+    res.status(401).json({ ok: false, error: "missing_token" });
+    return;
+  }
+
+  let decodedUid: string;
+  try {
+    const auth    = await adminAuth();
+    const decoded = await auth.verifyIdToken(bearerToken);
+    decodedUid    = decoded.uid;
+  } catch (err) {
+    req.log.warn({ err }, "status: invalid Firebase ID token");
+    res.status(401).json({ ok: false, error: "invalid_token" });
+    return;
+  }
+
+  if (decodedUid !== uid) {
+    req.log.warn({ decodedUid, uid }, "status: uid mismatch");
+    res.status(403).json({ ok: false, error: "uid_mismatch" });
+    return;
+  }
+
+  const { isOnline } = req.body as { isOnline?: unknown };
+  if (typeof isOnline !== "boolean") {
+    res.status(400).json({ ok: false, error: "invalid_body", message: "isOnline must be a boolean." });
+    return;
+  }
+
+  try {
+    const db = await adminFirestore();
+    await db.collection("drivers").doc(uid).update({
+      isOnline,
+      lastSeenAt: Date.now(),
+    });
+    req.log.info({ uid, isOnline }, "driver status updated");
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err, uid }, "status: Firestore update failed");
+    res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
+/**
+ * POST /api/drivers/:uid/location
+ *
+ * Records the driver's current GPS coordinates in Firestore.
+ * Called every ~15 s while the driver is online (foreground only).
+ *
+ * Authentication:
+ *   Authorization: Bearer <Firebase ID token>
+ *   Token uid must match :uid.
+ *
+ * Body:
+ *   { latitude: number; longitude: number; isOnline: boolean; accuracy?: number }
+ *
+ * Response 200: { ok: true }
+ * Response 400: { ok: false; error: "invalid_body" }
+ * Response 401: { ok: false; error: "missing_token" | "invalid_token" }
+ * Response 403: { ok: false; error: "uid_mismatch" }
+ * Response 500: { ok: false; error: "server_error" }
+ */
+router.post("/drivers/:uid/location", async (req, res) => {
+  const { uid } = req.params as { uid: string };
+
+  const authHeader  = req.headers["authorization"] ?? "";
+  const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+  if (!bearerToken) {
+    res.status(401).json({ ok: false, error: "missing_token" });
+    return;
+  }
+
+  let decodedUid: string;
+  try {
+    const auth    = await adminAuth();
+    const decoded = await auth.verifyIdToken(bearerToken);
+    decodedUid    = decoded.uid;
+  } catch (err) {
+    req.log.warn({ err }, "location: invalid Firebase ID token");
+    res.status(401).json({ ok: false, error: "invalid_token" });
+    return;
+  }
+
+  if (decodedUid !== uid) {
+    req.log.warn({ decodedUid, uid }, "location: uid mismatch");
+    res.status(403).json({ ok: false, error: "uid_mismatch" });
+    return;
+  }
+
+  const { latitude, longitude, isOnline, accuracy } = req.body as {
+    latitude?:  unknown;
+    longitude?: unknown;
+    isOnline?:  unknown;
+    accuracy?:  unknown;
+  };
+
+  if (
+    typeof latitude  !== "number" ||
+    typeof longitude !== "number" ||
+    typeof isOnline  !== "boolean"
+  ) {
+    res.status(400).json({
+      ok:      false,
+      error:   "invalid_body",
+      message: "latitude (number), longitude (number), and isOnline (boolean) are required.",
+    });
+    return;
+  }
+
+  try {
+    const db = await adminFirestore();
+    const update: Record<string, unknown> = {
+      latitude,
+      longitude,
+      isOnline,
+      lastSeenAt: Date.now(),
+    };
+    if (typeof accuracy === "number") update["accuracy"] = accuracy;
+
+    await db.collection("drivers").doc(uid).update(update);
+    req.log.info({ uid, latitude, longitude, isOnline }, "driver location updated");
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err, uid }, "location: Firestore update failed");
+    res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
 export default router;

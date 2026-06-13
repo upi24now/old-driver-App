@@ -43,6 +43,7 @@ import {
 } from "@/utils/firestore";
 export type { AcceptOrderResult };
 import { verifyOtpApi } from "@/utils/auth-api";
+import { patchDriverStatus, postDriverLocation } from "@/utils/driver-api";
 import {
   cancelIncomingOrderNotification,
   checkNotificationPermissions,
@@ -443,8 +444,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const isAuthenticated = !!driverUid;
 
   // Refs used by notification action handlers (registered once, no stale closure)
-  const incomingRideRef = useRef<IncomingRide | null>(null);
-  const driverUidRef    = useRef<string | null>(null);
+  const incomingRideRef      = useRef<IncomingRide | null>(null);
+  const driverUidRef         = useRef<string | null>(null);
+  // GPS location interval — cleared on go-offline and on sign-out
+  const locationIntervalRef  = useRef<ReturnType<typeof setInterval> | null>(null);
   const profileRef      = useRef<Profile | null>(null);
   const driverRatingRef = useRef<number | string>("5.0");
   const driverTripsRef  = useRef<number>(0);
@@ -997,6 +1000,13 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       // out from the app's perspective even if the remote call failed.
     }
 
+    // Stop GPS tracking before clearing state
+    if (locationIntervalRef.current !== null) {
+      clearInterval(locationIntervalRef.current);
+      locationIntervalRef.current = null;
+      console.log("[GPS_STATUS] tracking stopped (sign-out)");
+    }
+
     // Explicitly drain the listener map before clearing state so no Firestore
     // callbacks can fire after sign-out and attempt to update unmounted state.
     for (const unsub of activeOrderListenersRef.current.values()) {
@@ -1032,6 +1042,40 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   };
 
   // ─── Online / subscription ────────────────────────────────────────────────
+
+  // Polls GPS and uploads to the server. Uses refs to avoid stale closures
+  // inside the setInterval callback (registered once per go-online call).
+  const pollLocationAndUpload = async (): Promise<void> => {
+    const uid = driverUidRef.current;
+    if (!uid) return;
+    console.log("[GPS_STATUS] polling uid=", uid);
+    let loc: Location.LocationObject;
+    try {
+      loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+    } catch (err) {
+      console.log("[GPS_UPLOAD_FAIL] getCurrentPositionAsync error:", err instanceof Error ? err.message : String(err));
+      return;
+    }
+    const { latitude, longitude, accuracy } = loc.coords;
+    try {
+      const result = await postDriverLocation(uid, {
+        latitude,
+        longitude,
+        isOnline: true,
+        accuracy: accuracy ?? undefined,
+      });
+      if (result.ok) {
+        console.log("[GPS_UPLOAD_OK] lat=", latitude, "lon=", longitude, "acc=", accuracy);
+      } else {
+        console.log("[GPS_UPLOAD_FAIL] server returned ok:false");
+      }
+    } catch (err) {
+      console.log("[GPS_UPLOAD_FAIL] fetch error:", err instanceof Error ? err.message : String(err));
+    }
+  };
+
   const setOnline: DriverState["setOnline"] = (v) => {
     if (v && (accountStatus === "suspended" || accountStatus === "blocked")) {
       return { ok: false, reason: "Your account has been suspended. Please contact support." };
@@ -1042,9 +1086,26 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     setOnlineState(v);
     if (driverUid) {
       updateDriverOnlineStatus(driverUid, v).catch(console.error);
+      patchDriverStatus(driverUid, v).catch(console.error);
     }
-    if (!v) {
-      // Going offline — clear any pending incoming ride
+    if (v) {
+      // Going online — clear any stale interval, then start fresh GPS tracking
+      if (locationIntervalRef.current !== null) {
+        clearInterval(locationIntervalRef.current);
+        locationIntervalRef.current = null;
+      }
+      console.log("[GPS_STATUS] tracking started");
+      void pollLocationAndUpload();
+      locationIntervalRef.current = setInterval(() => {
+        void pollLocationAndUpload();
+      }, 15_000);
+    } else {
+      // Going offline — stop GPS tracking and clear pending ride
+      if (locationIntervalRef.current !== null) {
+        clearInterval(locationIntervalRef.current);
+        locationIntervalRef.current = null;
+        console.log("[GPS_STATUS] tracking stopped");
+      }
       setIncomingRide(null);
       lastSeenOrderId.current = null;
     }
