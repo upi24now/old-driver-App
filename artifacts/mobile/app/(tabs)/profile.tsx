@@ -16,7 +16,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
-import { callSupport } from "@/utils/support";
 
 function confirmAction(
   title: string,
@@ -520,8 +519,8 @@ export default function SettingsScreen() {
             <Row
               icon="help-circle"
               title="Help & support"
-              sub="Tap to call our support team"
-              onPress={callSupport}
+              sub="View tickets & get help"
+              onPress={() => router.push("/support")}
               divider
             />
             <Row

@@ -5,3 +5,4 @@
 - [api-server rebuild required](api-server-rebuild.md) — restart_workflow does NOT recompile; must run build explicitly before restarting.
 - [Cold-start session restore navigation](cold-start-session-restore.md) — after app kill, Stack always starts at initialRouteName="login"; must navigate BEFORE setAuthLoading(false) to avoid flash of login screen.
 - [Wallet Firestore schema](wallet-firestore-schema.md) — authoritative schema: wallets/{uid}, transactions sub-collection; type "credit"/"payout"/"adjustment"; payouts via server route only.
+- [Expo Router typed routes](expo-router-typed-routes.md) — new screen files require manual update to .expo/types/router.d.ts (hrefInputParams, hrefOutputParams, href) until dev server regenerates.
