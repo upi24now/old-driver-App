@@ -57,9 +57,7 @@ export type DriverDoc = {
     insurance?: DriverDocEntry;
   };
 
-  // ── Wallet ────────────────────────────────────────────────────────────────
-  walletBalance?:    number;  // running total, authoritative balance
-  lifetimeEarnings?: number;  // cumulative all-time earnings
+  // ── Daily stats — authoritative balance now lives in wallets/{uid} ─────────
   todayEarnings?:    number;  // earnings on todayDate (UTC)
   tripsToday?:       number;  // completed deliveries on todayDate
   todayDate?:        string;  // "YYYY-MM-DD" sentinel for daily reset
@@ -841,6 +839,36 @@ export async function updateDriverLocation(
   await updateDoc(doc(db, "orders", orderId), payload);
 }
 
+// ─── Wallet document ──────────────────────────────────────────────────────────
+//
+//  wallets/{driverUid}   (created on first delivery completion)
+//
+export interface WalletDoc {
+  balance:             number;   // current spendable balance
+  totalEarnings:       number;   // cumulative lifetime earnings
+  totalPaid:           number;   // cumulative amount paid out to driver
+  completedDeliveries: number;   // total completed deliveries (all-time)
+  lastUpdatedAt?:      unknown;  // Firestore server timestamp
+}
+
+/**
+ * Fetch the wallets/{driverUid} document.
+ * Returns null if the wallet has never been created (new driver).
+ * Always returns WalletDoc with zero defaults when the doc exists.
+ */
+export async function getWalletDoc(driverUid: string): Promise<WalletDoc | null> {
+  const snap = await getDoc(doc(db, "wallets", driverUid));
+  if (!snap.exists()) return null;
+  const d = snap.data() as Partial<WalletDoc>;
+  return {
+    balance:             d.balance             ?? 0,
+    totalEarnings:       d.totalEarnings       ?? 0,
+    totalPaid:           d.totalPaid           ?? 0,
+    completedDeliveries: d.completedDeliveries ?? 0,
+    lastUpdatedAt:       d.lastUpdatedAt,
+  };
+}
+
 /**
  * Credit a completed delivery earning to the driver's wallet.
  *
@@ -859,44 +887,61 @@ export async function creditOrderEarning(
   paymentMode: "Cash" | "UPI" | "Card",
 ): Promise<void> {
   const txnId     = `${orderId}_earn`;
-  const txnRef    = doc(db, "driver_transactions", txnId);
-  const driverRef = doc(db, "drivers", driverUid);
-  const today     = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+  const txnRef    = doc(db, "transactions", txnId);          // idempotency doc
+  const driverRef = doc(db, "drivers",     driverUid);
+  const walletRef = doc(db, "wallets",     driverUid);
+  const today     = new Date().toISOString().slice(0, 10);   // "YYYY-MM-DD"
 
   await runTransaction(db, async (tx) => {
-    const [txnSnap, driverSnap] = await Promise.all([
+    const [txnSnap, driverSnap, walletSnap] = await Promise.all([
       tx.get(txnRef),
       tx.get(driverRef),
+      tx.get(walletRef),
     ]);
 
     // Idempotency guard — do nothing if earning already credited
     if (txnSnap.exists()) return;
 
-    const d          = driverSnap.exists() ? (driverSnap.data() as Record<string, number | string>) : {};
-    const isSameDay  = d["todayDate"] === today;
+    // Wallet arithmetic — wallets/{uid} is the authoritative balance
+    const w               = walletSnap.exists() ? (walletSnap.data() as Record<string, unknown>) : {};
+    const prevBalance     = (w["balance"]             as number | undefined) ?? 0;
+    const prevTotalEarn   = (w["totalEarnings"]       as number | undefined) ?? 0;
+    const prevCompleted   = (w["completedDeliveries"] as number | undefined) ?? 0;
+    const newBalance      = prevBalance + fareAmount;
 
-    const newWallet   = ((d["walletBalance"]    as number | undefined) ?? 0) + fareAmount;
-    const newLifetime = ((d["lifetimeEarnings"] as number | undefined) ?? 0) + fareAmount;
-    const newToday    = (isSameDay ? ((d["todayEarnings"] as number | undefined) ?? 0) : 0) + fareAmount;
-    const newTrips    = (isSameDay ? ((d["tripsToday"]    as number | undefined) ?? 0) : 0) + 1;
+    // Daily stats arithmetic — driver doc, reset if date rolled over
+    const d         = driverSnap.exists() ? (driverSnap.data() as Record<string, unknown>) : {};
+    const isSameDay = d["todayDate"] === today;
+    const newToday  = (isSameDay ? ((d["todayEarnings"] as number | undefined) ?? 0) : 0) + fareAmount;
+    const newTrips  = (isSameDay ? ((d["tripsToday"]    as number | undefined) ?? 0) : 0) + 1;
 
-    tx.set(driverRef, {
-      walletBalance:    newWallet,
-      lifetimeEarnings: newLifetime,
-      todayEarnings:    newToday,
-      tripsToday:       newTrips,
-      todayDate:        today,
-      updatedAt:        serverTimestamp(),
+    // Wallet document — balance, totalEarnings, completedDeliveries
+    tx.set(walletRef, {
+      balance:             newBalance,
+      totalEarnings:       prevTotalEarn + fareAmount,
+      completedDeliveries: prevCompleted + 1,
+      lastUpdatedAt:       serverTimestamp(),
     }, { merge: true });
 
+    // Driver document — daily stats only (no balance fields)
+    tx.set(driverRef, {
+      todayEarnings: newToday,
+      tripsToday:    newTrips,
+      todayDate:     today,
+      updatedAt:     serverTimestamp(),
+    }, { merge: true });
+
+    // Transaction ledger entry
     tx.set(txnRef, {
       driverUid,
       orderId,
-      type:        "earning",
-      amount:      fareAmount,
+      type:          "credit",
+      amount:        fareAmount,
+      description:   `Delivery #${orderId.slice(-6).toUpperCase()}`,
       paymentMode,
-      status:      "completed",
-      createdAt:   serverTimestamp(),
+      balanceBefore: prevBalance,
+      balanceAfter:  newBalance,
+      createdAt:     serverTimestamp(),
     });
   });
 }
@@ -905,38 +950,37 @@ export async function creditOrderEarning(
 const WALLET_LOCK_AMOUNT = 50;
 
 /**
- * Create a UPI withdrawal request.
+ * Create a UPI withdrawal request (client-side Firestore path).
+ *
+ * NOTE: DriverContext routes withdrawals through POST /api/payouts/request
+ * instead of calling this function directly. This function is schema-aligned
+ * with the backend for any non-context callers.
  *
  * Business rules:
  *   • locked balance = ₹50 — driver can never withdraw that amount
- *   • max withdrawable = walletBalance - 50
+ *   • max withdrawable = balance - 50
  *   • amount must be > 0 and ≤ max withdrawable
  *
  * Firestore writes (all in one transaction):
- *   1. drivers/{uid}                            — debit walletBalance
- *   2. withdrawal_requests/{autoId}             — request document
- *   3. driver_transactions/{autoId}_withdraw    — matching ledger entry
- *
- * The auto-ID is generated locally via doc(collection(...)) so it can be
- * referenced inside the same transaction without needing addDoc.
- *
- * Throws with a human-readable `.message` on validation failure so callers
- * can surface the reason to the driver.
+ *   1. wallets/{uid}               — debit balance, increment totalPaid
+ *   2. withdrawalRequests/{autoId} — request document (admin panel reads)
+ *   3. transactions/{autoId}       — ledger entry, type = "payout"
  */
 export async function requestWithdrawal(
   driverUid: string,
   amount:    number,
   upiId:     string,
 ): Promise<void> {
-  const withdrawalRef = doc(collection(db, "withdrawal_requests")); // auto-ID
+  const withdrawalRef = doc(collection(db, "withdrawalRequests")); // was: "withdrawal_requests"
   const withdrawalId  = withdrawalRef.id;
-  const txnRef        = doc(db, "driver_transactions", `${withdrawalId}_withdraw`);
-  const driverRef     = doc(db, "drivers", driverUid);
+  const txnRef        = doc(db, "transactions", `${withdrawalId}_withdraw`); // was: "driver_transactions"
+  const walletRef     = doc(db, "wallets", driverUid);                       // was: "drivers"
 
   await runTransaction(db, async (tx) => {
-    const driverSnap = await tx.get(driverRef);
-    const d          = driverSnap.exists() ? (driverSnap.data() as Record<string, unknown>) : {};
-    const balance    = (d["walletBalance"] as number | undefined) ?? 0;
+    const walletSnap = await tx.get(walletRef);
+    const w          = walletSnap.exists() ? (walletSnap.data() as Record<string, unknown>) : {};
+    const balance    = (w["balance"]   as number | undefined) ?? 0;  // was: "walletBalance"
+    const prevPaid   = (w["totalPaid"] as number | undefined) ?? 0;
     const maxWithdrawable = balance - WALLET_LOCK_AMOUNT;
 
     if (amount <= 0) {
@@ -951,14 +995,16 @@ export async function requestWithdrawal(
       );
     }
 
-    // Debit wallet immediately
-    tx.set(
-      driverRef,
-      { walletBalance: balance - amount, updatedAt: serverTimestamp() },
-      { merge: true },
-    );
+    const newBalance = balance - amount;
 
-    // Withdrawal request document
+    // Debit wallet document
+    tx.set(walletRef, {
+      balance:       newBalance,
+      totalPaid:     prevPaid + amount,
+      lastUpdatedAt: serverTimestamp(),
+    }, { merge: true });
+
+    // Withdrawal request document (admin panel reads this)
     tx.set(withdrawalRef, {
       driverUid,
       amount,
@@ -971,11 +1017,12 @@ export async function requestWithdrawal(
     // Ledger entry
     tx.set(txnRef, {
       driverUid,
-      type:   "withdrawal",
-      amount: -amount,
-      status: "pending",
-      note:   "UPI withdrawal request",
-      createdAt: serverTimestamp(),
+      type:          "payout",         // was: "withdrawal"
+      amount:        -amount,
+      description:   "UPI withdrawal request",
+      balanceBefore: balance,
+      balanceAfter:  newBalance,
+      createdAt:     serverTimestamp(),
     });
   });
 }
@@ -991,7 +1038,7 @@ export async function getDriverTransactions(
   limitCount = 50,
 ): Promise<Array<Record<string, unknown> & { id: string }>> {
   const q = query(
-    collection(db, "driver_transactions"),
+    collection(db, "transactions"),
     where("driverUid", "==", driverUid),
     orderBy("createdAt", "desc"),
     limit(limitCount),

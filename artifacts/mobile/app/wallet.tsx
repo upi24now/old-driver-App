@@ -90,7 +90,7 @@ export default function WalletScreen() {
   const colors  = useColors();
   const insets  = useSafeAreaInsets();
   const router  = useRouter();
-  const { walletBalance, lifetimeEarnings, todayEarnings, tripsToday, totalTrips, transactions, requestWithdrawal, refreshWallet, driverUid } = useDriver();
+  const { walletBalance, lifetimeEarnings, totalPaid, todayEarnings, tripsToday, totalTrips, transactions, requestWithdrawal, refreshWallet, driverUid } = useDriver();
 
   const [filter, setFilter] = useState<Filter>("all");
 
@@ -106,9 +106,6 @@ export default function WalletScreen() {
 
   // ── Computed ────────────────────────────────────────────────────────────────
   const withdrawable   = Math.max(0, walletBalance - LOCKED_BALANCE);
-  const totalPaidOut   = transactions
-    .filter((t) => t.type === "withdraw")
-    .reduce((sum, t) => sum + Math.abs(t.amount), 0);
   const canWithdraw    = walletBalance > LOCKED_BALANCE;
   const parsedAmount   = parseFloat(amountText.replace(/,/g, "")) || 0;
   const upiValid       = UPI_REGEX.test(upiId.trim());
@@ -443,7 +440,7 @@ export default function WalletScreen() {
             </View>
             <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>TOTAL PAID OUT</Text>
             <Text style={[styles.statValue, { color: colors.foreground }]}>
-              ₹{totalPaidOut.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+              ₹{totalPaid.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
             </Text>
           </View>
         </View>

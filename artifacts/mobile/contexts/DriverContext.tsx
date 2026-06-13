@@ -33,15 +33,17 @@ import {
   acceptOrder,
   rejectOrder,
   timeoutOrder,
-  requestWithdrawal as fsRequestWithdrawal,
   getDriverTransactions,
+  getWalletDoc,
   updateDriverBackgroundSetup,
   PERMISSION_SETUP_VERSION,
   type DriverDoc,
+  type WalletDoc,
   type OrderDoc,
   type OrderStatus,
   type AcceptOrderResult,
 } from "@/utils/firestore";
+import { requestPayout } from "@/utils/wallet-api";
 export type { AcceptOrderResult };
 import { verifyOtpApi } from "@/utils/auth-api";
 import { patchDriverStatus, postDriverLocation } from "@/utils/driver-api";
@@ -191,6 +193,7 @@ type DriverState = {
 
   walletBalance:    number;
   lifetimeEarnings: number;
+  totalPaid:        number;
   todayEarnings:    number;
   tripsToday:       number;
   totalTrips:       number;
@@ -423,6 +426,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
   const [walletBalance,     setBalance]          = useState(0);
   const [lifetimeEarnings,  setLifetimeEarnings] = useState(0);
+  const [totalPaid,         setTotalPaid]        = useState(0);
   const [todayEarnings,     setTodayEarnings]    = useState(0);
   const [tripsToday,        setTripsToday]        = useState(0);
   const [transactions,      setTxns]              = useState<Txn[]>([]);
@@ -561,10 +565,16 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             {
               const today   = new Date().toISOString().slice(0, 10);
               const sameDay = driverDoc.todayDate === today;
-              setBalance(driverDoc.walletBalance ?? 0);
-              setLifetimeEarnings(driverDoc.lifetimeEarnings ?? 0);
               setTodayEarnings(sameDay ? (driverDoc.todayEarnings ?? 0) : 0);
               setTripsToday   (sameDay ? (driverDoc.tripsToday    ?? 0) : 0);
+            }
+            // Wallet doc — authoritative balance, totalEarnings, totalPaid, completedDeliveries
+            {
+              const walletDoc = await getWalletDoc(user.uid).catch(() => null);
+              setBalance(walletDoc?.balance ?? 0);
+              setLifetimeEarnings(walletDoc?.totalEarnings ?? 0);
+              setTotalPaid(walletDoc?.totalPaid ?? 0);
+              setDriverTrips(walletDoc?.completedDeliveries ?? driverDoc.totalTrips ?? 0);
             }
             void loadDriverTransactions(user.uid);
             setVerifStatus(driverDoc.verificationStatus ?? null);
@@ -575,7 +585,6 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             setOnboardingFeeStatus(driverDoc.onboardingFeeStatus ?? null);
             setOnboardingFeeAmount(driverDoc.onboardingFeeAmount ?? null);
             setDriverRating(driverDoc.rating ?? "5.0");
-            setDriverTrips(driverDoc.totalTrips ?? 0);
           }
           // Restore active orders (mid-delivery app restart).
           try {
@@ -892,14 +901,20 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         }
         if (driverDoc.subscriptionPlan)      setSubPlan(driverDoc.subscriptionPlan as SubPlan);
         if (driverDoc.subscriptionExpiresAt) setSubExp(driverDoc.subscriptionExpiresAt);
-        // Restore wallet
+        // Restore daily stats
         {
           const today   = new Date().toISOString().slice(0, 10);
           const sameDay = driverDoc.todayDate === today;
-          setBalance(driverDoc.walletBalance ?? 0);
-          setLifetimeEarnings(driverDoc.lifetimeEarnings ?? 0);
           setTodayEarnings(sameDay ? (driverDoc.todayEarnings ?? 0) : 0);
           setTripsToday   (sameDay ? (driverDoc.tripsToday    ?? 0) : 0);
+        }
+        // Wallet doc — authoritative balance, totalEarnings, totalPaid, completedDeliveries
+        {
+          const walletDoc = await getWalletDoc(uid).catch(() => null);
+          setBalance(walletDoc?.balance ?? 0);
+          setLifetimeEarnings(walletDoc?.totalEarnings ?? 0);
+          setTotalPaid(walletDoc?.totalPaid ?? 0);
+          setDriverTrips(walletDoc?.completedDeliveries ?? driverDoc.totalTrips ?? 0);
         }
         void loadDriverTransactions(uid);
         // Restore verification/document state (needed for routing below)
@@ -912,7 +927,6 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         setOnboardingFeeStatus(driverDoc.onboardingFeeStatus ?? null);
         setOnboardingFeeAmount(driverDoc.onboardingFeeAmount ?? null);
         setDriverRating(driverDoc.rating ?? "5.0");
-        setDriverTrips(driverDoc.totalTrips ?? 0);
       }
 
       const profileComplete = !!(driverDoc.name && driverDoc.vehicleId);
@@ -1170,12 +1184,16 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const refreshWallet = async (): Promise<void> => {
     if (!driverUid) return;
     try {
-      const d = await getDriverDoc(driverUid);
+      const [d, w] = await Promise.all([
+        getDriverDoc(driverUid),
+        getWalletDoc(driverUid),
+      ]);
       if (!d) return;
       const today   = new Date().toISOString().slice(0, 10);
       const sameDay = d.todayDate === today;
-      setBalance(d.walletBalance ?? 0);
-      setLifetimeEarnings(d.lifetimeEarnings ?? 0);
+      setBalance(w?.balance ?? 0);
+      setLifetimeEarnings(w?.totalEarnings ?? 0);
+      setTotalPaid(w?.totalPaid ?? 0);
       setTodayEarnings(sameDay ? (d.todayEarnings ?? 0) : 0);
       setTripsToday   (sameDay ? (d.tripsToday    ?? 0) : 0);
     } catch {
@@ -1189,7 +1207,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
    * Called on auth, after OTP login, and after each withdrawal — ensures the
    * wallet screen always shows real data with no fake seeds.
    *
-   * Token mapping:  Firestore "withdrawal" → Txn "withdraw"  (type normalised here)
+   * Token mapping:  Firestore "credit"    → Txn "earning"   (delivery completed)
+   *                 Firestore "payout"    → Txn "withdraw"  (withdrawal request)
+   *                 Firestore "adjustment"→ Txn "bonus"     (manual credit/debit)
    *                 Firestore amount is already negative for debits
    */
   const loadDriverTransactions = async (uid: string): Promise<void> => {
@@ -1213,7 +1233,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         const txnDate = dt ? fmtDate(dt) : "";
         const txnTime = dt ? fmtTime(dt) : "";
 
-        if (r.type === "earning") {
+        if (r.type === "credit") {
           return {
             id:       r.id,
             type:     "earning" as const,
@@ -1227,12 +1247,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             date:     txnDate,
           };
         }
-        if (r.type === "withdrawal") {
+        if (r.type === "payout") {
           return {
             id:       r.id,
             type:     "withdraw" as const,
             title:    "Withdrawal via UPI",
-            subtitle: (r.note as string | undefined) ?? "Payout",
+            subtitle: (r.description as string | undefined) ?? "Payout",
             amount:   r.amount as number,   // already negative in Firestore
             status:   (r.status as string) === "completed"
               ? ("completed" as const)
@@ -1241,11 +1261,11 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             date:     txnDate,
           };
         }
-        // bonus / adjustment
+        // adjustment / unknown → bonus
         return {
           id:       r.id,
           type:     "bonus" as const,
-          title:    (r.note as string | undefined) ?? "Adjustment",
+          title:    (r.description as string | undefined) ?? "Adjustment",
           subtitle: "",
           amount:   r.amount as number,
           status:   "completed" as const,
@@ -1643,17 +1663,22 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     upiId:  string,
   ): Promise<{ ok: boolean; reason?: string }> => {
     if (!driverUid) return { ok: false, reason: "Not logged in" };
-    try {
-      await fsRequestWithdrawal(driverUid, amount, upiId);
-      // Optimistic debit already applied by Firestore transaction —
-      // refresh balance and reload transaction list.
-      await refreshWallet();
-      void loadDriverTransactions(driverUid);
-      return { ok: true };
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : "Withdrawal failed";
-      return { ok: false, reason };
+    // Route through server — atomic balance check, admin visibility, ledger entry
+    const result = await requestPayout(amount, upiId);
+    if (!result.ok) {
+      const messages: Record<string, string> = {
+        insufficient_balance: "Insufficient balance — ₹50 minimum must remain in wallet",
+        exceeds_withdrawable:  "Amount exceeds your withdrawable balance",
+        amount_invalid:        "Withdrawal amount must be greater than ₹0",
+        upi_id_required:       "Please enter a valid UPI ID",
+        network_error:         "Network error — please check your connection",
+        not_authenticated:     "Please log in again and retry",
+      };
+      return { ok: false, reason: messages[result.error] ?? result.error };
     }
+    await refreshWallet();
+    void loadDriverTransactions(driverUid);
+    return { ok: true };
   };
 
   // ─── Overlay permission ───────────────────────────────────────────────────
@@ -1703,6 +1728,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         rideHistory,
         walletBalance,
         lifetimeEarnings,
+        totalPaid,
         todayEarnings,
         tripsToday,
         totalTrips: driverTrips,

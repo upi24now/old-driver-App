@@ -40,7 +40,7 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
 
   const orderRef      = db.doc(`orders/${orderId}`);
   const privateOtpRef = db.doc(`orders/${orderId}/private/otp`);
-  const txnRef        = db.doc(`driver_transactions/${orderId}_earn`);
+  const txnRef        = db.doc(`transactions/${orderId}_earn`);        // idempotency doc
 
   // ── 3. Read and verify OTP before entering the transaction ───────────────────
   // The private/otp document is immutable after creation, so reading it outside
@@ -94,11 +94,13 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
   try {
     await db.runTransaction(async (tx) => {
       const driverRef = db.doc(`drivers/${driverUid}`);
+      const walletRef = db.doc(`wallets/${driverUid}`);
 
-      const [orderSnap, txnSnap, driverSnap] = await Promise.all([
+      const [orderSnap, txnSnap, driverSnap, walletSnap] = await Promise.all([
         tx.get(orderRef),
         tx.get(txnRef),
         tx.get(driverRef),
+        tx.get(walletRef),
       ]);
 
       // ── Idempotency guard ─────────────────────────────────────────────────────
@@ -119,14 +121,18 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
       const fareAmount  = typeof order["fareEstimate"] === "number" ? order["fareEstimate"] : 0;
       const paymentMode = typeof order["paymentMode"]  === "string"  ? order["paymentMode"]  : "Cash";
 
-      // ── Wallet arithmetic — daily reset if date rolled over ───────────────────
-      const d = driverSnap.exists ? (driverSnap.data() as Record<string, unknown>) : {};
-      const isSameDay = d["todayDate"] === today;
+      // ── Wallet arithmetic (wallets/{uid} is the authoritative balance) ─────────
+      const w                 = walletSnap.exists ? (walletSnap.data() as Record<string, unknown>) : {};
+      const prevBalance       = (w["balance"]             as number | undefined) ?? 0;
+      const prevTotalEarnings = (w["totalEarnings"]       as number | undefined) ?? 0;
+      const prevCompleted     = (w["completedDeliveries"] as number | undefined) ?? 0;
+      newBalance = prevBalance + fareAmount;
 
-      newBalance = ((d["walletBalance"]    as number | undefined) ?? 0) + fareAmount;
-      const newLifetime = ((d["lifetimeEarnings"] as number | undefined) ?? 0) + fareAmount;
-      newToday   = ((isSameDay ? (d["todayEarnings"] as number | undefined) : undefined) ?? 0) + fareAmount;
-      newTrips   = ((isSameDay ? (d["tripsToday"]    as number | undefined) : undefined) ?? 0) + 1;
+      // ── Daily stats arithmetic (driver doc — reset if date rolled over) ────────
+      const d         = driverSnap.exists ? (driverSnap.data() as Record<string, unknown>) : {};
+      const isSameDay = d["todayDate"] === today;
+      newToday = ((isSameDay ? (d["todayEarnings"] as number | undefined) : undefined) ?? 0) + fareAmount;
+      newTrips = ((isSameDay ? (d["tripsToday"]    as number | undefined) : undefined) ?? 0) + 1;
 
       // ── Writes ────────────────────────────────────────────────────────────────
       tx.update(orderRef, {
@@ -134,24 +140,34 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
         deliveredAt: FieldValue.serverTimestamp(),
       });
 
+      // Wallet document — balance, totalEarnings, completedDeliveries
+      tx.set(walletRef, {
+        balance:             newBalance,
+        totalEarnings:       prevTotalEarnings + fareAmount,
+        completedDeliveries: prevCompleted + 1,
+        lastUpdatedAt:       FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      // Driver document — daily stats only (no balance fields)
+      tx.set(driverRef, {
+        todayEarnings: newToday,
+        tripsToday:    newTrips,
+        todayDate:     today,
+        updatedAt:     FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      // Transaction ledger entry
       tx.set(txnRef, {
         driverUid,
         orderId,
-        type:        "earning",
-        amount:      fareAmount,
+        type:          "credit",
+        amount:        fareAmount,
+        description:   `Delivery #${orderId.slice(-6).toUpperCase()}`,
         paymentMode,
-        status:      "completed",
-        createdAt:   FieldValue.serverTimestamp(),
+        balanceBefore: prevBalance,
+        balanceAfter:  newBalance,
+        createdAt:     FieldValue.serverTimestamp(),
       });
-
-      tx.set(driverRef, {
-        walletBalance:    newBalance,
-        lifetimeEarnings: newLifetime,
-        todayEarnings:    newToday,
-        tripsToday:       newTrips,
-        todayDate:        today,
-        updatedAt:        FieldValue.serverTimestamp(),
-      }, { merge: true });
     });
 
     req.log.info(
