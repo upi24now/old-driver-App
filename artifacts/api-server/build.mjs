@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
-import { rm } from "node:fs/promises";
+import { rm, readdir, readFile, writeFile } from "node:fs/promises";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
@@ -118,6 +118,22 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     `,
     },
   });
+
+  // Post-process: esbuild-plugin-pino bakes an absolute outputDir path into every
+  // generated worker file.  Replace it with a portable runtime expression so the
+  // package works on any machine (VPS, CI, etc.) without modification.
+  const DYNAMIC_DIR = `new URL(".", import.meta.url).pathname.replace(/\\/$/, "")`;
+  const files = await readdir(distDir);
+  for (const file of files) {
+    if (!file.endsWith(".mjs")) continue;
+    const full = path.join(distDir, file);
+    const src = await readFile(full, "utf8");
+    const fixed = src.replaceAll(`"${distDir}"`, DYNAMIC_DIR);
+    if (fixed !== src) {
+      await writeFile(full, fixed, "utf8");
+      console.log(`  patched outputDir → runtime __dirname  ${file}`);
+    }
+  }
 }
 
 buildAll().catch((err) => {
