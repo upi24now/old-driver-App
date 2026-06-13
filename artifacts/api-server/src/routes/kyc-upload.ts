@@ -122,7 +122,7 @@ router.post("/kyc/upload",
     const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
 
     req.log.info(
-      { headerPresent: !!authHeader, tokenPresent: !!bearerToken },
+      { headerPresent: !!authHeader, tokenPresent: !!bearerToken, tokenLength: bearerToken.length },
       "[SERVER_AUTH_HEADER_PRESENT]",
     );
 
@@ -130,6 +130,32 @@ router.post("/kyc/upload",
       res.status(401).json({ ok: false, error: "Authorization header with Bearer token is required." });
       return;
     }
+
+    // Decode JWT payload WITHOUT verification so we can log aud/iss/exp
+    // regardless of whether verifyIdToken succeeds or fails.
+    // This confirms which Firebase project the mobile app sent the token for.
+    function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
+      try {
+        const part = jwt.split(".")[1];
+        if (!part) return null;
+        const padded = part + "=".repeat((4 - (part.length % 4)) % 4);
+        return JSON.parse(Buffer.from(padded, "base64").toString("utf8")) as Record<string, unknown>;
+      } catch { return null; }
+    }
+
+    const jwtPayload = decodeJwtPayload(bearerToken);
+    req.log.info(
+      {
+        tokenAud:            jwtPayload?.["aud"]  ?? "(could not decode)",
+        tokenIss:            jwtPayload?.["iss"]  ?? "(could not decode)",
+        tokenExp:            jwtPayload?.["exp"]  ?? "(could not decode)",
+        tokenExpHuman:       jwtPayload?.["exp"]
+          ? new Date((jwtPayload["exp"] as number) * 1000).toISOString()
+          : "(could not decode)",
+        serverExpectedProject: process.env["FIREBASE_PROJECT_ID"] ?? "(not set)",
+      },
+      "[SERVER_TOKEN_DECODED_UNVERIFIED]",
+    );
 
     let tokenUid: string;
     try {
@@ -140,7 +166,14 @@ router.post("/kyc/upload",
     } catch (err) {
       const e = err as Error & { code?: string };
       req.log.warn(
-        { code: e?.code, message: e?.message, name: e?.name },
+        {
+          code:                  e?.code,
+          message:               e?.message,
+          name:                  e?.name,
+          serverExpectedProject: process.env["FIREBASE_PROJECT_ID"] ?? "(not set)",
+          tokenAud:              jwtPayload?.["aud"] ?? "(could not decode)",
+          tokenIss:              jwtPayload?.["iss"] ?? "(could not decode)",
+        },
         "[SERVER_VERIFY_TOKEN_FAIL]",
       );
       res.status(401).json({ ok: false, error: "Invalid or expired token." });

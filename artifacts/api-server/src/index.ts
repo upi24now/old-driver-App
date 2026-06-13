@@ -42,6 +42,20 @@ logger.info(
   "Startup config",
 );
 
+// ── Firebase env check (confirms which project is configured) ────────────────
+// Logs project ID and the domain part of the client email only — never the key.
+const fbProjectId   = process.env["FIREBASE_PROJECT_ID"]   ?? "(not set)";
+const fbClientEmail = process.env["FIREBASE_CLIENT_EMAIL"] ?? "(not set)";
+const fbKeyPresent  = !!(process.env["FIREBASE_PRIVATE_KEY"]);
+logger.info(
+  {
+    firebaseProjectId:        fbProjectId,
+    firebaseClientEmailDomain: fbClientEmail.includes("@") ? fbClientEmail.split("@")[1] : fbClientEmail,
+    firebasePrivateKeyPresent: fbKeyPresent,
+  },
+  "[STARTUP_FIREBASE_CONFIG]",
+);
+
 if (!rawPort) {
   throw new Error(
     "PORT environment variable is required but was not provided.",
