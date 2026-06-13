@@ -18,9 +18,9 @@
  * Download URL returned:
  *   <API_PUBLIC_URL>/api/uploads/kyc/<uid>/<docId>.jpg
  *
- * Environment:
+ * Environment (read at request time, not at module init, so dotenv values work):
  *   UPLOADS_DIR    — absolute path to uploads root
- *                    (default: <cwd>/uploads, set to /var/data/uploads on VPS)
+ *                    (default: <bundle-dir>/../uploads)
  *   API_PUBLIC_URL — public base URL of this server
  *                    (e.g. https://api.bikecourierservice.com)
  *                    Falls back to https://<Host header> when not set.
@@ -35,10 +35,15 @@ import { adminAuth } from "../lib/firebase-admin";
 
 const router = Router();
 
-// ─── Config ───────────────────────────────────────────────────────────────────
-
-const UPLOADS_DIR    = process.env["UPLOADS_DIR"] ?? path.join(process.cwd(), "uploads");
 const ALLOWED_DOC_IDS = new Set(["selfie", "aadhaar", "pan", "license", "rc", "insurance"]);
+
+// ─── Resolve uploads dir at request time ──────────────────────────────────────
+// Reading process.env inside the callbacks (not at module init) ensures that
+// the value loaded by dotenv in index.ts is visible here.
+
+function getUploadsDir(): string {
+  return process.env["UPLOADS_DIR"] ?? path.join(process.cwd(), "uploads");
+}
 
 // ─── Multer disk storage ──────────────────────────────────────────────────────
 
@@ -49,7 +54,7 @@ const diskStorage = multer.diskStorage({
       cb(new Error("uid is required"), "");
       return;
     }
-    const dir = path.join(UPLOADS_DIR, "kyc", uid);
+    const dir = path.join(getUploadsDir(), "kyc", uid);
     fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
@@ -168,7 +173,16 @@ router.post("/kyc/upload",
       return;
     }
 
-    req.log.info({ uid, docId, size: file.size, mimetype: file.mimetype }, "kyc/upload: file saved");
+    req.log.info(
+      {
+        uid,
+        docId,
+        size:     file.size,
+        mimetype: file.mimetype,
+        path:     file.path,
+      },
+      "[KYC_UPLOAD_FILE_SAVED]",
+    );
 
     // ── 5. Build public download URL ────────────────────────────────────────
     //

@@ -4,14 +4,43 @@
 import { config as dotenvConfig } from "dotenv";
 import { fileURLToPath } from "url";
 import { dirname, resolve } from "path";
-dotenvConfig({ path: resolve(dirname(fileURLToPath(import.meta.url)), "../.env") });
 
-import app from "./app";
+const bundleDir = dirname(fileURLToPath(import.meta.url));
+const envPath   = resolve(bundleDir, "../.env");
+const dotenvResult = dotenvConfig({ path: envPath });
+
+// ── Import app and services (AFTER dotenv so env vars are available) ─────────
+// NOTE: Firebase Admin reads env vars lazily (inside getAdminApp()), so it
+// correctly picks up values loaded by dotenv above.
+import app, { initStaticUploads } from "./app";
 import { logger } from "./lib/logger";
 import { startFcmDispatcher } from "./lib/fcm-dispatcher";
 import { startRoundRobinDispatcher } from "./lib/round-robin-dispatcher";
 
-const rawPort = process.env["PORT"];
+// ── Resolve runtime config (env vars now available from dotenv) ──────────────
+const uploadsDir   = process.env["UPLOADS_DIR"]    ?? resolve(bundleDir, "../uploads");
+const apiPublicUrl = process.env["API_PUBLIC_URL"]  ?? "";
+const rawPort      = process.env["PORT"];
+
+if (dotenvResult.error) {
+  // Not fatal — PM2 env vars take precedence over .env.
+  // Log so the VPS operator can diagnose .env path issues.
+  logger.warn({ envPath, err: dotenvResult.error.message }, ".env load warning (non-fatal)");
+} else {
+  logger.info({ envPath, parsed: Object.keys(dotenvResult.parsed ?? {}).length }, ".env loaded");
+}
+
+// ── Static uploads route (mounted after dotenv so UPLOADS_DIR is correct) ───
+initStaticUploads(uploadsDir);
+
+// ── Startup config log ───────────────────────────────────────────────────────
+logger.info(
+  {
+    uploadsDir,
+    publicUrl: apiPublicUrl || "(derived from Host header at request time)",
+  },
+  "Startup config",
+);
 
 if (!rawPort) {
   throw new Error(

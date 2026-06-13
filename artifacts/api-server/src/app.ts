@@ -6,10 +6,6 @@ import fs from "fs";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
-const UPLOADS_DIR = process.env["UPLOADS_DIR"] ?? path.join(process.cwd(), "uploads");
-// Ensure uploads root exists at startup (no-op if already present)
-fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-
 const app: Express = express();
 
 app.use(
@@ -37,12 +33,20 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
 
-// Serve uploaded KYC files at /api/uploads/kyc/<uid>/<docId>.jpg
-// Mounted under /api so the Replit proxy (which only exposes /api) can serve them.
-// In production on your VPS, the same path works since the server handles all routes.
-app.use("/api/uploads", express.static(path.join(UPLOADS_DIR), {
-  index:   false,   // no directory listings
-  maxAge:  "7d",
-}));
+/**
+ * Mount the static uploads route.
+ * Called from index.ts AFTER dotenv has been loaded so that
+ * process.env["UPLOADS_DIR"] is already populated before this runs.
+ *
+ * Files are served at /api/uploads/kyc/<uid>/<docId>.jpg
+ * Mounted under /api so the Replit proxy (which only exposes /api) can serve them.
+ */
+export function initStaticUploads(uploadsDir: string): void {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  app.use("/api/uploads", express.static(uploadsDir, {
+    index:  false,   // no directory listings
+    maxAge: "7d",
+  }));
+}
 
 export default app;

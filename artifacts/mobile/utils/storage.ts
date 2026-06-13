@@ -1,33 +1,41 @@
 /**
  * storage.ts
  *
- * KYC document upload helper — uploads directly to Firebase Storage.
+ * KYC document upload helper — POSTs to the VPS API server via
+ * multipart/form-data.
  *
- * Storage path : drivers/{uid}/kyc/{docId}.jpg
- * Download URL : returned by getDownloadURL(), stored in Firestore by
- *                submitDriverDocuments() via the kycDocuments flat map.
+ * Upload endpoint : https://<EXPO_PUBLIC_UPLOAD_DOMAIN>/api/kyc/upload
+ * Auth            : Firebase ID token in Authorization: Bearer header
  *
- * No Hostinger VPS or custom API server involved.
+ * The server saves the file to disk and returns:
+ *   { ok: true, url: "https://api.bikecourierservice.com/api/uploads/kyc/<uid>/<docId>.jpg" }
+ *
+ * That URL is stored in Firestore by submitDriverDocuments() in firestore.ts.
  */
 
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { storage, firebaseAuth } from "./firebase";
+import * as FileSystem from "expo-file-system";
+// FileSystemUploadType is not re-exported from the expo-file-system main index
+// in v56 — import from the legacy sub-path which is the stable, supported way.
+import { FileSystemUploadType } from "expo-file-system/legacy";
+import { firebaseAuth } from "./firebase";
 
-// ─── Content-type detection ────────────────────────────────────────────────────
+// ─── Upload domain ─────────────────────────────────────────────────────────────
+// EXPO_PUBLIC_UPLOAD_DOMAIN is set to api.bikecourierservice.com in the workflow.
+// Falls back to EXPO_PUBLIC_DOMAIN (the Replit dev domain) for local testing.
 
-function contentTypeFromUri(uri: string): string {
-  const lower = (uri.toLowerCase().split("?")[0]) ?? "";
-  if (lower.endsWith(".png"))  return "image/png";
-  if (lower.endsWith(".webp")) return "image/webp";
-  if (lower.endsWith(".gif"))  return "image/gif";
-  return "image/jpeg";
+function getUploadUrl(): string {
+  const domain =
+    process.env["EXPO_PUBLIC_UPLOAD_DOMAIN"] ??
+    process.env["EXPO_PUBLIC_DOMAIN"]        ??
+    "";
+  return `https://${domain}/api/kyc/upload`;
 }
 
 // ─── Main upload helper ────────────────────────────────────────────────────────
 
 /**
- * Upload a local image URI directly to Firebase Storage.
- * Returns the permanent HTTPS download URL.
+ * Upload a local image URI to the VPS KYC upload endpoint.
+ * Returns the publicly accessible HTTPS download URL.
  *
  * @param uid      - Driver UID (must match Firebase Auth UID)
  * @param docId    - Document slot: selfie | aadhaar | pan | license | rc | insurance
@@ -38,73 +46,85 @@ export async function uploadDocumentImage(
   docId:    string,
   localUri: string,
 ): Promise<string> {
-  const authUid     = firebaseAuth.currentUser?.uid ?? null;
-  const storagePath = `drivers/${uid}/kyc/${docId}.jpg`;
-  const contentType = contentTypeFromUri(localUri);
+  const uploadUrl   = getUploadUrl();
+  const currentUser = firebaseAuth.currentUser;
 
   console.log("[storage] uploadDocumentImage ─────────────────────");
   console.log("[storage]   uid        :", uid);
-  console.log("[storage]   authUid    :", authUid ?? "(null — unauthenticated!)");
   console.log("[storage]   docId      :", docId);
-  console.log("[storage]   storagePath:", storagePath);
-  console.log("[storage]   contentType:", contentType);
+  console.log("[storage]   uploadUrl  :", uploadUrl);
   console.log("[storage]   localUri   :", localUri.slice(0, 120));
+  console.log("[storage]   authUid    :", currentUser?.uid ?? "(null — unauthenticated!)");
 
-  // ── Guards ─────────────────────────────────────────────────────────────────
-  if (!authUid) {
+  // ── Auth guard ─────────────────────────────────────────────────────────────
+  if (!currentUser) {
     throw new Error("upload/unauthenticated: no Firebase Auth session");
   }
-  if (authUid !== uid) {
-    console.warn(`[storage] WARNING: authUid "${authUid}" !== uid "${uid}"`);
+  if (currentUser.uid !== uid) {
+    console.warn(`[storage] WARNING: authUid "${currentUser.uid}" !== uid "${uid}"`);
   }
 
-  // ── Convert local URI → Blob ───────────────────────────────────────────────
-  // React Native fetch() can read file:// and content:// URIs natively.
-  let blob: Blob;
+  // ── Get fresh ID token ─────────────────────────────────────────────────────
+  let token: string;
   try {
-    const response = await fetch(localUri);
-    if (!response.ok) {
-      throw new Error(`fetch responded ${response.status} ${response.statusText}`);
-    }
-    blob = await response.blob();
-    console.log("[storage] blob size:", blob.size, "bytes");
+    token = await currentUser.getIdToken(/* forceRefresh */ false);
+    console.log("[storage] ID token obtained, length:", token.length);
   } catch (err) {
     const e = err as Error;
-    console.error("[storage] fetch/blob FAILED:", e?.message);
-    throw new Error(`Could not read local file: ${e?.message ?? String(err)}`);
+    console.error("[storage] getIdToken FAILED:", e?.message);
+    throw new Error(`Could not get auth token: ${e?.message ?? String(err)}`);
   }
 
-  // ── Upload to Firebase Storage ─────────────────────────────────────────────
-  const storageRef = ref(storage, storagePath);
+  // ── Multipart upload ───────────────────────────────────────────────────────
+  console.log("[storage] starting FileSystem.uploadAsync…");
+  let result: Awaited<ReturnType<typeof FileSystem.uploadAsync>>;
   try {
-    console.log("[storage] uploading to Firebase Storage…");
-    await uploadBytes(storageRef, blob, { contentType });
-    console.log("[storage] uploadBytes complete — path:", storagePath);
+    result = await FileSystem.uploadAsync(uploadUrl, localUri, {
+      httpMethod:  "POST",
+      uploadType:  FileSystemUploadType.MULTIPART,
+      fieldName:   "file",
+      mimeType:    "image/jpeg",
+      parameters:  { uid, docId },
+      headers:     { Authorization: `Bearer ${token}` },
+    });
+    console.log("[storage] uploadAsync complete — status:", result.status);
+    console.log("[storage] response body:", (result.body ?? "").slice(0, 200));
   } catch (err) {
-    const e = err as Error & { code?: string };
-    console.error("[storage] uploadBytes FAILED — code:", e?.code, "msg:", e?.message);
-    throw new Error(`Firebase Storage upload failed (${e?.code ?? "unknown"}): ${e?.message ?? String(err)}`);
+    const e = err as Error;
+    console.error("[storage] uploadAsync THREW:", e?.message);
+    throw new Error(`Network error during upload: ${e?.message ?? String(err)}`);
   }
 
-  // ── Get download URL ───────────────────────────────────────────────────────
-  let downloadURL: string;
+  // ── Parse response ─────────────────────────────────────────────────────────
+  if (result.status < 200 || result.status >= 300) {
+    let serverError = `Server responded ${result.status}`;
+    try {
+      const parsed = JSON.parse(result.body) as { error?: string };
+      if (parsed.error) serverError = `${serverError}: ${parsed.error}`;
+    } catch { /* ignore parse error */ }
+    throw new Error(serverError);
+  }
+
+  let parsed: { ok: boolean; url?: string; error?: string };
   try {
-    downloadURL = await getDownloadURL(storageRef);
-    console.log("[storage] download URL:", downloadURL.slice(0, 100));
-  } catch (err) {
-    const e = err as Error & { code?: string };
-    console.error("[storage] getDownloadURL FAILED — code:", e?.code, "msg:", e?.message);
-    throw new Error(`Could not get download URL (${e?.code ?? "unknown"}): ${e?.message ?? String(err)}`);
+    parsed = JSON.parse(result.body) as typeof parsed;
+  } catch {
+    throw new Error(`Invalid JSON from upload server: ${(result.body ?? "").slice(0, 100)}`);
   }
 
-  return downloadURL;
+  if (!parsed.ok || !parsed.url) {
+    throw new Error(parsed.error ?? "Upload failed: server returned no URL");
+  }
+
+  console.log("[storage] download URL:", parsed.url.slice(0, 120));
+  return parsed.url;
 }
 
 // ─── Guard ─────────────────────────────────────────────────────────────────────
 
 /**
- * Returns true when the URI is already a remote HTTPS URL that does not need
- * re-uploading (e.g. a Firebase Storage URL already stored in Firestore).
+ * Returns true when the URI is already a remote HTTPS URL (a previously
+ * uploaded VPS URL) that does not need re-uploading.
  */
 export function isRemoteUrl(uri: string): boolean {
   return uri.startsWith("https://") || uri.startsWith("http://");
