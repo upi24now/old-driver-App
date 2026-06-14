@@ -63,7 +63,8 @@ function RootLayoutNav() {
   //   setAuthLoading(false). Overlay lifts onto the correct screen.
   //
   // Post-OTP fresh login:
-  //   otp.tsx calls router.replace(nextRoute) after confirmOtp() succeeds.
+  //   otp.tsx calls router.back() + router.replace(nextRoute) after confirmOtp() succeeds.
+  //   back() pops /otp; replace() swaps /login with the destination — stack ends as [nextRoute].
   //   isOtpVerified=true → this effect is a no-op.
   useEffect(() => {
     if (authLoading) return;

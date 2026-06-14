@@ -226,9 +226,28 @@ export default function OtpScreen() {
       return;
     }
 
-    router.replace(
-      result.nextRoute ?? (result.profileComplete ? "/(tabs)" : "/vehicle-selection"),
-    );
+    const nextRoute = result.nextRoute ?? (result.profileComplete ? "/(tabs)" : "/vehicle-selection");
+
+    console.log("[OTP_SUCCESS_ROUTE] nextRoute =", nextRoute, "| profileComplete =", result.profileComplete, "| raw nextRoute =", result.nextRoute);
+
+    // ── Auth-stack reset ──────────────────────────────────────────────────────
+    // login.tsx uses router.push("/otp"), so the stack at this point is:
+    //   [/login, /otp]
+    //
+    // router.replace(nextRoute) alone would produce [/login, nextRoute], keeping
+    // /login in history — Back from the dashboard would resurface the login screen.
+    //
+    // Fix: two synchronous calls dispatched in the same event-loop tick.
+    //   router.back()            → state: [/login]        (/otp popped)
+    //   router.replace(nextRoute) → state: [nextRoute]    (/login replaced)
+    //
+    // React 19 automatic batching coalesces both updates into one frame, so no
+    // intermediate render of /login occurs; the UI transitions directly from
+    // /otp to the destination.
+    console.log("[AUTH_STACK_CLEAR] popping /otp and replacing /login — final stack will be [", nextRoute, "]");
+    router.back();
+    console.log("[ROUTE_DECISION_AFTER_OTP] router.replace →", nextRoute);
+    router.replace(nextRoute as never);
   }
 
   async function handleResend() {
