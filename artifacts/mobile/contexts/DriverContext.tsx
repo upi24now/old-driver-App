@@ -159,6 +159,11 @@ type DriverState = {
   // _layout.tsx routes to /login whenever isOtpVerified is false, regardless of
   // whether driverUid is set — forcing every cold start through the OTP gate.
   isOtpVerified:    boolean;
+  // True from the moment confirmOtp() calls signInWithCustomToken() until
+  // setIsOtpVerified(true) fires (same render batch).  _layout.tsx must not
+  // redirect to /login while this is true — it is the guard against the flash
+  // caused by onAuthStateChanged setting driverUid before isOtpVerified is ready.
+  isOtpVerifying:   boolean;
   phone:            string | null;
   isAuthenticated:  boolean;
   profile:          Profile | null;
@@ -391,7 +396,11 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const [authLoading,   setAuthLoading]   = useState(true);
   // isOtpVerified: only set true by confirmOtp(); never by onAuthStateChanged.
   // Resets to false on signOut() and on every cold start (React state default).
-  const [isOtpVerified, setIsOtpVerified] = useState(false);
+  const [isOtpVerified,  setIsOtpVerified]  = useState(false);
+  // isOtpVerifying: true while confirmOtp() is in flight (between signInWithCustomToken
+  // and the final setIsOtpVerified call). Prevents _layout.tsx from routing to /login
+  // when onAuthStateChanged fires driverUid before isOtpVerified is ready.
+  const [isOtpVerifying, setIsOtpVerifying] = useState(false);
   const [phone,         setPhoneState]    = useState<string | null>(null);
   const [profile,     setProfileState]= useState<Profile | null>(null);
   const [vehicle,     setVehicleState]= useState<Vehicle | null>(null);
@@ -935,9 +944,19 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     const apiResult = await verifyOtpApi(phone, otp);
     if (!apiResult.ok) return { ok: false, profileComplete: false, error: apiResult.error };
 
+    // ── Block the layout route-guard BEFORE touching Firebase Auth ────────────
+    // onAuthStateChanged fires synchronously inside signInWithCustomToken and
+    // immediately sets driverUid via setDriverUid(). If isOtpVerified is still
+    // false at that moment, _layout.tsx routes to /login → flash.
+    // Setting isOtpVerifying=true here tells _layout.tsx to skip all routing
+    // until we clear the flag together with setIsOtpVerified(true) below.
+    console.log("[OTP_VERIFY_START] blocking layout route-guard; about to call signInWithCustomToken");
+    setIsOtpVerifying(true);
+
     try {
       const credential = await signInWithCustomToken(firebaseAuth, apiResult.token);
       const uid        = credential.user.uid;
+      console.log("[OTP_VERIFY_SESSION_READY] Firebase session established — uid =", uid, "| isOtpVerifying guard is active");
       setDriverUid(uid);
       setPhoneState(phone);
 
@@ -1029,7 +1048,14 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       // Mark OTP as verified — this is the ONLY place this flag is set true.
       // _layout.tsx reads it to decide whether to gate on /login or allow the
       // post-OTP route chosen above.
+      //
+      // IMPORTANT: setIsOtpVerifying(false) is batched in the SAME React render
+      // as setIsOtpVerified(true). This guarantees _layout.tsx never sees a state
+      // where isOtpVerifying=false AND isOtpVerified=false simultaneously, which
+      // would cause it to route back to /login.
+      console.log("[OTP_FINAL_ROUTE] releasing layout guard — isOtpVerified=true, isOtpVerifying=false, nextRoute =", nextRoute);
       setIsOtpVerified(true);
+      setIsOtpVerifying(false);
       // Persist the verified uid so session survives app backgrounding / cold start.
       try {
         await AsyncStorage.setItem(SESSION_VERIFIED_KEY, uid);
@@ -1040,6 +1066,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
       return { ok: true, profileComplete, nextRoute };
     } catch (err) {
+      // Release the layout route-guard on any failure so normal auth routing resumes.
+      setIsOtpVerifying(false);
       const msg = err instanceof Error ? err.message : "Sign-in failed.";
       return { ok: false, profileComplete: false, error: msg };
     }
@@ -1787,6 +1815,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         driverUid,
         authLoading,
         isOtpVerified,
+        isOtpVerifying,
         phone,
         isAuthenticated,
         profile,

@@ -31,7 +31,7 @@ function RootLayoutNav() {
   useNotifications();
 
   const router = useRouter();
-  const { authLoading, driverUid, isOtpVerified, localPermissionVersion } = useDriver();
+  const { authLoading, driverUid, isOtpVerified, isOtpVerifying, localPermissionVersion } = useDriver();
 
   console.log("[BOOT] render");
   console.log("[BOOT] authLoading =",   authLoading);
@@ -71,6 +71,18 @@ function RootLayoutNav() {
     // Block until AsyncStorage boot read completes (resolves in <50 ms).
     if (localPermissionVersion === null) return;
 
+    // ── Flash guard ───────────────────────────────────────────────────────────
+    // confirmOtp() sets isOtpVerifying=true BEFORE calling signInWithCustomToken.
+    // onAuthStateChanged fires inside that call and sets driverUid, which would
+    // normally trigger this effect with isOtpVerified=false → /login redirect.
+    // While isOtpVerifying=true the guard below blocks all routing; the flag is
+    // cleared together with setIsOtpVerified(true) in the same React render batch,
+    // so the next effect fire sees isOtpVerified=true and becomes a no-op.
+    if (isOtpVerifying) {
+      console.log("[LAYOUT_SKIP_DURING_OTP]", "[LOGIN_FLASH_BLOCKED]", "— isOtpVerifying=true; route guard suspended to prevent /login flash");
+      return;
+    }
+
     if (!driverUid || !firebaseAuth.currentUser) {
       // Not authenticated — show permission onboarding on first install;
       // go to login for returning drivers who have already completed it.
@@ -93,7 +105,7 @@ function RootLayoutNav() {
     // isOtpVerified=true: navigation was already handled upstream by either
     // otp.tsx (fresh OTP) or onAuthStateChanged (session restore).
     console.log("[ROUTE_DECISION] handled upstream — session restore or fresh OTP");
-  }, [authLoading, driverUid, isOtpVerified, localPermissionVersion]);
+  }, [authLoading, driverUid, isOtpVerified, isOtpVerifying, localPermissionVersion]);
 
   // Auth-loading overlay — disappears when authLoading becomes false.
   // authLoading is guaranteed to become false within 8 s by DriverContext timeout.
