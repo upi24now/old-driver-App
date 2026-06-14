@@ -18,6 +18,7 @@ import {
   type AppStateStatus,
   Animated,
   Easing,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -43,8 +44,8 @@ const DEFAULT_PERMS: AllPermissionsStatus = {
 
 function PermissionHealthCard() {
   const colors = useColors();
-  const [perms, setPerms]                         = useState<AllPermissionsStatus | null>(null);
-  const [batteryOpened, setBatteryOpened]         = useState(false);
+  const [perms, setPerms]                       = useState<AllPermissionsStatus | null>(null);
+  const [showBatteryModal, setShowBatteryModal] = useState(false);
 
   async function refresh() {
     if (Platform.OS !== "android") return;
@@ -62,8 +63,6 @@ function PermissionHealthCard() {
 
   if (Platform.OS !== "android" || !perms) return null;
 
-  const batteryOk = batteryOpened;
-
   type Row = {
     key: string;
     icon: React.ComponentProps<typeof Feather>["name"];
@@ -72,6 +71,9 @@ function PermissionHealthCard() {
     onFix: () => Promise<void>;
   };
 
+  // Battery is intentionally excluded from this array.
+  // Android's power-exemption status cannot be read from JS without a native
+  // module, so we never show a fake ✅ and never block duty ON for it.
   const rows: Row[] = [
     {
       key: "notif",
@@ -94,18 +96,9 @@ function PermissionHealthCard() {
       granted: perms.backgroundLocation.granted,
       onFix: openPermissionSettings,
     },
-    {
-      key: "battery",
-      icon: "battery-charging",
-      label: "Battery Optimization",
-      granted: batteryOk,
-      onFix: async () => {
-        await openBatterySettings();
-        setBatteryOpened(true);
-      },
-    },
   ];
 
+  // allOk only considers verifiable permissions — battery never blocks "All OK".
   const allOk = rows.every((r) => r.granted);
 
   return (
@@ -139,7 +132,7 @@ function PermissionHealthCard() {
         )}
       </View>
 
-      {/* Rows */}
+      {/* Verifiable permission rows (Notifications, Location, Background Location) */}
       {rows.map((row) => (
         <View
           key={row.key}
@@ -159,10 +152,7 @@ function PermissionHealthCard() {
             </Text>
             {!row.granted && (
               <TouchableOpacity
-                style={[
-                  phStyles.fixBtn,
-                  { backgroundColor: colors.primarySoft },
-                ]}
+                style={[phStyles.fixBtn, { backgroundColor: colors.primarySoft }]}
                 onPress={() => void row.onFix()}
                 activeOpacity={0.75}
               >
@@ -174,6 +164,86 @@ function PermissionHealthCard() {
           </View>
         </View>
       ))}
+
+      {/* Battery Optimization row — always "Action required"; status unverifiable from JS */}
+      <View style={[phStyles.row, { borderTopColor: colors.border }]}>
+        <Feather name="battery-charging" size={13} color={colors.warning} />
+        <Text style={[phStyles.rowLabel, { color: colors.foreground }]}>
+          Battery Optimization
+        </Text>
+        <View style={phStyles.rowRight}>
+          <Text style={[phStyles.actionReqLabel, { color: colors.warning }]}>
+            Action required
+          </Text>
+          <TouchableOpacity
+            style={[phStyles.fixBtn, { backgroundColor: colors.primarySoft }]}
+            onPress={() => setShowBatteryModal(true)}
+            activeOpacity={0.75}
+          >
+            <Text style={[phStyles.fixText, { color: colors.primary }]}>Fix</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* ── Battery Optimization instruction modal ────────────────────────────── */}
+      {/* Shows before opening settings so driver knows what to look for.        */}
+      {/* openBatterySettings() tries (in order):                                */}
+      {/*   1. ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS + package URI         */}
+      {/*   2. ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS                       */}
+      {/*   3. ACTION_APPLICATION_DETAILS_SETTINGS + package URI                 */}
+      <Modal
+        visible={showBatteryModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowBatteryModal(false)}
+      >
+        <View style={phStyles.modalOverlay}>
+          <View
+            style={[
+              phStyles.modalCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <Text style={[phStyles.modalTitle, { color: colors.foreground }]}>
+              Battery Optimization बंद करें
+            </Text>
+            <View style={phStyles.modalSteps}>
+              <Text style={[phStyles.modalStep, { color: colors.mutedForeground }]}>
+                1. Battery या App battery usage खोलें
+              </Text>
+              <Text style={[phStyles.modalStep, { color: colors.mutedForeground }]}>
+                2. Unrestricted / Don't optimize select करें
+              </Text>
+              <Text style={[phStyles.modalStep, { color: colors.mutedForeground }]}>
+                3. Back दबाकर app में वापस आएं
+              </Text>
+            </View>
+            <View style={phStyles.modalBtns}>
+              <TouchableOpacity
+                style={[phStyles.modalCancelBtn, { backgroundColor: colors.muted }]}
+                onPress={() => setShowBatteryModal(false)}
+                activeOpacity={0.75}
+              >
+                <Text style={[phStyles.modalBtnTxt, { color: colors.mutedForeground }]}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[phStyles.modalConfirmBtn, { backgroundColor: colors.primary }]}
+                onPress={async () => {
+                  setShowBatteryModal(false);
+                  await openBatterySettings();
+                }}
+                activeOpacity={0.75}
+              >
+                <Text style={[phStyles.modalBtnTxt, { color: "#fff" }]}>
+                  Continue →
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -232,6 +302,58 @@ const phStyles = StyleSheet.create({
   },
   fixText: {
     fontSize: 12,
+    fontWeight: "700",
+  },
+  // ── Battery row ─────────────────────────────────────────────────────────────
+  actionReqLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  // ── Battery modal ────────────────────────────────────────────────────────────
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 28,
+  },
+  modalCard: {
+    width: "100%",
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 20,
+    gap: 14,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  modalSteps: {
+    gap: 10,
+  },
+  modalStep: {
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  modalBtns: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 2,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  modalConfirmBtn: {
+    flex: 2,
+    paddingVertical: 11,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  modalBtnTxt: {
+    fontSize: 14,
     fontWeight: "700",
   },
 });
