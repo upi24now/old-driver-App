@@ -160,7 +160,10 @@ export default function LoginScreen() {
 
     setDriverPhone(digits);
     setLoading(false);
-    router.replace({
+    // Use push (not replace) so /login stays in the back-stack behind /otp.
+    // This prevents navigation-state restoration from skipping the mobile-number
+    // screen after an Expo update or JS-bundle reload.
+    router.push({
       pathname: "/otp",
       params:   { phone: digits, devOtp: result.devOtp ?? "" },
     });

@@ -21,6 +21,7 @@ import { DriverProvider, useDriver } from "@/contexts/DriverContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { useNotifications } from "@/hooks/useNotifications";
 import { firebaseAuth } from "@/utils/firebase";
+import { PERMISSION_SETUP_VERSION } from "@/utils/firestore";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -30,7 +31,7 @@ function RootLayoutNav() {
   useNotifications();
 
   const router = useRouter();
-  const { authLoading, driverUid, isOtpVerified } = useDriver();
+  const { authLoading, driverUid, isOtpVerified, localPermissionVersion } = useDriver();
 
   console.log("[BOOT] render");
   console.log("[BOOT] authLoading =",   authLoading);
@@ -41,41 +42,60 @@ function RootLayoutNav() {
 
   // ── Auth-policy routing ───────────────────────────────────────────────────
   //
-  // Session restore (app kill + cold restart with a valid Firebase session):
-  //   onAuthStateChanged fires → AsyncStorage check → sessionValid=true →
-  //   DriverContext fetches Firestore doc → calls deriveNextRoute → calls
-  //   router.replace(nextRoute) → THEN calls setAuthLoading(false).
-  //   The overlay disappears onto the correct screen, never onto /login.
+  // This effect fires whenever authLoading, driverUid, isOtpVerified, OR
+  // localPermissionVersion changes. localPermissionVersion starts null and
+  // resolves to a number once the AsyncStorage boot read completes (<50 ms).
+  // No routing fires while it is null, preventing premature decisions.
   //
-  // New device / fresh install / explicit sign-out:
-  //   SESSION_VERIFIED_KEY absent or mismatched → isOtpVerified stays false
-  //   → this effect routes to /login where the OTP-first policy applies.
+  // Routing matrix:
+  //
+  //   authLoading=true          → no-op (spinner overlay is covering the screen)
+  //   localPermissionVersion=null → no-op (AsyncStorage not yet read)
+  //   !driverUid                → FIRST INSTALL or LOGGED-OUT driver:
+  //       localVer < required   → /background-setup  (permission onboarding first)
+  //       localVer >= required  → /login             (returning logged-out driver)
+  //   driverUid + !isOtpVerified → /login            (OTP gate)
+  //   driverUid + isOtpVerified  → handled upstream  (session restore or otp.tsx routed)
+  //
+  // Session restore (valid Firebase session):
+  //   onAuthStateChanged → AsyncStorage check → sessionValid=true →
+  //   Firestore fetch → deriveNextRoute → router.replace(nextRoute) →
+  //   setAuthLoading(false). Overlay lifts onto the correct screen.
   //
   // Post-OTP fresh login:
   //   otp.tsx calls router.replace(nextRoute) after confirmOtp() succeeds.
-  //   This effect is a no-op in that path (isOtpVerified=true, just logs).
+  //   isOtpVerified=true → this effect is a no-op.
   useEffect(() => {
     if (authLoading) return;
+    // Block until AsyncStorage boot read completes (resolves in <50 ms).
+    if (localPermissionVersion === null) return;
 
     if (!driverUid || !firebaseAuth.currentUser) {
-      console.log("[AUTH_ROUTE] chosenRoute = /login (no_session)");
-      router.replace("/login");
+      // Not authenticated — show permission onboarding on first install;
+      // go to login for returning drivers who have already completed it.
+      if (localPermissionVersion < PERMISSION_SETUP_VERSION) {
+        console.log("[PERMISSION_GATE] first launch — localVer =", localPermissionVersion, "→ /background-setup");
+        router.replace("/background-setup");
+      } else {
+        console.log("[BOOT_ROUTE] chosenRoute = /login (no_session)");
+        router.replace("/login");
+      }
       return;
     }
 
     if (!isOtpVerified) {
-      console.log("[AUTH_ROUTE] chosenRoute = /login (otp_required uid =", driverUid, ")");
+      console.log("[BOOT_ROUTE] chosenRoute = /login (otp_required uid =", driverUid, ")");
       router.replace("/login");
       return;
     }
 
-    // isOtpVerified=true: navigation was already handled by either
+    // isOtpVerified=true: navigation was already handled upstream by either
     // otp.tsx (fresh OTP) or onAuthStateChanged (session restore).
-    console.log("[AUTH_ROUTE] chosenRoute = (handled upstream — session restore or fresh OTP)");
-  }, [authLoading, driverUid, isOtpVerified]);
+    console.log("[ROUTE_DECISION] handled upstream — session restore or fresh OTP");
+  }, [authLoading, driverUid, isOtpVerified, localPermissionVersion]);
 
   // Auth-loading overlay — disappears when authLoading becomes false.
-  // authLoading is guaranteed to become false within 5 s by DriverContext timeout.
+  // authLoading is guaranteed to become false within 8 s by DriverContext timeout.
   const authOverlay = authLoading ? (
     <View style={authStyles.overlay}>
       <ActivityIndicator size="large" color="#F97316" />

@@ -61,6 +61,11 @@ import {
 // A matching uid on app restore skips the OTP gate for approved sessions.
 const SESSION_VERIFIED_KEY = "@bike_courier/session_verified_uid";
 
+// Key that caches the locally-completed permission setup version.
+// Written by markBackgroundSetupShown and synced from Firestore on each login.
+// Lets the boot path check the permission gate without a live Firestore read.
+const LOCAL_PERMISSION_KEY = "@bike_courier/local_permission_version";
+
 export type SubPlan = "daily" | "weekly" | "monthly";
 
 export type Vehicle = { id: string; name: string };
@@ -244,7 +249,8 @@ type DriverState = {
   requestWithdrawal: (amount: number, upiId: string) => Promise<{ ok: boolean; reason?: string }>;
 
   backgroundSetupShown:     boolean;
-  permissionSetupVersion:   number;   // version of setup flow completed; 0 = never done
+  permissionSetupVersion:   number;         // Firestore-sourced; 0 = never done
+  localPermissionVersion:   number | null;  // AsyncStorage-cached; null until boot read completes
   markBackgroundSetupShown: () => Promise<void>;
 
   // ── Onboarding fee ────────────────────────────────────────────────────────
@@ -436,6 +442,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const [overlayPermissionGranted,  setOverlayPermissionGranted]  = useState(false);
   const [backgroundSetupShown,      setBackgroundSetupShown]      = useState(false);
   const [permissionSetupVersion,    setPermissionSetupVersion]    = useState(0);
+  const [localPermissionVersion,    setLocalPermissionVersion]    = useState<number | null>(null);
   const [onboardingFeeApplies,      setOnboardingFeeApplies]      = useState(false);
   const [onboardingFeeStatus,       setOnboardingFeeStatus]       = useState<string | null>(null);
   const [onboardingFeeAmount,       setOnboardingFeeAmount]       = useState<number | null>(null);
@@ -456,6 +463,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   useEffect(() => { driverRatingRef.current  = driverRating;   }, [driverRating]);
   useEffect(() => { driverTripsRef.current   = driverTrips;    }, [driverTrips]);
 
+  // Pre-started AsyncStorage promises — kicked off before onAuthStateChanged fires
+  // so both reads are resolved (or near-resolved) before the auth callback runs.
+  // Default resolved values are replaced inside the mount effect milliseconds later.
+  const sessionKeyRef   = useRef<Promise<string | null>>(Promise.resolve(null));
+  const localPermVerRef = useRef<Promise<number>>(Promise.resolve(0));
+
   // ─── Firebase Auth listener — restores session on app restart ──────────────
   //
   // CRITICAL BOOT PATH — keep this fast:
@@ -474,11 +487,25 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // below is kept so that state is pre-populated for the post-OTP dashboard
   // (avoids a visible re-fetch after confirmOtp).
   useEffect(() => {
+    // ── Pre-start AsyncStorage reads ─────────────────────────────────────────
+    // Kick off both reads immediately so they resolve (usually <50 ms on any
+    // healthy device) long before onAuthStateChanged fires (100-500 ms cold
+    // start) and certainly before the 8 s safety timeout. Assigning to the
+    // refs here (inside the effect) guarantees React strict-mode doesn't start
+    // duplicate reads on a second mount.
+    sessionKeyRef.current   = AsyncStorage.getItem(SESSION_VERIFIED_KEY);
+    localPermVerRef.current = AsyncStorage.getItem(LOCAL_PERMISSION_KEY).then((v) => {
+      const n = v !== null ? parseInt(v, 10) : 0;
+      setLocalPermissionVersion(n);
+      console.log("[PERMISSION_GATE] localPermissionVersion read from AsyncStorage =", n);
+      return n;
+    });
+
     // Cold-start diagnostics — logged once when DriverProvider mounts.
-    console.log("[AUTH_COLD_START] app opened");
-    console.log("[AUTH_COLD_START] firebase currentUser immediate =", firebaseAuth.currentUser?.uid ?? null);
-    void AsyncStorage.getItem(SESSION_VERIFIED_KEY).then((uid) =>
-      console.log("[AUTH_COLD_START] storedVerifiedUid =", uid ?? "(none)"),
+    console.log("[BOOT_ROUTE] app opened");
+    console.log("[BOOT_ROUTE] firebase currentUser immediate =", firebaseAuth.currentUser?.uid ?? null);
+    void sessionKeyRef.current.then((uid) =>
+      console.log("[SESSION_STATE] storedVerifiedUid =", uid ?? "(none)"),
     );
 
     const unsub = onAuthStateChanged(firebaseAuth, (user) => {
@@ -504,11 +531,13 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         // session stored in AsyncStorage from a prior login.
         let sessionValid = false;
         try {
-          const storedUid = await AsyncStorage.getItem(SESSION_VERIFIED_KEY);
-          console.log("[SESSION_RESTORE] firebaseUid =", user.uid);
-          console.log("[SESSION_RESTORE] storedVerifiedUid =", storedUid);
+          // Await the already-started promise (kicked off at mount time, not now).
+          // On a normal device this resolves in <50 ms — well before this code runs.
+          const storedUid = await sessionKeyRef.current;
+          console.log("[AUTH_RESTORE] firebaseUid =", user.uid);
+          console.log("[AUTH_RESTORE] storedVerifiedUid =", storedUid);
           sessionValid = storedUid === user.uid;
-          console.log("[SESSION_RESTORE] sessionValid =", sessionValid);
+          console.log("[SESSION_STATE] sessionValid =", sessionValid);
           if (sessionValid) {
             setIsOtpVerified(true);
           }
@@ -518,9 +547,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
         // ── 2. No-restore fast path ──────────────────────────────────────────
         // No saved session: unblock the layout immediately so the login screen
-        // appears. Firestore reads below pre-populate state in the background.
+        // or permission gate appears.
         if (!sessionValid) {
-          console.log("[AUTH_STATE] setAuthLoading false (no session restore)");
+          console.log("[ROUTE_DECISION] no valid session → handing off to _layout gate");
           setAuthLoading(false);
         }
         // Session restore path: keep authLoading=true (spinner overlay stays up)
@@ -580,7 +609,18 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             setVerifStatus(driverDoc.verificationStatus ?? null);
             setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
             setBackgroundSetupShown(driverDoc.backgroundSetupShown ?? false);
-            setPermissionSetupVersion(driverDoc.permissionSetupVersion ?? 0);
+            {
+              const firestorePermVer = driverDoc.permissionSetupVersion ?? 0;
+              setPermissionSetupVersion(firestorePermVer);
+              // Sync local AsyncStorage cache — Firestore is authoritative when reachable.
+              const localVer = await localPermVerRef.current;
+              if (firestorePermVer > localVer) {
+                localPermVerRef.current = Promise.resolve(firestorePermVer);
+                setLocalPermissionVersion(firestorePermVer);
+                void AsyncStorage.setItem(LOCAL_PERMISSION_KEY, String(firestorePermVer)).catch(() => {});
+                console.log("[PERMISSION_GATE] local cache updated from Firestore:", firestorePermVer);
+              }
+            }
             setOnboardingFeeApplies(driverDoc.onboardingFeeApplies ?? false);
             setOnboardingFeeStatus(driverDoc.onboardingFeeStatus ?? null);
             setOnboardingFeeAmount(driverDoc.onboardingFeeAmount ?? null);
@@ -612,12 +652,19 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         // This ensures the auth overlay disappears onto the dashboard (or the
         // correct onboarding step), never onto the login screen.
         if (sessionValid) {
+          // When Firestore timed out (driverDoc=null), consult the local
+          // AsyncStorage cache instead of blindly falling back to /(tabs).
+          // This prevents permission-gate bypass on slow or offline networks.
+          const localVer = await localPermVerRef.current;
           const nextRoute = driverDoc
             ? await deriveNextRoute(driverDoc)
-            : "/(tabs)";
-          console.log("[AUTH_ROUTE] chosenRoute =", nextRoute, "(session restore)");
+            : localVer >= PERMISSION_SETUP_VERSION
+              ? "/(tabs)"
+              : "/background-setup";
+          console.log("[ROUTE_DECISION] session restore chosenRoute =", nextRoute,
+            driverDoc ? "(deriveNextRoute)" : `(Firestore timeout — localVer=${localVer})`);
           router.replace(nextRoute as never);
-          console.log("[AUTH_STATE] setAuthLoading false (session restore)");
+          console.log("[AUTH_RESTORE] setAuthLoading false (session restore complete)");
           setAuthLoading(false);
         }
 
@@ -635,14 +682,17 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // setAuthLoading functional form lets us log ONLY when the timeout
   // actually fires (i.e. auth state had not already resolved).
   useEffect(() => {
+    // 8 s gives the pre-started AsyncStorage reads (~50 ms) + onAuthStateChanged
+    // (~500 ms cold start) + session-key await + Firestore 3.5 s timeout plenty
+    // of headroom before the safety net fires. 5 s was too tight on slow Android.
     const tid = setTimeout(() => {
       setAuthLoading((prev) => {
         if (prev) {
-          console.log("[AUTH_TIMEOUT_FALLBACK] fired — forcing authLoading=false after 5s");
+          console.log("[AUTH_RESTORE] safety timeout fired — forcing authLoading=false after 8s");
         }
         return false;
       });
-    }, 5000);
+    }, 8000);
     return () => clearTimeout(tid);
   }, []);
 
@@ -921,7 +971,17 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         setVerifStatus(driverDoc.verificationStatus ?? null);
         setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
         setBackgroundSetupShown(driverDoc.backgroundSetupShown ?? false);
-        setPermissionSetupVersion(driverDoc.permissionSetupVersion ?? 0);
+        {
+          const firestorePermVer = driverDoc.permissionSetupVersion ?? 0;
+          setPermissionSetupVersion(firestorePermVer);
+          // Keep local AsyncStorage cache in sync after every fresh OTP login so
+          // the boot-time permission gate is accurate on the next cold start.
+          if (firestorePermVer > 0) {
+            setLocalPermissionVersion(firestorePermVer);
+            void AsyncStorage.setItem(LOCAL_PERMISSION_KEY, String(firestorePermVer)).catch(() => {});
+            console.log("[PERMISSION_GATE] confirmOtp — localVer synced =", firestorePermVer);
+          }
+        }
         // Restore onboarding fee state — absent on existing/old drivers (defaults to false/null).
         setOnboardingFeeApplies(driverDoc.onboardingFeeApplies ?? false);
         setOnboardingFeeStatus(driverDoc.onboardingFeeStatus ?? null);
@@ -976,6 +1036,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const markBackgroundSetupShown = async (): Promise<void> => {
     setBackgroundSetupShown(true);
     setPermissionSetupVersion(PERMISSION_SETUP_VERSION);
+    setLocalPermissionVersion(PERMISSION_SETUP_VERSION);
+    // Write both the Firestore record and the local AsyncStorage cache so the
+    // boot-time permission gate is accurate even when Firestore times out.
+    await AsyncStorage.setItem(LOCAL_PERMISSION_KEY, String(PERMISSION_SETUP_VERSION)).catch(() => {});
+    localPermVerRef.current = Promise.resolve(PERMISSION_SETUP_VERSION);
+    console.log("[PERMISSION_GATE] markBackgroundSetupShown — localVer written =", PERMISSION_SETUP_VERSION);
     if (driverUid) {
       await updateDriverBackgroundSetup(driverUid);
     }
@@ -1754,6 +1820,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         requestWithdrawal,
         backgroundSetupShown,
         permissionSetupVersion,
+        localPermissionVersion,
         markBackgroundSetupShown,
         onboardingFeeApplies,
         onboardingFeeStatus,

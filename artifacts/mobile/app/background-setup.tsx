@@ -180,7 +180,7 @@ function PermCard({
 export default function PermissionCenterScreen() {
   const colors  = useColors();
   const insets  = useSafeAreaInsets();
-  const { markBackgroundSetupShown } = useDriver();
+  const { markBackgroundSetupShown, driverUid } = useDriver();
   const params  = useLocalSearchParams<{ back?: string }>();
   const fromProfile = params.back === "1";
 
@@ -253,9 +253,15 @@ export default function PermissionCenterScreen() {
       setFinishing(false);
     }
     if (fromProfile) {
+      // Opened from Profile settings — go back to where we came from.
       router.back();
-    } else {
+    } else if (driverUid) {
+      // Authenticated session (session restore sent us here) → dashboard.
       router.replace("/(tabs)");
+    } else {
+      // First install (no session yet) → mobile number entry.
+      console.log("[PERMISSION_GATE] first install complete → /login");
+      router.replace("/login");
     }
   }
 
@@ -288,7 +294,7 @@ export default function PermissionCenterScreen() {
           onPress={() => {
             setFinishing(true);
             void markBackgroundSetupShown()
-              .then(() => router.replace("/(tabs)"))
+              .then(() => driverUid ? router.replace("/(tabs)") : router.replace("/login"))
               .finally(() => setFinishing(false));
           }}
           activeOpacity={0.85}
