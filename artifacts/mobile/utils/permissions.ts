@@ -167,22 +167,56 @@ export async function requestBackgroundLocation(): Promise<PermStatus> {
 
 export async function requestPhonePermission(): Promise<PermStatus> {
   if (Platform.OS !== "android") return { granted: true, canAskAgain: false };
-  try {
-    const result = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.CALL_PHONE,
-      {
-        title: "Phone Call Permission",
-        message:
-          "Bike Courier uses this permission to connect you directly with customers.",
-        buttonPositive: "Allow",
-        buttonNegative: "Deny",
-      },
-    );
-    return {
-      granted: result === PermissionsAndroid.RESULTS.GRANTED,
-      canAskAgain: result === PermissionsAndroid.RESULTS.DENIED,
-    };
-  } catch {
-    return { granted: false, canAskAgain: true };
-  }
+
+  console.log("[PHONE_PERMISSION_START] requesting CALL_PHONE via PermissionsAndroid");
+
+  // ── Timeout guard ─────────────────────────────────────────────────────────
+  // PermissionsAndroid.request(CALL_PHONE) hangs indefinitely when:
+  //   (a) CALL_PHONE is absent from the AndroidManifest (Expo Go, or a build
+  //       that hasn't been re-built after adding the permission to app.json).
+  //   (b) The OS silently drops the dialog for any other reason.
+  // A 10 s timeout ensures the spinner always clears so the driver can still
+  //  tap "Open Settings" to grant the permission manually.
+  const TIMEOUT_MS = 10_000;
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+  const timeoutPromise = new Promise<PermStatus>((resolve) => {
+    timeoutHandle = setTimeout(() => {
+      console.log(
+        "[PHONE_PERMISSION_ERROR] PermissionsAndroid.request timed out after",
+        TIMEOUT_MS,
+        "ms — CALL_PHONE may be missing from AndroidManifest (Expo Go) or dialog was silently dropped",
+      );
+      resolve({ granted: false, canAskAgain: false });
+    }, TIMEOUT_MS);
+  });
+
+  const requestPromise = (async (): Promise<PermStatus> => {
+    try {
+      const result = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.CALL_PHONE,
+        {
+          title: "Phone Call Permission",
+          message:
+            "Bike Courier uses this permission to connect you directly with customers.",
+          buttonPositive: "Allow",
+          buttonNegative: "Deny",
+        },
+      );
+      const granted     = result === PermissionsAndroid.RESULTS.GRANTED;
+      const canAskAgain = result === PermissionsAndroid.RESULTS.DENIED;
+      console.log("[PHONE_PERMISSION_RESULT] result =", result, "| granted =", granted, "| canAskAgain =", canAskAgain);
+      return { granted, canAskAgain };
+    } catch (err) {
+      console.log("[PHONE_PERMISSION_ERROR] PermissionsAndroid.request threw:", err instanceof Error ? err.message : String(err));
+      return { granted: false, canAskAgain: true };
+    }
+  })();
+
+  const status = await Promise.race([requestPromise, timeoutPromise]);
+
+  // Cancel the timeout if the real request won the race.
+  if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+
+  return status;
 }
