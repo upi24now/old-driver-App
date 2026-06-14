@@ -5,8 +5,17 @@ import { Redirect, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { checkNotificationPermissions } from "@/utils/notifications";
 import {
+  type AllPermissionsStatus,
+  checkAllPermissions,
+  openBatterySettings,
+  openNotificationSettings,
+  openPermissionSettings,
+} from "@/utils/permissions";
+import {
   ActivityIndicator,
   Alert,
+  AppState,
+  type AppStateStatus,
   Animated,
   Easing,
   Platform,
@@ -21,6 +30,221 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 import LiveMap, { HotZoneStrip } from "@/components/LiveMap";
+
+// ─── Permission Health Card ───────────────────────────────────────────────────
+// Permanent widget on the dashboard. Shows status of all 5 permissions.
+// Android only — returns null on web/iOS.
+
+const DEFAULT_PERMS: AllPermissionsStatus = {
+  notifications:      { granted: false, canAskAgain: false },
+  location:           { granted: false, canAskAgain: false },
+  backgroundLocation: { granted: false, canAskAgain: false },
+  phoneCall:          { granted: false, canAskAgain: false },
+};
+
+function PermissionHealthCard() {
+  const colors = useColors();
+  const [perms, setPerms]                         = useState<AllPermissionsStatus | null>(null);
+  const [batteryOpened, setBatteryOpened]         = useState(false);
+
+  async function refresh() {
+    if (Platform.OS !== "android") return;
+    const s = await checkAllPermissions().catch(() => DEFAULT_PERMS);
+    setPerms(s);
+  }
+
+  useEffect(() => {
+    void refresh();
+    const sub = AppState.addEventListener("change", (s: AppStateStatus) => {
+      if (s === "active") void refresh();
+    });
+    return () => sub.remove();
+  }, []);
+
+  if (Platform.OS !== "android" || !perms) return null;
+
+  const batteryOk = batteryOpened;
+
+  type Row = {
+    key: string;
+    icon: React.ComponentProps<typeof Feather>["name"];
+    label: string;
+    granted: boolean;
+    onFix: () => Promise<void>;
+  };
+
+  const rows: Row[] = [
+    {
+      key: "notif",
+      icon: "bell",
+      label: "Notifications",
+      granted: perms.notifications.granted,
+      onFix: openNotificationSettings,
+    },
+    {
+      key: "loc",
+      icon: "map-pin",
+      label: "Location",
+      granted: perms.location.granted,
+      onFix: openPermissionSettings,
+    },
+    {
+      key: "bgloc",
+      icon: "navigation",
+      label: "Background Location",
+      granted: perms.backgroundLocation.granted,
+      onFix: openPermissionSettings,
+    },
+    {
+      key: "phone",
+      icon: "phone",
+      label: "Phone Calls",
+      granted: perms.phoneCall.granted,
+      onFix: openPermissionSettings,
+    },
+    {
+      key: "battery",
+      icon: "battery-charging",
+      label: "Battery Optimization",
+      granted: batteryOk,
+      onFix: async () => {
+        await openBatterySettings();
+        setBatteryOpened(true);
+      },
+    },
+  ];
+
+  const allOk = rows.every((r) => r.granted);
+
+  return (
+    <View
+      style={[
+        phStyles.card,
+        {
+          backgroundColor: colors.card,
+          borderColor: allOk
+            ? (colors.success as string) + "40"
+            : colors.border,
+        },
+      ]}
+    >
+      {/* Header */}
+      <View style={phStyles.header}>
+        <Feather
+          name="shield"
+          size={14}
+          color={allOk ? colors.success : colors.warning}
+        />
+        <Text style={[phStyles.headerText, { color: colors.foreground }]}>
+          App Permissions
+        </Text>
+        {allOk && (
+          <View style={[phStyles.allOkChip, { backgroundColor: colors.successSoft }]}>
+            <Text style={[phStyles.allOkText, { color: colors.successText }]}>
+              All OK
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* Rows */}
+      {rows.map((row) => (
+        <View
+          key={row.key}
+          style={[phStyles.row, { borderTopColor: colors.border }]}
+        >
+          <Feather
+            name={row.icon}
+            size={13}
+            color={row.granted ? colors.success : colors.mutedForeground}
+          />
+          <Text style={[phStyles.rowLabel, { color: colors.foreground }]}>
+            {row.label}
+          </Text>
+          <View style={phStyles.rowRight}>
+            <Text style={phStyles.statusEmoji}>
+              {row.granted ? "✅" : "❌"}
+            </Text>
+            {!row.granted && (
+              <TouchableOpacity
+                style={[
+                  phStyles.fixBtn,
+                  { backgroundColor: colors.primarySoft },
+                ]}
+                onPress={() => void row.onFix()}
+                activeOpacity={0.75}
+              >
+                <Text style={[phStyles.fixText, { color: colors.primary }]}>
+                  Fix
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const phStyles = StyleSheet.create({
+  card: {
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  headerText: {
+    fontSize: 13,
+    fontWeight: "700",
+    flex: 1,
+  },
+  allOkChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 20,
+  },
+  allOkText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: 8,
+  },
+  rowLabel: {
+    flex: 1,
+    fontSize: 13,
+  },
+  rowRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  statusEmoji: {
+    fontSize: 13,
+  },
+  fixBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  fixText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+});
+
+// ─── RadarPulse ───────────────────────────────────────────────────────────────
 
 function RadarPulse({ color }: { color: string }) {
   const a1 = useRef(new Animated.Value(0)).current;
@@ -364,6 +588,8 @@ export default function HomeScreen() {
             </View>
           </TouchableOpacity>
         ) : null}
+
+        <PermissionHealthCard />
 
         {/* ACTION CARDS — primary (pink) = availability, info (blue) = command center */}
         <View style={styles.actionCardsRow}>

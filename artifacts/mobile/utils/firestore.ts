@@ -383,7 +383,7 @@ export async function updateDriverPushToken(
  *   4 — Rapido/Delhivery-style wizard; one step per screen, no fake-green
  *   5 — Clean rebuild; exact Delhivery-style labels, white bg, no badges/notes
  */
-export const PERMISSION_SETUP_VERSION = 5;
+export const PERMISSION_SETUP_VERSION = 6;
 
 /**
  * Mark that the driver has completed the background-permission setup screen
