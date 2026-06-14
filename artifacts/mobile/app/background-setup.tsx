@@ -8,15 +8,13 @@
  *   1. Notifications      — required;     auto-fired on mount
  *   2. Location           — required;     auto-fired after notifications settle
  *   3. Background Loc     — recommended;  explicit "Allow All The Time" tap
- *   4. Phone Call         — recommended;  explicit "Allow" tap
  *
  * Continue button unlocks only when Notifications + Location are granted.
- * Background Location and Phone are strongly recommended but not blockers.
+ * Background Location is strongly recommended but not a blocker.
  *
  * Android restrictions respected:
  *   - Only one OS dialog is shown at a time (sequential auto-fire).
  *   - Background location can only be requested after foreground is granted.
- *   - CALL_PHONE uses PermissionsAndroid (no extra package needed).
  *   - If canAskAgain=false, button switches to "Open Settings".
  *   - AppState listener refreshes all statuses when app returns to foreground.
  */
@@ -47,7 +45,6 @@ import {
   requestBackgroundLocation,
   requestForegroundLocation,
   requestNotificationPermissions,
-  requestPhonePermission,
 } from "@/utils/permissions";
 
 // ─── Default "all pending" state ──────────────────────────────────────────────
@@ -56,7 +53,6 @@ const DEFAULT_PERMS: AllPermissionsStatus = {
   notifications:      { granted: false, canAskAgain: true },
   location:           { granted: false, canAskAgain: true },
   backgroundLocation: { granted: false, canAskAgain: true },
-  phoneCall:          { granted: false, canAskAgain: true },
 };
 
 // ─── Individual permission card ───────────────────────────────────────────────
@@ -187,7 +183,6 @@ export default function PermissionCenterScreen() {
   const [perms,          setPerms]          = useState<AllPermissionsStatus>(DEFAULT_PERMS);
   const [initializing,   setInitializing]   = useState(true);
   const [requestingBg,   setRequestingBg]   = useState(false);
-  const [requestingPhone,setRequestingPhone] = useState(false);
   const [finishing,      setFinishing]      = useState(false);
 
   // ── Refresh all permission states ─────────────────────────────────────────
@@ -271,14 +266,6 @@ export default function PermissionCenterScreen() {
     await requestBackgroundLocation().catch(() => ({ granted: false, canAskAgain: false }));
     await refresh();
     setRequestingBg(false);
-  }
-
-  // ── Phone handler ─────────────────────────────────────────────────────────
-  async function handleAllowPhone() {
-    setRequestingPhone(true);
-    await requestPhonePermission().catch(() => ({ granted: false, canAskAgain: false }));
-    await refresh();
-    setRequestingPhone(false);
   }
 
   // ── Web bypass ────────────────────────────────────────────────────────────
@@ -414,25 +401,9 @@ export default function PermissionCenterScreen() {
           onOpenSettings={() => void openPermissionSettings()}
         />
 
-        {/* ── Card 4 — Phone Call ──────────────────────────────────────────── */}
-        <PermCard
-          icon="phone"
-          iconColor={infoColor}
-          iconBg={(colors.infoSoft as string)}
-          title="Phone Calls"
-          description="Lets you call customers and support directly from within the app."
-          required={false}
-          granted={perms.phoneCall.granted}
-          canAskAgain={perms.phoneCall.canAskAgain}
-          loading={requestingPhone}
-          actionDisabled={initializing}
-          onAllow={() => void handleAllowPhone()}
-          onOpenSettings={() => void openPermissionSettings()}
-        />
-
         {/* Hint text */}
         <Text style={[cs.hint, { color: colors.mutedForeground }]}>
-          Background Location and Phone are recommended but not mandatory to start delivering.
+          Background Location is recommended but not mandatory to start delivering.
         </Text>
 
         {/* Bottom spacing for sticky footer */}

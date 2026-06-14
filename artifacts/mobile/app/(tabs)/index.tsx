@@ -39,7 +39,6 @@ const DEFAULT_PERMS: AllPermissionsStatus = {
   notifications:      { granted: false, canAskAgain: false },
   location:           { granted: false, canAskAgain: false },
   backgroundLocation: { granted: false, canAskAgain: false },
-  phoneCall:          { granted: false, canAskAgain: false },
 };
 
 function PermissionHealthCard() {
@@ -93,13 +92,6 @@ function PermissionHealthCard() {
       icon: "navigation",
       label: "Background Location",
       granted: perms.backgroundLocation.granted,
-      onFix: openPermissionSettings,
-    },
-    {
-      key: "phone",
-      icon: "phone",
-      label: "Phone Calls",
-      granted: perms.phoneCall.granted,
       onFix: openPermissionSettings,
     },
     {
