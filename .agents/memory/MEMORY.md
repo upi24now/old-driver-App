@@ -3,6 +3,7 @@
 - [Bike Courier colour system](bike-courier-colours.md) — semantic token architecture; brand constants pattern used in active-delivery.tsx.
 - [Phase 2 dispatch model](phase2-dispatch.md) — activeOfferDriverUids array-contains replaces driverUid==uid AND status==dispatched; accept writes driver_assigned; reject/timeout use arrayRemove.
 - [api-server rebuild required](api-server-rebuild.md) — restart_workflow does NOT recompile; must run build explicitly before restarting.
+- [Battery optimization — Expo Go limitation](battery-expo-go-limitation.md) — exact battery intent always fails in Expo Go (wrong package); accepted behavior, not a code bug.
 - [Cold-start session restore navigation](cold-start-session-restore.md) — after app kill, Stack always starts at initialRouteName="login"; must navigate BEFORE setAuthLoading(false) to avoid flash of login screen.
 - [Wallet Firestore schema](wallet-firestore-schema.md) — authoritative schema: wallets/{uid}, transactions sub-collection; type "credit"/"payout"/"adjustment"; payouts via server route only.
 - [Expo Router typed routes](expo-router-typed-routes.md) — new screen files require manual update to .expo/types/router.d.ts (hrefInputParams, hrefOutputParams, href) until dev server regenerates.
