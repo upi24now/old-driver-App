@@ -66,6 +66,13 @@ const SESSION_VERIFIED_KEY = "@bike_courier/session_verified_uid";
 // Lets the boot path check the permission gate without a live Firestore read.
 const LOCAL_PERMISSION_KEY = "@bike_courier/local_permission_version";
 
+// Key that caches the last known verificationStatus for this driver.
+// Written whenever a Firestore driver doc is successfully loaded (both
+// onAuthStateChanged hydration and confirmOtp paths).
+// Read by the session-restore timeout path so an approved driver is never
+// stranded at /verification-pending when Firestore cold-start exceeds 3.5 s.
+const LOCAL_VERIFICATION_KEY = "@bike_courier/local_verification_status";
+
 export type SubPlan = "daily" | "weekly" | "monthly";
 
 export type Vehicle = { id: string; name: string };
@@ -616,6 +623,11 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             }
             void loadDriverTransactions(user.uid);
             setVerifStatus(driverDoc.verificationStatus ?? null);
+            // Fix B: persist verificationStatus so the session-restore timeout path
+            // can route approved drivers to /(tabs) even when Firestore is slow.
+            if (driverDoc.verificationStatus) {
+              void AsyncStorage.setItem(LOCAL_VERIFICATION_KEY, driverDoc.verificationStatus).catch(() => {});
+            }
             setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
             setBackgroundSetupShown(driverDoc.backgroundSetupShown ?? false);
             {
@@ -661,38 +673,53 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         // This ensures the auth overlay disappears onto the dashboard (or the
         // correct onboarding step), never onto the login screen.
         if (sessionValid) {
-          // When Firestore timed out or failed (driverDoc=null), verificationStatus
-          // is unknown — routing to /(tabs) would silently bypass the KYC gate.
-          //
-          // Safe fallback policy (driverDoc=null):
-          //   localVer < PERMISSION_SETUP_VERSION → /background-setup  (perms incomplete)
-          //   localVer >= PERMISSION_SETUP_VERSION → /verification-pending (KYC unknown)
-          //
-          // /verification-pending is safe for every driver category:
-          //   - Approved drivers:  see the screen briefly; Firestore resolves on
-          //                        next app open (or "Refresh status" tap) → dashboard.
-          //   - Pending drivers:   correct screen — they should be here anyway.
-          //   - New/incomplete:    rare (localVer<6 catches them above); worst case
-          //                        they see verification-pending momentarily.
-          //
-          // /(tabs) is NEVER used as a fallback — verificationStatus must be known
-          // before the dashboard is shown.
           const localVer = await localPermVerRef.current;
           let nextRoute: OnboardingRoute;
           if (driverDoc) {
+            // Firestore responded in time — use authoritative driverDoc.
+            console.log("[SESSION_RESTORE_DOC] Firestore success —", JSON.stringify({
+              verificationStatus:     driverDoc.verificationStatus     ?? null,
+              vehicleId:              driverDoc.vehicleId              ?? null,
+              name:                   driverDoc.name                   ?? null,
+              documentsSubmitted:     driverDoc.documentsSubmitted     ?? false,
+              permissionSetupVersion: driverDoc.permissionSetupVersion ?? 0,
+            }));
             console.log("[KYC_GATE] Firestore success — running deriveNextRoute");
             nextRoute = await deriveNextRoute(driverDoc);
             console.log("[ROUTE_DECISION] session restore chosenRoute =", nextRoute, "(deriveNextRoute)");
           } else {
-            if (localVer < PERMISSION_SETUP_VERSION) {
-              nextRoute = "/background-setup";
-              console.log("[FIRESTORE_TIMEOUT_SAFE_ROUTE] perm setup incomplete — localVer =", localVer, "→ /background-setup");
+            // Fix B: Firestore timed out (>3.5 s) — verificationStatus unknown from
+            // live doc.  Read the local AsyncStorage cache written on the last
+            // successful Firestore fetch.  Approved/verified drivers go straight to
+            // /(tabs) instead of being blocked at /verification-pending.
+            const cachedVerifStatus = await AsyncStorage.getItem(LOCAL_VERIFICATION_KEY).catch(() => null);
+            const cachedApproved =
+              cachedVerifStatus === "approved" || cachedVerifStatus === "verified";
+            console.log("[SESSION_RESTORE_DOC] Firestore timeout — driverDoc null; cachedVerifStatus =", cachedVerifStatus ?? "(none)");
+
+            if (cachedApproved) {
+              console.log("[APPROVED_DRIVER_CACHE_HIT] local cache confirms", cachedVerifStatus, "— bypassing /verification-pending");
+              // Still guard on permission setup so a driver whose permissions were
+              // revoked after approval doesn't silently land on the dashboard.
+              if (localVer < PERMISSION_SETUP_VERSION) {
+                nextRoute = "/background-setup";
+                console.log("[APPROVED_DRIVER_ROUTE] approved (cached) but permSetup incomplete (localVer =", localVer, ") → /background-setup");
+              } else {
+                nextRoute = "/(tabs)";
+                console.log("[APPROVED_DRIVER_ROUTE] approved (cached) + permSetup ok → /(tabs)");
+              }
             } else {
-              nextRoute = "/verification-pending";
-              console.log("[KYC_GATE] Firestore timeout — verificationStatus unknown; blocking at /verification-pending");
-              console.log("[FIRESTORE_TIMEOUT_SAFE_ROUTE] localVer =", localVer, "→ /verification-pending (KYC unknown, not /(tabs))");
+              // No cache or status is not approved — safe defaults apply.
+              console.log("[DOC_TIMEOUT_APPROVED_UNKNOWN] cachedVerifStatus =", cachedVerifStatus ?? "(none)", "— cannot confirm approval; using safe fallback");
+              if (localVer < PERMISSION_SETUP_VERSION) {
+                nextRoute = "/background-setup";
+                console.log("[FIRESTORE_TIMEOUT_SAFE_ROUTE] perm setup incomplete — localVer =", localVer, "→ /background-setup");
+              } else {
+                nextRoute = "/verification-pending";
+                console.log("[FIRESTORE_TIMEOUT_SAFE_ROUTE] localVer =", localVer, "→ /verification-pending (not approved / status unknown)");
+              }
             }
-            console.log("[ROUTE_DECISION] session restore chosenRoute =", nextRoute, `(Firestore timeout — localVer=${localVer})`);
+            console.log("[ROUTE_DECISION] session restore chosenRoute =", nextRoute, "(Firestore timeout — localVer =", localVer, ")");
           }
           router.replace(nextRoute as never);
           console.log("[AUTH_RESTORE] setAuthLoading false (session restore complete)");
@@ -905,18 +932,40 @@ export function DriverProvider({ children }: { children: ReactNode }) {
    *   7. Approved + perms ok       → main app
    */
   async function deriveNextRoute(d: DriverDoc): Promise<OnboardingRoute> {
-    if (!d.vehicleId) return "/vehicle-selection";
-    if (!d.name)      return "/profile-setup";
-
-    // Approved/verified drivers skip document, fee, and verification-pending checks.
     const isApproved =
       d.verificationStatus === "approved" || d.verificationStatus === "verified";
+
+    console.log("[KYC_ROUTE_DECISION]", JSON.stringify({
+      vehicleId:              d.vehicleId              ?? null,
+      name:                   d.name                   ?? null,
+      isApproved,
+      verificationStatus:     d.verificationStatus     ?? null,
+      documentsSubmitted:     d.documentsSubmitted     ?? false,
+      onboardingFeeApplies:   d.onboardingFeeApplies   ?? false,
+      onboardingFeeStatus:    d.onboardingFeeStatus    ?? null,
+      permissionSetupVersion: d.permissionSetupVersion ?? 0,
+    }));
+
+    if (!d.vehicleId) {
+      console.log("[DERIVE_NEXT_ROUTE_REASON] no vehicleId → /vehicle-selection");
+      return "/vehicle-selection";
+    }
+    if (!d.name) {
+      console.log("[DERIVE_NEXT_ROUTE_REASON] no name → /profile-setup");
+      return "/profile-setup";
+    }
+
     if (!isApproved) {
-      if (!d.documentsSubmitted) return "/document-upload";
+      if (!d.documentsSubmitted) {
+        console.log("[DERIVE_NEXT_ROUTE_REASON] not approved + docs not submitted → /document-upload");
+        return "/document-upload";
+      }
       // Fee screen: only when onboardingFeeApplies is explicitly true (brand-new signup).
       if (d.onboardingFeeApplies === true && d.onboardingFeeStatus !== "paid") {
+        console.log("[DERIVE_NEXT_ROUTE_REASON] not approved + fee pending → /onboarding-fee");
         return "/onboarding-fee";
       }
+      console.log("[DERIVE_NEXT_ROUTE_REASON] not approved + docs submitted → /verification-pending");
       return "/verification-pending";
     }
 
@@ -924,16 +973,27 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     // Web preview skips hardware permission checks entirely.
     if (Platform.OS !== "web") {
       const setupVersionOk = (d.permissionSetupVersion ?? 0) >= PERMISSION_SETUP_VERSION;
-      if (!setupVersionOk) return "/background-setup";
+      if (!setupVersionOk) {
+        console.log("[DERIVE_NEXT_ROUTE_REASON] approved + permSetup incomplete (ver =", d.permissionSetupVersion ?? 0, ") → /background-setup");
+        return "/background-setup";
+      }
       const [notifOk, locStatus] = await Promise.all([
         checkNotificationPermissions().catch(() => false),
         Location.getForegroundPermissionsAsync().catch(() => ({ granted: false })),
       ]);
       const permsGranted = notifOk && locStatus.granted;
-      if (!permsGranted) return "/background-setup";
+      if (!permsGranted) {
+        console.log("[DERIVE_NEXT_ROUTE_REASON] approved + perms not granted (notif =", notifOk, "loc =", locStatus.granted, ") → /background-setup");
+        return "/background-setup";
+      }
     } else {
-      if ((d.permissionSetupVersion ?? 0) < PERMISSION_SETUP_VERSION) return "/background-setup";
+      if ((d.permissionSetupVersion ?? 0) < PERMISSION_SETUP_VERSION) {
+        console.log("[DERIVE_NEXT_ROUTE_REASON] web + permSetup incomplete → /background-setup");
+        return "/background-setup";
+      }
     }
+
+    console.log("[APPROVED_DRIVER_ROUTE] verificationStatus =", d.verificationStatus, "+ all checks passed → /(tabs)");
     return "/(tabs)";
   }
 
@@ -1010,6 +1070,11 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         void loadDriverTransactions(uid);
         // Restore verification/document state (needed for routing below)
         setVerifStatus(driverDoc.verificationStatus ?? null);
+        // Fix B: persist verificationStatus so the session-restore timeout path
+        // can route approved drivers to /(tabs) even when Firestore is slow.
+        if (driverDoc.verificationStatus) {
+          void AsyncStorage.setItem(LOCAL_VERIFICATION_KEY, driverDoc.verificationStatus).catch(() => {});
+        }
         setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
         setBackgroundSetupShown(driverDoc.backgroundSetupShown ?? false);
         {
