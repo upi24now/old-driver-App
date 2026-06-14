@@ -51,7 +51,8 @@ function tierColor(count: number): string {
 const FETCH_INTERVAL_MS   = 10 * 60 * 1000;  // 10 minutes between auto-fetches
 const POSITION_CHECK_MS   =  2 * 60 * 1000;  // every 2 min: GPS check (no Firestore)
 const EARLY_REFRESH_KM    = 2;               // trigger early fetch if moved > 2 km
-const MAX_ORDERS          = 60;             // Firestore limit per fetch
+const MAX_ORDERS          = 60;              // Firestore limit per fetch
+const STALE_ORDER_MS      = 30 * 60 * 1000; // orders older than 30 min are stale
 
 // ─── Module-level hot-zone cache ─────────────────────────────────────────────
 // Persists across re-renders and component unmount/remount cycles so the card
@@ -129,6 +130,39 @@ function getZoneName(raw: Record<string, unknown>): string {
   return "Nearby Zone";
 }
 
+// ─── createdAt parser ────────────────────────────────────────────────────────
+// Supports three shapes written by Firestore / customer app:
+//   • Firestore Timestamp object  → { seconds: number; nanoseconds: number }
+//   • ISO 8601 string             → "2024-06-14T09:30:00.000Z"
+//   • Unix epoch number (ms or s) → 1718353800000 or 1718353800
+// Returns epoch milliseconds, or null if the value is missing / unrecognisable.
+function parseCreatedAt(raw: Record<string, unknown>): number | null {
+  const v = raw.createdAt;
+  if (v == null) return null;
+
+  // Firestore Timestamp — { seconds, nanoseconds }
+  if (
+    typeof v === "object" &&
+    !Array.isArray(v) &&
+    typeof (v as Record<string, unknown>).seconds === "number"
+  ) {
+    return (v as { seconds: number }).seconds * 1000;
+  }
+
+  // ISO string
+  if (typeof v === "string") {
+    const ms = Date.parse(v);
+    return Number.isFinite(ms) ? ms : null;
+  }
+
+  // Numeric — decide ms vs s by magnitude (year 2001 in ms ≈ 1e12)
+  if (typeof v === "number" && Number.isFinite(v)) {
+    return v > 1e10 ? v : v * 1000;  // treat small numbers as seconds
+  }
+
+  return null;
+}
+
 // ─── Relative time label ──────────────────────────────────────────────────────
 function relativeTime(epochMs: number): string {
   if (epochMs === 0) return "";
@@ -180,20 +214,40 @@ async function fetchZones(reason: string): Promise<CachedZone[]> {
     console.log("[HOTZONE_ORDER_FILTERED] Firestore query failed —", String(err));
   }
 
-  // ── 3. Filter by 10-km radius + group by locality ─────────────────────────
-  const zoneMap = new Map<string, { orderCount: number; distKms: number[] }>();
+  // ── 3. Filter + group: stale → no-coords → too-far → zone map ───────────
+  const cutoffMs = Date.now() - STALE_ORDER_MS;   // 30 minutes ago
+  const zoneMap  = new Map<string, { orderCount: number; distKms: number[] }>();
+
+  let skippedOld      = 0;
+  let skippedNoCoords = 0;
+  let skippedFar      = 0;
 
   for (const raw of rawDocs) {
-    const coords = getPickupCoords(raw);
-    if (coords === null) continue;   // no coordinates — skip per spec
+    // ── Staleness check (first — cheapest) ──────────────────────────────
+    const createdMs = parseCreatedAt(raw);
+    if (createdMs === null || createdMs < cutoffMs) {
+      skippedOld += 1;
+      continue;   // missing or old createdAt → skip
+    }
 
+    // ── Pickup coordinates required ──────────────────────────────────────
+    const coords = getPickupCoords(raw);
+    if (coords === null) {
+      skippedNoCoords += 1;
+      continue;
+    }
+
+    // ── 10 km radius filter ──────────────────────────────────────────────
     let distKm: number | null = null;
     if (driverLat !== null && driverLng !== null) {
       distKm = haversineKm(driverLat, driverLng, coords.lat, coords.lng);
-      console.log("[HOTZONE_DISTANCE_CALCULATED] orderId =", String(raw.id), "distKm =", distKm.toFixed(2));
-      if (distKm > 10) continue;    // outside radius — exclude
+      if (distKm > 10) {
+        skippedFar += 1;
+        continue;
+      }
     }
 
+    // ── Group by locality ────────────────────────────────────────────────
     const zoneName = getZoneName(raw);
     const existing = zoneMap.get(zoneName);
     if (existing) {
@@ -223,10 +277,26 @@ async function fetchZones(reason: string): Promise<CachedZone[]> {
   cache.fetchLat  = driverLat;
   cache.fetchLng  = driverLng;
 
-  if (result.length === 0) {
-    console.log("[HOTZONE_FETCH_EMPTY] no nearby orders within 10 km with coordinates");
+  const groupedZones = result.length;
+  if (groupedZones === 0) {
+    console.log(
+      "[HOTZONE_FETCH_EMPTY]",
+      `totalFetched=${rawDocs.length}`,
+      `skippedOld=${skippedOld}`,
+      `skippedNoCoords=${skippedNoCoords}`,
+      `skippedFar=${skippedFar}`,
+      `groupedZones=0`,
+    );
   } else {
-    console.log("[HOTZONE_FETCH_SUCCESS] zones =", result.length, result.map((z) => z.name).join(", "));
+    console.log(
+      "[HOTZONE_FETCH_SUCCESS]",
+      `totalFetched=${rawDocs.length}`,
+      `skippedOld=${skippedOld}`,
+      `skippedNoCoords=${skippedNoCoords}`,
+      `skippedFar=${skippedFar}`,
+      `groupedZones=${groupedZones}`,
+      "→", result.map((z) => z.name).join(", "),
+    );
   }
   console.log("[HOTZONE_LAST_UPDATED] at", new Date(cache.fetchedAt).toLocaleTimeString());
 
