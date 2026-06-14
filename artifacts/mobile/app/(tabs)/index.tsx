@@ -877,7 +877,7 @@ export default function HomeScreen() {
           </View>
 
           <LiveMap online={online} />
-          <HotZoneStrip />
+          <HotZoneStrip online={online} />
 
         </View>
 
