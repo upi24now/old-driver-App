@@ -599,16 +599,44 @@ export function HotZoneStrip({ online }: { online: boolean }) {
   );
 }
 
-// ─── LiveMap — default export ─────────────────────────────────────────────────
-// Clean light card replacing the fake dark SVG map.
-// Shows driver GPS area (reverse-geocoded) and live/offline status.
-// No fake city names, no hardcoded zones, no dark background.
-export default function LiveMap({ online }: { online: boolean }) {
-  const colors                    = useColors();
-  const [locationLabel, setLabel] = useState<string | null>(null);
+// ─── Coordinate projection ────────────────────────────────────────────────────
+// Maps a zone lat/lng → pixel (x, y) on the card, with the driver at centre.
+// Linear approximation — accurate to < 0.5 % within 15 km at Indian latitudes.
+const MAP_VISIBLE_RADIUS_KM = 12;  // km from card centre to each edge
 
+function coordsToXY(
+  driverLat: number, driverLng: number,
+  zoneLat:   number, zoneLng:   number,
+  cardW:     number, cardH:     number,
+): { x: number; y: number } {
+  const KM_PER_DEG = 111.32;
+  const dLat = (zoneLat - driverLat) * KM_PER_DEG;
+  const dLng = (zoneLng - driverLng) * KM_PER_DEG * Math.cos((driverLat * Math.PI) / 180);
+  return {
+    x: cardW / 2 + dLng * ((cardW / 2) / MAP_VISIBLE_RADIUS_KM),
+    y: cardH / 2 - dLat * ((cardH / 2) / MAP_VISIBLE_RADIUS_KM),
+  };
+}
+
+// ─── LiveMap — default export ─────────────────────────────────────────────────
+// Free OSM-style light map card — no SDK, no API key, works in Expo Go.
+// • Driver pin at centre (real GPS).
+// • Zone pins at relative positions derived from real lat/lng.
+// • Concentric 5 km / 10 km range rings.
+// • "Tap Navigate for directions" hint when zones are visible.
+// • HotZoneStrip (below) owns the fetch cycle; LiveMap reads the module-level
+//   cache and re-syncs every 15 s — no extra Firestore reads.
+export default function LiveMap({ online }: { online: boolean }) {
+  const colors = useColors();
+
+  const [locationLabel, setLabel] = useState<string | null>(null);
+  const [driverCoords,  setDriver] = useState<{ lat: number; lng: number } | null>(null);
+  const [mapZones,      setMapZones] = useState<CachedZone[]>(cache.zones);
+  const [cardSize,      setCardSize] = useState({ w: 360, h: 180 });
+
+  // GPS + reverse-geocode — re-runs when duty flips
   useEffect(() => {
-    if (!online) { setLabel(null); return; }
+    if (!online) { setLabel(null); setDriver(null); return; }
     let active = true;
     void (async () => {
       try {
@@ -616,6 +644,7 @@ export default function LiveMap({ online }: { online: boolean }) {
         if (status !== "granted" || !active) return;
         const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         if (!active) return;
+        setDriver({ lat: pos.coords.latitude, lng: pos.coords.longitude });
         const rev = await Location.reverseGeocodeAsync({
           latitude:  pos.coords.latitude,
           longitude: pos.coords.longitude,
@@ -624,37 +653,99 @@ export default function LiveMap({ online }: { online: boolean }) {
         const r = rev[0];
         if (r) setLabel(r.district ?? r.subregion ?? r.city ?? r.region ?? null);
       } catch {
-        // Reverse-geocode unavailable — chip stays generic
+        // GPS unavailable — chip stays generic
       }
     })();
-    return () => { active = false; };
+    // Sync zone pins from module-level cache every 15 s (HotZoneStrip owns fetch)
+    const syncId = setInterval(() => {
+      if (active) setMapZones([...cache.zones]);
+    }, 15_000);
+    return () => { active = false; clearInterval(syncId); };
   }, [online]);
+
+  // Pull latest zones immediately on mount (cache may already be warm)
+  useEffect(() => { setMapZones([...cache.zones]); }, []);
+
+  // Zones that have real coordinates — only rendered when driver GPS is known
+  type ZoneWithCoords = CachedZone & { lat: number; lng: number };
+  const zonePins: ZoneWithCoords[] = driverCoords !== null
+    ? (mapZones.filter((z) => z.lat !== null && z.lng !== null) as ZoneWithCoords[])
+    : [];
 
   return (
     <View
-      style={[
-        mapStyles.wrap,
-        { backgroundColor: colors.surface, borderColor: colors.border },
-      ]}
+      style={[mapStyles.wrap, { backgroundColor: colors.surface, borderColor: colors.border }]}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        setCardSize({ w: width, h: height });
+      }}
     >
-      {/* Dot-grid decorative background */}
+      {/* Dot-grid background */}
       <View style={mapStyles.dotGrid} pointerEvents="none">
         {DOT_POSITIONS.map(({ top, left }, i) => (
-          <View
-            key={i}
-            style={[mapStyles.dot, { top, left, backgroundColor: colors.border }]}
-          />
+          <View key={i} style={[mapStyles.dot, { top, left, backgroundColor: colors.border }]} />
         ))}
       </View>
 
+      {/* Concentric range rings — 5 km and 10 km */}
+      {driverCoords !== null && [5, 10].map((radiusKm) => {
+        const pxRadius = (radiusKm / MAP_VISIBLE_RADIUS_KM) * (cardSize.w / 2);
+        return (
+          <View
+            key={radiusKm}
+            pointerEvents="none"
+            style={[
+              mapStyles.rangeRing,
+              {
+                width:        pxRadius * 2,
+                height:       pxRadius * 2,
+                borderRadius: pxRadius,
+                borderColor:  colors.border,
+                left:         cardSize.w / 2 - pxRadius,
+                top:          cardSize.h / 2 - pxRadius,
+              },
+            ]}
+          />
+        );
+      })}
+
+      {/* Zone pins — real lat/lng projected onto card */}
+      {zonePins.map((z) => {
+        const { x, y } = coordsToXY(
+          driverCoords!.lat, driverCoords!.lng,
+          z.lat, z.lng,
+          cardSize.w, cardSize.h,
+        );
+        const accent = tierColor(z.orderCount);
+        return (
+          <View
+            key={z.name}
+            pointerEvents="none"
+            style={[mapStyles.zonePin, { left: x - 10, top: y - 10 }]}
+          >
+            <View style={[mapStyles.zoneDot, { backgroundColor: accent }]}>
+              <Text style={mapStyles.zoneDotCount}>{z.orderCount}</Text>
+            </View>
+            <Text
+              style={[
+                mapStyles.zonePinLabel,
+                {
+                  color:           colors.foreground,
+                  backgroundColor: colors.card + "DD",
+                  borderColor:     colors.border,
+                },
+              ]}
+              numberOfLines={1}
+            >
+              {z.name}
+            </Text>
+          </View>
+        );
+      })}
+
       {/* Driver location pin — centred */}
       <View style={mapStyles.pinWrap} pointerEvents="none">
-        <View
-          style={[
-            mapStyles.pinRing,
-            { borderColor: online ? PIN_BLUE + "55" : colors.border },
-          ]}
-        />
+        <View style={[mapStyles.pinRing, { borderColor: online ? PIN_BLUE + "55" : colors.border }]} />
         <View
           style={[
             mapStyles.pinBody,
@@ -665,39 +756,22 @@ export default function LiveMap({ online }: { online: boolean }) {
             },
           ]}
         >
-          <View
-            style={[
-              mapStyles.pinCore,
-              { backgroundColor: online ? "#fff" : colors.mutedForeground },
-            ]}
-          />
+          <View style={[mapStyles.pinCore, { backgroundColor: online ? "#fff" : colors.mutedForeground }]} />
         </View>
       </View>
 
       {/* Location chip — bottom-left */}
-      <View
-        style={[
-          mapStyles.locChip,
-          { backgroundColor: colors.card, borderColor: colors.border },
-        ]}
-      >
-        <Feather
-          name="map-pin"
-          size={11}
-          color={online ? PIN_BLUE : colors.mutedForeground}
-        />
+      <View style={[mapStyles.locChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <Feather name="map-pin" size={11} color={online ? PIN_BLUE : colors.mutedForeground} />
         <Text
-          style={[
-            mapStyles.locText,
-            { color: online ? colors.foreground : colors.mutedForeground },
-          ]}
+          style={[mapStyles.locText, { color: online ? colors.foreground : colors.mutedForeground }]}
           numberOfLines={1}
         >
           {online ? (locationLabel ?? "Locating…") : "Offline"}
         </Text>
       </View>
 
-      {/* Live pill — top-right (online only) */}
+      {/* Live pill — top-right */}
       {online && (
         <View style={[mapStyles.livePill, { backgroundColor: colors.successSoft }]}>
           <View style={[mapStyles.liveDot, { backgroundColor: colors.success }]} />
@@ -705,9 +779,11 @@ export default function LiveMap({ online }: { online: boolean }) {
         </View>
       )}
 
-      {/* Status note — bottom-right */}
+      {/* Bottom-right context note */}
       <Text style={[mapStyles.noMapNote, { color: colors.mutedForeground }]}>
-        {online ? "Scanning nearby orders…" : "Go online to see nearby orders"}
+        {zonePins.length > 0
+          ? "Tap Navigate for directions"
+          : online ? "Scanning nearby orders…" : "Go online to see nearby orders"}
       </Text>
     </View>
   );
@@ -818,7 +894,7 @@ const strip = StyleSheet.create({
 
 const mapStyles = StyleSheet.create({
   wrap: {
-    height:         180,
+    height:         190,
     borderRadius:   12,
     overflow:       "hidden",
     borderWidth:    StyleSheet.hairlineWidth,
@@ -834,6 +910,38 @@ const mapStyles = StyleSheet.create({
     height:       3,
     borderRadius: 1.5,
     opacity:      0.45,
+  },
+  rangeRing: {
+    position:    "absolute",
+    borderWidth: StyleSheet.hairlineWidth,
+    opacity:     0.5,
+  },
+  zonePin: {
+    position:   "absolute",
+    alignItems: "center",
+  },
+  zoneDot: {
+    width:          20,
+    height:         20,
+    borderRadius:   10,
+    alignItems:     "center",
+    justifyContent: "center",
+  },
+  zoneDotCount: {
+    fontSize:   9,
+    fontWeight: "800",
+    color:      "#fff",
+  },
+  zonePinLabel: {
+    fontSize:          8,
+    fontWeight:        "600",
+    marginTop:         2,
+    paddingHorizontal: 4,
+    paddingVertical:   1,
+    borderRadius:      4,
+    borderWidth:       StyleSheet.hairlineWidth,
+    maxWidth:          72,
+    textAlign:         "center",
   },
   pinWrap: { alignItems: "center", justifyContent: "center" },
   pinRing: {
