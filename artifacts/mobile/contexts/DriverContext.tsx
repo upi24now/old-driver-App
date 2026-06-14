@@ -652,17 +652,39 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         // This ensures the auth overlay disappears onto the dashboard (or the
         // correct onboarding step), never onto the login screen.
         if (sessionValid) {
-          // When Firestore timed out (driverDoc=null), consult the local
-          // AsyncStorage cache instead of blindly falling back to /(tabs).
-          // This prevents permission-gate bypass on slow or offline networks.
+          // When Firestore timed out or failed (driverDoc=null), verificationStatus
+          // is unknown — routing to /(tabs) would silently bypass the KYC gate.
+          //
+          // Safe fallback policy (driverDoc=null):
+          //   localVer < PERMISSION_SETUP_VERSION → /background-setup  (perms incomplete)
+          //   localVer >= PERMISSION_SETUP_VERSION → /verification-pending (KYC unknown)
+          //
+          // /verification-pending is safe for every driver category:
+          //   - Approved drivers:  see the screen briefly; Firestore resolves on
+          //                        next app open (or "Refresh status" tap) → dashboard.
+          //   - Pending drivers:   correct screen — they should be here anyway.
+          //   - New/incomplete:    rare (localVer<6 catches them above); worst case
+          //                        they see verification-pending momentarily.
+          //
+          // /(tabs) is NEVER used as a fallback — verificationStatus must be known
+          // before the dashboard is shown.
           const localVer = await localPermVerRef.current;
-          const nextRoute = driverDoc
-            ? await deriveNextRoute(driverDoc)
-            : localVer >= PERMISSION_SETUP_VERSION
-              ? "/(tabs)"
-              : "/background-setup";
-          console.log("[ROUTE_DECISION] session restore chosenRoute =", nextRoute,
-            driverDoc ? "(deriveNextRoute)" : `(Firestore timeout — localVer=${localVer})`);
+          let nextRoute: OnboardingRoute;
+          if (driverDoc) {
+            console.log("[KYC_GATE] Firestore success — running deriveNextRoute");
+            nextRoute = await deriveNextRoute(driverDoc);
+            console.log("[ROUTE_DECISION] session restore chosenRoute =", nextRoute, "(deriveNextRoute)");
+          } else {
+            if (localVer < PERMISSION_SETUP_VERSION) {
+              nextRoute = "/background-setup";
+              console.log("[FIRESTORE_TIMEOUT_SAFE_ROUTE] perm setup incomplete — localVer =", localVer, "→ /background-setup");
+            } else {
+              nextRoute = "/verification-pending";
+              console.log("[KYC_GATE] Firestore timeout — verificationStatus unknown; blocking at /verification-pending");
+              console.log("[FIRESTORE_TIMEOUT_SAFE_ROUTE] localVer =", localVer, "→ /verification-pending (KYC unknown, not /(tabs))");
+            }
+            console.log("[ROUTE_DECISION] session restore chosenRoute =", nextRoute, `(Firestore timeout — localVer=${localVer})`);
+          }
           router.replace(nextRoute as never);
           console.log("[AUTH_RESTORE] setAuthLoading false (session restore complete)");
           setAuthLoading(false);
