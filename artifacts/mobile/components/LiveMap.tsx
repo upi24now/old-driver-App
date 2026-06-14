@@ -1,503 +1,680 @@
+// artifacts/mobile/components/LiveMap.tsx
+//
+// Nearby Hot Zones — real orders grouped by pickup locality.
+//
+// LiveMap (default export): clean light card with driver GPS status indicator.
+// HotZoneStrip (named export): fetches live Firestore orders + driver GPS,
+//   applies Haversine filtering (10 km radius), groups by pickup area, renders chips.
+//
+// No fake hardcoded zones. No dark SVG map. No demo order counts.
+
 import { Feather } from "@expo/vector-icons";
-import { Fragment, useEffect, useRef } from "react";
+import * as Location from "expo-location";
+import { collection, getDocs, limit, query, where } from "firebase/firestore";
+import { useEffect, useState } from "react";
 import {
-  Animated,
-  Easing,
-  Linking,
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
-import Svg, {
-  Circle,
-  Defs,
-  Path,
-  RadialGradient,
-  Rect,
-  Stop,
-  Text as SvgText,
-} from "react-native-svg";
 
-// ─── Night-map colour constants ───────────────────────────────────────────────
-// Map illustration values — intentionally outside the semantic token system.
-// Do not replace with useColors() tokens.
-const MAP_BG      = "#181e2e";
-const MAP_ROAD    = "#252e45";
-const MAP_ROAD_HI = "#3d7aed";
-const MAP_PARK    = "#1b2d1e";
-const MAP_WATER   = "#141d2e";
-const MAP_BLOCK   = "#222840";
-const PIN_BLUE    = "#4A9EFF";
-const CTRL_BG     = "rgba(18,22,38,0.92)";
-const CTRL_BORDER = "rgba(255,255,255,0.10)";
+import { db } from "@/utils/firebase";
+import { useColors } from "@/hooks/useColors";
 
-// ─── Hot zone data ────────────────────────────────────────────────────────────
-// Zone x/y are in SVG viewBox coords (0–400 × 0–220).
-// With xMidYMid slice + mapWrap height 260, the visible SVG x range is
-// approximately 42–358. All zones and their labels must stay within that band.
-type Tier = "very_high" | "high" | "medium" | "low";
+// ─── Visual constants ─────────────────────────────────────────────────────────
+// Driver-pin blue — same universal convention used across the maps layer.
+// Intentionally outside the semantic token system (visual encoding constant).
+const PIN_BLUE = "#4A9EFF";
 
-type HotZone = {
-  label:  string;
-  orders: number;
-  tier:   Tier;
-  x:      number;
-  y:      number;
-  r:      number;  // outer gradient radius
-  lat:    number;
-  lng:    number;
-};
+// Tier colour encoding — visual signal, not a theme token.
+const TIER_VERY_HIGH = "#FF3B30";
+const TIER_HIGH      = "#FF9500";
+const TIER_MEDIUM    = "#FFCC00";
+const TIER_LOW       = "#34C759";
 
-export const TIER_COLOR: Record<Tier, string> = {
-  very_high: "#FF3B30",
-  high:      "#FF9500",
-  medium:    "#FFCC00",
-  low:       "#34C759",
-};
-
-// Positions chosen to stay within the clipped-visible x range (≈ 48–352).
-// Label text extends ±35 SVG units from cx, so cx must stay in 83–317.
-const HOT_ZONES: HotZone[] = [
-  { label: "Railway Station", orders: 18, tier: "very_high", x: 115, y: 80,  r: 30, lat: 12.9774, lng: 77.5710 },
-  { label: "Bus Stand",       orders: 12, tier: "high",      x: 285, y: 88,  r: 26, lat: 12.9815, lng: 77.5993 },
-  { label: "Market Area",     orders:  6, tier: "medium",    x: 200, y: 148, r: 24, lat: 12.9611, lng: 77.5760 },
-  { label: "Hospital Zone",   orders:  4, tier: "low",       x: 290, y: 160, r: 20, lat: 12.9256, lng: 77.6759 },
-];
-
-// ─── HotZoneStrip — premium tappable two-line chips ──────────────────────────
-function openNav(lat: number, lng: number) {
-  Linking.openURL(
-    `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,
-  );
+function tierColor(orderCount: number): string {
+  if (orderCount >= 10) return TIER_VERY_HIGH;
+  if (orderCount >= 5)  return TIER_HIGH;
+  if (orderCount >= 2)  return TIER_MEDIUM;
+  return TIER_LOW;
 }
 
+// ─── Haversine distance formula ───────────────────────────────────────────────
+function haversineKm(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number,
+): number {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// ─── Extract pickup coordinates from a raw Firestore doc ─────────────────────
+// The OrderDoc TypeScript type carries only address strings today; customer apps
+// may also write lat/lng under several field shapes. We probe all known shapes
+// at runtime without modifying the typed schema.
+function getPickupCoords(
+  raw: Record<string, unknown>,
+): { lat: number; lng: number } | null {
+  // Shape 1: flat fields — pickupLat / pickupLng
+  if (typeof raw.pickupLat === "number" && typeof raw.pickupLng === "number") {
+    return { lat: raw.pickupLat, lng: raw.pickupLng };
+  }
+  // Shape 2: nested pickupLocation object — { lat, lng } or { latitude, longitude }
+  const loc = raw.pickupLocation;
+  if (loc && typeof loc === "object" && !Array.isArray(loc)) {
+    const l = loc as Record<string, unknown>;
+    if (typeof l.lat === "number" && typeof l.lng === "number") {
+      return { lat: l.lat, lng: l.lng };
+    }
+    if (typeof l.latitude === "number" && typeof l.longitude === "number") {
+      return { lat: l.latitude, lng: l.longitude };
+    }
+  }
+  // Shape 3: pickup field as object — { lat, lng } or { latitude, longitude }
+  const pu = raw.pickup;
+  if (pu && typeof pu === "object" && !Array.isArray(pu)) {
+    const p = pu as Record<string, unknown>;
+    if (typeof p.lat === "number" && typeof p.lng === "number") {
+      return { lat: p.lat, lng: p.lng };
+    }
+    if (typeof p.latitude === "number" && typeof p.longitude === "number") {
+      return { lat: p.latitude, lng: p.longitude };
+    }
+  }
+  return null;
+}
+
+// ─── Extract zone name from a raw Firestore doc ───────────────────────────────
+// Priority: pickupArea → pickupLocality → pickupSub → first segment of pickup
+//           string → pickupAddress first segment → pickupCity → "Nearby Zone"
+function getZoneName(raw: Record<string, unknown>): string {
+  const str = (v: unknown) =>
+    typeof v === "string" ? v.trim() : "";
+
+  if (str(raw.pickupArea))     return str(raw.pickupArea);
+  if (str(raw.pickupLocality)) return str(raw.pickupLocality);
+  if (str(raw.pickupSub))      return str(raw.pickupSub);
+
+  const pickupStr = str(raw.pickup);
+  if (pickupStr) {
+    const first = pickupStr.split(",")[0]?.trim();
+    if (first) return first;
+  }
+
+  const addrStr = str(raw.pickupAddress);
+  if (addrStr) {
+    const first = addrStr.split(",")[0]?.trim();
+    if (first) return first;
+  }
+
+  if (str(raw.pickupCity)) return str(raw.pickupCity);
+  return "Nearby Zone";
+}
+
+// ─── Zone type ────────────────────────────────────────────────────────────────
+type Zone = {
+  name:        string;
+  orderCount:  number;
+  distanceKm:  number | null;  // null when no coordinates found
+};
+
+// ─── HotZoneStrip ─────────────────────────────────────────────────────────────
+// Named export — rendered directly below LiveMap in the Ride Requests card.
 export function HotZoneStrip() {
+  const colors                = useColors();
+  const [zones, setZones]     = useState<Zone[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchZones() {
+      console.log("[HOTZONE_FETCH_START] beginning nearby hot zone fetch");
+
+      // ── 1. Driver GPS ────────────────────────────────────────────────────
+      let driverLat: number | null = null;
+      let driverLng: number | null = null;
+      try {
+        const { status } = await Location.getForegroundPermissionsAsync();
+        if (status === "granted") {
+          const pos = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          driverLat = pos.coords.latitude;
+          driverLng = pos.coords.longitude;
+          console.log(
+            "[HOTZONE_DRIVER_LOCATION] lat =",
+            driverLat.toFixed(5),
+            "lng =",
+            driverLng.toFixed(5),
+          );
+        } else {
+          console.log(
+            "[HOTZONE_DRIVER_LOCATION] permission not granted — distance filtering skipped",
+          );
+        }
+      } catch (locErr) {
+        console.log("[HOTZONE_DRIVER_LOCATION] GPS error —", String(locErr));
+      }
+
+      // ── 2. Fetch available orders ────────────────────────────────────────
+      let rawDocs: Record<string, unknown>[] = [];
+      try {
+        const q = query(
+          collection(db, "orders"),
+          where("status", "in", ["searching", "pending"]),
+          limit(60),
+        );
+        const snap = await getDocs(q);
+        rawDocs = snap.docs.map(
+          (d) => ({ id: d.id, ...d.data() } as Record<string, unknown>),
+        );
+        console.log(
+          "[HOTZONE_ORDER_FILTERED] Firestore returned",
+          rawDocs.length,
+          "candidate orders",
+        );
+      } catch (fsErr) {
+        console.log(
+          "[HOTZONE_ORDER_FILTERED] Firestore query failed —",
+          String(fsErr),
+        );
+        rawDocs = [];
+      }
+
+      if (cancelled) return;
+
+      // ── 3. Filter by distance + group by zone ───────────────────────────
+      const zoneMap = new Map<
+        string,
+        { orderCount: number; distKms: number[] }
+      >();
+
+      for (const raw of rawDocs) {
+        const coords = getPickupCoords(raw);
+
+        if (coords === null) {
+          // Per spec: orders without pickup coordinates are excluded from zones.
+          continue;
+        }
+
+        let distKm: number | null = null;
+        if (driverLat !== null && driverLng !== null) {
+          distKm = haversineKm(driverLat, driverLng, coords.lat, coords.lng);
+          console.log(
+            "[HOTZONE_DISTANCE_CALCULATED] orderId =",
+            String(raw.id),
+            "distKm =",
+            distKm.toFixed(2),
+          );
+          if (distKm > 10) continue;   // outside 10 km radius — exclude
+        }
+
+        const zoneName = getZoneName(raw);
+        const existing = zoneMap.get(zoneName);
+        if (existing) {
+          existing.orderCount += 1;
+          if (distKm !== null) existing.distKms.push(distKm);
+        } else {
+          zoneMap.set(zoneName, {
+            orderCount: 1,
+            distKms:    distKm !== null ? [distKm] : [],
+          });
+        }
+      }
+
+      // Build + sort zones: nearest first, then by order count descending
+      const result: Zone[] = [];
+      for (const [name, { orderCount, distKms }] of zoneMap) {
+        const distanceKm =
+          distKms.length > 0
+            ? distKms.reduce((a, b) => a + b, 0) / distKms.length
+            : null;
+        result.push({ name, orderCount, distanceKm });
+      }
+      result.sort((a, b) => {
+        if (a.distanceKm !== null && b.distanceKm !== null) {
+          return a.distanceKm - b.distanceKm;
+        }
+        return b.orderCount - a.orderCount;
+      });
+
+      console.log(
+        "[HOTZONE_GROUPED] zones =",
+        result.length,
+        result.map((z) => z.name).join(", ") || "(none)",
+      );
+
+      if (!cancelled) {
+        setZones(result);
+        setLoading(false);
+        if (result.length === 0) {
+          console.log(
+            "[HOTZONE_RENDER_EMPTY] no nearby orders within 10 km with coordinates",
+          );
+        } else {
+          console.log("[HOTZONE_RENDER_SUCCESS] rendering", result.length, "zones");
+        }
+      }
+    }
+
+    void fetchZones();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // ── Loading state ──────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <View style={[strip.stateRow, { borderTopColor: colors.border }]}>
+        <ActivityIndicator size="small" color={colors.mutedForeground} />
+        <Text style={[strip.stateText, { color: colors.mutedForeground }]}>
+          Finding nearby orders…
+        </Text>
+      </View>
+    );
+  }
+
+  // ── Empty state ────────────────────────────────────────────────────────────
+  if (zones.length === 0) {
+    return (
+      <View style={[strip.stateRow, { borderTopColor: colors.border }]}>
+        <Feather name="map-pin" size={15} color={colors.mutedForeground} />
+        <Text style={[strip.stateText, { color: colors.mutedForeground }]}>
+          No nearby orders right now
+        </Text>
+      </View>
+    );
+  }
+
+  // ── Zone chips ─────────────────────────────────────────────────────────────
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      style={styles.stripScroll}
-      contentContainerStyle={styles.stripContent}
+      style={strip.scroll}
+      contentContainerStyle={strip.scrollContent}
     >
-      {HOT_ZONES.map((z) => (
-        <TouchableOpacity
-          key={z.label}
-          style={styles.stripChip}
-          activeOpacity={0.72}
-          onPress={() => openNav(z.lat, z.lng)}
-        >
-          {/* coloured left accent bar */}
-          <View style={[styles.stripBar, { backgroundColor: TIER_COLOR[z.tier] }]} />
-          <View style={styles.stripBody}>
-            <Text style={styles.stripName} numberOfLines={1}>{z.label}</Text>
-            <Text style={[styles.stripOrders, { color: TIER_COLOR[z.tier] }]}>
-              {z.orders} Orders
-            </Text>
+      {zones.map((z) => {
+        const accent = tierColor(z.orderCount);
+        return (
+          <View
+            key={z.name}
+            style={[
+              strip.chip,
+              {
+                backgroundColor: colors.surface,
+                borderColor:     colors.border,
+              },
+            ]}
+          >
+            {/* Coloured left accent bar — heat tier indicator */}
+            <View style={[strip.accentBar, { backgroundColor: accent }]} />
+            <View style={strip.chipBody}>
+              <Text
+                style={[strip.chipName, { color: colors.foreground }]}
+                numberOfLines={1}
+              >
+                {z.name}
+              </Text>
+              <Text style={[strip.chipOrders, { color: accent }]}>
+                {z.orderCount} {z.orderCount === 1 ? "Order" : "Orders"}
+              </Text>
+              {z.distanceKm !== null && (
+                <Text style={[strip.chipDist, { color: colors.mutedForeground }]}>
+                  {z.distanceKm < 1
+                    ? `${Math.round(z.distanceKm * 1000)} m`
+                    : `${z.distanceKm.toFixed(1)} km`}{" "}
+                  away
+                </Text>
+              )}
+            </View>
           </View>
-        </TouchableOpacity>
-      ))}
+        );
+      })}
     </ScrollView>
   );
 }
 
-// ─── LiveMap ──────────────────────────────────────────────────────────────────
+// ─── LiveMap — default export ──────────────────────────────────────────────────
+// Replaces the fake dark SVG map with a clean light card.
+// Shows the driver's current GPS area (reverse-geocoded city/district) and an
+// online/offline status indicator. No hardcoded city names or fake zones.
 export default function LiveMap({ online }: { online: boolean }) {
-  // Primary pulse ring
-  const pulse1 = useRef(new Animated.Value(0)).current;
-  // Secondary pulse ring — staggered 700 ms behind
-  const pulse2 = useRef(new Animated.Value(0)).current;
+  const colors                      = useColors();
+  const [locationLabel, setLabel]   = useState<string | null>(null);
 
   useEffect(() => {
     if (!online) {
-      pulse1.setValue(0);
-      pulse2.setValue(0);
+      setLabel(null);
       return;
     }
-
-    const loop1 = Animated.loop(
-      Animated.timing(pulse1, {
-        toValue:         1,
-        duration:        1800,
-        easing:          Easing.out(Easing.quad),
-        useNativeDriver: true,
-      }),
-    );
-
-    const loop2 = Animated.loop(
-      Animated.sequence([
-        Animated.delay(700),
-        Animated.timing(pulse2, {
-          toValue:         1,
-          duration:        1800,
-          easing:          Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-
-    loop1.start();
-    loop2.start();
+    let active = true;
+    void (async () => {
+      try {
+        const { status } = await Location.getForegroundPermissionsAsync();
+        if (status !== "granted" || !active) return;
+        const pos = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        if (!active) return;
+        const rev = await Location.reverseGeocodeAsync({
+          latitude:  pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        });
+        if (!active) return;
+        const r = rev[0];
+        if (r) {
+          const label =
+            r.district ??
+            r.subregion ??
+            r.city ??
+            r.region ??
+            null;
+          setLabel(label);
+        }
+      } catch {
+        // Reverse-geocode unavailable — location chip stays generic
+      }
+    })();
     return () => {
-      loop1.stop();
-      loop2.stop();
+      active = false;
     };
-  }, [online, pulse1, pulse2]);
+  }, [online]);
 
   return (
-    <View style={styles.mapWrap}>
-
-      {/* ── Night-style SVG map ──────────────────────────────────────────── */}
-      <Svg
-        width="100%"
-        height="100%"
-        viewBox="0 0 400 220"
-        preserveAspectRatio="xMidYMid slice"
-      >
-        {/* ── Gradient definitions for heat zones ──────────────────────── */}
-        <Defs>
-          {HOT_ZONES.map((z, i) => (
-            <RadialGradient
-              key={z.label}
-              id={`hz_rg_${i}`}
-              cx="50%"
-              cy="50%"
-              r="50%"
-            >
-              <Stop offset="0%"   stopColor={TIER_COLOR[z.tier]} stopOpacity="0.78" />
-              <Stop offset="30%"  stopColor={TIER_COLOR[z.tier]} stopOpacity="0.50" />
-              <Stop offset="60%"  stopColor={TIER_COLOR[z.tier]} stopOpacity="0.20" />
-              <Stop offset="85%"  stopColor={TIER_COLOR[z.tier]} stopOpacity="0.06" />
-              <Stop offset="100%" stopColor={TIER_COLOR[z.tier]} stopOpacity="0"    />
-            </RadialGradient>
-          ))}
-          {/* Blue driver-pin glow gradient */}
-          <RadialGradient id="hz_pin_glow" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%"   stopColor={PIN_BLUE} stopOpacity="0.55" />
-            <Stop offset="100%" stopColor={PIN_BLUE} stopOpacity="0"    />
-          </RadialGradient>
-        </Defs>
-
-        {/* Background */}
-        <Rect x="0" y="0" width="400" height="220" fill={MAP_BG} />
-
-        {/* Parks */}
-        <Rect x="20"  y="20"  width="80" height="50" rx="6" fill={MAP_PARK} />
-        <Rect x="300" y="140" width="90" height="60" rx="6" fill={MAP_PARK} />
-
-        {/* Water */}
-        <Path
-          d="M0,180 Q80,160 160,180 T320,180 L400,180 L400,220 L0,220 Z"
-          fill={MAP_WATER}
-        />
-
-        {/* Building blocks */}
-        <Rect x="120" y="30"  width="60" height="40" rx="3" fill={MAP_BLOCK} />
-        <Rect x="200" y="20"  width="80" height="50" rx="3" fill={MAP_BLOCK} />
-        <Rect x="120" y="90"  width="60" height="40" rx="3" fill={MAP_BLOCK} />
-        <Rect x="200" y="90"  width="80" height="40" rx="3" fill={MAP_BLOCK} />
-        <Rect x="20"  y="90"  width="80" height="40" rx="3" fill={MAP_BLOCK} />
-        <Rect x="300" y="30"  width="80" height="90" rx="3" fill={MAP_BLOCK} />
-
-        {/* Roads */}
-        <Rect x="0"   y="75"  width="400" height="8"   fill={MAP_ROAD} />
-        <Rect x="0"   y="135" width="400" height="8"   fill={MAP_ROAD} />
-        <Rect x="105" y="0"   width="8"   height="180" fill={MAP_ROAD} />
-        <Rect x="185" y="0"   width="8"   height="180" fill={MAP_ROAD} />
-        <Rect x="285" y="0"   width="8"   height="180" fill={MAP_ROAD} />
-
-        {/* Highlighted main road — blue when online, muted when offline */}
-        <Rect
-          x="0" y="78" width="400" height="2"
-          fill={MAP_ROAD_HI}
-          opacity={online ? 0.85 : 0.30}
-        />
-
-        {/* ── Heat zone blobs (radial gradient = realistic heatmap glow) ── */}
-        {HOT_ZONES.map((z, i) => (
-          <Fragment key={z.label}>
-            {/* Soft heatmap blob — single gradient circle, no hard rings */}
-            <Circle
-              cx={z.x}
-              cy={z.y}
-              r={z.r}
-              fill={`url(#hz_rg_${i})`}
-            />
-            {/* Small bright centre dot */}
-            <Circle
-              cx={z.x}
-              cy={z.y}
-              r={z.r * 0.16}
-              fill={TIER_COLOR[z.tier]}
-              opacity={1}
-            />
-            {/* Zone name */}
-            <SvgText
-              x={z.x}
-              y={z.y + z.r + 11}
-              fontSize={8}
-              fontWeight="600"
-              fill="rgba(255,255,255,0.82)"
-              textAnchor="middle"
-            >
-              {z.label}
-            </SvgText>
-            {/* Order count */}
-            <SvgText
-              x={z.x}
-              y={z.y + z.r + 21}
-              fontSize={7}
-              fontWeight="700"
-              fill={TIER_COLOR[z.tier]}
-              textAnchor="middle"
-            >
-              {z.orders} orders
-            </SvgText>
-          </Fragment>
+    <View
+      style={[
+        mapStyles.wrap,
+        {
+          backgroundColor: colors.surface,
+          borderColor:     colors.border,
+        },
+      ]}
+    >
+      {/* Subtle dot-grid background — light, decorative */}
+      <View style={mapStyles.dotGrid} pointerEvents="none">
+        {DOT_POSITIONS.map(({ top, left }, i) => (
+          <View
+            key={i}
+            style={[
+              mapStyles.dot,
+              {
+                top,
+                left,
+                backgroundColor: colors.border,
+              },
+            ]}
+          />
         ))}
-
-        {/* Driver-pin SVG glow halo (behind the View-layer pin) */}
-        <Circle cx="200" cy="110" r="22" fill="url(#hz_pin_glow)" />
-
-      </Svg>
-
-      {/* ── Driver location pin — dominant visual element ─────────────── */}
-      <View style={styles.mapPinWrap} pointerEvents="none">
-        {/* Outer pulse ring */}
-        {online && (
-          <Animated.View
-            style={[
-              styles.mapPulseRing,
-              {
-                borderColor: PIN_BLUE,
-                opacity: pulse1.interpolate({
-                  inputRange:  [0, 1],
-                  outputRange: [0.60, 0],
-                }),
-                transform: [{
-                  scale: pulse1.interpolate({
-                    inputRange:  [0, 1],
-                    outputRange: [0.55, 3.2],
-                  }),
-                }],
-              },
-            ]}
-          />
-        )}
-        {/* Staggered inner pulse ring */}
-        {online && (
-          <Animated.View
-            style={[
-              styles.mapPulseRing,
-              {
-                borderColor: PIN_BLUE,
-                opacity: pulse2.interpolate({
-                  inputRange:  [0, 1],
-                  outputRange: [0.45, 0],
-                }),
-                transform: [{
-                  scale: pulse2.interpolate({
-                    inputRange:  [0, 1],
-                    outputRange: [0.55, 2.2],
-                  }),
-                }],
-              },
-            ]}
-          />
-        )}
-        {/* Pin body */}
-        <View style={[
-          styles.mapPin,
-          { backgroundColor: online ? PIN_BLUE : "#3a4058" },
-        ]}>
-          <View style={styles.mapPinInner} />
-        </View>
       </View>
 
-      {/* ── Zoom controls — dark glass ────────────────────────────────── */}
-      <View style={styles.mapZoom}>
-        <View style={styles.mapZoomBtn}>
-          <Feather name="plus"  size={14} color="rgba(255,255,255,0.82)" />
-        </View>
-        <View style={[styles.mapZoomBtn, styles.mapZoomBtnBorder]}>
-          <Feather name="minus" size={14} color="rgba(255,255,255,0.82)" />
-        </View>
-      </View>
-
-      {/* ── Locate button — dark glass ────────────────────────────────── */}
-      <View style={styles.mapLocate}>
-        <Feather
-          name="navigation"
-          size={14}
-          color={online ? PIN_BLUE : "rgba(255,255,255,0.40)"}
+      {/* ── Driver location pin — centered ─────────────────────────────── */}
+      <View style={mapStyles.pinWrap} pointerEvents="none">
+        {/* Outer ring */}
+        <View
+          style={[
+            mapStyles.pinRing,
+            {
+              borderColor: online
+                ? PIN_BLUE + "55"
+                : colors.border,
+            },
+          ]}
         />
+        {/* Pin body */}
+        <View
+          style={[
+            mapStyles.pinBody,
+            {
+              borderColor:     online ? PIN_BLUE : colors.border,
+              backgroundColor: online ? PIN_BLUE : colors.surface,
+            },
+          ]}
+        >
+          <View
+            style={[
+              mapStyles.pinCore,
+              {
+                backgroundColor: online ? "#fff" : colors.mutedForeground,
+              },
+            ]}
+          />
+        </View>
       </View>
 
-      {/* ── Location chip — "Current Zone" avoids fake city name ─────── */}
-      <View style={styles.mapLocChip}>
+      {/* ── Location chip — bottom-left ─────────────────────────────────── */}
+      <View
+        style={[
+          mapStyles.locChip,
+          {
+            backgroundColor: colors.card,
+            borderColor:     colors.border,
+          },
+        ]}
+      >
         <Feather
           name="map-pin"
           size={11}
-          color={online ? PIN_BLUE : "rgba(255,255,255,0.38)"}
+          color={online ? PIN_BLUE : colors.mutedForeground}
         />
-        <Text style={styles.mapLocText}>Current Zone</Text>
+        <Text
+          style={[
+            mapStyles.locText,
+            { color: online ? colors.foreground : colors.mutedForeground },
+          ]}
+          numberOfLines={1}
+        >
+          {online
+            ? (locationLabel ?? "Locating…")
+            : "Offline"}
+        </Text>
       </View>
 
+      {/* ── Live pill — top-right (only when online) ────────────────────── */}
+      {online && (
+        <View
+          style={[mapStyles.livePill, { backgroundColor: colors.successSoft }]}
+        >
+          <View
+            style={[mapStyles.liveDot, { backgroundColor: colors.success }]}
+          />
+          <Text style={[mapStyles.liveText, { color: colors.success }]}>
+            Live
+          </Text>
+        </View>
+      )}
+
+      {/* ── "No map SDK" label — center-bottom ─────────────────────────── */}
+      <Text style={[mapStyles.noMapNote, { color: colors.mutedForeground }]}>
+        {online ? "Scanning nearby orders…" : "Go online to see nearby orders"}
+      </Text>
     </View>
   );
 }
 
+// ─── Dot-grid positions for the light map background ─────────────────────────
+// Pre-computed so they don't recalculate on every render.
+const DOT_POSITIONS: Array<{ top: number; left: number }> = (() => {
+  const rows   = 8;
+  const cols   = 12;
+  const height = 180;
+  const width  = 400;   // approximate card width
+  const pts: Array<{ top: number; left: number }> = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      pts.push({
+        top:  Math.round((r / (rows - 1)) * height),
+        left: Math.round((c / (cols - 1)) * width),
+      });
+    }
+  }
+  return pts;
+})();
+
 // ─── Styles ───────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
-
-  // ── Map container ──────────────────────────────────────────────────────────
-  mapWrap: {
-    height:          260,
-    borderRadius:    12,
-    overflow:        "hidden",
-    backgroundColor: MAP_BG,
-    position:        "relative",
-    marginTop:       4,
-  },
-
-  // ── Driver pin — larger and more prominent than heat zones ─────────────────
-  mapPinWrap: {
-    position:       "absolute",
-    top:            "50%" as unknown as number,
-    left:           "50%" as unknown as number,
-    marginLeft:     -14,   // half of 28px pin
-    marginTop:      -14,
-    alignItems:     "center",
-    justifyContent: "center",
-  },
-  mapPulseRing: {
-    position:     "absolute",
-    width:        28,
-    height:       28,
-    borderRadius: 14,
-    borderWidth:  2,
-  },
-  mapPin: {
-    width:        28,
-    height:       28,
-    borderRadius: 14,
-    borderWidth:  3,
-    borderColor:  "rgba(255,255,255,0.95)",
-    alignItems:   "center",
-    justifyContent: "center",
-    // iOS shadow
-    shadowColor:   PIN_BLUE,
-    shadowOffset:  { width: 0, height: 0 },
-    shadowOpacity: 0.90,
-    shadowRadius:  10,
-    // Android elevation
-    elevation:     8,
-  },
-  mapPinInner: {
-    width:           8,
-    height:          8,
-    borderRadius:    4,
-    backgroundColor: "#ffffff",
-  },
-
-  // ── Zoom controls ──────────────────────────────────────────────────────────
-  mapZoom: {
-    position:        "absolute",
-    right:           10,
-    top:             10,
-    backgroundColor: CTRL_BG,
-    borderRadius:    7,
-    borderWidth:     1,
-    borderColor:     CTRL_BORDER,
-    overflow:        "hidden",
-  },
-  mapZoomBtn: {
-    width:          30,
-    height:         30,
-    alignItems:     "center",
-    justifyContent: "center",
-  },
-  mapZoomBtnBorder: {
-    borderTopWidth: 1,
-    borderTopColor: CTRL_BORDER,
-  },
-
-  // ── Locate button ──────────────────────────────────────────────────────────
-  mapLocate: {
-    position:        "absolute",
-    right:           10,
-    bottom:          10,
-    width:           34,
-    height:          34,
-    borderRadius:    17,
-    backgroundColor: CTRL_BG,
-    borderWidth:     1,
-    borderColor:     CTRL_BORDER,
+const strip = StyleSheet.create({
+  stateRow: {
+    flexDirection:   "row",
     alignItems:      "center",
     justifyContent:  "center",
+    paddingVertical: 18,
+    borderTopWidth:  StyleSheet.hairlineWidth,
+    marginTop:       12,
+    gap:             8,
   },
+  stateText: {
+    fontSize:   13,
+    fontWeight: "500",
+  },
+  scroll: {
+    marginTop: 12,
+  },
+  scrollContent: {
+    paddingHorizontal: 2,
+    paddingBottom:     2,
+    gap:               8,
+    flexDirection:     "row",
+  },
+  chip: {
+    flexDirection: "row",
+    alignItems:    "stretch",
+    width:         130,
+    borderRadius:  10,
+    borderWidth:   1,
+    overflow:      "hidden",
+  },
+  accentBar: {
+    width: 3,
+  },
+  chipBody: {
+    flex:              1,
+    paddingHorizontal: 10,
+    paddingVertical:   8,
+    gap:               2,
+  },
+  chipName: {
+    fontSize:      12,
+    fontWeight:    "600",
+    letterSpacing: 0.1,
+  },
+  chipOrders: {
+    fontSize:   11,
+    fontWeight: "700",
+  },
+  chipDist: {
+    fontSize:   10,
+    fontWeight: "500",
+    marginTop:  1,
+  },
+});
 
-  // ── Location chip ──────────────────────────────────────────────────────────
-  mapLocChip: {
+const mapStyles = StyleSheet.create({
+  wrap: {
+    height:       180,
+    borderRadius: 12,
+    overflow:     "hidden",
+    borderWidth:  StyleSheet.hairlineWidth,
+    marginTop:    4,
+    position:     "relative",
+    alignItems:   "center",
+    justifyContent: "center",
+  },
+  dotGrid: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  dot: {
+    position:     "absolute",
+    width:        3,
+    height:       3,
+    borderRadius: 1.5,
+    opacity:      0.5,
+  },
+  pinWrap: {
+    alignItems:     "center",
+    justifyContent: "center",
+  },
+  pinRing: {
+    position:     "absolute",
+    width:        42,
+    height:       42,
+    borderRadius: 21,
+    borderWidth:  1.5,
+  },
+  pinBody: {
+    width:          26,
+    height:         26,
+    borderRadius:   13,
+    borderWidth:    2.5,
+    alignItems:     "center",
+    justifyContent: "center",
+    // iOS shadow
+    shadowColor:    PIN_BLUE,
+    shadowOffset:   { width: 0, height: 0 },
+    shadowOpacity:  0.45,
+    shadowRadius:   8,
+    // Android
+    elevation:      5,
+  },
+  pinCore: {
+    width:        8,
+    height:       8,
+    borderRadius: 4,
+  },
+  locChip: {
     position:          "absolute",
     left:              10,
     bottom:            10,
     flexDirection:     "row",
     alignItems:        "center",
     gap:               5,
-    backgroundColor:   CTRL_BG,
     borderWidth:       1,
-    borderColor:       CTRL_BORDER,
     paddingHorizontal: 9,
-    paddingVertical:   6,
+    paddingVertical:   5,
     borderRadius:      16,
+    maxWidth:          "55%",
   },
-  mapLocText: {
-    fontSize:   11,
-    color:      "rgba(255,255,255,0.88)",
-    fontWeight: "600" as const,
-    letterSpacing: 0.2,
-  },
-
-  // ── Hot zone strip ─────────────────────────────────────────────────────────
-  stripScroll: {
-    marginTop: 12,
-  },
-  stripContent: {
-    paddingHorizontal: 2,
-    paddingBottom:     2,
-    gap:               8,
-    flexDirection:     "row",
-  },
-  stripChip: {
-    flexDirection:   "row",
-    alignItems:      "stretch",
-    width:           120,
-    backgroundColor: "rgba(18,22,38,0.92)",
-    borderRadius:    10,
-    borderWidth:     1,
-    borderColor:     "rgba(255,255,255,0.09)",
-    overflow:        "hidden",
-  },
-  stripBar: {
-    width: 3,
-  },
-  stripBody: {
-    flex:              1,
-    paddingHorizontal: 10,
-    paddingVertical:   6,
-    gap:               2,
-  },
-  stripName: {
-    fontSize:      12,
-    color:         "rgba(255,255,255,0.93)",
-    fontWeight:    "600" as const,
+  locText: {
+    fontSize:      11,
+    fontWeight:    "600",
     letterSpacing: 0.1,
   },
-  stripOrders: {
-    fontSize:   11,
-    fontWeight: "700" as const,
+  livePill: {
+    position:          "absolute",
+    right:             10,
+    top:               10,
+    flexDirection:     "row",
+    alignItems:        "center",
+    gap:               5,
+    paddingHorizontal: 8,
+    paddingVertical:   4,
+    borderRadius:      12,
   },
-
+  liveDot: {
+    width:        6,
+    height:       6,
+    borderRadius: 3,
+  },
+  liveText: {
+    fontSize:   11,
+    fontWeight: "700",
+  },
+  noMapNote: {
+    position:   "absolute",
+    bottom:     10,
+    right:      10,
+    fontSize:   10,
+    fontWeight: "500",
+  },
 });
