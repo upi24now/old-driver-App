@@ -20,6 +20,7 @@ import { collection, getDocs, limit, query, where } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -61,6 +62,8 @@ interface CachedZone {
   name:        string;
   orderCount:  number;
   distanceKm:  number | null;
+  lat:         number | null;  // average pickup lat across orders in this zone
+  lng:         number | null;  // average pickup lng across orders in this zone
 }
 
 const cache: {
@@ -216,7 +219,7 @@ async function fetchZones(reason: string): Promise<CachedZone[]> {
 
   // ── 3. Filter + group: stale → no-coords → too-far → zone map ───────────
   const cutoffMs = Date.now() - STALE_ORDER_MS;   // 30 minutes ago
-  const zoneMap  = new Map<string, { orderCount: number; distKms: number[] }>();
+  const zoneMap  = new Map<string, { orderCount: number; distKms: number[]; lats: number[]; lngs: number[] }>();
 
   let skippedOld      = 0;
   let skippedNoCoords = 0;
@@ -253,18 +256,25 @@ async function fetchZones(reason: string): Promise<CachedZone[]> {
     if (existing) {
       existing.orderCount += 1;
       if (distKm !== null) existing.distKms.push(distKm);
+      existing.lats.push(coords.lat);
+      existing.lngs.push(coords.lng);
     } else {
-      zoneMap.set(zoneName, { orderCount: 1, distKms: distKm !== null ? [distKm] : [] });
+      zoneMap.set(zoneName, {
+        orderCount: 1,
+        distKms:    distKm !== null ? [distKm] : [],
+        lats:       [coords.lat],
+        lngs:       [coords.lng],
+      });
     }
   }
 
   // ── 4. Build sorted zones ──────────────────────────────────────────────────
   const result: CachedZone[] = [];
-  for (const [name, { orderCount, distKms }] of zoneMap) {
-    const avg = distKms.length > 0
-      ? distKms.reduce((a, b) => a + b, 0) / distKms.length
-      : null;
-    result.push({ name, orderCount, distanceKm: avg });
+  for (const [name, { orderCount, distKms, lats, lngs }] of zoneMap) {
+    const avg    = distKms.length > 0 ? distKms.reduce((a, b) => a + b, 0) / distKms.length : null;
+    const avgLat = lats.length > 0    ? lats.reduce((a: number, b: number) => a + b, 0) / lats.length : null;
+    const avgLng = lngs.length > 0    ? lngs.reduce((a: number, b: number) => a + b, 0) / lngs.length : null;
+    result.push({ name, orderCount, distanceKm: avg, lat: avgLat, lng: avgLng });
   }
   result.sort((a, b) => {
     if (a.distanceKm !== null && b.distanceKm !== null) return a.distanceKm - b.distanceKm;
@@ -301,6 +311,44 @@ async function fetchZones(reason: string): Promise<CachedZone[]> {
   console.log("[HOTZONE_LAST_UPDATED] at", new Date(cache.fetchedAt).toLocaleTimeString());
 
   return result;
+}
+
+// ─── Google Maps navigation ───────────────────────────────────────────────────
+// Opens Google Maps native app (google.navigation deep link) if installed,
+// otherwise falls back to browser directions URL.
+async function navigateToZone(zone: CachedZone): Promise<void> {
+  if (zone.lat === null || zone.lng === null) {
+    console.log("[NAVIGATE_HOTZONE_FAIL] no coordinates for zone:", zone.name);
+    return;
+  }
+
+  console.log(
+    "[NAVIGATE_HOTZONE_START]",
+    "zone =", zone.name,
+    "lat =", zone.lat.toFixed(5),
+    "lng =", zone.lng.toFixed(5),
+  );
+
+  const googleMapsDeepLink = `google.navigation:q=${zone.lat},${zone.lng}&mode=d`;
+  const webFallbackUrl     = `https://www.google.com/maps/dir/?api=1&destination=${zone.lat},${zone.lng}&travelmode=driving`;
+
+  try {
+    const canOpen = await Linking.canOpenURL(googleMapsDeepLink);
+    if (canOpen) {
+      console.log("[NAVIGATE_HOTZONE_GOOGLE_MAPS] opening native Google Maps for zone:", zone.name);
+      await Linking.openURL(googleMapsDeepLink);
+    } else {
+      console.log("[NAVIGATE_HOTZONE_WEB_FALLBACK] Google Maps not installed — opening browser for zone:", zone.name);
+      await Linking.openURL(webFallbackUrl);
+    }
+  } catch (err) {
+    console.log("[NAVIGATE_HOTZONE_FAIL] deep link failed for zone:", zone.name, "—", String(err));
+    try {
+      await Linking.openURL(webFallbackUrl);
+    } catch {
+      // Web fallback also failed — nothing more we can do
+    }
+  }
 }
 
 // ─── HotZoneStrip ─────────────────────────────────────────────────────────────
@@ -531,6 +579,17 @@ export function HotZoneStrip({ online }: { online: boolean }) {
                       : `${z.distanceKm.toFixed(1)} km away`}
                   </Text>
                 )}
+                {z.lat !== null && z.lng !== null && (
+                  <TouchableOpacity
+                    onPress={() => { void navigateToZone(z); }}
+                    activeOpacity={0.7}
+                    style={[strip.navBtn, { backgroundColor: accent + "22", borderColor: accent + "55" }]}
+                    hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                  >
+                    <Feather name="navigation" size={9} color={accent} />
+                    <Text style={[strip.navBtnText, { color: accent }]}>Navigate</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           );
@@ -738,6 +797,22 @@ const strip = StyleSheet.create({
     fontSize:   10,
     fontWeight: "500",
     marginTop:  1,
+  },
+  navBtn: {
+    flexDirection:     "row",
+    alignItems:        "center",
+    gap:               3,
+    marginTop:         5,
+    paddingHorizontal: 7,
+    paddingVertical:   3,
+    borderRadius:      6,
+    borderWidth:       1,
+    alignSelf:         "flex-start",
+  },
+  navBtnText: {
+    fontSize:   9,
+    fontWeight: "700",
+    letterSpacing: 0.2,
   },
 });
 
