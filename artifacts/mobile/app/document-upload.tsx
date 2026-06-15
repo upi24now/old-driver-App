@@ -649,13 +649,13 @@ export default function DocumentUploadScreen() {
         if (driverDoc?.documents) {
           setDocs((prev) => {
             const next = { ...prev };
-            const stored = driverDoc.documents as Record<string, { uri?: string | null; status?: string | null } | undefined>;
+            const stored = driverDoc.documents as Record<string, { url?: string | null; uri?: string | null; status?: string | null } | undefined>;
             for (const d of DOCS) {
               const entry = stored[d.id];
               if (entry) {
                 next[d.id] = {
                   ...blankDoc(),
-                  uri:         entry.uri    ?? null,
+                  uri:         entry.url ?? entry.uri ?? null,
                   status:      (entry.status as RawDocStatus) ?? null,
                   // freshUpload stays false — driver must re-pick in this session
                   // if the doc was rejected, to prove they have the new file.

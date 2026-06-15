@@ -7,10 +7,11 @@
  * Upload endpoint : https://<EXPO_PUBLIC_UPLOAD_DOMAIN>/api/kyc/upload
  * Auth            : Firebase ID token in Authorization: Bearer header
  *
- * The server saves the file to disk and returns:
- *   { ok: true, url: "https://api.bikecourierservice.com/api/uploads/kyc/<uid>/<docId>.jpg" }
+ * The server saves the file to VPS local disk (no Firebase Storage) and returns:
+ *   { ok: true, url: "https://api.bikecourierservice.com/uploads/kyc/<uid>/<documentType>.jpg" }
  *
- * That URL is stored in Firestore by submitDriverDocuments() in firestore.ts.
+ * That URL is stored in Firestore (documents.{documentType}.url) by
+ * submitDriverDocuments() in firestore.ts.
  */
 
 import * as FileSystem from "expo-file-system/legacy";

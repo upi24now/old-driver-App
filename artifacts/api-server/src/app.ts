@@ -38,12 +38,16 @@ app.use("/api", router);
  * Called from index.ts AFTER dotenv has been loaded so that
  * process.env["UPLOADS_DIR"] is already populated before this runs.
  *
- * Files are served at /api/uploads/kyc/<uid>/<docId>.jpg
- * Mounted under /api so the Replit proxy (which only exposes /api) can serve them.
+ * Files are served at /uploads/kyc/<uid>/<documentType>.jpg
+ * which maps to <UPLOADS_DIR>/kyc/<uid>/<documentType>.jpg on disk.
+ *
+ * On the VPS, Nginx (or the process itself) routes /uploads/* to Express.
+ * In Replit dev, use /api/kyc/upload for uploading; static serving of
+ * /uploads/* requires direct VPS access or a proxy rule for local testing.
  */
 export function initStaticUploads(uploadsDir: string): void {
   fs.mkdirSync(uploadsDir, { recursive: true });
-  app.use("/api/uploads", express.static(uploadsDir, {
+  app.use("/uploads", express.static(uploadsDir, {
     index:  false,   // no directory listings
     maxAge: "7d",
   }));

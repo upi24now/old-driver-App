@@ -24,7 +24,15 @@ import type { FieldValue } from "firebase-admin/firestore";
 
 const router = Router();
 
-const DOC_IDS = ["selfie", "aadhaar", "pan", "license", "rc", "insurance"] as const;
+const DOC_IDS = [
+  "selfie",
+  "aadhaarFront", "aadhaarBack",
+  "pan",
+  "licenseFront", "licenseBack",
+  "rcFront",      "rcBack",
+  // legacy aliases — present in docs submitted before the v2 field rename
+  "aadhaar", "license", "rc", "insurance",
+] as const;
 
 // ─── Auth middleware ──────────────────────────────────────────────────────────
 
@@ -147,7 +155,7 @@ router.post("/kyc/:uid/approve", requireAdminKey, async (req, res) => {
     }
 
     const data = snap.data() ?? {};
-    const existing = (data["documents"] ?? {}) as Record<string, { uri?: string | null; status?: string | null }>;
+    const existing = (data["documents"] ?? {}) as Record<string, { url?: string | null; uri?: string | null; status?: string | null }>;
 
     const updates: Record<string, string | FieldValue> = {
       verificationStatus: "approved",
@@ -155,7 +163,8 @@ router.post("/kyc/:uid/approve", requireAdminKey, async (req, res) => {
 
     for (const docId of DOC_IDS) {
       const entry = existing[docId];
-      if (entry && entry.uri) {
+      // Accept both `url` (v2) and legacy `uri` field
+      if (entry && (entry.url ?? entry.uri)) {
         updates[`documents.${docId}.status`] = "approved";
       }
     }
@@ -202,7 +211,7 @@ router.post("/kyc/:uid/reject", requireAdminKey, async (req, res) => {
     }
 
     const data = snap.data() ?? {};
-    const existing = (data["documents"] ?? {}) as Record<string, { uri?: string | null; status?: string | null }>;
+    const existing = (data["documents"] ?? {}) as Record<string, { url?: string | null; uri?: string | null; status?: string | null }>;
 
     const updates: Record<string, string | FieldValue | null> = {
       verificationStatus: "rejected",
@@ -214,7 +223,8 @@ router.post("/kyc/:uid/reject", requireAdminKey, async (req, res) => {
 
     for (const docId of DOC_IDS) {
       const entry = existing[docId];
-      if (entry && entry.uri) {
+      // Accept both `url` (v2) and legacy `uri` field
+      if (entry && (entry.url ?? entry.uri)) {
         updates[`documents.${docId}.status`] = "rejected";
       }
     }

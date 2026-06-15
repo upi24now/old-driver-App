@@ -4,23 +4,25 @@
  * POST /api/kyc/upload
  *
  * Accepts a multipart/form-data upload from the mobile app.
- * Authenticates with a Firebase ID token, saves the file to disk,
+ * Authenticates with a Firebase ID token, saves the file to local disk,
  * and returns a publicly accessible download URL.
  *
+ * No Firebase Storage is used — files are stored on the VPS filesystem.
+ *
  * Fields (multipart):
- *   file   — image file (required)
- *   uid    — driver UID (must match the token's uid)
- *   docId  — document slot: selfie | aadhaar | pan | license | rc | insurance
+ *   file           — image file (required)
+ *   uid            — driver UID (must match the token's uid)
+ *   documentType   — one of the ALLOWED_DOC_TYPES values (required)
  *
  * Storage layout on disk:
- *   <UPLOADS_DIR>/kyc/<uid>/<docId>.jpg
+ *   <UPLOADS_DIR>/kyc/<uid>/<documentType>.jpg
  *
  * Download URL returned:
- *   <API_PUBLIC_URL>/api/uploads/kyc/<uid>/<docId>.jpg
+ *   <API_PUBLIC_URL>/uploads/kyc/<uid>/<documentType>.jpg
  *
  * Environment (read at request time, not at module init, so dotenv values work):
  *   UPLOADS_DIR    — absolute path to uploads root
- *                    (default: <bundle-dir>/../uploads)
+ *                    (default: <bundle-dir>/../uploads, pinned in index.ts)
  *   API_PUBLIC_URL — public base URL of this server
  *                    (e.g. https://api.bikecourierservice.com)
  *                    Falls back to https://<Host header> when not set.
@@ -35,11 +37,26 @@ import { adminAuth } from "../lib/firebase-admin";
 
 const router = Router();
 
-const ALLOWED_DOC_IDS = new Set(["selfie", "aadhaar", "pan", "license", "rc", "insurance"]);
+const ALLOWED_DOC_TYPES = new Set([
+  "selfie",
+  "aadhaarFront",
+  "aadhaarBack",
+  "pan",
+  "licenseFront",
+  "licenseBack",
+  "rcFront",
+  "rcBack",
+  // legacy aliases — kept for backward compatibility
+  "aadhaar",
+  "license",
+  "rc",
+  "insurance",
+]);
 
 // ─── Resolve uploads dir at request time ──────────────────────────────────────
 // Reading process.env inside the callbacks (not at module init) ensures that
-// the value loaded by dotenv in index.ts is visible here.
+// the value pinned by index.ts (process.env["UPLOADS_DIR"] = uploadsDir) is
+// visible here, regardless of module load order.
 
 function getUploadsDir(): string {
   return process.env["UPLOADS_DIR"] ?? path.join(process.cwd(), "uploads");
@@ -60,12 +77,19 @@ const diskStorage = multer.diskStorage({
   },
 
   filename(req: Request, _file, cb) {
-    const { docId } = req.body as { docId?: string };
-    if (!docId || !ALLOWED_DOC_IDS.has(docId)) {
-      cb(new Error(`Invalid docId — must be one of: ${[...ALLOWED_DOC_IDS].join(", ")}`), "");
+    const { documentType } = req.body as { documentType?: string };
+    if (!documentType || !ALLOWED_DOC_TYPES.has(documentType)) {
+      cb(
+        new Error(
+          `Invalid or missing documentType. Must be one of: ${[...ALLOWED_DOC_TYPES]
+            .filter((t) => !["aadhaar", "license", "rc", "insurance"].includes(t))
+            .join(", ")}`,
+        ),
+        "",
+      );
       return;
     }
-    cb(null, `${docId}.jpg`);
+    cb(null, `${documentType}.jpg`);
   },
 });
 
@@ -89,9 +113,10 @@ const upload = multer({
  * POST /api/kyc/upload
  *
  * multipart/form-data fields:
- *   file   — image
- *   uid    — driver UID
- *   docId  — selfie | aadhaar | pan | license | rc | insurance
+ *   file           — image
+ *   uid            — driver UID
+ *   documentType   — selfie | aadhaarFront | aadhaarBack | pan |
+ *                    licenseFront | licenseBack | rcFront | rcBack
  *
  * Headers:
  *   Authorization: Bearer <Firebase ID token>
@@ -133,7 +158,6 @@ router.post("/kyc/upload",
 
     // Decode JWT payload WITHOUT verification so we can log aud/iss/exp
     // regardless of whether verifyIdToken succeeds or fails.
-    // This confirms which Firebase project the mobile app sent the token for.
     function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
       try {
         const part = jwt.split(".")[1];
@@ -146,10 +170,10 @@ router.post("/kyc/upload",
     const jwtPayload = decodeJwtPayload(bearerToken);
     req.log.info(
       {
-        tokenAud:            jwtPayload?.["aud"]  ?? "(could not decode)",
-        tokenIss:            jwtPayload?.["iss"]  ?? "(could not decode)",
-        tokenExp:            jwtPayload?.["exp"]  ?? "(could not decode)",
-        tokenExpHuman:       jwtPayload?.["exp"]
+        tokenAud:              jwtPayload?.["aud"]  ?? "(could not decode)",
+        tokenIss:              jwtPayload?.["iss"]  ?? "(could not decode)",
+        tokenExp:              jwtPayload?.["exp"]  ?? "(could not decode)",
+        tokenExpHuman:         jwtPayload?.["exp"]
           ? new Date((jwtPayload["exp"] as number) * 1000).toISOString()
           : "(could not decode)",
         serverExpectedProject: process.env["FIREBASE_PROJECT_ID"] ?? "(not set)",
@@ -181,14 +205,17 @@ router.post("/kyc/upload",
     }
 
     // ── 2. Validate body fields ─────────────────────────────────────────────
-    const { uid, docId } = req.body as { uid?: string; docId?: string };
+    const { uid, documentType } = req.body as { uid?: string; documentType?: string };
 
     if (!uid) {
       res.status(400).json({ ok: false, error: "uid is required." });
       return;
     }
-    if (!docId || !ALLOWED_DOC_IDS.has(docId)) {
-      res.status(400).json({ ok: false, error: `docId must be one of: ${[...ALLOWED_DOC_IDS].join(", ")}.` });
+    if (!documentType || !ALLOWED_DOC_TYPES.has(documentType)) {
+      res.status(400).json({
+        ok: false,
+        error: `Invalid or missing documentType. Must be one of: selfie, aadhaarFront, aadhaarBack, pan, licenseFront, licenseBack, rcFront, rcBack.`,
+      });
       return;
     }
 
@@ -209,7 +236,7 @@ router.post("/kyc/upload",
     req.log.info(
       {
         uid,
-        docId,
+        documentType,
         size:     file.size,
         mimetype: file.mimetype,
         path:     file.path,
@@ -221,13 +248,13 @@ router.post("/kyc/upload",
     //
     // API_PUBLIC_URL should be the canonical public base URL of this server,
     // e.g. https://api.bikecourierservice.com in production.
-    // Falls back to the incoming Host header for Replit / local dev.
+    // Files are served at /uploads/kyc/<uid>/<documentType>.jpg
+    // (mounted via app.use("/uploads", express.static(UPLOADS_DIR))).
     const publicBase =
       process.env["API_PUBLIC_URL"] ??
       `${req.protocol}://${req.headers["host"] ?? "localhost"}`;
 
-    // Files are served at /api/uploads/kyc/<uid>/<docId>.jpg
-    const downloadURL = `${publicBase}/api/uploads/kyc/${uid}/${docId}.jpg`;
+    const downloadURL = `${publicBase}/uploads/kyc/${uid}/${documentType}.jpg`;
 
     res.status(200).json({ ok: true, url: downloadURL });
   },

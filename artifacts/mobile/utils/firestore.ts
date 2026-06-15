@@ -21,10 +21,14 @@ import type { Profile, Vehicle } from "@/contexts/DriverContext";
 
 // ─── Driver doc ───────────────────────────────────────────────────────────────
 
-/** Per-document entry stored under drivers/{uid}.documents.{docId} */
+/** Per-document entry stored under drivers/{uid}.documents.{documentType} */
 export type DriverDocEntry = {
-  uri?:    string | null;
-  status?: string | null;  // "pending" | "approved" | "verified" | "rejected" | null
+  /** Public VPS URL — written by submitDriverDocuments (v2+) */
+  url?:        string | null;
+  /** Legacy field name kept for backward compatibility with older submissions */
+  uri?:        string | null;
+  status?:     string | null;  // "pending" | "approved" | "verified" | "rejected" | null
+  uploadedAt?: unknown;        // Firestore server timestamp
 };
 
 export type DriverDoc = {
@@ -324,8 +328,9 @@ export async function submitDriverDocuments(
     updatedAt:            serverTimestamp(),
   };
   for (const [id, uri] of Object.entries(safeUris)) {
-    updates[`documents.${id}.uri`]    = uri;
-    updates[`documents.${id}.status`] = "pending";
+    updates[`documents.${id}.url`]        = uri;
+    updates[`documents.${id}.status`]     = "pending";
+    updates[`documents.${id}.uploadedAt`] = serverTimestamp();
   }
 
   console.log("[submitDriverDocuments] uid:", uid);
