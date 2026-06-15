@@ -47,10 +47,12 @@ app.use("/api", router);
  */
 export function initStaticUploads(uploadsDir: string): void {
   fs.mkdirSync(uploadsDir, { recursive: true });
-  app.use("/uploads", express.static(uploadsDir, {
-    index:  false,   // no directory listings
-    maxAge: "7d",
-  }));
+  const staticOpts = { index: false, maxAge: "7d" } as const;
+  // Primary path — new uploads use /uploads/kyc/<uid>/<documentType>.jpg
+  app.use("/uploads", express.static(uploadsDir, staticOpts));
+  // Backward-compat alias — Firestore records written before the path change
+  // stored /api/uploads/… URLs; keep serving those so the admin panel images load.
+  app.use("/api/uploads", express.static(uploadsDir, staticOpts));
 }
 
 export default app;
