@@ -619,7 +619,8 @@ export default function DocumentUploadScreen() {
   const insets     = useSafeAreaInsets();
   const router     = useRouter();
   const { driverUid, onboardingFeeApplies, phone, profile } = useDriver();
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting,        setSubmitting]        = useState(false);
+  const [uploadStatusText,  setUploadStatusText]  = useState<string>("");
 
   const [docsLoading, setDocsLoading] = useState(true);
   const [docs, setDocs] = useState<Record<DocId, DocState>>(() =>
@@ -763,6 +764,7 @@ export default function DocumentUploadScreen() {
     }
 
     setSubmitting(true);
+    setUploadStatusText("Checking account…");
 
     // ── Phase 1: duplicate-driver check ──────────────────────────────────────
     console.log("[KYC] phase 1 — registerDriverKeys start");
@@ -780,18 +782,27 @@ export default function DocumentUploadScreen() {
       console.error("[KYC] phase 1 — registerDriverKeys THREW:", e?.message, e?.stack);
       Alert.alert("Submission Error", "Could not verify account. Please try again.");
       setSubmitting(false);
+      setUploadStatusText("");
       return;
     }
     if (!keysResult.ok) {
       console.warn("[KYC] phase 1 — duplicate detected:", keysResult.message);
       Alert.alert("Account Already Exists", keysResult.message, [{ text: "OK" }]);
       setSubmitting(false);
+      setUploadStatusText("");
       return;
     }
 
-    // ── Phase 2: upload each document to Firebase Storage ────────────────────
-    console.log("[KYC] phase 2 — Storage uploads start");
+    // ── Phase 2: upload each document to the VPS server ──────────────────────
+    console.log("[KYC] phase 2 — VPS uploads start");
+    const docsToUpload = DOCS.filter((d) => {
+      const st   = docs[d.id];
+      const lock = normalizeLock(st.status, !!st.uri);
+      return lock !== "locked" && st.uri && !isRemoteUrl(st.uri);
+    });
     const docUris: Record<string, string | null> = {};
+    let uploadedSoFar = 0;
+
     for (const d of DOCS) {
       const st   = docs[d.id];
       const lock = normalizeLock(st.status, !!st.uri);
@@ -801,17 +812,26 @@ export default function DocumentUploadScreen() {
       }
 
       if (st.uri && !isRemoteUrl(st.uri)) {
+        uploadedSoFar += 1;
+        setUploadStatusText(
+          `Uploading ${d.title} (${uploadedSoFar}/${docsToUpload.length})…`,
+        );
         console.log(`[KYC] ${d.id} — uploading local URI: ${st.uri.slice(0, 80)}`);
         try {
           const downloadURL = await uploadDocumentImage(driverUid, d.id, st.uri);
-          console.log(`[KYC] ${d.id} — Storage OK: ${downloadURL.slice(0, 80)}`);
+          console.log(`[KYC] ${d.id} — VPS OK: ${downloadURL.slice(0, 80)}`);
           docUris[d.id] = downloadURL;
         } catch (err) {
           const e = err as Error & { code?: string };
-          console.error(`[KYC] ${d.id} — Storage FAILED code=${e?.code} msg=${e?.message}`);
-          console.error(`[KYC] ${d.id} — Storage stack:`, e?.stack);
-          Alert.alert("Upload Failed", `Could not upload ${d.title}.\n\n${e?.message ?? String(err)}`);
+          console.error(`[KYC] ${d.id} — VPS FAILED code=${e?.code} msg=${e?.message}`);
+          console.error(`[KYC] ${d.id} — VPS stack:`, e?.stack);
+          Alert.alert(
+            `Upload Failed — ${d.title}`,
+            `Could not upload this document. Check your internet connection and tap Submit again.\n\n${e?.message ?? String(err)}`,
+            [{ text: "OK" }],
+          );
           setSubmitting(false);
+          setUploadStatusText("");
           return;
         }
       } else if (st.uri && isRemoteUrl(st.uri)) {
@@ -822,9 +842,10 @@ export default function DocumentUploadScreen() {
         docUris[d.id] = null;
       }
     }
-    console.log("[KYC] phase 2 — all Storage uploads done. docUris keys:", Object.keys(docUris));
+    console.log("[KYC] phase 2 — all VPS uploads done. docUris keys:", Object.keys(docUris));
 
     // ── Phase 3: Firestore write ──────────────────────────────────────────────
+    setUploadStatusText("Saving documents…");
     console.log("[KYC] phase 3 — Firestore write start");
     console.log("[KYC] phase 3 — payload:", JSON.stringify(docUris));
     try {
@@ -842,6 +863,7 @@ export default function DocumentUploadScreen() {
         [{ text: "OK" }],
       );
       setSubmitting(false);
+      setUploadStatusText("");
       return;
     }
 
@@ -1035,7 +1057,12 @@ export default function DocumentUploadScreen() {
             style={styles.submitGrad}
           >
             {submitting ? (
-              <ActivityIndicator size="small" color="#fff" />
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <ActivityIndicator size="small" color="#fff" />
+                <Text style={[styles.submitText, { fontSize: 13 }]} numberOfLines={1}>
+                  {uploadStatusText || "Submitting…"}
+                </Text>
+              </View>
             ) : (
               <>
                 <Text style={[styles.submitText, !allReady && { color: "#9CA3AF" }]}>

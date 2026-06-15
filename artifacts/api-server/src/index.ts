@@ -22,6 +22,14 @@ const uploadsDir   = process.env["UPLOADS_DIR"]    ?? resolve(bundleDir, "../upl
 const apiPublicUrl = process.env["API_PUBLIC_URL"]  ?? "";
 const rawPort      = process.env["PORT"];
 
+// Pin the resolved uploadsDir back into process.env so that kyc-upload.ts
+// (which calls getUploadsDir() at request time) uses the exact same path
+// that initStaticUploads() will serve from.  Without this, kyc-upload.ts
+// falls back to path.join(process.cwd(), "uploads") which differs from
+// resolve(bundleDir, "../uploads") when PM2's cwd is not the project root —
+// causing files to be written in one directory but served from another (404).
+process.env["UPLOADS_DIR"] = uploadsDir;
+
 if (dotenvResult.error) {
   // Not fatal — PM2 env vars take precedence over .env.
   // Log so the VPS operator can diagnose .env path issues.
