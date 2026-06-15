@@ -90,7 +90,7 @@ export async function uploadDocumentImage(
       uploadType:  FileSystemUploadType.MULTIPART,
       fieldName:   "file",
       mimeType:    "image/jpeg",
-      parameters:  { uid, docId },
+      parameters:  { uid, documentType: docId },
       headers:     { Authorization: authHeader },
     });
     console.log("[storage] uploadAsync complete — status:", result.status);

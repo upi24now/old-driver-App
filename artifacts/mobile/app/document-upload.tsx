@@ -49,7 +49,7 @@ import { firebaseAuth } from "@/utils/firebase";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type DocId = "selfie" | "aadhaar" | "pan" | "license" | "rc" | "insurance";
+type DocId = "selfie" | "aadhaarFront" | "aadhaarBack" | "pan" | "licenseFront" | "licenseBack" | "rcFront" | "rcBack";
 
 /**
  * Raw status values that may arrive from Firestore / admin review.
@@ -102,11 +102,18 @@ const DOCS: DocSpec[] = [
     isSelfie: true,
   },
   {
-    id: "aadhaar",
+    id: "aadhaarFront",
     title: "Aadhaar Front",
     description: "Government ID — front side",
     icon: "id",
     hint: "All 12 digits and full name must be visible",
+  },
+  {
+    id: "aadhaarBack",
+    title: "Aadhaar Back",
+    description: "Government ID — back side",
+    icon: "id",
+    hint: "Back side clearly visible — address readable",
   },
   {
     id: "pan",
@@ -116,25 +123,32 @@ const DOCS: DocSpec[] = [
     hint: "PAN number and name must be clearly readable",
   },
   {
-    id: "license",
-    title: "Driving License",
-    description: "Valid Indian driving license",
+    id: "licenseFront",
+    title: "Driving License Front",
+    description: "Valid Indian driving license — front side",
     icon: "license",
-    hint: "Both sides preferred — expiry must be valid",
+    hint: "DL number, name, and expiry must be visible",
   },
   {
-    id: "rc",
-    title: "Vehicle RC",
-    description: "Registration Certificate of your vehicle",
+    id: "licenseBack",
+    title: "Driving License Back",
+    description: "Valid Indian driving license — back side",
+    icon: "license",
+    hint: "Vehicle categories and endorsements must be visible",
+  },
+  {
+    id: "rcFront",
+    title: "RC Front",
+    description: "Registration Certificate — front side",
     icon: "rc",
-    hint: "RC book / smart card — all details clearly visible",
+    hint: "RC number, owner name, and vehicle details must be clear",
   },
   {
-    id: "insurance",
-    title: "Aadhaar Back",
-    description: "Government ID — back side",
-    icon: "id",
-    hint: "Back side clearly visible — expiry and address readable",
+    id: "rcBack",
+    title: "RC Back",
+    description: "Registration Certificate — back side",
+    icon: "rc",
+    hint: "All details including insurance info must be visible",
   },
 ];
 

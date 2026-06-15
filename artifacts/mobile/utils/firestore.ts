@@ -49,12 +49,14 @@ export type DriverDoc = {
   documentsSubmitted?:   boolean;  // true after submitDriverDocuments()
   verificationStatus?:   string;   // "pending" | "approved" | "verified" | "rejected"
   documents?: {
-    selfie?:    DriverDocEntry;
-    aadhaar?:   DriverDocEntry;
-    pan?:       DriverDocEntry;
-    license?:   DriverDocEntry;
-    rc?:        DriverDocEntry;
-    insurance?: DriverDocEntry;
+    selfie?:       DriverDocEntry;
+    aadhaarFront?: DriverDocEntry;
+    aadhaarBack?:  DriverDocEntry;
+    pan?:          DriverDocEntry;
+    licenseFront?: DriverDocEntry;
+    licenseBack?:  DriverDocEntry;
+    rcFront?:      DriverDocEntry;
+    rcBack?:       DriverDocEntry;
   };
 
   // ── Daily stats — authoritative balance now lives in wallets/{uid} ─────────
