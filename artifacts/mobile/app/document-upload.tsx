@@ -750,13 +750,44 @@ export default function DocumentUploadScreen() {
   }
 
   /**
-   * Progress bar: count docs that are ready (approved, waiting, or have a
-   * valid file). Rejected docs with only an old file do NOT contribute.
+   * Re-upload mode: true when at least one doc has been marked "rejected" by
+   * the admin.  In this mode only rejected cards are shown as actionable;
+   * other docs that are already on file are shown in a compact summary row.
    */
-  const uploadedCount = DOCS.filter((d) => isDocReady(docs[d.id])).length;
+  const reuploadModeActive = !docsLoading && DOCS.some(
+    (d) => normalizeLock(docs[d.id].status, !!docs[d.id].uri) === "reupload",
+  );
 
-  const total = DOCS.length;
-  const progress = uploadedCount / total;
+  /**
+   * Docs the driver must act on in the current mode:
+   *  - re-upload mode → only "reupload" (rejected) docs
+   *  - initial upload → all docs
+   */
+  const actionDocs = reuploadModeActive
+    ? DOCS.filter((d) => normalizeLock(docs[d.id].status, !!docs[d.id].uri) === "reupload")
+    : DOCS;
+
+  /**
+   * Docs that already have files and require no further action from the driver.
+   * Only shown (as a compact row) in re-upload mode.
+   */
+  const alreadySubmittedDocs = reuploadModeActive
+    ? DOCS.filter((d) => {
+        const lk = normalizeLock(docs[d.id].status, !!docs[d.id].uri);
+        return lk === "waiting" || lk === "locked";
+      })
+    : [];
+
+  /**
+   * Progress bar: in re-upload mode count only rejected docs that have a
+   * fresh file; otherwise count all ready docs.
+   */
+  const uploadedCount = reuploadModeActive
+    ? actionDocs.filter((d) => isDocReady(docs[d.id])).length
+    : DOCS.filter((d) => isDocReady(docs[d.id])).length;
+
+  const total    = reuploadModeActive ? actionDocs.length : DOCS.length;
+  const progress = total > 0 ? uploadedCount / total : 0;
 
   /** Submit enabled only when every document is ready. */
   const allReady = DOCS.every((d) => isDocReady(docs[d.id]));
@@ -820,8 +851,10 @@ export default function DocumentUploadScreen() {
     for (const d of DOCS) {
       const st   = docs[d.id];
       const lock = normalizeLock(st.status, !!st.uri);
-      if (lock === "locked") {
-        console.log(`[KYC] ${d.id} — locked/approved, skipping`);
+      if (lock === "locked" || lock === "waiting") {
+        // locked   = admin-approved, must not change
+        // waiting  = non-rejected doc already on file; preserve its Firestore status
+        console.log(`[KYC] ${d.id} — ${lock}, skipping — Firestore status preserved`);
         continue;
       }
 
@@ -987,9 +1020,9 @@ export default function DocumentUploadScreen() {
           </View>
         </View>
 
-        {/* Doc cards */}
+        {/* Doc cards — in re-upload mode only rejected docs appear as cards */}
         <View style={styles.docList}>
-          {DOCS.map((doc) => {
+          {actionDocs.map((doc) => {
             const st = docs[doc.id];
             return (
               <DocumentCard
@@ -1002,6 +1035,26 @@ export default function DocumentUploadScreen() {
               />
             );
           })}
+
+          {/* Compact already-submitted list (re-upload mode only) */}
+          {alreadySubmittedDocs.length > 0 && (
+            <View style={[styles.alreadySubmittedBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={styles.alreadySubmittedHeader}>
+                <SafeInlineIcon name="check" size={14} color={colors.success} />
+                <Text style={[styles.alreadySubmittedTitle, { color: colors.foreground }]}>
+                  Already submitted — no action needed
+                </Text>
+              </View>
+              {alreadySubmittedDocs.map((d) => (
+                <View key={d.id} style={styles.alreadySubmittedRow}>
+                  <SafeInlineIcon name="check" size={12} color={colors.success} />
+                  <Text style={[styles.alreadySubmittedItem, { color: colors.mutedForeground }]}>
+                    {d.title}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
 
         {/* Tips */}
@@ -1370,6 +1423,24 @@ const styles = StyleSheet.create({
     borderRadius: 7,
   },
   barBtnText: { fontSize: 11, fontWeight: "700", color: "#fff" },
+
+  // Already-submitted compact box (re-upload mode)
+  alreadySubmittedBox: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 14,
+    gap: 8,
+    marginTop: 4,
+  },
+  alreadySubmittedHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    marginBottom: 4,
+  },
+  alreadySubmittedTitle: { fontSize: 13, fontWeight: "700" },
+  alreadySubmittedRow:   { flexDirection: "row", alignItems: "center", gap: 7, paddingLeft: 2 },
+  alreadySubmittedItem:  { fontSize: 13 },
 
   // Tips
   tipBox: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 8 },
