@@ -20,6 +20,7 @@ import {
 import { firebaseAuth } from "@/utils/firebase";
 import {
   getDriverDoc,
+  subscribeDriverDoc,
   createDriverDoc,
   getOnboardingFeeConfig,
   updateDriverProfile,
@@ -149,7 +150,8 @@ type OnboardingRoute =
   | "/document-upload"
   | "/onboarding-fee"
   | "/verification-pending"
-  | "/background-setup";
+  | "/background-setup"
+  | "/account-blocked";
 
 type ConfirmOtpResult = {
   ok:              boolean;
@@ -607,6 +609,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             {
               const isSuspended =
                 driverDoc.accountStatus === "suspended" ||
+                driverDoc.accountStatus === "blacklisted" ||
                 driverDoc.accountStatus === "blocked";
               setOnlineState(isSuspended ? false : (driverDoc.isOnline ?? false));
             }
@@ -811,6 +814,57 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     }
   }, [subscriptionActive, isOnline, activeOrders.length]);
 
+  // ─── Real-time accountStatus enforcement ──────────────────────────────────
+  // Subscribes to the driver's own Firestore doc via onSnapshot.
+  // Purpose: detect admin suspend / blacklist WHILE the app is open and
+  // enforce immediately (≤ Firestore propagation time, typically < 2 s).
+  //
+  // The first snapshot fires synchronously on subscribe and is skipped —
+  // session restore has already read and applied that state. Only
+  // subsequent snapshots represent live admin changes.
+  useEffect(() => {
+    if (!driverUid) return;
+
+    const isFirstSnapshot = { value: true };
+
+    const unsub = subscribeDriverDoc(driverUid, (snap) => {
+      if (isFirstSnapshot.value) {
+        isFirstSnapshot.value = false;
+        return; // session restore already handled initial state
+      }
+      if (!snap) return;
+
+      const blocked =
+        snap.accountStatus === "suspended" ||
+        snap.accountStatus === "blacklisted" ||
+        snap.accountStatus === "blocked";
+
+      // Always sync accountStatus so the blocked screen shows the right message.
+      setAccountStatus(snap.accountStatus ?? null);
+
+      if (blocked) {
+        console.log(
+          "[ACCOUNT_STATUS_LISTENER] blocked — accountStatus =",
+          snap.accountStatus,
+          "→ forcing offline + /account-blocked",
+        );
+        setOnlineState(false);
+        // Persist offline to Firestore (best-effort).
+        updateDriverOnlineStatus(driverUid, false).catch(console.error);
+        // Stop GPS tracking immediately.
+        if (locationIntervalRef.current !== null) {
+          clearInterval(locationIntervalRef.current);
+          locationIntervalRef.current = null;
+          console.log("[GPS_STATUS] tracking stopped (account blocked)");
+        }
+        router.replace("/account-blocked");
+      }
+    });
+
+    return unsub;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [driverUid]);
+
   // ─── Firestore dispatched-order listener (single channel) ────────────────
   // Replaces two previous effects that each ran the identical query:
   //   driverUid == uid AND status == "dispatched"
@@ -947,6 +1001,16 @@ export function DriverProvider({ children }: { children: ReactNode }) {
    *   7. Approved + perms ok       → main app
    */
   async function deriveNextRoute(d: DriverDoc): Promise<OnboardingRoute> {
+    // Block check FIRST — suspended / blacklisted drivers must never reach the home screen.
+    const isBlocked =
+      d.accountStatus === "suspended" ||
+      d.accountStatus === "blacklisted" ||
+      d.accountStatus === "blocked";
+    if (isBlocked) {
+      console.log("[DERIVE_NEXT_ROUTE_REASON] accountStatus =", d.accountStatus, "→ /account-blocked");
+      return "/account-blocked";
+    }
+
     const isApproved =
       d.verificationStatus === "approved" || d.verificationStatus === "verified";
 
@@ -1057,11 +1121,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         if (driverDoc.vehicleId) {
           setVehicleState({ id: driverDoc.vehicleId, name: driverDoc.vehicleName ?? "" });
         }
-        // Restore online status — suspended/blocked drivers are forced offline.
+        // Restore online status — suspended/blacklisted/blocked drivers are forced offline.
         setAccountStatus(driverDoc.accountStatus ?? null);
         {
           const isSuspended =
             driverDoc.accountStatus === "suspended" ||
+            driverDoc.accountStatus === "blacklisted" ||
             driverDoc.accountStatus === "blocked";
           setOnlineState(isSuspended ? false : (driverDoc.isOnline ?? false));
         }
@@ -1288,7 +1353,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   };
 
   const setOnline: DriverState["setOnline"] = (v) => {
-    if (v && (accountStatus === "suspended" || accountStatus === "blocked")) {
+    if (v && (accountStatus === "suspended" || accountStatus === "blacklisted" || accountStatus === "blocked")) {
       return { ok: false, reason: "Your account has been suspended. Please contact support." };
     }
     if (v && !subscriptionActive) {

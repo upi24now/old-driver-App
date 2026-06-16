@@ -1,7 +1,10 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchDrivers, approveDriver, rejectDriver, type DriverEntry, type DocType } from "@/lib/api";
+import {
+  fetchDrivers, approveDriver, rejectDriver, suspendDriver, blacklistDriver, unsuspendDriver,
+  type DriverEntry, type DocType,
+} from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +12,30 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Search, ExternalLink, CheckCircle, XCircle } from "lucide-react";
+import { Loader2, Search, ExternalLink, CheckCircle, XCircle, ShieldOff, Ban, ShieldCheck } from "lucide-react";
+
+type BlockAction = "suspend" | "blacklist" | "restore";
+
+const BLOCK_ACTION_META: Record<BlockAction, { title: string; description: string; confirmLabel: string; variant: "destructive" | "default" | "outline" }> = {
+  suspend: {
+    title:        "Suspend Driver?",
+    description:  "The driver will be immediately forced offline and blocked from receiving orders. They will see a 'suspended' screen on the app. You can restore access later.",
+    confirmLabel: "Suspend",
+    variant:      "destructive",
+  },
+  blacklist: {
+    title:        "Blacklist Driver?",
+    description:  "The driver will be permanently blocked and forced offline immediately. They will see a 'blacklisted' screen on the app.",
+    confirmLabel: "Blacklist",
+    variant:      "destructive",
+  },
+  restore: {
+    title:        "Restore Driver Access?",
+    description:  "The driver's account will be reactivated. They will need to go online again manually.",
+    confirmLabel: "Restore Access",
+    variant:      "default",
+  },
+};
 
 export default function Drivers() {
   const [, setLocation] = useLocation();
@@ -21,6 +47,7 @@ export default function Drivers() {
   const [rejectReason, setRejectReason] = useState("");
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectDocIds, setRejectDocIds] = useState<string[]>([]);
+  const [blockAction, setBlockAction] = useState<BlockAction | null>(null);
 
   useEffect(() => {
     if (!sessionStorage.getItem("adminApiKey")) {
@@ -62,9 +89,58 @@ export default function Drivers() {
     }
   });
 
-  const filteredDrivers = drivers.filter(d => 
-    !search || 
-    d.name?.toLowerCase().includes(search.toLowerCase()) || 
+  const suspendMutation = useMutation({
+    mutationFn: (uid: string) => suspendDriver(uid),
+    onSuccess: () => {
+      toast({ title: "Driver suspended — app will enforce immediately" });
+      queryClient.invalidateQueries({ queryKey: ["drivers"] });
+      setBlockAction(null);
+      setSelectedDriver(null);
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to suspend", description: err.message, variant: "destructive" });
+    }
+  });
+
+  const blacklistMutation = useMutation({
+    mutationFn: (uid: string) => blacklistDriver(uid),
+    onSuccess: () => {
+      toast({ title: "Driver blacklisted — app will enforce immediately" });
+      queryClient.invalidateQueries({ queryKey: ["drivers"] });
+      setBlockAction(null);
+      setSelectedDriver(null);
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to blacklist", description: err.message, variant: "destructive" });
+    }
+  });
+
+  const unsuspendMutation = useMutation({
+    mutationFn: (uid: string) => unsuspendDriver(uid),
+    onSuccess: () => {
+      toast({ title: "Driver access restored" });
+      queryClient.invalidateQueries({ queryKey: ["drivers"] });
+      setBlockAction(null);
+      setSelectedDriver(null);
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to restore access", description: err.message, variant: "destructive" });
+    }
+  });
+
+  const handleBlockConfirm = () => {
+    if (!selectedDriver || !blockAction) return;
+    if (blockAction === "suspend")   suspendMutation.mutate(selectedDriver.uid);
+    if (blockAction === "blacklist") blacklistMutation.mutate(selectedDriver.uid);
+    if (blockAction === "restore")   unsuspendMutation.mutate(selectedDriver.uid);
+  };
+
+  const blockMutationPending =
+    suspendMutation.isPending || blacklistMutation.isPending || unsuspendMutation.isPending;
+
+  const filteredDrivers = drivers.filter(d =>
+    !search ||
+    d.name?.toLowerCase().includes(search.toLowerCase()) ||
     d.phone?.includes(search) ||
     d.uid.includes(search)
   );
@@ -76,6 +152,13 @@ export default function Drivers() {
     return path.startsWith("http") ? path : `/api${path.startsWith("/") ? "" : "/"}${path}`;
   };
 
+  const accountStatusBadge = (status: string | null | undefined) => {
+    if (!status || status === "active") return null;
+    if (status === "suspended")   return <Badge variant="secondary" className="bg-orange-100 text-orange-800 border-orange-200">Suspended</Badge>;
+    if (status === "blacklisted") return <Badge variant="destructive">Blacklisted</Badge>;
+    return <Badge variant="outline">{status}</Badge>;
+  };
+
   if (error) {
     return (
       <div className="p-8 text-center text-destructive">
@@ -84,6 +167,9 @@ export default function Drivers() {
       </div>
     );
   }
+
+  const isBlocked = (d: DriverEntry) =>
+    d.accountStatus === "suspended" || d.accountStatus === "blacklisted";
 
   return (
     <div className="min-h-screen bg-muted/20 flex flex-col md:flex-row">
@@ -138,9 +224,16 @@ export default function Drivers() {
                 >
                   <div className="flex justify-between items-start mb-1">
                     <span className="font-medium truncate">{d.name || "Unknown Name"}</span>
-                    <Badge variant={d.verificationStatus === 'pending' ? 'secondary' : d.verificationStatus === 'approved' ? 'default' : 'destructive'} className="ml-2 shrink-0">
-                      {d.verificationStatus}
-                    </Badge>
+                    <div className="flex gap-1 ml-2 shrink-0">
+                      <Badge variant={d.verificationStatus === 'pending' ? 'secondary' : d.verificationStatus === 'approved' ? 'default' : 'destructive'}>
+                        {d.verificationStatus}
+                      </Badge>
+                      {isBlocked(d) && (
+                        <Badge variant="destructive" className="text-xs">
+                          {d.accountStatus}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                   <div className="text-xs text-muted-foreground truncate">{d.phone || "No phone"}</div>
                   <div className="text-xs text-muted-foreground truncate font-mono mt-1">{d.uid}</div>
@@ -155,45 +248,98 @@ export default function Drivers() {
       <div className="flex-1 h-screen overflow-y-auto bg-muted/10 p-4 md:p-8">
         {selectedDriver ? (
           <div className="max-w-4xl mx-auto space-y-6">
-            <div className="flex items-start justify-between bg-background p-6 rounded-lg border shadow-sm">
-              <div>
-                <h2 className="text-2xl font-bold tracking-tight mb-2">{selectedDriver.name || "Unknown Driver"}</h2>
-                <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm text-muted-foreground">
-                  <div><span className="font-medium text-foreground">UID:</span> <span className="font-mono">{selectedDriver.uid}</span></div>
-                  <div><span className="font-medium text-foreground">Phone:</span> {selectedDriver.phone || "-"}</div>
-                  <div><span className="font-medium text-foreground">City:</span> {selectedDriver.city || "-"}</div>
-                  <div><span className="font-medium text-foreground">Vehicle:</span> {selectedDriver.vehicleNumber || "-"}</div>
-                  <div><span className="font-medium text-foreground">License:</span> {selectedDriver.licenseNumber || "-"}</div>
-                  <div><span className="font-medium text-foreground">Status:</span> <Badge variant="outline">{selectedDriver.verificationStatus}</Badge></div>
+            <div className="bg-background p-6 rounded-lg border shadow-sm space-y-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-bold tracking-tight mb-2">{selectedDriver.name || "Unknown Driver"}</h2>
+                  <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm text-muted-foreground">
+                    <div><span className="font-medium text-foreground">UID:</span> <span className="font-mono">{selectedDriver.uid}</span></div>
+                    <div><span className="font-medium text-foreground">Phone:</span> {selectedDriver.phone || "-"}</div>
+                    <div><span className="font-medium text-foreground">City:</span> {selectedDriver.city || "-"}</div>
+                    <div><span className="font-medium text-foreground">Vehicle:</span> {selectedDriver.vehicleNumber || "-"}</div>
+                    <div><span className="font-medium text-foreground">License:</span> {selectedDriver.licenseNumber || "-"}</div>
+                    <div>
+                      <span className="font-medium text-foreground">KYC:</span>{" "}
+                      <Badge variant="outline">{selectedDriver.verificationStatus}</Badge>
+                    </div>
+                    {selectedDriver.accountStatus && selectedDriver.accountStatus !== "active" && (
+                      <div>
+                        <span className="font-medium text-foreground">Account:</span>{" "}
+                        {accountStatusBadge(selectedDriver.accountStatus)}
+                      </div>
+                    )}
+                  </div>
                 </div>
+
+                {/* KYC actions — only for pending drivers */}
+                {selectedDriver.verificationStatus === "pending" && (
+                  <div className="flex gap-2 shrink-0">
+                    <Button
+                      variant="destructive"
+                      onClick={() => {
+                        const uploaded = (["selfie","aadhaarFront","aadhaarBack","pan","licenseFront","licenseBack","rcFront","rcBack"] as DocType[])
+                          .filter(id => {
+                            const e = selectedDriver.documents[id];
+                            return e && (e.url ?? e.uri);
+                          });
+                        setRejectDocIds(uploaded);
+                        setRejectDialogOpen(true);
+                      }}
+                      disabled={rejectMutation.isPending || approveMutation.isPending}
+                      data-testid="button-reject"
+                    >
+                      <XCircle className="mr-2 h-4 w-4" /> Reject
+                    </Button>
+                    <Button
+                      onClick={() => approveMutation.mutate(selectedDriver.uid)}
+                      disabled={rejectMutation.isPending || approveMutation.isPending}
+                      data-testid="button-approve"
+                    >
+                      <CheckCircle className="mr-2 h-4 w-4" /> Approve
+                    </Button>
+                  </div>
+                )}
               </div>
-              
-              {selectedDriver.verificationStatus === "pending" && (
-                <div className="flex gap-2">
-                  <Button 
-                    variant="destructive" 
-                    onClick={() => {
-                      // Pre-select all uploaded documents so admin can deselect the OK ones
-                      const uploaded = (["selfie","aadhaarFront","aadhaarBack","pan","licenseFront","licenseBack","rcFront","rcBack"] as DocType[])
-                        .filter(id => {
-                          const e = selectedDriver.documents[id];
-                          return e && (e.url ?? e.uri);
-                        });
-                      setRejectDocIds(uploaded);
-                      setRejectDialogOpen(true);
-                    }}
-                    disabled={rejectMutation.isPending || approveMutation.isPending}
-                    data-testid="button-reject"
-                  >
-                    <XCircle className="mr-2 h-4 w-4" /> Reject
-                  </Button>
-                  <Button 
-                    onClick={() => approveMutation.mutate(selectedDriver.uid)}
-                    disabled={rejectMutation.isPending || approveMutation.isPending}
-                    data-testid="button-approve"
-                  >
-                    <CheckCircle className="mr-2 h-4 w-4" /> Approve
-                  </Button>
+
+              {/* Account enforcement actions — available for all approved/verified drivers */}
+              {(selectedDriver.verificationStatus === "approved" || selectedDriver.verificationStatus === "verified" || isBlocked(selectedDriver)) && (
+                <div className="pt-3 border-t flex items-center gap-2 flex-wrap">
+                  <span className="text-sm text-muted-foreground mr-1">Account control:</span>
+                  {!isBlocked(selectedDriver) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-orange-300 text-orange-700 hover:bg-orange-50"
+                      onClick={() => setBlockAction("suspend")}
+                      disabled={blockMutationPending}
+                      data-testid="button-suspend"
+                    >
+                      <ShieldOff className="mr-2 h-4 w-4" /> Suspend
+                    </Button>
+                  )}
+                  {selectedDriver.accountStatus !== "blacklisted" && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setBlockAction("blacklist")}
+                      disabled={blockMutationPending}
+                      data-testid="button-blacklist"
+                    >
+                      <Ban className="mr-2 h-4 w-4" /> Blacklist
+                    </Button>
+                  )}
+                  {isBlocked(selectedDriver) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-green-300 text-green-700 hover:bg-green-50"
+                      onClick={() => setBlockAction("restore")}
+                      disabled={blockMutationPending}
+                      data-testid="button-restore"
+                    >
+                      <ShieldCheck className="mr-2 h-4 w-4" /> Restore Access
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -216,9 +362,9 @@ export default function Drivers() {
                     </div>
                     <div className="p-4 flex-1 flex items-center justify-center bg-muted/10">
                       {url ? (
-                        <img 
-                          src={url} 
-                          alt={docType} 
+                        <img
+                          src={url}
+                          alt={docType}
                           className="max-h-64 object-contain rounded border"
                           onError={(e) => {
                             (e.target as HTMLImageElement).style.display = 'none';
@@ -241,6 +387,7 @@ export default function Drivers() {
         )}
       </div>
 
+      {/* ── KYC Reject dialog ── */}
       <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -250,7 +397,6 @@ export default function Drivers() {
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">
-            {/* Per-document checkboxes */}
             <div>
               <p className="text-sm font-medium mb-2">Documents to reject</p>
               <div className="space-y-2 max-h-52 overflow-y-auto border rounded-md p-3">
@@ -293,7 +439,6 @@ export default function Drivers() {
                 <p className="text-xs text-destructive mt-1">Select at least one document to reject.</p>
               )}
             </div>
-            {/* Reason */}
             <div>
               <p className="text-sm font-medium mb-2">Rejection reason (shown to driver)</p>
               <Textarea
@@ -306,8 +451,8 @@ export default function Drivers() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setRejectDialogOpen(false); setRejectDocIds([]); }}>Cancel</Button>
-            <Button 
-              variant="destructive" 
+            <Button
+              variant="destructive"
               disabled={!rejectReason.trim() || rejectDocIds.length === 0 || rejectMutation.isPending}
               onClick={() => {
                 if (selectedDriver) rejectMutation.mutate({ uid: selectedDriver.uid, reason: rejectReason, docIds: rejectDocIds });
@@ -319,6 +464,37 @@ export default function Drivers() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Suspend / Blacklist / Restore confirmation dialog ── */}
+      {blockAction && (
+        <Dialog open={!!blockAction} onOpenChange={(open) => { if (!open) setBlockAction(null); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>{BLOCK_ACTION_META[blockAction].title}</DialogTitle>
+              <DialogDescription>{BLOCK_ACTION_META[blockAction].description}</DialogDescription>
+            </DialogHeader>
+            {selectedDriver && (
+              <div className="py-2 text-sm text-muted-foreground">
+                Driver: <span className="font-medium text-foreground">{selectedDriver.name || selectedDriver.uid}</span>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setBlockAction(null)} disabled={blockMutationPending}>
+                Cancel
+              </Button>
+              <Button
+                variant={BLOCK_ACTION_META[blockAction].variant}
+                onClick={handleBlockConfirm}
+                disabled={blockMutationPending}
+                data-testid={`button-confirm-${blockAction}`}
+              >
+                {blockMutationPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                {BLOCK_ACTION_META[blockAction].confirmLabel}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

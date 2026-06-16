@@ -111,6 +111,7 @@ router.get("/kyc/drivers", requireAdminKey, async (req, res) => {
         vehicleNumber:        d["vehicleNumber"]  ?? null,
         licenseNumber:        d["licenseNumber"]  ?? null,
         verificationStatus:   d["verificationStatus"] ?? "pending",
+        accountStatus:        d["accountStatus"]  ?? null,
         documentsSubmittedAt: d["documentsSubmittedAt"]
           ? (d["documentsSubmittedAt"] as import("firebase-admin/firestore").Timestamp).toDate().toISOString()
           : null,
@@ -317,6 +318,102 @@ router.post("/kyc/:uid/reject", requireAdminKey, async (req, res) => {
   } catch (err) {
     req.log.error({ err, uid }, "kyc-admin: reject failed");
     res.status(500).json({ ok: false, error: "Failed to reject KYC." });
+  }
+});
+
+// ─── POST /api/kyc/:uid/suspend ───────────────────────────────────────────────
+
+/**
+ * Suspends a driver account.
+ * Sets accountStatus → "suspended", forces isOnline → false.
+ * The driver app detects the change via its real-time doc listener and
+ * immediately routes to /account-blocked.
+ */
+router.post("/kyc/:uid/suspend", requireAdminKey, async (req, res) => {
+  const uid = req.params["uid"] as string;
+  if (!uid) { res.status(400).json({ ok: false, error: "uid is required." }); return; }
+
+  try {
+    const db  = await adminFirestore();
+    const ref = db.collection("drivers").doc(uid);
+    const snap = await ref.get();
+    if (!snap.exists) { res.status(404).json({ ok: false, error: "driver_not_found" }); return; }
+
+    await ref.update({
+      accountStatus: "suspended",
+      suspendedAt:   FieldValue.serverTimestamp(),
+      isOnline:      false,
+      onlineStatus:  "offline",
+    });
+
+    req.log.info({ uid }, "kyc-admin: driver suspended");
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err, uid }, "kyc-admin: suspend failed");
+    res.status(500).json({ ok: false, error: "Failed to suspend driver." });
+  }
+});
+
+// ─── POST /api/kyc/:uid/blacklist ─────────────────────────────────────────────
+
+/**
+ * Blacklists a driver account.
+ * Sets accountStatus → "blacklisted", forces isOnline → false.
+ * The driver app detects the change via its real-time doc listener and
+ * immediately routes to /account-blocked.
+ */
+router.post("/kyc/:uid/blacklist", requireAdminKey, async (req, res) => {
+  const uid = req.params["uid"] as string;
+  if (!uid) { res.status(400).json({ ok: false, error: "uid is required." }); return; }
+
+  try {
+    const db  = await adminFirestore();
+    const ref = db.collection("drivers").doc(uid);
+    const snap = await ref.get();
+    if (!snap.exists) { res.status(404).json({ ok: false, error: "driver_not_found" }); return; }
+
+    await ref.update({
+      accountStatus: "blacklisted",
+      blacklistedAt: FieldValue.serverTimestamp(),
+      isOnline:      false,
+      onlineStatus:  "offline",
+    });
+
+    req.log.info({ uid }, "kyc-admin: driver blacklisted");
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err, uid }, "kyc-admin: blacklist failed");
+    res.status(500).json({ ok: false, error: "Failed to blacklist driver." });
+  }
+});
+
+// ─── POST /api/kyc/:uid/unsuspend ─────────────────────────────────────────────
+
+/**
+ * Removes a suspension or blacklist from a driver account.
+ * Sets accountStatus → "active". The driver must go online again manually.
+ */
+router.post("/kyc/:uid/unsuspend", requireAdminKey, async (req, res) => {
+  const uid = req.params["uid"] as string;
+  if (!uid) { res.status(400).json({ ok: false, error: "uid is required." }); return; }
+
+  try {
+    const db  = await adminFirestore();
+    const ref = db.collection("drivers").doc(uid);
+    const snap = await ref.get();
+    if (!snap.exists) { res.status(404).json({ ok: false, error: "driver_not_found" }); return; }
+
+    await ref.update({
+      accountStatus: "active",
+      isOnline:      false,
+      onlineStatus:  "offline",
+    });
+
+    req.log.info({ uid }, "kyc-admin: driver unsuspended / unblacklisted");
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err, uid }, "kyc-admin: unsuspend failed");
+    res.status(500).json({ ok: false, error: "Failed to unsuspend driver." });
   }
 });
 

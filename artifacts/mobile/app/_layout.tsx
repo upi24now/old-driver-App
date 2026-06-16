@@ -129,6 +129,7 @@ function RootLayoutNav() {
         <Stack.Screen name="document-upload" />
         <Stack.Screen name="onboarding-fee" />
         <Stack.Screen name="verification-pending" />
+        <Stack.Screen name="account-blocked" />
         <Stack.Screen name="background-setup" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="trip/[id]" />

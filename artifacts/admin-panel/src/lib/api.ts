@@ -15,6 +15,7 @@ export interface DriverEntry {
   vehicleNumber: string | null;
   licenseNumber: string | null;
   verificationStatus: "pending" | "approved" | "rejected" | string;
+  accountStatus: "active" | "suspended" | "blacklisted" | null;
   documentsSubmittedAt: string | null;
   documents: Partial<Record<DocType, DocEntry>>;
 }
@@ -55,4 +56,16 @@ export function rejectDriver(uid: string, reason?: string, rejectedDocIds?: stri
     method: "POST",
     body: JSON.stringify({ reason, rejectedDocIds }),
   });
+}
+
+export function suspendDriver(uid: string) {
+  return apiFetch<{ ok: true }>(`/api/kyc/${uid}/suspend`, { method: "POST" });
+}
+
+export function blacklistDriver(uid: string) {
+  return apiFetch<{ ok: true }>(`/api/kyc/${uid}/blacklist`, { method: "POST" });
+}
+
+export function unsuspendDriver(uid: string) {
+  return apiFetch<{ ok: true }>(`/api/kyc/${uid}/unsuspend`, { method: "POST" });
 }

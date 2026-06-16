@@ -46,7 +46,7 @@ export type DriverDoc = {
   isOnline:               boolean;
   onlineStatus?:          "online" | "offline";
   lastSeenAt?:            unknown;
-  accountStatus?:         string;   // "active" | "suspended" | "blocked"
+  accountStatus?:         string;   // "active" | "suspended" | "blacklisted" | "blocked"
   subscriptionPlan?:      string;
   subscriptionExpiresAt?: number;
   createdAt:              unknown;
@@ -232,6 +232,30 @@ export async function getOnboardingFeeConfig(): Promise<OnboardingFeeConfig> {
 export async function getDriverDoc(uid: string): Promise<DriverDoc | null> {
   const snap = await getDoc(doc(db, "drivers", uid));
   return snap.exists() ? (snap.data() as DriverDoc) : null;
+}
+
+/**
+ * Real-time listener for a driver's own Firestore document.
+ * Used by DriverContext to detect accountStatus changes (suspend / blacklist)
+ * while the app is open without requiring a re-login.
+ *
+ * Returns an unsubscribe function — call it on cleanup.
+ */
+export function subscribeDriverDoc(
+  uid: string,
+  cb: (driverDoc: DriverDoc | null) => void,
+): () => void {
+  const ref = doc(db, "drivers", uid);
+  return onSnapshot(
+    ref,
+    (snap) => {
+      if (!snap.exists()) { cb(null); return; }
+      cb({ uid: snap.id, ...snap.data() } as DriverDoc);
+    },
+    (err) => {
+      console.error("[subscribeDriverDoc] snapshot error:", err);
+    },
+  );
 }
 
 /**
