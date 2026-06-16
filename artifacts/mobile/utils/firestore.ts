@@ -331,6 +331,7 @@ export async function submitDriverDocuments(
     // verification-pending.tsx does not show stale rejection data.
     kycRejectionReason:   deleteField(),
   };
+  console.log("[submitDriverDocuments] kycRejectionReason → DELETE_SENTINEL (field will be removed from Firestore doc)");
   for (const [id, uri] of Object.entries(safeUris)) {
     updates[`documents.${id}.url`]        = uri;
     updates[`documents.${id}.status`]     = "pending";

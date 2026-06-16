@@ -1375,6 +1375,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       if (doc.verificationStatus) {
         void AsyncStorage.setItem(LOCAL_VERIFICATION_KEY, doc.verificationStatus).catch(() => {});
       }
+      console.log("[refreshKycStatus] complete — verificationStatus:", doc.verificationStatus ?? "(null)", "kycRejectionReason:", doc.kycRejectionReason ?? "(absent/deleted)", "isRejected:", doc.verificationStatus === "rejected");
     } catch {
       // silent — stale state is fine while offline
     }
