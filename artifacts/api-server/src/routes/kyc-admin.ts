@@ -193,12 +193,26 @@ router.post("/kyc/:uid/approve", requireAdminKey, async (req, res) => {
  */
 router.post("/kyc/:uid/reject", requireAdminKey, async (req, res) => {
   const uid = req.params["uid"] as string;
-  const { reason } = (req.body ?? {}) as { reason?: unknown };
+  const { reason, rejectedDocIds } = (req.body ?? {}) as {
+    reason?: unknown;
+    rejectedDocIds?: unknown;
+  };
 
   if (!uid) {
     res.status(400).json({ ok: false, error: "uid is required." });
     return;
   }
+
+  // Validate rejectedDocIds if provided
+  const validDocIdSet = new Set<string>(DOC_IDS);
+  const perDocReject: string[] | null =
+    Array.isArray(rejectedDocIds) &&
+    rejectedDocIds.length > 0 &&
+    (rejectedDocIds as unknown[]).every(
+      (id) => typeof id === "string" && validDocIdSet.has(id),
+    )
+      ? (rejectedDocIds as string[])
+      : null;
 
   try {
     const db  = await adminFirestore();
@@ -221,16 +235,30 @@ router.post("/kyc/:uid/reject", requireAdminKey, async (req, res) => {
       updates["kycRejectionReason"] = reason.trim();
     }
 
-    for (const docId of DOC_IDS) {
-      const entry = existing[docId];
-      // Accept both `url` (v2) and legacy `uri` field
-      if (entry && (entry.url ?? entry.uri)) {
-        updates[`documents.${docId}.status`] = "rejected";
+    if (perDocReject) {
+      // Per-document reject: only mark the explicitly selected docs as rejected.
+      // Docs with a uri that are NOT in the list keep their current status.
+      const rejectSet = new Set(perDocReject);
+      for (const docId of DOC_IDS) {
+        const entry = existing[docId];
+        if (!entry || !(entry.url ?? entry.uri)) continue;
+        if (rejectSet.has(docId)) {
+          updates[`documents.${docId}.status`] = "rejected";
+        }
+        // Docs not in the reject set are intentionally left unchanged.
+      }
+    } else {
+      // Legacy / bulk reject: mark every uploaded doc as rejected.
+      for (const docId of DOC_IDS) {
+        const entry = existing[docId];
+        if (entry && (entry.url ?? entry.uri)) {
+          updates[`documents.${docId}.status`] = "rejected";
+        }
       }
     }
 
     await ref.update(updates);
-    req.log.info({ uid, reason }, "kyc-admin: driver KYC rejected");
+    req.log.info({ uid, reason, perDocReject }, "kyc-admin: driver KYC rejected");
     res.json({ ok: true });
   } catch (err) {
     req.log.error({ err, uid }, "kyc-admin: reject failed");

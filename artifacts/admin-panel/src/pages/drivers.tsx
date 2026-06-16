@@ -20,6 +20,7 @@ export default function Drivers() {
   const [selectedDriver, setSelectedDriver] = useState<DriverEntry | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [rejectDocIds, setRejectDocIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!sessionStorage.getItem("adminApiKey")) {
@@ -46,12 +47,14 @@ export default function Drivers() {
   });
 
   const rejectMutation = useMutation({
-    mutationFn: ({ uid, reason }: { uid: string; reason: string }) => rejectDriver(uid, reason),
+    mutationFn: ({ uid, reason, docIds }: { uid: string; reason: string; docIds: string[] }) =>
+      rejectDriver(uid, reason, docIds),
     onSuccess: (_, { uid }) => {
       toast({ title: "Driver rejected" });
       queryClient.invalidateQueries({ queryKey: ["drivers"] });
       setRejectDialogOpen(false);
       setRejectReason("");
+      setRejectDocIds([]);
       if (selectedDriver?.uid === uid) setSelectedDriver(null);
     },
     onError: (err: any) => {
@@ -169,7 +172,16 @@ export default function Drivers() {
                 <div className="flex gap-2">
                   <Button 
                     variant="destructive" 
-                    onClick={() => setRejectDialogOpen(true)}
+                    onClick={() => {
+                      // Pre-select all uploaded documents so admin can deselect the OK ones
+                      const uploaded = (["selfie","aadhaarFront","aadhaarBack","pan","licenseFront","licenseBack","rcFront","rcBack"] as DocType[])
+                        .filter(id => {
+                          const e = selectedDriver.documents[id];
+                          return e && (e.url ?? e.uri);
+                        });
+                      setRejectDocIds(uploaded);
+                      setRejectDialogOpen(true);
+                    }}
                     disabled={rejectMutation.isPending || approveMutation.isPending}
                     data-testid="button-reject"
                   >
@@ -230,32 +242,79 @@ export default function Drivers() {
       </div>
 
       <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Reject KYC</DialogTitle>
             <DialogDescription>
-              Provide a reason for rejecting this driver's KYC. This will be shown to the driver.
+              Select which documents failed verification, then provide a reason. Only checked documents will be marked as rejected.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <Textarea
-              placeholder="e.g., Document blurry, please re-upload"
-              value={rejectReason}
-              onChange={e => setRejectReason(e.target.value)}
-              data-testid="input-reject-reason"
-            />
+          <div className="py-4 space-y-4">
+            {/* Per-document checkboxes */}
+            <div>
+              <p className="text-sm font-medium mb-2">Documents to reject</p>
+              <div className="space-y-2 max-h-52 overflow-y-auto border rounded-md p-3">
+                {(["selfie","aadhaarFront","aadhaarBack","pan","licenseFront","licenseBack","rcFront","rcBack"] as DocType[])
+                  .filter(id => {
+                    const e = selectedDriver?.documents[id];
+                    return e && (e.url ?? e.uri);
+                  })
+                  .map(id => {
+                    const label: Record<string, string> = {
+                      selfie:       "Selfie / Profile Photo",
+                      aadhaarFront: "Aadhaar (Front)",
+                      aadhaarBack:  "Aadhaar (Back)",
+                      pan:          "PAN Card",
+                      licenseFront: "Driving Licence (Front)",
+                      licenseBack:  "Driving Licence (Back)",
+                      rcFront:      "Vehicle RC (Front)",
+                      rcBack:       "Vehicle RC (Back)",
+                    };
+                    const checked = rejectDocIds.includes(id);
+                    return (
+                      <label key={id} className="flex items-center gap-3 cursor-pointer select-none text-sm">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() =>
+                            setRejectDocIds(prev =>
+                              checked ? prev.filter(d => d !== id) : [...prev, id]
+                            )
+                          }
+                          className="h-4 w-4 rounded border-gray-300"
+                          data-testid={`checkbox-doc-${id}`}
+                        />
+                        {label[id] ?? id}
+                      </label>
+                    );
+                  })}
+              </div>
+              {rejectDocIds.length === 0 && (
+                <p className="text-xs text-destructive mt-1">Select at least one document to reject.</p>
+              )}
+            </div>
+            {/* Reason */}
+            <div>
+              <p className="text-sm font-medium mb-2">Rejection reason (shown to driver)</p>
+              <Textarea
+                placeholder="e.g., Aadhaar photo is blurry, PAN card partially cut off — please re-upload"
+                value={rejectReason}
+                onChange={e => setRejectReason(e.target.value)}
+                data-testid="input-reject-reason"
+              />
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRejectDialogOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setRejectDialogOpen(false); setRejectDocIds([]); }}>Cancel</Button>
             <Button 
               variant="destructive" 
-              disabled={!rejectReason.trim() || rejectMutation.isPending}
+              disabled={!rejectReason.trim() || rejectDocIds.length === 0 || rejectMutation.isPending}
               onClick={() => {
-                if (selectedDriver) rejectMutation.mutate({ uid: selectedDriver.uid, reason: rejectReason });
+                if (selectedDriver) rejectMutation.mutate({ uid: selectedDriver.uid, reason: rejectReason, docIds: rejectDocIds });
               }}
               data-testid="button-confirm-reject"
             >
-              {rejectMutation.isPending ? "Rejecting..." : "Confirm Rejection"}
+              {rejectMutation.isPending ? "Rejecting..." : `Reject ${rejectDocIds.length} Document${rejectDocIds.length !== 1 ? "s" : ""}`}
             </Button>
           </DialogFooter>
         </DialogContent>

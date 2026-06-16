@@ -50,9 +50,9 @@ export function approveDriver(uid: string) {
   return apiFetch<{ ok: true }>(`/api/kyc/${uid}/approve`, { method: "POST" });
 }
 
-export function rejectDriver(uid: string, reason?: string) {
+export function rejectDriver(uid: string, reason?: string, rejectedDocIds?: string[]) {
   return apiFetch<{ ok: true }>(`/api/kyc/${uid}/reject`, {
     method: "POST",
-    body: JSON.stringify({ reason }),
+    body: JSON.stringify({ reason, rejectedDocIds }),
   });
 }
