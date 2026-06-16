@@ -2,23 +2,31 @@ import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/not-found";
 import Login from "@/pages/login";
+import Dashboard from "@/pages/dashboard";
+import Orders from "@/pages/orders";
+import Customers from "@/pages/customers";
 import Drivers from "@/pages/drivers";
+import KYC from "@/pages/kyc";
+import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
 
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Login} />
-      <Route path="/drivers" component={Drivers} />
-      <Route component={NotFound} />
+      <Route path="/"          component={Login}     />
+      <Route path="/dashboard" component={Dashboard} />
+      <Route path="/orders"    component={Orders}    />
+      <Route path="/customers" component={Customers} />
+      <Route path="/drivers"   component={Drivers}   />
+      <Route path="/kyc"       component={KYC}       />
+      <Route                   component={NotFound}  />
     </Switch>
   );
 }
 
-function App() {
+export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -30,5 +38,3 @@ function App() {
     </QueryClientProvider>
   );
 }
-
-export default App;

@@ -14,7 +14,7 @@ export default function Login() {
 
   useEffect(() => {
     if (sessionStorage.getItem("adminApiKey")) {
-      setLocation("/drivers");
+      setLocation("/dashboard");
     }
   }, [setLocation]);
 
@@ -26,7 +26,7 @@ export default function Login() {
     try {
       sessionStorage.setItem("adminApiKey", apiKey);
       await fetchDrivers("pending");
-      setLocation("/drivers");
+      setLocation("/dashboard");
     } catch (err: any) {
       sessionStorage.removeItem("adminApiKey");
       toast({

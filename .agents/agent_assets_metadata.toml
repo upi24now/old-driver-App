@@ -65,3 +65,9 @@ id = "h9h3ZYpVErXYhgJ9GW_hV"
 uri = "file://packages/admin-root-dev-token-fix.tar.gz"
 type = "unspecified"
 title = "Admin Panel — admin-root-dev-token-fix.tar.gz"
+
+[[outputs]]
+id = "t7Z7cBFasFjEgjYhbLB5E"
+uri = "file://packages/full-admin-root-dev-token-suspend-fix.tar.gz"
+type = "unspecified"
+title = "Full Admin Panel — full-admin-root-dev-token-suspend-fix.tar.gz"
