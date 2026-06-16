@@ -1,15 +1,17 @@
 import { Router, type IRouter } from "express";
-import healthRouter from "./health";
-import authRouter from "./auth";
+import healthRouter      from "./health";
+import authRouter        from "./auth";
 import driverPlansRouter from "./driver-plans";
-import driversRouter from "./drivers";
-import ordersRouter from "./orders";
-import walletRouter from "./wallet";
-import payoutsRouter from "./payouts";
-import supportRouter from "./support";
-import devRouter from "./dev";
-import kycUploadRouter from "./kyc-upload";
-import kycAdminRouter from "./kyc-admin";
+import driversRouter     from "./drivers";
+import ordersRouter      from "./orders";
+import walletRouter      from "./wallet";
+import payoutsRouter     from "./payouts";
+import supportRouter     from "./support";
+import devRouter         from "./dev";
+import kycUploadRouter   from "./kyc-upload";
+import kycAdminRouter    from "./kyc-admin";
+import adminAuthRouter   from "./admin-auth";
+import adminUsersRouter  from "./admin-users";
 
 const router: IRouter = Router();
 
@@ -24,5 +26,7 @@ router.use(supportRouter);
 router.use(devRouter);
 router.use(kycUploadRouter);
 router.use(kycAdminRouter);
+router.use(adminAuthRouter);
+router.use(adminUsersRouter);
 
 export default router;

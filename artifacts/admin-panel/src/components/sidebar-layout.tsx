@@ -13,7 +13,7 @@ const NAV_ITEMS = [
   { label: "Rider KYC",    href: "/kyc",          icon: FileCheck       },
   { label: "Wallet",       href: "/wallet",       icon: Wallet          },
   { label: "Notifications",href: "/notifications",icon: Bell            },
-  { label: "Admin Roles",  href: "/admin-roles",  icon: ShieldCheck     },
+  { label: "Admin Users",  href: "/admin-roles",  icon: ShieldCheck     },
   { label: "Activity Logs",href: "/activity-logs",icon: ClipboardList   },
 ];
 
@@ -21,7 +21,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
 
   const handleLogout = () => {
-    sessionStorage.removeItem("adminApiKey");
+    sessionStorage.removeItem("adminJwt");
     setLocation("/");
   };
 
@@ -29,6 +29,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen overflow-hidden bg-background">
       {/* ── Sidebar ── */}
       <aside className="w-56 shrink-0 flex flex-col border-r bg-card">
+
         {/* Brand */}
         <div className="h-16 flex items-center gap-3 px-4 border-b shrink-0">
           <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
@@ -52,7 +53,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                   active
                     ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
                 <Icon className="h-4 w-4 shrink-0" />

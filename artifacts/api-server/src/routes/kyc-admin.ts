@@ -21,6 +21,7 @@
 import { Router } from "express";
 import { adminFirestore } from "../lib/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
+import { requireAdminJwt } from "../lib/require-admin-jwt";
 
 const router = Router();
 
@@ -33,33 +34,6 @@ const DOC_IDS = [
   // legacy aliases — present in docs submitted before the v2 field rename
   "aadhaar", "license", "rc", "insurance",
 ] as const;
-
-// ─── Auth middleware ──────────────────────────────────────────────────────────
-
-function requireAdminKey(
-  req: import("express").Request,
-  res: import("express").Response,
-  next: import("express").NextFunction,
-): void {
-  const adminKey = process.env["ADMIN_API_KEY"];
-
-  if (!adminKey) {
-    req.log.warn("ADMIN_API_KEY env var not set — admin routes disabled");
-    res.status(503).json({ ok: false, error: "Admin routes not configured on this server." });
-    return;
-  }
-
-  const authHeader  = req.headers["authorization"] ?? "";
-  const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-
-  if (!bearerToken || bearerToken !== adminKey) {
-    req.log.warn({ ip: req.ip }, "kyc-admin: unauthorized attempt");
-    res.status(401).json({ ok: false, error: "Invalid or missing admin API key." });
-    return;
-  }
-
-  next();
-}
 
 // ─── GET /api/kyc/drivers ─────────────────────────────────────────────────────
 
@@ -86,7 +60,7 @@ function requireAdminKey(
  *   }>
  * }
  */
-router.get("/kyc/drivers", requireAdminKey, async (req, res) => {
+router.get("/kyc/drivers", requireAdminJwt, async (req, res) => {
   const statusFilter = req.query["status"];
 
   try {
@@ -137,7 +111,7 @@ router.get("/kyc/drivers", requireAdminKey, async (req, res) => {
  * Response 200: { ok: true }
  * Response 404: { ok: false, error: "driver_not_found" }
  */
-router.post("/kyc/:uid/approve", requireAdminKey, async (req, res) => {
+router.post("/kyc/:uid/approve", requireAdminJwt, async (req, res) => {
   const uid = req.params["uid"] as string;
 
   if (!uid) {
@@ -192,7 +166,7 @@ router.post("/kyc/:uid/approve", requireAdminKey, async (req, res) => {
  * Response 200: { ok: true }
  * Response 404: { ok: false, error: "driver_not_found" }
  */
-router.post("/kyc/:uid/reject", requireAdminKey, async (req, res) => {
+router.post("/kyc/:uid/reject", requireAdminJwt, async (req, res) => {
   const uid = req.params["uid"] as string;
   const { reason, rejectedDocIds } = (req.body ?? {}) as {
     reason?: unknown;
@@ -329,7 +303,7 @@ router.post("/kyc/:uid/reject", requireAdminKey, async (req, res) => {
  * The driver app detects the change via its real-time doc listener and
  * immediately routes to /account-blocked.
  */
-router.post("/kyc/:uid/suspend", requireAdminKey, async (req, res) => {
+router.post("/kyc/:uid/suspend", requireAdminJwt, async (req, res) => {
   const uid = req.params["uid"] as string;
   if (!uid) { res.status(400).json({ ok: false, error: "uid is required." }); return; }
 
@@ -362,7 +336,7 @@ router.post("/kyc/:uid/suspend", requireAdminKey, async (req, res) => {
  * The driver app detects the change via its real-time doc listener and
  * immediately routes to /account-blocked.
  */
-router.post("/kyc/:uid/blacklist", requireAdminKey, async (req, res) => {
+router.post("/kyc/:uid/blacklist", requireAdminJwt, async (req, res) => {
   const uid = req.params["uid"] as string;
   if (!uid) { res.status(400).json({ ok: false, error: "uid is required." }); return; }
 
@@ -393,7 +367,7 @@ router.post("/kyc/:uid/blacklist", requireAdminKey, async (req, res) => {
  * Removes a suspension or blacklist from a driver account.
  * Sets accountStatus → "active". The driver must go online again manually.
  */
-router.post("/kyc/:uid/unsuspend", requireAdminKey, async (req, res) => {
+router.post("/kyc/:uid/unsuspend", requireAdminJwt, async (req, res) => {
   const uid = req.params["uid"] as string;
   if (!uid) { res.status(400).json({ ok: false, error: "uid is required." }); return; }
 

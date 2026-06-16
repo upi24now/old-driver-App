@@ -70,4 +70,10 @@ title = "Admin Panel — admin-root-dev-token-fix.tar.gz"
 id = "t7Z7cBFasFjEgjYhbLB5E"
 uri = "file://packages/full-admin-root-dev-token-suspend-fix.tar.gz"
 type = "unspecified"
-title = "Full Admin Panel (9 sections) — full-admin-root-dev-token-suspend-fix.tar.gz"
+title = "Admin Panel — full-admin-root-dev-token-suspend-fix.tar.gz"
+
+[[outputs]]
+id = "GiUcx8nrB02y5xl3NwR1X"
+uri = "file://packages/api-server-admin-auth.tar.gz"
+type = "unspecified"
+title = "API Server — api-server-admin-auth.tar.gz"
