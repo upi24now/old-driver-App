@@ -23,7 +23,7 @@ export interface DriverEntry {
 export const getApiKey = () => sessionStorage.getItem("adminApiKey");
 
 export const authHeaders = () => ({
-  Authorization: `Bearer ${getApiKey()}`,
+  "x-admin-token": getApiKey() ?? "",
   "Content-Type": "application/json"
 });
 
