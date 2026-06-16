@@ -77,3 +77,9 @@ id = "GiUcx8nrB02y5xl3NwR1X"
 uri = "file://packages/api-server-admin-auth.tar.gz"
 type = "unspecified"
 title = "API Server — api-server-admin-auth.tar.gz"
+
+[[outputs]]
+id = "b5mFkCSzM65_6450bfcQF"
+uri = "file://packages/api-server-admin-auth-v2.tar.gz"
+type = "unspecified"
+title = "API Server — api-server-admin-auth-v2.tar.gz"
