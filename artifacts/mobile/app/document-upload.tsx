@@ -632,7 +632,7 @@ export default function DocumentUploadScreen() {
   const colors     = useColors();
   const insets     = useSafeAreaInsets();
   const router     = useRouter();
-  const { driverUid, onboardingFeeApplies, phone, profile } = useDriver();
+  const { driverUid, onboardingFeeApplies, onboardingFeeStatus, phone, profile } = useDriver();
   const [submitting,        setSubmitting]        = useState(false);
   const [uploadStatusText,  setUploadStatusText]  = useState<string>("");
 
@@ -882,10 +882,12 @@ export default function DocumentUploadScreen() {
     }
 
     // ── Route ─────────────────────────────────────────────────────────────────
-    // New signup drivers → onboarding fee screen.
-    // Existing drivers re-uploading → verification-pending.
-    console.log("[KYC] submit complete — routing, onboardingFeeApplies:", onboardingFeeApplies);
-    router.replace(onboardingFeeApplies ? "/onboarding-fee" : "/verification-pending");
+    // New signup drivers who haven't paid yet → onboarding fee screen.
+    // Rejected drivers re-uploading (fee already paid) → verification-pending.
+    // Guard: both flags must be true — applies=true AND status!="paid".
+    const feeOwed = onboardingFeeApplies === true && onboardingFeeStatus !== "paid";
+    console.log("[KYC] submit complete — routing, onboardingFeeApplies:", onboardingFeeApplies, "onboardingFeeStatus:", onboardingFeeStatus, "feeOwed:", feeOwed);
+    router.replace(feeOwed ? "/onboarding-fee" : "/verification-pending");
   }
 
   // ── Render ──
