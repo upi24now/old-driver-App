@@ -331,21 +331,58 @@ export async function submitDriverDocuments(
     // verification-pending.tsx does not show stale rejection data.
     kycRejectionReason:   deleteField(),
   };
-  console.log("[submitDriverDocuments] kycRejectionReason → DELETE_SENTINEL (field will be removed from Firestore doc)");
+  console.log("[submitDriverDocuments] kycRejectionReason → DELETE_SENTINEL");
   for (const [id, uri] of Object.entries(safeUris)) {
+    // CRITICAL: dot-notation keys MUST be written via updateDoc, not setDoc.
+    // setDoc (even with merge:true) stores "documents.pan.url" as a LITERAL
+    // root-level field name — the nested `documents` MAP is never created.
+    // updateDoc interprets dot-notation as nested Firestore path separators,
+    // producing:  { documents: { pan: { url: "...", status: "pending" } } }
     updates[`documents.${id}.url`]        = uri;
     updates[`documents.${id}.status`]     = "pending";
     updates[`documents.${id}.uploadedAt`] = serverTimestamp();
   }
 
   console.log("[submitDriverDocuments] uid:", uid);
-  console.log("[submitDriverDocuments] fields:", JSON.stringify(Object.keys(updates)));
+  console.log("[submitDriverDocuments] docIds being written:", JSON.stringify(Object.keys(safeUris)));
 
-  // setDoc with merge:true — safe whether the doc exists or not.
-  // updateDoc would throw NOT_FOUND if the doc is missing.
-  await setDoc(doc(db, "drivers", uid), updates, { merge: true });
+  // updateDoc interprets dot-notation keys as nested paths → correct MAP.
+  // Fallback: if the driver doc was somehow deleted, create a minimal stub
+  // then retry — this should never happen in normal flow.
+  const driverRef = doc(db, "drivers", uid);
+  try {
+    await updateDoc(driverRef, updates);
+  } catch (err: unknown) {
+    const code = (err as { code?: string }).code;
+    if (code === "not-found") {
+      console.warn("[submitDriverDocuments] doc not-found — creating stub then retrying");
+      await setDoc(driverRef, { uid }, { merge: true });
+      await updateDoc(driverRef, updates);
+    } else {
+      throw err;
+    }
+  }
 
   console.log("[submitDriverDocuments] write completed");
+
+  // ── Runtime proof: read the doc back and verify nested documents MAP ─────
+  console.log("[KYC_WRITE_VERIFY] uploaded doc ids:", Object.keys(safeUris));
+  try {
+    const verifySnap = await getDoc(driverRef);
+    const verifyData = verifySnap.data() as Record<string, unknown> | undefined;
+    const docMap = verifyData?.["documents"] as Record<string, unknown> | undefined;
+    console.log("[KYC_WRITE_VERIFY] documents map exists:", docMap !== undefined);
+    if (docMap) {
+      for (const id of Object.keys(safeUris)) {
+        const entry = docMap[id] as Record<string, unknown> | undefined;
+        console.log(`[KYC_WRITE_VERIFY] documents.${id}.status =`, entry?.["status"] ?? "(missing)");
+      }
+    } else {
+      console.error("[KYC_WRITE_VERIFY] documents map still undefined — updateDoc may have failed silently");
+    }
+  } catch (verifyErr) {
+    console.warn("[KYC_WRITE_VERIFY] post-write read failed:", verifyErr);
+  }
 }
 
 /**
