@@ -646,10 +646,23 @@ export default function DocumentUploadScreen() {
     if (!driverUid) { setDocsLoading(false); return; }
     getDriverDoc(driverUid)
       .then((driverDoc) => {
-        if (driverDoc?.documents) {
-          setDocs((prev) => {
-            const next = { ...prev };
-            const stored = driverDoc.documents as Record<string, { url?: string | null; uri?: string | null; status?: string | null } | undefined>;
+        // Top-level rejectedDocuments array — written by admin reject endpoint
+        // alongside per-doc status. Used as a fallback when per-doc status
+        // was never written (e.g. admin rejected before the nested MAP existed).
+        const fallbackRejectedIds: string[] =
+          driverDoc?.verificationStatus === "rejected"
+            ? ((driverDoc.rejectedDocuments as string[] | undefined) ?? [])
+            : [];
+
+        setDocs((prev) => {
+          const next = { ...prev };
+
+          // Step 1 — load from the nested documents MAP (source of truth)
+          if (driverDoc?.documents) {
+            const stored = driverDoc.documents as Record<
+              string,
+              { url?: string | null; uri?: string | null; status?: string | null; rejectionReason?: string | null } | undefined
+            >;
             for (const d of DOCS) {
               const entry = stored[d.id];
               if (entry) {
@@ -658,14 +671,39 @@ export default function DocumentUploadScreen() {
                   uri:         entry.url ?? entry.uri ?? null,
                   status:      (entry.status as RawDocStatus) ?? null,
                   // freshUpload stays false — driver must re-pick in this session
-                  // if the doc was rejected, to prove they have the new file.
+                  // to prove they have the corrected file.
                   freshUpload: false,
                 };
               }
             }
-            return next;
-          });
-        }
+          }
+
+          // Step 2 — fallback: if verificationStatus=rejected but no per-doc
+          // status is "rejected" in the MAP yet (admin rejected before MAP
+          // existed), seed those doc IDs as "rejected" from the top-level array.
+          const anyRejectedInMap = DOCS.some(d => next[d.id].status === "rejected");
+          if (!anyRejectedInMap && fallbackRejectedIds.length > 0) {
+            for (const id of fallbackRejectedIds) {
+              const spec = DOCS.find(d => d.id === id);
+              if (spec) {
+                console.log("[DOC_UPLOAD] fallback: seeding status=rejected for", id, "from rejectedDocuments array");
+                next[spec.id] = { ...next[spec.id], status: "rejected" };
+              }
+            }
+          }
+
+          console.log("[DOC_UPLOAD_STATE_LOADED]", JSON.stringify({
+            verificationStatus:   driverDoc?.verificationStatus ?? "(absent)",
+            kycRejectionReason:   driverDoc?.kycRejectionReason ?? "(absent)",
+            fallbackRejectedIds,
+            anyRejectedInMap,
+            pan:    { status: next.pan.status,    uri: next.pan.uri    ? "EXISTS" : null },
+            selfie: { status: next.selfie.status, uri: next.selfie.uri ? "EXISTS" : null },
+          }, null, 2));
+
+          return next;
+        });
+
         setDocsLoading(false);
       })
       .catch(() => setDocsLoading(false));
@@ -777,6 +815,19 @@ export default function DocumentUploadScreen() {
         return lk === "waiting" || lk === "locked";
       })
     : [];
+
+  // ── Runtime diagnostic — fires once loading completes and whenever docs change ──
+  useEffect(() => {
+    if (docsLoading) return;
+    console.log("[DOC_UPLOAD_STATE]", JSON.stringify({
+      pan:   { status: docs.pan.status,   uri: docs.pan.uri   ? "EXISTS" : null, freshUpload: docs.pan.freshUpload },
+      selfie: { status: docs.selfie.status, uri: docs.selfie.uri ? "EXISTS" : null },
+      reuploadModeActive,
+      actionDocs:           actionDocs.map(d => d.id),
+      alreadySubmittedDocs: alreadySubmittedDocs.map(d => d.id),
+    }, null, 2));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docsLoading, docs]);
 
   /**
    * Progress bar: in re-upload mode count only rejected docs that have a

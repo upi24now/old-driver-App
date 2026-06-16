@@ -20,7 +20,7 @@
 
 import { Router } from "express";
 import { adminFirestore } from "../lib/firebase-admin";
-import type { FieldValue } from "firebase-admin/firestore";
+import { FieldValue } from "firebase-admin/firestore";
 
 const router = Router();
 
@@ -198,6 +198,11 @@ router.post("/kyc/:uid/reject", requireAdminKey, async (req, res) => {
     rejectedDocIds?: unknown;
   };
 
+  req.log.info(
+    { uid, body: req.body },
+    "[kyc-reject] received request body",
+  );
+
   if (!uid) {
     res.status(400).json({ ok: false, error: "uid is required." });
     return;
@@ -214,6 +219,15 @@ router.post("/kyc/:uid/reject", requireAdminKey, async (req, res) => {
       ? (rejectedDocIds as string[])
       : null;
 
+  const reasonStr = typeof reason === "string" && reason.trim().length > 0
+    ? reason.trim()
+    : null;
+
+  req.log.info(
+    { uid, reasonStr, perDocReject },
+    "[kyc-reject] validated — perDocReject and reason",
+  );
+
   try {
     const db  = await adminFirestore();
     const ref = db.collection("drivers").doc(uid);
@@ -225,40 +239,80 @@ router.post("/kyc/:uid/reject", requireAdminKey, async (req, res) => {
     }
 
     const data = snap.data() ?? {};
-    const existing = (data["documents"] ?? {}) as Record<string, { url?: string | null; uri?: string | null; status?: string | null }>;
+    const existing = (data["documents"] ?? {}) as Record<
+      string,
+      { url?: string | null; uri?: string | null; status?: string | null }
+    >;
+
+    req.log.info(
+      {
+        uid,
+        existingDocKeys: Object.keys(existing),
+        perDocReject,
+        existingPanHasUrl: !!(existing["pan"]?.url ?? existing["pan"]?.uri),
+      },
+      "[kyc-reject] existing documents MAP snapshot",
+    );
 
     const updates: Record<string, string | FieldValue | null> = {
       verificationStatus: "rejected",
     };
 
-    if (typeof reason === "string" && reason.trim().length > 0) {
-      updates["kycRejectionReason"] = reason.trim();
+    // Always write top-level rejection reason (driver app reads kycRejectionReason)
+    if (reasonStr) {
+      updates["kycRejectionReason"] = reasonStr;
+    }
+
+    // Always write the top-level rejectedDocuments array so the driver app
+    // fallback (document-upload.tsx) can seed per-doc rejected state even
+    // when per-doc status writes are skipped below.
+    if (perDocReject) {
+      (updates as Record<string, unknown>)["rejectedDocuments"] = perDocReject;
     }
 
     if (perDocReject) {
-      // Per-document reject: only mark the explicitly selected docs as rejected.
-      // Docs with a uri that are NOT in the list keep their current status.
+      // Per-document reject: mark only the explicitly selected docs as rejected.
       const rejectSet = new Set(perDocReject);
+      for (const docId of DOC_IDS) {
+        if (!rejectSet.has(docId)) continue;
+        const entry = existing[docId];
+        const hasUrl = !!(entry?.url ?? entry?.uri);
+
+        req.log.info(
+          { uid, docId, hasUrl, entryStatus: entry?.status ?? "(absent)" },
+          "[kyc-reject] per-doc evaluation",
+        );
+
+        // Write rejected status regardless of whether url exists so that
+        // the rejectedDocuments array fallback in the driver app is consistent
+        // with the per-doc MAP status.
+        updates[`documents.${docId}.status`]     = "rejected";
+        updates[`documents.${docId}.rejectedAt`] = FieldValue.serverTimestamp();
+        if (reasonStr) {
+          updates[`documents.${docId}.rejectionReason`] = reasonStr;
+        }
+      }
+    } else {
+      // Bulk reject: mark every uploaded doc as rejected.
       for (const docId of DOC_IDS) {
         const entry = existing[docId];
         if (!entry || !(entry.url ?? entry.uri)) continue;
-        if (rejectSet.has(docId)) {
-          updates[`documents.${docId}.status`] = "rejected";
-        }
-        // Docs not in the reject set are intentionally left unchanged.
-      }
-    } else {
-      // Legacy / bulk reject: mark every uploaded doc as rejected.
-      for (const docId of DOC_IDS) {
-        const entry = existing[docId];
-        if (entry && (entry.url ?? entry.uri)) {
-          updates[`documents.${docId}.status`] = "rejected";
+        updates[`documents.${docId}.status`]     = "rejected";
+        updates[`documents.${docId}.rejectedAt`] = FieldValue.serverTimestamp();
+        if (reasonStr) {
+          updates[`documents.${docId}.rejectionReason`] = reasonStr;
         }
       }
     }
 
+    req.log.info(
+      { uid, updateKeys: Object.keys(updates) },
+      "[kyc-reject] writing updates to Firestore",
+    );
+
     await ref.update(updates);
-    req.log.info({ uid, reason, perDocReject }, "kyc-admin: driver KYC rejected");
+
+    req.log.info({ uid, reasonStr, perDocReject }, "kyc-admin: driver KYC rejected ✓");
     res.json({ ok: true });
   } catch (err) {
     req.log.error({ err, uid }, "kyc-admin: reject failed");

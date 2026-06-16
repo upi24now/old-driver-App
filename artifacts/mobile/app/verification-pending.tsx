@@ -234,6 +234,21 @@ export default function VerificationPendingScreen() {
     await refreshKycStatus();
   }, [refreshKycStatus]);
 
+  // ── Diagnostic log — fires on mount and whenever KYC state changes ──
+  useEffect(() => {
+    console.log("[REJECTED_DOCS]", JSON.stringify({
+      verificationStatus,
+      kycRejectionReason:   kycRejectionReason ?? "(absent)",
+      rejectedDocs,
+      kycDocumentsStatuses: kycDocuments
+        ? Object.fromEntries(
+            (Object.entries(kycDocuments) as [string, { status?: string | null; rejectionReason?: string | null } | undefined][])
+              .map(([k, v]) => [k, { status: v?.status ?? null, rejectionReason: v?.rejectionReason ?? null }])
+          )
+        : null,
+    }, null, 2));
+  }, [verificationStatus, kycRejectionReason, rejectedDocs]);
+
   useEffect(() => {
     if (isApproved) return;
     const interval = setInterval(doRefresh, 30_000);

@@ -24,11 +24,13 @@ import type { Profile, Vehicle } from "@/contexts/DriverContext";
 /** Per-document entry stored under drivers/{uid}.documents.{documentType} */
 export type DriverDocEntry = {
   /** Public VPS URL — written by submitDriverDocuments (v2+) */
-  url?:        string | null;
+  url?:             string | null;
   /** Legacy field name kept for backward compatibility with older submissions */
-  uri?:        string | null;
-  status?:     string | null;  // "pending" | "approved" | "verified" | "rejected" | null
-  uploadedAt?: unknown;        // Firestore server timestamp
+  uri?:             string | null;
+  status?:          string | null;  // "pending" | "approved" | "verified" | "rejected" | null
+  uploadedAt?:      unknown;        // Firestore server timestamp
+  rejectionReason?: string | null;  // set by admin on per-doc reject
+  rejectedAt?:      unknown;        // Firestore server timestamp of rejection
 };
 
 export type DriverDoc = {
@@ -50,9 +52,10 @@ export type DriverDoc = {
   createdAt:              unknown;
 
   // ── Documents ─────────────────────────────────────────────────────────────
-  documentsSubmitted?:   boolean;  // true after submitDriverDocuments()
-  verificationStatus?:   string;   // "pending" | "approved" | "verified" | "rejected"
-  kycRejectionReason?:   string;   // set by admin on reject
+  documentsSubmitted?:   boolean;   // true after submitDriverDocuments()
+  verificationStatus?:   string;    // "pending" | "approved" | "verified" | "rejected"
+  kycRejectionReason?:   string;    // top-level reason set by admin on reject
+  rejectedDocuments?:    string[];  // top-level array of rejected docIds — fallback for driver app
   documents?: {
     selfie?:       DriverDocEntry;
     aadhaarFront?: DriverDocEntry;
