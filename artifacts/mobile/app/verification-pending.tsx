@@ -1,10 +1,12 @@
 import { SafeInlineIcon, SafeIcon3D, PremiumButton3D } from "@/components/SafeIcon";
 import { useRouter } from "expo-router";
 import { callSupport } from "@/utils/support";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import {
   Alert,
   Animated,
+  AppState,
+  AppStateStatus,
   Easing,
   ScrollView,
   StyleSheet,
@@ -17,6 +19,17 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { TS } from "@/constants/typography";
 import { useDriver } from "@/contexts/DriverContext";
+
+const DOC_LABELS: Record<string, string> = {
+  selfie:       "Selfie / Profile Photo",
+  aadhaarFront: "Aadhaar (Front)",
+  aadhaarBack:  "Aadhaar (Back)",
+  pan:          "PAN Card",
+  licenseFront: "Driving Licence (Front)",
+  licenseBack:  "Driving Licence (Back)",
+  rcFront:      "Vehicle RC (Front)",
+  rcBack:       "Vehicle RC (Back)",
+};
 
 function PulseRing({ delay, color }: { delay: number; color: string }) {
   const scale   = useRef(new Animated.Value(0)).current;
@@ -91,7 +104,7 @@ function SpinningRing({ color }: { color: string }) {
   );
 }
 
-type StepStatus = "done" | "active" | "pending";
+type StepStatus = "done" | "active" | "pending" | "rejected";
 
 function TimelineStep({
   title,
@@ -130,13 +143,15 @@ function TimelineStep({
   }, [status]);
 
   const dotColor =
-    status === "done"   ? colors.success :
-    status === "active" ? colors.pending  :
+    status === "done"     ? colors.success :
+    status === "active"   ? colors.pending  :
+    status === "rejected" ? colors.error    :
     colors.border;
 
   const dotBg =
-    status === "done"   ? colors.success     :
-    status === "active" ? colors.pendingSoft  :
+    status === "done"     ? colors.success     :
+    status === "active"   ? colors.pendingSoft  :
+    status === "rejected" ? colors.errorSoft    :
     colors.muted;
 
   return (
@@ -153,6 +168,7 @@ function TimelineStep({
           ]}
         >
           {status === "done" && <SafeInlineIcon name="check" size={13} color="#fff" />}
+          {status === "rejected" && <SafeInlineIcon name="close" size={13} color={colors.error} />}
           {status === "active" && (
             <View style={[styles.tlActiveCore, { backgroundColor: colors.pending }]} />
           )}
@@ -171,7 +187,8 @@ function TimelineStep({
           style={[
             styles.tlTitle,
             {
-              color:      status === "pending" ? colors.mutedForeground : colors.foreground,
+              color:      status === "pending" ? colors.mutedForeground :
+                          status === "rejected" ? colors.error : colors.foreground,
               fontWeight: status === "active" ? "800" : "700",
             },
           ]}
@@ -187,6 +204,12 @@ function TimelineStep({
             <Text style={[styles.tlBadgeText, { color: colors.warningText }]}>In progress</Text>
           </View>
         )}
+        {status === "rejected" && (
+          <View style={[styles.tlBadge, { backgroundColor: colors.errorSoft }]}>
+            <View style={[styles.tlBadgeDot, { backgroundColor: colors.error }]} />
+            <Text style={[styles.tlBadgeText, { color: colors.errorText }]}>Action required</Text>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -196,8 +219,260 @@ export default function VerificationPendingScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { verificationStatus } = useDriver();
+  const { verificationStatus, kycRejectionReason, kycDocuments, refreshKycStatus } = useDriver();
+
   const isApproved = verificationStatus === "approved" || verificationStatus === "verified";
+  const isRejected = verificationStatus === "rejected";
+
+  const rejectedDocs = kycDocuments
+    ? (Object.entries(kycDocuments) as [string, { status?: string | null } | undefined][])
+        .filter(([, entry]) => entry?.status === "rejected")
+        .map(([key]) => key)
+    : [];
+
+  const doRefresh = useCallback(async () => {
+    await refreshKycStatus();
+  }, [refreshKycStatus]);
+
+  useEffect(() => {
+    if (isApproved) return;
+    const interval = setInterval(doRefresh, 30_000);
+    return () => clearInterval(interval);
+  }, [isApproved, doRefresh]);
+
+  useEffect(() => {
+    if (isApproved) return;
+    const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
+      if (state === "active") {
+        void doRefresh();
+      }
+    });
+    return () => sub.remove();
+  }, [isApproved, doRefresh]);
+
+  if (isRejected) {
+    return (
+      <View style={[styles.root, { backgroundColor: colors.background }]}>
+        <View
+          style={[
+            styles.header,
+            {
+              paddingTop:        insets.top + 12,
+              backgroundColor:   colors.surface,
+              borderBottomColor: colors.border,
+            },
+          ]}
+        >
+          <View style={{ width: 38 }} />
+          <Text style={[styles.headerTitle, { color: colors.foreground }]}>
+            Application Status
+          </Text>
+          <TouchableOpacity
+            style={[styles.headerBtn, { backgroundColor: colors.muted }]}
+            activeOpacity={0.7}
+            onPress={() =>
+              Alert.alert("Need help?", undefined, [
+                { text: "Contact support", onPress: callSupport },
+                { text: "Cancel", style: "cancel" },
+              ])
+            }
+          >
+            <SafeInlineIcon name="info" size={18} color={colors.foreground} />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView
+          contentContainerStyle={[styles.scroll, { paddingBottom: 24 }]}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* ── Rejected hero ── */}
+          <View style={[styles.hero, { backgroundColor: colors.error }]}>
+            <View style={styles.heroSheen} />
+            <View style={styles.heroAnimWrap}>
+              <PulseRing delay={0}   color="rgba(255,255,255,0.5)" />
+              <PulseRing delay={900} color="rgba(255,255,255,0.5)" />
+              <View
+                style={[
+                  styles.heroIconCircle,
+                  {
+                    backgroundColor: "rgba(255,255,255,0.18)",
+                    borderColor:     "rgba(255,255,255,0.35)",
+                    shadowColor:     colors.error,
+                  },
+                ]}
+              >
+                <SafeInlineIcon name="close" size={28} color="#fff" />
+              </View>
+            </View>
+
+            <View style={styles.heroBadgePill}>
+              <View style={[styles.heroBadgeDot, { backgroundColor: "#fff" }]} />
+              <Text style={styles.heroBadgeText}>Documents Rejected</Text>
+            </View>
+
+            <Text style={styles.heroTitle}>Verification Unsuccessful</Text>
+            <Text style={styles.heroSub}>
+              One or more documents could not be verified. Please re-upload the
+              correct documents to continue.
+            </Text>
+          </View>
+
+          {/* ── Rejection reason ── */}
+          {!!kycRejectionReason && (
+            <View
+              style={[
+                styles.reasonCard,
+                { backgroundColor: colors.errorSoft, borderColor: colors.error },
+              ]}
+            >
+              <View style={styles.reasonHeader}>
+                <SafeInlineIcon name="info" size={16} color={colors.error} />
+                <Text style={[styles.reasonTitle, { color: colors.errorText }]}>
+                  Reason from verification team
+                </Text>
+              </View>
+              <Text style={[styles.reasonBody, { color: colors.errorText }]}>
+                {kycRejectionReason}
+              </Text>
+            </View>
+          )}
+
+          {/* ── Rejected docs list ── */}
+          {rejectedDocs.length > 0 && (
+            <View
+              style={[
+                styles.card,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+              ]}
+            >
+              <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+                Documents to Re-upload
+              </Text>
+              {rejectedDocs.map((key, i) => (
+                <View
+                  key={key}
+                  style={[
+                    styles.docRow,
+                    i < rejectedDocs.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.docIconWrap,
+                      { backgroundColor: colors.errorSoft },
+                    ]}
+                  >
+                    <SafeInlineIcon name="close" size={14} color={colors.error} />
+                  </View>
+                  <Text style={[styles.docLabel, { color: colors.foreground }]}>
+                    {DOC_LABELS[key] ?? key}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* ── Timeline ── */}
+          <View
+            style={[
+              styles.card,
+              {
+                backgroundColor: colors.surface,
+                borderColor:     colors.border,
+                shadowColor:     colors.error,
+              },
+            ]}
+          >
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+              Review Timeline
+            </Text>
+            <View style={styles.timeline}>
+              <TimelineStep
+                status="done"
+                title="Documents Uploaded"
+                description="All required documents received"
+              />
+              <TimelineStep
+                status="done"
+                title="Registration Fee Paid"
+                description="₹10 one-time activation fee verified"
+              />
+              <TimelineStep
+                status="rejected"
+                title="Verification Failed"
+                description="Some documents could not be verified"
+              />
+              <TimelineStep
+                status="pending"
+                title="Re-upload & Re-verify"
+                description="Upload correct documents to proceed"
+                isLast
+              />
+            </View>
+          </View>
+
+          {/* ── Support row ── */}
+          <TouchableOpacity
+            style={[
+              styles.supportRow,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+            activeOpacity={0.7}
+            onPress={callSupport}
+          >
+            <SafeIcon3D
+              name="support"
+              size={36}
+              bg={colors.warningSoft}
+              color={colors.warning}
+              glow={colors.warning}
+              rounded={10}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.supportTitle, { color: colors.foreground }]}>
+                Need help?
+              </Text>
+              <Text style={[styles.supportSub, { color: colors.mutedForeground }]}>
+                Contact our support team 24×7
+              </Text>
+            </View>
+            <SafeInlineIcon name="arrow" size={18} color={colors.mutedForeground} />
+          </TouchableOpacity>
+        </ScrollView>
+
+        {/* ── Footer ── */}
+        <View
+          style={[
+            styles.footer,
+            {
+              paddingBottom:   insets.bottom + 16,
+              borderTopColor:  colors.border,
+              backgroundColor: colors.surface,
+            },
+          ]}
+        >
+          <PremiumButton3D
+            title="Re-upload Documents"
+            leftIcon="refresh"
+            bg={colors.error}
+            bgDark="#991B1B"
+            textColor="#fff"
+            onPress={() => router.replace("/document-upload")}
+          />
+          <TouchableOpacity
+            style={[styles.ghostBtn, { borderColor: colors.border }]}
+            activeOpacity={0.7}
+            onPress={callSupport}
+          >
+            <SafeInlineIcon name="support" size={15} color={colors.foreground} />
+            <Text style={[styles.ghostBtnText, { color: colors.foreground }]}>
+              Contact Support
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -221,7 +496,7 @@ export default function VerificationPendingScreen() {
           activeOpacity={0.7}
           onPress={() =>
             Alert.alert("Application options", undefined, [
-              { text: "Refresh status" },
+              { text: "Refresh status", onPress: () => void doRefresh() },
               { text: "Contact support", onPress: callSupport },
               { text: "Cancel", style: "cancel" },
             ])
@@ -439,11 +714,13 @@ export default function VerificationPendingScreen() {
             if (isApproved) {
               router.replace("/(tabs)");
             } else {
-              Alert.alert(
-                "Verification Pending",
-                "Your application is still under review. You'll receive a notification once approved.",
-                [{ text: "OK" }],
-              );
+              void doRefresh().then(() => {
+                Alert.alert(
+                  "Status Refreshed",
+                  "Your application is still under review. You'll receive a notification once approved.",
+                  [{ text: "OK" }],
+                );
+              });
             }
           }}
         />
@@ -470,7 +747,6 @@ export default function VerificationPendingScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
 
-  // Header — bg/border injected inline
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -490,7 +766,6 @@ const styles = StyleSheet.create({
 
   scroll: { paddingHorizontal: 16, paddingTop: 16, gap: 14 },
 
-  // ── Hero card — bg injected inline (pending token) ──
   hero: {
     borderRadius: 24,
     paddingVertical: 18,
@@ -545,7 +820,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     elevation: 0,
   },
-  // "Under Review" badge
   heroBadgePill: {
     flexDirection: "row",
     alignItems: "center",
@@ -600,7 +874,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  // Cards — bg/border injected inline
   card: {
     borderRadius: 18,
     borderWidth: 1,
@@ -613,7 +886,32 @@ const styles = StyleSheet.create({
   },
   cardTitle: { ...TS.body, fontWeight: "700" },
 
-  // Timeline
+  reasonCard: {
+    borderRadius: 14,
+    borderWidth: 1.5,
+    padding: 14,
+    gap: 8,
+  },
+  reasonHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  reasonTitle:  { ...TS.bodySm, fontWeight: "700", flex: 1 },
+  reasonBody:   { ...TS.bodySm, lineHeight: 20 },
+
+  docRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 10,
+  },
+  docIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  docLabel: { ...TS.bodySm, flex: 1, fontWeight: "600" },
+
   timeline:    { gap: 0 },
   tlRow:       { flexDirection: "row", gap: 12 },
   tlIconCol:   { alignItems: "center", width: 24 },
@@ -643,7 +941,6 @@ const styles = StyleSheet.create({
   tlBadgeDot:  { width: 6, height: 6, borderRadius: 3 },
   tlBadgeText: { ...TS.label, fontSize: 10 },
 
-  // Message card — bg/border injected inline
   messageCard: {
     borderRadius: 18,
     borderWidth: 1,
@@ -678,31 +975,9 @@ const styles = StyleSheet.create({
   },
   messageFooterText: { fontSize: 11, fontWeight: "500" },
 
-  // Tips (kept for any future use)
-  tipRow:  { flexDirection: "row", alignItems: "flex-start", gap: 10, paddingVertical: 4 },
-  tipIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  tipTitle: { ...TS.bodySm, fontWeight: "700", marginBottom: 1 },
-  tipDesc:  { ...TS.bodySm, lineHeight: 17 },
-
-  // Compact checklist (meanwhile card)
   checklistRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 5 },
-  checklistDot: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
   checklistText: { ...TS.bodySm, flex: 1 },
 
-  // Support row — bg/border injected inline
   supportRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -711,17 +986,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 12,
   },
-  supportIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   supportTitle: { ...TS.bodySm, fontWeight: "700" },
   supportSub:   { fontSize: 11, marginTop: 1 },
 
-  // Footer — bg/border injected inline
   footer: {
     paddingHorizontal: 20,
     paddingTop: 12,

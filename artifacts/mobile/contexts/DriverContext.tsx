@@ -175,9 +175,12 @@ type DriverState = {
   isAuthenticated:  boolean;
   profile:          Profile | null;
   vehicle:          Vehicle | null;
-  verificationStatus: string | null;  // "pending" | "verified" | "rejected" | null
-  documentsSubmitted: boolean;
-  accountStatus:      string | null;  // "active" | "suspended" | "blocked" | null
+  verificationStatus:  string | null;  // "pending" | "verified" | "rejected" | null
+  documentsSubmitted:  boolean;
+  kycRejectionReason:  string | null;
+  kycDocuments:        NonNullable<DriverDoc['documents']> | null;
+  refreshKycStatus:    () => Promise<void>;
+  accountStatus:       string | null;  // "active" | "suspended" | "blocked" | null
 
   isOnline:         boolean;
 
@@ -411,8 +414,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const [phone,         setPhoneState]    = useState<string | null>(null);
   const [profile,     setProfileState]= useState<Profile | null>(null);
   const [vehicle,     setVehicleState]= useState<Vehicle | null>(null);
-  const [verificationStatus, setVerifStatus]  = useState<string | null>(null);
-  const [documentsSubmitted, setDocsSubmitted] = useState<boolean>(false);
+  const [verificationStatus, setVerifStatus]      = useState<string | null>(null);
+  const [documentsSubmitted, setDocsSubmitted]     = useState<boolean>(false);
+  const [kycRejectionReason, setKycRejectionReason] = useState<string | null>(null);
+  const [kycDocuments,       setKycDocuments]       = useState<NonNullable<DriverDoc['documents']> | null>(null);
 
   const [isOnline,       setOnlineState]    = useState(false);
   const [accountStatus,  setAccountStatus]  = useState<string | null>(null);
@@ -629,6 +634,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
               void AsyncStorage.setItem(LOCAL_VERIFICATION_KEY, driverDoc.verificationStatus).catch(() => {});
             }
             setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
+            setKycRejectionReason(driverDoc.kycRejectionReason ?? null);
+            setKycDocuments(driverDoc.documents ?? null);
             setBackgroundSetupShown(driverDoc.backgroundSetupShown ?? false);
             {
               const firestorePermVer = driverDoc.permissionSetupVersion ?? 0;
@@ -1076,6 +1083,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           void AsyncStorage.setItem(LOCAL_VERIFICATION_KEY, driverDoc.verificationStatus).catch(() => {});
         }
         setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
+        setKycRejectionReason(driverDoc.kycRejectionReason ?? null);
+        setKycDocuments(driverDoc.documents ?? null);
         setBackgroundSetupShown(driverDoc.backgroundSetupShown ?? false);
         {
           const firestorePermVer = driverDoc.permissionSetupVersion ?? 0;
@@ -1343,6 +1352,23 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       if (doc.subscriptionExpiresAt) setSubExp(doc.subscriptionExpiresAt);
     } catch {
       // silent — stale state is preferable to an uncaught error
+    }
+  };
+
+  const refreshKycStatus = async (): Promise<void> => {
+    if (!driverUid) return;
+    try {
+      const doc = await getDriverDoc(driverUid);
+      if (!doc) return;
+      setVerifStatus(doc.verificationStatus ?? null);
+      setDocsSubmitted(doc.documentsSubmitted ?? false);
+      setKycRejectionReason(doc.kycRejectionReason ?? null);
+      setKycDocuments(doc.documents ?? null);
+      if (doc.verificationStatus) {
+        void AsyncStorage.setItem(LOCAL_VERIFICATION_KEY, doc.verificationStatus).catch(() => {});
+      }
+    } catch {
+      // silent — stale state is fine while offline
     }
   };
 
@@ -1887,6 +1913,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         vehicle,
         verificationStatus,
         documentsSubmitted,
+        kycRejectionReason,
+        kycDocuments,
+        refreshKycStatus,
         accountStatus,
         isOnline,
         // Multi-order foundation

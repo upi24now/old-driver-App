@@ -52,6 +52,7 @@ export type DriverDoc = {
   // ── Documents ─────────────────────────────────────────────────────────────
   documentsSubmitted?:   boolean;  // true after submitDriverDocuments()
   verificationStatus?:   string;   // "pending" | "approved" | "verified" | "rejected"
+  kycRejectionReason?:   string;   // set by admin on reject
   documents?: {
     selfie?:       DriverDocEntry;
     aadhaarFront?: DriverDocEntry;
