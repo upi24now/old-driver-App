@@ -704,6 +704,14 @@ export function DriverProvider({ children }: { children: ReactNode }) {
               cachedVerifStatus === "approved" || cachedVerifStatus === "verified";
             console.log("[SESSION_RESTORE_DOC] Firestore timeout — driverDoc null; cachedVerifStatus =", cachedVerifStatus ?? "(none)");
 
+            // Write the cached status into context state NOW so that any screen
+            // we route to (e.g. /verification-pending) sees the real value.
+            // Without this, verificationStatus stays null and the rejected branch
+            // never fires even though the route is correct.
+            if (cachedVerifStatus) {
+              setVerifStatus(cachedVerifStatus);
+            }
+
             if (cachedApproved) {
               console.log("[APPROVED_DRIVER_CACHE_HIT] local cache confirms", cachedVerifStatus, "— bypassing /verification-pending");
               // Still guard on permission setup so a driver whose permissions were
