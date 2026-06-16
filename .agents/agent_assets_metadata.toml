@@ -41,3 +41,15 @@ id = "p8pdbZjX_7LqkkvYTokik"
 uri = "file://admin-panel-bundle.zip"
 type = "unspecified"
 title = "Admin Panel bundle — index-Dkz0aL0v.js (SHA256: 49a6d1…2e06, 372 KB raw)"
+
+[[outputs]]
+id = "ZrHWa9-f5CPOwXvUzsmfI"
+uri = "file://packages/api-dist.tar.gz"
+type = "unspecified"
+title = "API — api-dist.tar.gz"
+
+[[outputs]]
+id = "bx28UMLz2HSfQKmkhBJ6T"
+uri = "file://packages/admin-dist.tar.gz"
+type = "unspecified"
+title = "Admin Panel — admin-dist.tar.gz"
