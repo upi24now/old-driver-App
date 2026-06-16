@@ -632,7 +632,7 @@ export default function DocumentUploadScreen() {
   const colors     = useColors();
   const insets     = useSafeAreaInsets();
   const router     = useRouter();
-  const { driverUid, onboardingFeeApplies, onboardingFeeStatus, phone, profile } = useDriver();
+  const { driverUid, onboardingFeeApplies, onboardingFeeStatus, phone, profile, refreshKycStatus } = useDriver();
   const [submitting,        setSubmitting]        = useState(false);
   const [uploadStatusText,  setUploadStatusText]  = useState<string>("");
 
@@ -880,6 +880,16 @@ export default function DocumentUploadScreen() {
       setUploadStatusText("");
       return;
     }
+
+    // ── Flush context state before routing ────────────────────────────────────
+    // The Firestore write above sets verificationStatus="pending" and deletes
+    // kycRejectionReason in the local SDK cache immediately.  refreshKycStatus()
+    // reads that cache via getDoc() and calls setVerifStatus / setKycRejectionReason
+    // so that verification-pending.tsx renders the pending branch — not the
+    // rejected branch — from the very first frame.  Without this call the context
+    // still holds verificationStatus="rejected" until the onSnapshot listener fires.
+    setUploadStatusText("Finalising…");
+    await refreshKycStatus();
 
     // ── Route ─────────────────────────────────────────────────────────────────
     // New signup drivers who haven't paid yet → onboarding fee screen.

@@ -327,6 +327,9 @@ export async function submitDriverDocuments(
     verificationStatus:   "pending",
     documentsSubmittedAt: serverTimestamp(),
     updatedAt:            serverTimestamp(),
+    // Clear any top-level rejection reason so the driver's next visit to
+    // verification-pending.tsx does not show stale rejection data.
+    kycRejectionReason:   deleteField(),
   };
   for (const [id, uri] of Object.entries(safeUris)) {
     updates[`documents.${id}.url`]        = uri;
