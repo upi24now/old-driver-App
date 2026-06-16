@@ -53,3 +53,9 @@ id = "bx28UMLz2HSfQKmkhBJ6T"
 uri = "file://packages/admin-dist.tar.gz"
 type = "unspecified"
 title = "Admin Panel — admin-dist.tar.gz"
+
+[[outputs]]
+id = "H3gC8jqrHIsTmQsBoH4rt"
+uri = "file://packages/admin-dist-root.tar.gz"
+type = "unspecified"
+title = "Admin Panel (root path) — admin-dist-root.tar.gz"
