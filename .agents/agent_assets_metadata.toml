@@ -101,3 +101,9 @@ id = "nQ_BUlvLXAgn57n5OJDM5"
 uri = "file://admin-panel-dist-v1.tar.gz"
 type = "unspecified"
 title = "Admin Panel dist v1 (BASE_PATH=/, for admin.bikecourierservice.com root)"
+
+[[outputs]]
+id = "VVXODk0V66_OuvkqBH-5m"
+uri = "file://api-server-v5-complete.tar.gz"
+type = "unspecified"
+title = "API Server v5 — self-contained (dist + firebase-admin node_modules)"
