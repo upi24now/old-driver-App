@@ -819,17 +819,23 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // Purpose: detect admin suspend / blacklist WHILE the app is open and
   // enforce immediately (≤ Firestore propagation time, typically < 2 s).
   //
-  // The first snapshot fires synchronously on subscribe and is skipped —
-  // session restore has already read and applied that state. Only
-  // subsequent snapshots represent live admin changes.
+  // LOOP GUARD: subscribeDriverDoc watches the entire driver document.
+  // When we write isOnline=false to Firestore as part of block enforcement,
+  // that write re-triggers this onSnapshot listener. Without the guard,
+  // every re-fire would write again → infinite loop → app crash → white screen.
+  //
+  // hasEnforcedBlock is a closure-scoped boolean (not a React ref) so it
+  // persists across listener calls but resets cleanly when the effect tears
+  // down (driverUid changed / component unmounted).
   useEffect(() => {
     if (!driverUid) return;
 
-    const isFirstSnapshot = { value: true };
+    let isFirstSnapshot = true;
+    let hasEnforcedBlock = false;
 
     const unsub = subscribeDriverDoc(driverUid, (snap) => {
-      if (isFirstSnapshot.value) {
-        isFirstSnapshot.value = false;
+      if (isFirstSnapshot) {
+        isFirstSnapshot = false;
         return; // session restore already handled initial state
       }
       if (!snap) return;
@@ -843,13 +849,25 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       setAccountStatus(snap.accountStatus ?? null);
 
       if (blocked) {
+        if (hasEnforcedBlock) {
+          // Listener re-fired because our own updateDriverOnlineStatus write
+          // touched the doc. Block is already enforced — do nothing.
+          console.log(
+            "[ACCOUNT_STATUS_LISTENER] still blocked — skipping (loop guard active)",
+          );
+          return;
+        }
+
+        // First time blocked is detected in this subscription — enforce once.
+        hasEnforcedBlock = true;
         console.log(
           "[ACCOUNT_STATUS_LISTENER] blocked — accountStatus =",
           snap.accountStatus,
-          "→ forcing offline + /account-blocked",
+          "→ enforcing ONCE (subsequent re-fires suppressed by loop guard)",
         );
         setOnlineState(false);
-        // Persist offline to Firestore (best-effort).
+        // Persist offline to Firestore. This write WILL re-trigger the listener,
+        // but hasEnforcedBlock=true ensures that re-fire is a no-op.
         updateDriverOnlineStatus(driverUid, false).catch(console.error);
         // Stop GPS tracking immediately.
         if (locationIntervalRef.current !== null) {
