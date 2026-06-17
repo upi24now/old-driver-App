@@ -12,6 +12,7 @@ import kycUploadRouter   from "./kyc-upload";
 import kycAdminRouter    from "./kyc-admin";
 import adminAuthRouter   from "./admin-auth";
 import adminUsersRouter  from "./admin-users";
+import adminDataRouter   from "./admin-data";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(kycUploadRouter);
 router.use(kycAdminRouter);
 router.use(adminAuthRouter);
 router.use(adminUsersRouter);
+router.use(adminDataRouter);
 
 export default router;

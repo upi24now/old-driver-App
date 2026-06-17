@@ -89,3 +89,15 @@ id = "69wV1dvqzg804856Hn-68"
 uri = "file://api-server-dist-v3.tar.gz"
 type = "unspecified"
 title = "API Server dist v3 (suspend/blacklist reasons + rebuild)"
+
+[[outputs]]
+id = "7M9MYkyiiSgS3JFhs7pBR"
+uri = "file://api-server-dist-v4.tar.gz"
+type = "unspecified"
+title = "API Server dist v4 (orders + driver-detail admin endpoints)"
+
+[[outputs]]
+id = "nQ_BUlvLXAgn57n5OJDM5"
+uri = "file://admin-panel-dist-v1.tar.gz"
+type = "unspecified"
+title = "Admin Panel dist v1 (BASE_PATH=/, for admin.bikecourierservice.com root)"

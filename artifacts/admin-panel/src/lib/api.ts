@@ -123,6 +123,59 @@ export function unsuspendDriver(uid: string) {
   return apiFetch<{ ok: true }>(`/api/kyc/${uid}/unsuspend`, { method: "POST" });
 }
 
+// ── Admin Orders ───────────────────────────────────────────────────────────────
+
+export interface OrderEntry {
+  id:             string;
+  status:         string;
+  customerId:     string | null;
+  customerName:   string | null;
+  customerPhone:  string | null;
+  customerRating: number | null;
+  driverUid:      string | null;
+  driverName:     string | null;
+  pickupAddress:  string | null;
+  dropAddress:    string | null;
+  fareEstimate:   number | null;
+  paymentMode:    string | null;
+  createdAt:      string | null;
+  deliveredAt:    string | null;
+  acceptedAt:     string | null;
+  rejectedBy:     string[];
+}
+
+export interface DriverDetail extends DriverEntry {
+  rating:               number | null;
+  isOnline:             boolean;
+  latitude:             number | null;
+  longitude:            number | null;
+  lastSeenAt:           string | null;
+  walletBalance:        number;
+  totalEarnings:        number;
+  completedDeliveries:  number;
+  totalPaid:            number;
+  ordersCompleted:      number;
+  ordersCancelled:      number;
+  ordersRejectedBy:     number;
+  suspendReason:        string | null;
+  blacklistReason:      string | null;
+}
+
+export function fetchAllOrders(status?: string, limit = 100) {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  params.set("limit", String(limit));
+  return apiFetch<{ ok: boolean; orders: OrderEntry[] }>(
+    `/api/admin/orders?${params.toString()}`,
+  ).then((r) => r.orders);
+}
+
+export function fetchDriverDetail(uid: string) {
+  return apiFetch<{ ok: boolean; driver: DriverDetail }>(
+    `/api/admin/drivers/${encodeURIComponent(uid)}/detail`,
+  ).then((r) => r.driver);
+}
+
 // ── Admin Users ────────────────────────────────────────────────────────────────
 
 export function fetchAdminUsers() {

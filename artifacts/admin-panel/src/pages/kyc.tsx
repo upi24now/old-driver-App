@@ -52,7 +52,7 @@ export default function KYC() {
   const [rejectDocIds, setRejectDocIds] = useState<string[]>([]);
 
   useEffect(() => {
-    if (!sessionStorage.getItem("adminApiKey")) setLocation("/");
+    if (!sessionStorage.getItem("adminJwt")) setLocation("/");
   }, [setLocation]);
 
   const { data: drivers = [], isLoading, error } = useQuery({
