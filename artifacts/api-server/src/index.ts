@@ -41,6 +41,18 @@ if (dotenvResult.error) {
 // ── Static uploads route (mounted after dotenv so UPLOADS_DIR is correct) ───
 initStaticUploads(uploadsDir);
 
+// ── One-time package download route ─────────────────────────────────────────
+// Allows the VPS operator to wget the latest api-deploy.tar.gz directly from
+// the Replit dev domain without needing any external file host.
+app.get("/api/dl", (_req, res) => {
+  const filePath = resolve(bundleDir, "../api-deploy.tar.gz");
+  res.download(filePath, "api-deploy.tar.gz", (err) => {
+    if (err) {
+      res.status(404).json({ error: "Package not found", path: filePath });
+    }
+  });
+});
+
 // ── Startup config log ───────────────────────────────────────────────────────
 logger.info(
   {
