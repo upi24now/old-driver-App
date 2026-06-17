@@ -105,12 +105,18 @@ export function rejectDriver(uid: string, reason?: string, rejectedDocIds?: stri
   });
 }
 
-export function suspendDriver(uid: string) {
-  return apiFetch<{ ok: true }>(`/api/kyc/${uid}/suspend`,   { method: "POST" });
+export function suspendDriver(uid: string, reason?: string) {
+  return apiFetch<{ ok: true }>(`/api/kyc/${uid}/suspend`, {
+    method: "POST",
+    body:   JSON.stringify({ reason }),
+  });
 }
 
-export function blacklistDriver(uid: string) {
-  return apiFetch<{ ok: true }>(`/api/kyc/${uid}/blacklist`, { method: "POST" });
+export function blacklistDriver(uid: string, reason?: string) {
+  return apiFetch<{ ok: true }>(`/api/kyc/${uid}/blacklist`, {
+    method: "POST",
+    body:   JSON.stringify({ reason }),
+  });
 }
 
 export function unsuspendDriver(uid: string) {

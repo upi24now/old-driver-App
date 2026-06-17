@@ -304,7 +304,10 @@ router.post("/kyc/:uid/reject", requireAdminJwt, async (req, res) => {
  * immediately routes to /account-blocked.
  */
 router.post("/kyc/:uid/suspend", requireAdminJwt, async (req, res) => {
-  const uid = req.params["uid"] as string;
+  const uid    = req.params["uid"] as string;
+  const reason = typeof req.body?.reason === "string" && req.body.reason.trim()
+    ? req.body.reason.trim()
+    : null;
   if (!uid) { res.status(400).json({ ok: false, error: "uid is required." }); return; }
 
   try {
@@ -313,14 +316,17 @@ router.post("/kyc/:uid/suspend", requireAdminJwt, async (req, res) => {
     const snap = await ref.get();
     if (!snap.exists) { res.status(404).json({ ok: false, error: "driver_not_found" }); return; }
 
-    await ref.update({
+    const update: Record<string, unknown> = {
       accountStatus: "suspended",
       suspendedAt:   FieldValue.serverTimestamp(),
       isOnline:      false,
       onlineStatus:  "offline",
-    });
+    };
+    if (reason) update["suspendReason"] = reason;
 
-    req.log.info({ uid }, "kyc-admin: driver suspended");
+    await ref.update(update);
+
+    req.log.info({ uid, reason }, "kyc-admin: driver suspended");
     res.json({ ok: true });
   } catch (err) {
     req.log.error({ err, uid }, "kyc-admin: suspend failed");
@@ -337,7 +343,10 @@ router.post("/kyc/:uid/suspend", requireAdminJwt, async (req, res) => {
  * immediately routes to /account-blocked.
  */
 router.post("/kyc/:uid/blacklist", requireAdminJwt, async (req, res) => {
-  const uid = req.params["uid"] as string;
+  const uid    = req.params["uid"] as string;
+  const reason = typeof req.body?.reason === "string" && req.body.reason.trim()
+    ? req.body.reason.trim()
+    : null;
   if (!uid) { res.status(400).json({ ok: false, error: "uid is required." }); return; }
 
   try {
@@ -346,14 +355,17 @@ router.post("/kyc/:uid/blacklist", requireAdminJwt, async (req, res) => {
     const snap = await ref.get();
     if (!snap.exists) { res.status(404).json({ ok: false, error: "driver_not_found" }); return; }
 
-    await ref.update({
+    const update: Record<string, unknown> = {
       accountStatus: "blacklisted",
       blacklistedAt: FieldValue.serverTimestamp(),
       isOnline:      false,
       onlineStatus:  "offline",
-    });
+    };
+    if (reason) update["blacklistReason"] = reason;
 
-    req.log.info({ uid }, "kyc-admin: driver blacklisted");
+    await ref.update(update);
+
+    req.log.info({ uid, reason }, "kyc-admin: driver blacklisted");
     res.json({ ok: true });
   } catch (err) {
     req.log.error({ err, uid }, "kyc-admin: blacklist failed");

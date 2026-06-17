@@ -183,6 +183,8 @@ type DriverState = {
   kycDocuments:        NonNullable<DriverDoc['documents']> | null;
   refreshKycStatus:    () => Promise<void>;
   accountStatus:       string | null;  // "active" | "suspended" | "blocked" | null
+  suspendReason:       string | null;  // admin-supplied reason shown on the blocked screen
+  blacklistReason:     string | null;  // admin-supplied reason shown on the blocked screen
 
   isOnline:         boolean;
 
@@ -421,8 +423,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const [kycRejectionReason, setKycRejectionReason] = useState<string | null>(null);
   const [kycDocuments,       setKycDocuments]       = useState<NonNullable<DriverDoc['documents']> | null>(null);
 
-  const [isOnline,       setOnlineState]    = useState(false);
-  const [accountStatus,  setAccountStatus]  = useState<string | null>(null);
+  const [isOnline,        setOnlineState]    = useState(false);
+  const [accountStatus,   setAccountStatus]  = useState<string | null>(null);
+  const [suspendReason,   setSuspendReason]   = useState<string | null>(null);
+  const [blacklistReason, setBlacklistReason] = useState<string | null>(null);
 
   // ── Multi-order foundation ─────────────────────────────────────────────────
   // Phase 1: always contains at most 1 order.  Phase 3+ lifts the cap.
@@ -477,6 +481,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const driverUidRef         = useRef<string | null>(null);
   // GPS location interval — cleared on go-offline and on sign-out
   const locationIntervalRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Navigation guard — ensures router.replace("/account-blocked") fires AT MOST
+  // ONCE per session regardless of how many times onAuthStateChanged or the
+  // subscribeDriverDoc listener fires. Prevents remount blinks on reconnect.
+  const hasNavigatedToBlockedRef = useRef(false);
   const profileRef      = useRef<Profile | null>(null);
   const driverRatingRef = useRef<number | string>("5.0");
   const driverTripsRef  = useRef<number>(0);
@@ -606,6 +614,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
               setVehicleState({ id: driverDoc.vehicleId, name: driverDoc.vehicleName ?? "" });
             }
             setAccountStatus(driverDoc.accountStatus ?? null);
+            setSuspendReason(driverDoc.suspendReason ?? null);
+            setBlacklistReason(driverDoc.blacklistReason ?? null);
+            if (driverDoc.suspendReason)   console.log("[ACCOUNT_SUSPEND_REASON] session restore:", driverDoc.suspendReason);
+            if (driverDoc.blacklistReason) console.log("[ACCOUNT_BLACKLIST_REASON] session restore:", driverDoc.blacklistReason);
             {
               const isSuspended =
                 driverDoc.accountStatus === "suspended" ||
@@ -739,7 +751,17 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             }
             console.log("[ROUTE_DECISION] session restore chosenRoute =", nextRoute, "(Firestore timeout — localVer =", localVer, ")");
           }
-          router.replace(nextRoute as never);
+          // Guard: only navigate to /account-blocked once per session.
+          // If onAuthStateChanged re-fires (e.g. Firebase reconnect), skip the
+          // router.replace so the already-mounted blocked screen does not remount.
+          if (nextRoute === "/account-blocked" && hasNavigatedToBlockedRef.current) {
+            console.log("[ACCOUNT_ENFORCEMENT_REFRESH] session restore re-fired — blocked screen already mounted, suppressing router.replace");
+          } else {
+            if (nextRoute === "/account-blocked") {
+              hasNavigatedToBlockedRef.current = true;
+            }
+            router.replace(nextRoute as never);
+          }
           console.log("[AUTH_RESTORE] setAuthLoading false (session restore complete)");
           setAuthLoading(false);
         }
@@ -845,8 +867,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         snap.accountStatus === "blacklisted" ||
         snap.accountStatus === "blocked";
 
-      // Always sync accountStatus so the blocked screen shows the right message.
+      // Always sync accountStatus and reasons so the blocked screen is up to date.
       setAccountStatus(snap.accountStatus ?? null);
+      setSuspendReason(snap.suspendReason ?? null);
+      setBlacklistReason(snap.blacklistReason ?? null);
+      if (snap.suspendReason)   console.log("[ACCOUNT_SUSPEND_REASON] live update:", snap.suspendReason);
+      if (snap.blacklistReason) console.log("[ACCOUNT_BLACKLIST_REASON] live update:", snap.blacklistReason);
 
       if (blocked) {
         if (hasEnforcedBlock) {
@@ -855,6 +881,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           console.log(
             "[ACCOUNT_STATUS_LISTENER] still blocked — skipping (loop guard active)",
           );
+          console.log("[ACCOUNT_ENFORCEMENT_REFRESH] Firestore re-fire suppressed — screen stays mounted");
           return;
         }
 
@@ -875,7 +902,14 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           locationIntervalRef.current = null;
           console.log("[GPS_STATUS] tracking stopped (account blocked)");
         }
-        router.replace("/account-blocked");
+        // Navigation guard — skip if already on the blocked screen (prevents
+        // remount blink if this listener fires after session restore already navigated).
+        if (hasNavigatedToBlockedRef.current) {
+          console.log("[ACCOUNT_ENFORCEMENT_REFRESH] blocked screen already mounted — navigation suppressed");
+        } else {
+          hasNavigatedToBlockedRef.current = true;
+          router.replace("/account-blocked");
+        }
       }
     });
 
@@ -1286,6 +1320,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     } catch {
       // Non-fatal — Firebase session is cleared below regardless.
     }
+    // Reset blocked-screen navigation guard so a re-login session starts fresh.
+    hasNavigatedToBlockedRef.current = false;
     try {
       await firebaseSignOut(firebaseAuth);
     } catch (err) {
@@ -2009,6 +2045,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         kycDocuments,
         refreshKycStatus,
         accountStatus,
+        suspendReason,
+        blacklistReason,
         isOnline,
         // Multi-order foundation
         activeOrders,

@@ -83,3 +83,9 @@ id = "b5mFkCSzM65_6450bfcQF"
 uri = "file://packages/api-server-admin-auth-v2.tar.gz"
 type = "unspecified"
 title = "API Server — api-server-admin-auth-v2.tar.gz"
+
+[[outputs]]
+id = "69wV1dvqzg804856Hn-68"
+uri = "file://api-server-dist-v3.tar.gz"
+type = "unspecified"
+title = "API Server dist v3 (suspend/blacklist reasons + rebuild)"

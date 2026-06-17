@@ -21,24 +21,27 @@ import { Loader2, Search, ShieldOff, Ban, ShieldCheck, RefreshCw } from "lucide-
 
 type BlockAction = "suspend" | "blacklist" | "restore";
 
-const ACTION_META: Record<BlockAction, { title: string; description: string; confirmLabel: string; variant: "destructive" | "default" | "outline" }> = {
+const ACTION_META: Record<BlockAction, { title: string; description: string; confirmLabel: string; variant: "destructive" | "default" | "outline"; requiresReason: boolean }> = {
   suspend: {
     title:        "Suspend Driver?",
     description:  "The driver will be immediately forced offline and blocked from receiving orders. They will see a suspended screen on the app. You can restore access later.",
     confirmLabel: "Suspend Driver",
     variant:      "destructive",
+    requiresReason: true,
   },
   blacklist: {
     title:        "Blacklist Driver?",
     description:  "The driver will be permanently blocked and forced offline immediately. They will see a blacklisted screen on the app.",
     confirmLabel: "Blacklist Driver",
     variant:      "destructive",
+    requiresReason: true,
   },
   restore: {
     title:        "Restore Driver Access?",
     description:  "The driver's account will be reactivated. They must go online again manually.",
     confirmLabel: "Restore Access",
     variant:      "default",
+    requiresReason: false,
   },
 };
 
@@ -67,9 +70,10 @@ export default function Drivers() {
   const [search, setSearch] = useState("");
   const [target, setTarget] = useState<DriverEntry | null>(null);
   const [blockAction, setBlockAction] = useState<BlockAction | null>(null);
+  const [reason, setReason] = useState("");
 
   useEffect(() => {
-    if (!sessionStorage.getItem("adminApiKey")) setLocation("/");
+    if (!sessionStorage.getItem("adminJwt")) setLocation("/");
   }, [setLocation]);
 
   const { data: drivers = [], isLoading, refetch } = useQuery({
@@ -78,23 +82,29 @@ export default function Drivers() {
     retry: false,
   });
 
-  const suspendMutation  = useMutation({ mutationFn: suspendDriver,   onSuccess: onSuccess("suspended") });
-  const blacklistMutation = useMutation({ mutationFn: blacklistDriver, onSuccess: onSuccess("blacklisted") });
-  const unsuspendMutation = useMutation({ mutationFn: unsuspendDriver, onSuccess: onSuccess("restored") });
+  const suspendMutation  = useMutation({ mutationFn: ({ uid, r }: { uid: string; r?: string }) => suspendDriver(uid, r),   onSuccess: onSuccess("suspended") });
+  const blacklistMutation = useMutation({ mutationFn: ({ uid, r }: { uid: string; r?: string }) => blacklistDriver(uid, r), onSuccess: onSuccess("blacklisted") });
+  const unsuspendMutation = useMutation({ mutationFn: (uid: string) => unsuspendDriver(uid), onSuccess: onSuccess("restored") });
 
   function onSuccess(label: string) {
     return () => {
       toast({ title: `Driver ${label} — app will enforce within 2 s` });
       queryClient.invalidateQueries({ queryKey: ["drivers"] });
-      setBlockAction(null);
-      setTarget(null);
+      closeDialog();
     };
   }
 
+  const closeDialog = () => {
+    setBlockAction(null);
+    setTarget(null);
+    setReason("");
+  };
+
   const confirmBlock = () => {
     if (!target || !blockAction) return;
-    if (blockAction === "suspend")   suspendMutation.mutate(target.uid);
-    if (blockAction === "blacklist") blacklistMutation.mutate(target.uid);
+    const r = reason.trim() || undefined;
+    if (blockAction === "suspend")   suspendMutation.mutate({ uid: target.uid, r });
+    if (blockAction === "blacklist") blacklistMutation.mutate({ uid: target.uid, r });
     if (blockAction === "restore")   unsuspendMutation.mutate(target.uid);
   };
 
@@ -177,7 +187,7 @@ export default function Drivers() {
                           <Button
                             size="sm" variant="outline"
                             className="border-orange-300 text-orange-700 hover:bg-orange-50 h-7 px-2 text-xs"
-                            onClick={() => { setTarget(d); setBlockAction("suspend"); }}
+                            onClick={() => { setTarget(d); setBlockAction("suspend"); setReason(""); }}
                             disabled={busy}
                             data-testid={`btn-suspend-${d.uid}`}
                           >
@@ -188,7 +198,7 @@ export default function Drivers() {
                           <Button
                             size="sm" variant="destructive"
                             className="h-7 px-2 text-xs"
-                            onClick={() => { setTarget(d); setBlockAction("blacklist"); }}
+                            onClick={() => { setTarget(d); setBlockAction("blacklist"); setReason(""); }}
                             disabled={busy}
                             data-testid={`btn-blacklist-${d.uid}`}
                           >
@@ -217,17 +227,41 @@ export default function Drivers() {
       </div>
 
       {blockAction && target && (
-        <Dialog open onOpenChange={open => { if (!open) { setBlockAction(null); setTarget(null); } }}>
+        <Dialog open onOpenChange={open => { if (!open) closeDialog(); }}>
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>{ACTION_META[blockAction].title}</DialogTitle>
               <DialogDescription>{ACTION_META[blockAction].description}</DialogDescription>
             </DialogHeader>
-            <div className="py-2 text-sm text-muted-foreground">
-              Driver: <span className="font-medium text-foreground">{target.name || target.uid}</span>
+
+            <div className="py-2 space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Driver: <span className="font-medium text-foreground">{target.name || target.uid}</span>
+              </p>
+
+              {ACTION_META[blockAction].requiresReason && (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">
+                    Reason <span className="text-muted-foreground font-normal">(shown to driver)</span>
+                  </label>
+                  <textarea
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                    rows={3}
+                    placeholder={
+                      blockAction === "suspend"
+                        ? "e.g. Multiple customer complaints, behaviour issue…"
+                        : "e.g. Fraudulent activity, chargeback abuse…"
+                    }
+                    value={reason}
+                    onChange={e => setReason(e.target.value)}
+                    disabled={busy}
+                  />
+                </div>
+              )}
             </div>
+
             <DialogFooter>
-              <Button variant="outline" onClick={() => { setBlockAction(null); setTarget(null); }} disabled={busy}>
+              <Button variant="outline" onClick={closeDialog} disabled={busy}>
                 Cancel
               </Button>
               <Button

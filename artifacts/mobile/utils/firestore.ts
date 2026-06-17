@@ -47,6 +47,8 @@ export type DriverDoc = {
   onlineStatus?:          "online" | "offline";
   lastSeenAt?:            unknown;
   accountStatus?:         string;   // "active" | "suspended" | "blacklisted" | "blocked"
+  suspendReason?:         string;   // admin-supplied reason written at suspend time
+  blacklistReason?:       string;   // admin-supplied reason written at blacklist time
   subscriptionPlan?:      string;
   subscriptionExpiresAt?: number;
   createdAt:              unknown;
