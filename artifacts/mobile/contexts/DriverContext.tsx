@@ -858,7 +858,16 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     const unsub = subscribeDriverDoc(driverUid, (snap) => {
       if (isFirstSnapshot) {
         isFirstSnapshot = false;
-        return; // session restore already handled initial state
+        // Sync subscription fields as a fallback for the 3.5 s Firestore-timeout
+        // path in onAuthStateChanged — when getDriverDoc loses the race, this is
+        // the only remaining chance to hydrate plan state before the home screen
+        // renders.  Account-block enforcement is intentionally NOT run on the
+        // first snapshot to preserve the infinite-loop fix.
+        if (snap) {
+          if (snap.subscriptionPlan)      setSubPlan(snap.subscriptionPlan as SubPlan);
+          if (snap.subscriptionExpiresAt) setSubExp(snap.subscriptionExpiresAt);
+        }
+        return;
       }
       if (!snap) return;
 
