@@ -107,3 +107,9 @@ id = "VVXODk0V66_OuvkqBH-5m"
 uri = "file://api-server-v5-complete.tar.gz"
 type = "unspecified"
 title = "API Server v5 — self-contained (dist + firebase-admin node_modules)"
+
+[[outputs]]
+id = "HHnbB_CaRsSBGEiHvHuW7"
+uri = "file://artifacts/api-server/api-deploy-step7.tar.gz"
+type = "unspecified"
+title = "api-deploy-step7.tar.gz"
