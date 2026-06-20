@@ -946,6 +946,7 @@ export default function DocumentUploadScreen() {
     // Strip null entries — the API only accepts { docId: url } string pairs.
     setUploadStatusText("Saving documents…");
     console.log("[KYC] phase 3a — PostgreSQL write start");
+    console.log("[DOC_DUAL_WRITE] pg_start");
     const pgDocuments: Record<string, string> = {};
     for (const [id, url] of Object.entries(docUris)) {
       if (url !== null) pgDocuments[id] = url;
@@ -954,6 +955,7 @@ export default function DocumentUploadScreen() {
     const pgResult = await submitDocumentsToPostgres(pgDocuments);
     if (!pgResult.ok) {
       console.error("[KYC] phase 3a — PostgreSQL FAILED:", pgResult.error, pgResult.message);
+      console.error("[DOC_DUAL_WRITE] pg_failed error=" + pgResult.error);
       Alert.alert(
         "Submission Failed",
         `Could not save documents.\n\n${pgResult.message}`,
@@ -964,18 +966,22 @@ export default function DocumentUploadScreen() {
       return;
     }
     console.log("[KYC] phase 3a — PostgreSQL SUCCESS, count:", pgResult.count);
+    console.log("[DOC_DUAL_WRITE] pg_success count=" + pgResult.count);
 
     // ── Phase 3b: Firestore write (safety backup) ─────────────────────────────
     // Firestore remains the safety backup until full cutover is confirmed.
     // Only reached after a successful PostgreSQL write above.
     console.log("[KYC] phase 3b — Firestore backup write start");
+    console.log("[DOC_DUAL_WRITE] firestore_backup_start");
     console.log("[KYC] phase 3b — payload:", JSON.stringify(docUris));
     try {
       await submitDriverDocuments(driverUid, docUris);
       console.log("[KYC] phase 3b — Firestore backup write SUCCESS");
+      console.log("[DOC_DUAL_WRITE] firestore_backup_success");
     } catch (err) {
       const e = err as Error & { code?: string };
       console.error("[KYC] phase 3b — Firestore FAILED");
+      console.error("[DOC_DUAL_WRITE] firestore_backup_failed code=" + (e?.code ?? "unknown"));
       console.error("[KYC]   code   :", e?.code);
       console.error("[KYC]   message:", e?.message);
       console.error("[KYC]   stack  :", e?.stack);
