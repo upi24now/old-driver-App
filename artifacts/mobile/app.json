@@ -49,7 +49,7 @@
           "icon": "./assets/images/icon.png",
           "color": "#FF4D8D",
           "sounds": [
-            "./assets/ringtone.wav"
+            "./assets/old_telephone_ring.mp3"
           ],
           "mode": "production"
         }

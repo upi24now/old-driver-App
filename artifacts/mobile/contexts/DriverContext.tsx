@@ -74,6 +74,14 @@ const LOCAL_PERMISSION_KEY = "@bike_courier/local_permission_version";
 // stranded at /verification-pending when Firestore cold-start exceeds 3.5 s.
 const LOCAL_VERIFICATION_KEY = "@bike_courier/local_verification_status";
 
+// Key that caches the last known subscriptionPlan + subscriptionExpiresAt.
+// Written after every successful Firestore driver doc read.
+// Read by the session-restore Firestore-timeout path so a driver with an
+// active plan does not see "no plan" while waiting for the live listener
+// to deliver its first snapshot (which can take several seconds on a cold
+// start when Firestore is slow).
+const LOCAL_SUBSCRIPTION_KEY = "@bike_courier/subscription_cache";
+
 export type SubPlan = "daily" | "weekly" | "monthly";
 
 export type Vehicle = { id: string; name: string };
@@ -365,6 +373,16 @@ function tsToMillis(ts: unknown): number | null {
   return null;
 }
 
+// Persists the driver's subscription plan and expiry to AsyncStorage so the
+// session-restore Firestore-timeout path can immediately show the correct plan
+// state without waiting for the live Firestore listener's first snapshot.
+function persistSubscriptionCache(plan: SubPlan | null, expiresAt: number | null): void {
+  void AsyncStorage.setItem(
+    LOCAL_SUBSCRIPTION_KEY,
+    JSON.stringify({ plan, expiresAt }),
+  ).catch(() => {});
+}
+
 function isStaleDispatch(order: OrderDoc): boolean {
   const now = Date.now();
   // 1. dispatchedAt — written by round-robin dispatcher at assignment time.
@@ -627,6 +645,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             }
             if (driverDoc.subscriptionPlan)      setSubPlan(driverDoc.subscriptionPlan as SubPlan);
             if (driverDoc.subscriptionExpiresAt) setSubExp(driverDoc.subscriptionExpiresAt);
+            // Persist subscription to AsyncStorage so the Firestore-timeout path on
+            // the next cold start can restore plan state immediately.
+            persistSubscriptionCache(
+              (driverDoc.subscriptionPlan as SubPlan) ?? null,
+              driverDoc.subscriptionExpiresAt ?? null,
+            );
             {
               const today   = new Date().toISOString().slice(0, 10);
               const sameDay = driverDoc.todayDate === today;
@@ -725,6 +749,21 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             // never fires even though the route is correct.
             if (cachedVerifStatus) {
               setVerifStatus(cachedVerifStatus);
+            }
+
+            // Restore subscription from AsyncStorage cache so the dashboard
+            // immediately shows the driver's active plan even when Firestore
+            // timed out (the live listener may take several more seconds).
+            try {
+              const subRaw = await AsyncStorage.getItem(LOCAL_SUBSCRIPTION_KEY).catch(() => null);
+              if (subRaw) {
+                const sub = JSON.parse(subRaw) as { plan?: string; expiresAt?: number };
+                if (sub.plan)      setSubPlan(sub.plan as SubPlan);
+                if (sub.expiresAt) setSubExp(sub.expiresAt);
+                console.log("[SESSION_RESTORE_SUB] plan restored from cache —", sub.plan, "exp", sub.expiresAt);
+              }
+            } catch {
+              // Non-fatal — live listener will hydrate plan once Firestore responds
             }
 
             if (cachedApproved) {
@@ -882,6 +921,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       setBlacklistReason(snap.blacklistReason ?? null);
       if (snap.suspendReason)   console.log("[ACCOUNT_SUSPEND_REASON] live update:", snap.suspendReason);
       if (snap.blacklistReason) console.log("[ACCOUNT_BLACKLIST_REASON] live update:", snap.blacklistReason);
+
+      // Sync subscription fields so live admin/server changes (plan activation,
+      // plan expiry, admin extension) are immediately reflected in the UI.
+      // React bails out automatically when the value is identical to current state.
+      setSubPlan((snap.subscriptionPlan as SubPlan) ?? null);
+      setSubExp(snap.subscriptionExpiresAt ?? null);
 
       if (blocked) {
         if (hasEnforcedBlock) {
@@ -1193,6 +1238,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         }
         if (driverDoc.subscriptionPlan)      setSubPlan(driverDoc.subscriptionPlan as SubPlan);
         if (driverDoc.subscriptionExpiresAt) setSubExp(driverDoc.subscriptionExpiresAt);
+        // Persist subscription cache so the next cold start can restore plan state
+        // immediately even if Firestore times out on the session-restore path.
+        persistSubscriptionCache(
+          (driverDoc.subscriptionPlan as SubPlan) ?? null,
+          driverDoc.subscriptionExpiresAt ?? null,
+        );
         // Restore daily stats
         {
           const today   = new Date().toISOString().slice(0, 10);
@@ -1329,6 +1380,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     } catch {
       // Non-fatal — Firebase session is cleared below regardless.
     }
+    // Clear the subscription cache so a different driver logging in on the same
+    // device cannot inherit this driver's cached plan state.
+    void AsyncStorage.removeItem(LOCAL_SUBSCRIPTION_KEY).catch(() => {});
     // Reset blocked-screen navigation guard so a re-login session starts fresh.
     hasNavigatedToBlockedRef.current = false;
     try {
@@ -1484,8 +1538,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     try {
       const doc = await getDriverDoc(driverUid);
       if (!doc) return;
-      if (doc.subscriptionPlan)      setSubPlan(doc.subscriptionPlan as SubPlan);
-      if (doc.subscriptionExpiresAt) setSubExp(doc.subscriptionExpiresAt);
+      // Unconditional updates so an expired/removed plan is always cleared locally.
+      const plan      = (doc.subscriptionPlan as SubPlan) ?? null;
+      const expiresAt = doc.subscriptionExpiresAt ?? null;
+      setSubPlan(plan);
+      setSubExp(expiresAt);
+      persistSubscriptionCache(plan, expiresAt);
     } catch {
       // silent — stale state is preferable to an uncaught error
     }

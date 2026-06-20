@@ -130,7 +130,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
 
-  const { setPhone: setDriverPhone, driverUid, authLoading } = useDriver();
+  const { setPhone: setDriverPhone, driverUid, authLoading, isOtpVerified } = useDriver();
 
   const digits    = phone.replace(/\D/g, "");
   const isValid   = digits.length === 10;
@@ -171,8 +171,8 @@ export default function LoginScreen() {
 
   console.log("[SCREEN_MOUNT] login — authLoading =", authLoading, "driverUid =", driverUid);
 
-  if (authLoading) {
-    console.log("[SPINNER_PROOF] component = LoginSpinner — authLoading=true (brief)");
+  if (authLoading || isOtpVerified) {
+    console.log("[SPINNER_PROOF] component = LoginSpinner — authLoading=", authLoading, "isOtpVerified=", isOtpVerified);
     return (
       <View style={[styles.root, { alignItems: "center", justifyContent: "center" }]}>
         <ActivityIndicator size="large" color={B.orange} />

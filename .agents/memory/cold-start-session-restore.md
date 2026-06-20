@@ -29,6 +29,24 @@ For the non-restore path (no storedUid / mismatch): call `setAuthLoading(false)`
 - **Background resume**: React state is preserved in memory (`isOtpVerified` stays true), no re-mount, no routing needed. Works fine without any fix.
 - **Kill + cold restart**: Full fresh start, React state resets, Stack re-initializes at `initialRouteName="login"`. Requires explicit navigation on restore.
 
+## Login flash guard (Bug 2 fix)
+
+`login.tsx` must guard on `isOtpVerified` in addition to `authLoading`. When `setAuthLoading(false)` fires after `router.replace("/(tabs)")` during session restore, the navigation animation is still in flight and `login.tsx` (mounted as the "from" screen) re-renders, briefly showing the full login form.
+
+Fix: `if (authLoading || isOtpVerified) return <spinner>`. `isOtpVerified=true` covers the entire window between overlay drop and animation completion.
+
+## Subscription missing on cold start with Firestore timeout (Bug 1)
+
+`LOCAL_SUBSCRIPTION_KEY = "@bike_courier/subscription_cache"` caches `{ plan, expiresAt }` to AsyncStorage after every successful Firestore doc read (onAuthStateChanged hydration, confirmOtp, refreshSubscription). In the 3.5s timeout `else` branch, this cache is read and applied before routing, so the dashboard shows the correct plan immediately.
+
+`subscribeDriverDoc` second+ snapshot now also syncs `subscriptionPlan` and `subscriptionExpiresAt` — not just `accountStatus` — so live admin/server plan changes are reflected while the app is running.
+
+Subscription cache is cleared in `signOut()` to prevent cross-driver leakage on shared devices.
+
+## EAS build — expo-notifications sounds (do not regress)
+
+The `sounds` array in `app.json` expo-notifications plugin must reference a file that actually EXISTS. The actual asset is `assets/old_telephone_ring.mp3`; `ringtone.wav` never existed and caused EAS build errors. The notification channel references the sound as `sound: "old_telephone_ring"` (no extension).
+
 ## Storage key
 
 `@bike_courier/session_verified_uid` (defined as `SESSION_VERIFIED_KEY` in DriverContext.tsx)
