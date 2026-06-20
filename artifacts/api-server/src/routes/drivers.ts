@@ -1,5 +1,7 @@
 import { Router, type IRouter } from "express";
 import { adminAuth, adminFirestore } from "../lib/firebase-admin";
+import { db, driversTable } from "@workspace/db";
+import { eq, and, ne } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -17,10 +19,14 @@ const router: IRouter = Router();
  *   uniqueness for their own account.
  *
  * The same driver updating their own profile is always allowed through
- * because each Firestore query excludes the requesting driverUid.
+ * because each query excludes the requesting driverUid.
  *
  * No matched-driver details are returned — only a boolean ok / duplicate
  * signal — so no private driver data is leaked to the caller.
+ *
+ * Read path: PostgreSQL `drivers` table (migration step #5).
+ *   Previously read from the Firestore `drivers` collection.
+ *   Firestore is no longer used for this route.
  *
  * Headers:
  *   Authorization: Bearer <Firebase ID token>
@@ -37,7 +43,7 @@ const router: IRouter = Router();
  */
 router.post("/drivers/register-keys", async (req, res) => {
   // ── 1. Extract and validate the Bearer token ────────────────────────────────
-  const authHeader = req.headers["authorization"] ?? "";
+  const authHeader  = req.headers["authorization"] ?? "";
   const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
 
   if (!bearerToken) {
@@ -48,9 +54,9 @@ router.post("/drivers/register-keys", async (req, res) => {
   // ── 2. Verify the Firebase ID token ─────────────────────────────────────────
   let decodedUid: string;
   try {
-    const auth = await adminAuth();
+    const auth    = await adminAuth();
     const decoded = await auth.verifyIdToken(bearerToken);
-    decodedUid = decoded.uid;
+    decodedUid    = decoded.uid;
   } catch (err) {
     req.log.warn({ err }, "register-keys: invalid Firebase ID token");
     res.status(401).json({ ok: false, error: "invalid_token", message: "Invalid or expired token." });
@@ -82,35 +88,56 @@ router.post("/drivers/register-keys", async (req, res) => {
     "Your account already exists with this mobile, license, or vehicle number. Please login or contact support.";
 
   try {
-    const db  = await adminFirestore();
-    const col = db.collection("drivers");
-
-    // ── 5. Phone ──────────────────────────────────────────────────────────────
+    // ── 5. Phone duplicate check ───────────────────────────────────────────────
     if (typeof phone === "string" && phone.trim().length > 0) {
-      const snap = await col.where("phone", "==", phone.trim()).get();
-      if (snap.docs.some((d) => d.id !== driverUid)) {
+      const rows = await db
+        .select({ uid: driversTable.uid })
+        .from(driversTable)
+        .where(and(
+          eq(driversTable.phone, phone.trim()),
+          ne(driversTable.uid, driverUid),
+        ))
+        .limit(1);
+
+      if (rows.length > 0) {
         req.log.info({ driverUid, field: "phone" }, "register-keys: duplicate phone");
         res.status(409).json({ ok: false, error: "duplicate", message: DUPLICATE_MSG });
         return;
       }
     }
 
-    // ── 6. License number ─────────────────────────────────────────────────────
+    // ── 6. License number duplicate check ─────────────────────────────────────
     if (typeof licenseNumber === "string" && licenseNumber.trim().length > 0) {
       const normalised = licenseNumber.trim().toUpperCase();
-      const snap = await col.where("licenseNumber", "==", normalised).get();
-      if (snap.docs.some((d) => d.id !== driverUid)) {
+      const rows = await db
+        .select({ uid: driversTable.uid })
+        .from(driversTable)
+        .where(and(
+          eq(driversTable.licenseNumber, normalised),
+          ne(driversTable.uid, driverUid),
+        ))
+        .limit(1);
+
+      if (rows.length > 0) {
         req.log.info({ driverUid, field: "licenseNumber" }, "register-keys: duplicate licenseNumber");
         res.status(409).json({ ok: false, error: "duplicate", message: DUPLICATE_MSG });
         return;
       }
     }
 
-    // ── 7. Vehicle number ─────────────────────────────────────────────────────
+    // ── 7. Vehicle number duplicate check ─────────────────────────────────────
     if (typeof vehicleNumber === "string" && vehicleNumber.trim().length > 0) {
       const normalised = vehicleNumber.trim().toUpperCase();
-      const snap = await col.where("vehicleNumber", "==", normalised).get();
-      if (snap.docs.some((d) => d.id !== driverUid)) {
+      const rows = await db
+        .select({ uid: driversTable.uid })
+        .from(driversTable)
+        .where(and(
+          eq(driversTable.vehicleNumber, normalised),
+          ne(driversTable.uid, driverUid),
+        ))
+        .limit(1);
+
+      if (rows.length > 0) {
         req.log.info({ driverUid, field: "vehicleNumber" }, "register-keys: duplicate vehicleNumber");
         res.status(409).json({ ok: false, error: "duplicate", message: DUPLICATE_MSG });
         return;
@@ -120,7 +147,7 @@ router.post("/drivers/register-keys", async (req, res) => {
     req.log.info({ driverUid }, "register-keys: no duplicates found");
     res.json({ ok: true });
   } catch (err) {
-    req.log.error({ err, driverUid }, "register-keys: Firestore error");
+    req.log.error({ err, driverUid }, "register-keys: PostgreSQL error");
     res.status(500).json({
       ok:      false,
       error:   "server_error",
@@ -181,8 +208,8 @@ router.patch("/drivers/:uid/status", async (req, res) => {
   }
 
   try {
-    const db = await adminFirestore();
-    await db.collection("drivers").doc(uid).update({
+    const fsDb = await adminFirestore();
+    await fsDb.collection("drivers").doc(uid).update({
       isOnline,
       lastSeenAt: Date.now(),
     });
@@ -261,7 +288,7 @@ router.post("/drivers/:uid/location", async (req, res) => {
   }
 
   try {
-    const db = await adminFirestore();
+    const fsDb = await adminFirestore();
     const update: Record<string, unknown> = {
       latitude,
       longitude,
@@ -270,7 +297,7 @@ router.post("/drivers/:uid/location", async (req, res) => {
     };
     if (typeof accuracy === "number") update["accuracy"] = accuracy;
 
-    await db.collection("drivers").doc(uid).update(update);
+    await fsDb.collection("drivers").doc(uid).update(update);
     req.log.info({ uid, latitude, longitude, isOnline }, "driver location updated");
     res.json({ ok: true });
   } catch (err) {
