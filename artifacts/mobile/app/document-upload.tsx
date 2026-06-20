@@ -43,7 +43,7 @@ import { useDriver } from "@/contexts/DriverContext";
 // onboardingFeeApplies is true only for brand-new signup drivers.
 import { useColors } from "@/hooks/useColors";
 import { registerDriverKeys, submitDocumentsToPostgres } from "@/utils/driver-api";
-import { getDriverDoc, submitDriverDocuments } from "@/utils/firestore";
+import { getDriverVerificationStatus } from "@/utils/profile-api";
 import { uploadDocumentImage, isRemoteUrl } from "@/utils/storage";
 import { firebaseAuth } from "@/utils/firebase";
 
@@ -641,34 +641,34 @@ export default function DocumentUploadScreen() {
     Object.fromEntries(DOCS.map((d) => [d.id, blankDoc()])) as Record<DocId, DocState>,
   );
 
-  // ── Load persisted document state from Firestore on mount ──
+  // ── Load persisted document state from PostgreSQL on mount ──
   useEffect(() => {
     if (!driverUid) { setDocsLoading(false); return; }
-    getDriverDoc(driverUid)
-      .then((driverDoc) => {
+    getDriverVerificationStatus()
+      .then((verificationStatus) => {
         // Top-level rejectedDocuments array — written by admin reject endpoint
         // alongside per-doc status. Used as a fallback when per-doc status
         // was never written (e.g. admin rejected before the nested MAP existed).
         const fallbackRejectedIds: string[] =
-          driverDoc?.verificationStatus === "rejected"
-            ? ((driverDoc.rejectedDocuments as string[] | undefined) ?? [])
+          verificationStatus?.verificationStatus === "rejected"
+            ? (verificationStatus.rejectedDocuments ?? [])
             : [];
 
         setDocs((prev) => {
           const next = { ...prev };
 
           // Step 1 — load from the nested documents MAP (source of truth)
-          if (driverDoc?.documents) {
-            const stored = driverDoc.documents as Record<
+          if (verificationStatus?.documents) {
+            const stored = verificationStatus.documents as Record<
               string,
-              { url?: string | null; uri?: string | null; status?: string | null; rejectionReason?: string | null } | undefined
+              { url?: string | null; status?: string | null; rejectionReason?: string | null } | undefined
             >;
             for (const d of DOCS) {
               const entry = stored[d.id];
               if (entry) {
                 next[d.id] = {
                   ...blankDoc(),
-                  uri:         entry.url ?? entry.uri ?? null,
+                  uri:         entry.url ?? null,
                   status:      (entry.status as RawDocStatus) ?? null,
                   // freshUpload stays false — driver must re-pick in this session
                   // to prove they have the corrected file.
@@ -693,8 +693,8 @@ export default function DocumentUploadScreen() {
           }
 
           console.log("[DOC_UPLOAD_STATE_LOADED]", JSON.stringify({
-            verificationStatus:   driverDoc?.verificationStatus ?? "(absent)",
-            kycRejectionReason:   driverDoc?.kycRejectionReason ?? "(absent)",
+            verificationStatus:   verificationStatus?.verificationStatus ?? "(absent)",
+            kycRejectionReason:   verificationStatus?.kycRejectionReason ?? "(absent)",
             fallbackRejectedIds,
             anyRejectedInMap,
             pan:    { status: next.pan.status,    uri: next.pan.uri    ? "EXISTS" : null },
@@ -968,40 +968,10 @@ export default function DocumentUploadScreen() {
     console.log("[KYC] phase 3a — PostgreSQL SUCCESS, count:", pgResult.count);
     console.log("[DOC_DUAL_WRITE] pg_success count=" + pgResult.count);
 
-    // ── Phase 3b: Firestore write (safety backup) ─────────────────────────────
-    // Firestore remains the safety backup until full cutover is confirmed.
-    // Only reached after a successful PostgreSQL write above.
-    console.log("[KYC] phase 3b — Firestore backup write start");
-    console.log("[DOC_DUAL_WRITE] firestore_backup_start");
-    console.log("[KYC] phase 3b — payload:", JSON.stringify(docUris));
-    try {
-      await submitDriverDocuments(driverUid, docUris);
-      console.log("[KYC] phase 3b — Firestore backup write SUCCESS");
-      console.log("[DOC_DUAL_WRITE] firestore_backup_success");
-    } catch (err) {
-      const e = err as Error & { code?: string };
-      console.error("[KYC] phase 3b — Firestore FAILED");
-      console.error("[DOC_DUAL_WRITE] firestore_backup_failed code=" + (e?.code ?? "unknown"));
-      console.error("[KYC]   code   :", e?.code);
-      console.error("[KYC]   message:", e?.message);
-      console.error("[KYC]   stack  :", e?.stack);
-      Alert.alert(
-        "Submission Failed",
-        `Could not save documents.\n\nCode: ${e?.code ?? "unknown"}\n${e?.message ?? String(err)}`,
-        [{ text: "OK" }],
-      );
-      setSubmitting(false);
-      setUploadStatusText("");
-      return;
-    }
-
     // ── Flush context state before routing ────────────────────────────────────
-    // The Firestore write above sets verificationStatus="pending" and deletes
-    // kycRejectionReason in the local SDK cache immediately.  refreshKycStatus()
-    // reads that cache via getDoc() and calls setVerifStatus / setKycRejectionReason
-    // so that verification-pending.tsx renders the pending branch — not the
-    // rejected branch — from the very first frame.  Without this call the context
-    // still holds verificationStatus="rejected" until the onSnapshot listener fires.
+    // refreshKycStatus() reads the PG verification-status endpoint and calls
+    // setVerifStatus / setKycRejectionReason so that verification-pending.tsx
+    // renders the pending branch — not the rejected branch — from the first frame.
     setUploadStatusText("Finalising…");
     await refreshKycStatus();
 

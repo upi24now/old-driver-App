@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "8fa8ad5d-537d-4376-9857-a4376682d041"
+      }
+    },
+    "android": {
+      "package": "com.bikeapp.workspace"
+    }
+  }
+}

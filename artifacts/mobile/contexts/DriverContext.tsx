@@ -20,11 +20,8 @@ import {
 import { firebaseAuth } from "@/utils/firebase";
 import {
   getDriverDoc,
-  subscribeDriverDoc,
   createDriverDoc,
   getOnboardingFeeConfig,
-  updateDriverProfile,
-  updateDriverVehicle,
   updateDriverOnlineStatus,
   updateDriverSubscription,
   getActiveOrderForDriver,
@@ -36,7 +33,6 @@ import {
   timeoutOrder,
   getDriverTransactions,
   getWalletDoc,
-  updateDriverBackgroundSetup,
   PERMISSION_SETUP_VERSION,
   type DriverDoc,
   type WalletDoc,
@@ -44,6 +40,14 @@ import {
   type OrderStatus,
   type AcceptOrderResult,
 } from "@/utils/firestore";
+import {
+  getDriverProfile,
+  getDriverVerificationStatus,
+  patchDriverProfile,
+  patchDriverVehicle,
+  patchDriverBackgroundSetup,
+  type PgDriverProfile,
+} from "@/utils/profile-api";
 import { requestPayout } from "@/utils/wallet-api";
 export type { AcceptOrderResult };
 import { verifyOtpApi } from "@/utils/auth-api";
@@ -607,91 +611,101 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         // navigation. A 3.5 s doc-fetch timeout keeps us safely under the 5 s
         // safety timeout so the overlay never hangs indefinitely.
 
-        // ── 3. Firestore hydration ───────────────────────────────────────────
-        let driverDoc: DriverDoc | null = null;
+        // ── 3. Profile hydration ─────────────────────────────────────────────
+        // Primary source: PostgreSQL (profile, KYC, verification, onboarding, account status).
+        // Remaining Firestore reads (background): subscription + daily stats (not yet in PG).
+        let pgProfile: PgDriverProfile | null = null;
         try {
-          const docFetch = getDriverDoc(user.uid);
-          driverDoc = sessionValid
+          const profileFetch = getDriverProfile();
+          pgProfile = sessionValid
             ? await Promise.race([
-                docFetch,
+                profileFetch,
                 new Promise<null>((r) => setTimeout(() => r(null), 3500)),
               ])
-            : await docFetch;
+            : await profileFetch;
 
-          if (driverDoc) {
-            if (driverDoc.name) {
+          if (pgProfile) {
+            if (pgProfile.name) {
               setProfileState({
-                name:          driverDoc.name          ?? "",
-                city:          driverDoc.city          ?? "",
-                gender:        driverDoc.gender        ?? "",
-                licenseNumber: driverDoc.licenseNumber ?? "",
-                vehicleNumber: driverDoc.vehicleNumber ?? "",
+                name:          pgProfile.name          ?? "",
+                city:          pgProfile.city          ?? "",
+                gender:        pgProfile.gender        ?? "",
+                licenseNumber: pgProfile.licenseNumber ?? "",
+                vehicleNumber: pgProfile.vehicleNumber ?? "",
               });
             }
-            if (driverDoc.vehicleId) {
-              setVehicleState({ id: driverDoc.vehicleId, name: driverDoc.vehicleName ?? "" });
+            if (pgProfile.vehicleId) {
+              setVehicleState({ id: pgProfile.vehicleId, name: pgProfile.vehicleName ?? "" });
             }
-            setAccountStatus(driverDoc.accountStatus ?? null);
-            setSuspendReason(driverDoc.suspendReason ?? null);
-            setBlacklistReason(driverDoc.blacklistReason ?? null);
-            if (driverDoc.suspendReason)   console.log("[ACCOUNT_SUSPEND_REASON] session restore:", driverDoc.suspendReason);
-            if (driverDoc.blacklistReason) console.log("[ACCOUNT_BLACKLIST_REASON] session restore:", driverDoc.blacklistReason);
+            setAccountStatus(pgProfile.accountStatus ?? null);
+            setSuspendReason(pgProfile.suspendReason ?? null);
+            setBlacklistReason(pgProfile.blacklistReason ?? null);
+            if (pgProfile.suspendReason)   console.log("[ACCOUNT_SUSPEND_REASON] session restore:", pgProfile.suspendReason);
+            if (pgProfile.blacklistReason) console.log("[ACCOUNT_BLACKLIST_REASON] session restore:", pgProfile.blacklistReason);
             {
               const isSuspended =
-                driverDoc.accountStatus === "suspended" ||
-                driverDoc.accountStatus === "blacklisted" ||
-                driverDoc.accountStatus === "blocked";
-              setOnlineState(isSuspended ? false : (driverDoc.isOnline ?? false));
+                pgProfile.accountStatus === "suspended" ||
+                pgProfile.accountStatus === "blacklisted" ||
+                pgProfile.accountStatus === "blocked";
+              setOnlineState(isSuspended ? false : false); // isOnline not stored in PG; always start offline
             }
-            if (driverDoc.subscriptionPlan)      setSubPlan(driverDoc.subscriptionPlan as SubPlan);
-            if (driverDoc.subscriptionExpiresAt) setSubExp(driverDoc.subscriptionExpiresAt);
-            // Persist subscription to AsyncStorage so the Firestore-timeout path on
-            // the next cold start can restore plan state immediately.
-            persistSubscriptionCache(
-              (driverDoc.subscriptionPlan as SubPlan) ?? null,
-              driverDoc.subscriptionExpiresAt ?? null,
-            );
-            {
+            // Subscription: restore from AsyncStorage cache (subscriptionPlan not yet in PG).
+            try {
+              const subRaw = await AsyncStorage.getItem(LOCAL_SUBSCRIPTION_KEY).catch(() => null);
+              if (subRaw) {
+                const sub = JSON.parse(subRaw) as { plan?: string; expiresAt?: number };
+                if (sub.plan)      setSubPlan(sub.plan as SubPlan);
+                if (sub.expiresAt) setSubExp(sub.expiresAt);
+                console.log("[SESSION_RESTORE_SUB] plan restored from cache —", sub.plan, "exp", sub.expiresAt);
+              }
+            } catch {}
+            // Subscription + daily stats: background Firestore fetch (remaining dep until PG migration).
+            void getDriverDoc(user.uid).then((fsDoc) => {
+              if (!fsDoc) return;
+              if (fsDoc.subscriptionPlan)      setSubPlan(fsDoc.subscriptionPlan as SubPlan);
+              if (fsDoc.subscriptionExpiresAt) setSubExp(fsDoc.subscriptionExpiresAt);
+              persistSubscriptionCache(
+                (fsDoc.subscriptionPlan as SubPlan) ?? null,
+                fsDoc.subscriptionExpiresAt ?? null,
+              );
               const today   = new Date().toISOString().slice(0, 10);
-              const sameDay = driverDoc.todayDate === today;
-              setTodayEarnings(sameDay ? (driverDoc.todayEarnings ?? 0) : 0);
-              setTripsToday   (sameDay ? (driverDoc.tripsToday    ?? 0) : 0);
-            }
+              const sameDay = fsDoc.todayDate === today;
+              setTodayEarnings(sameDay ? (fsDoc.todayEarnings ?? 0) : 0);
+              setTripsToday   (sameDay ? (fsDoc.tripsToday    ?? 0) : 0);
+              setDriverRating(fsDoc.rating ?? "5.0");
+            }).catch(console.error);
             // Wallet doc — authoritative balance, totalEarnings, totalPaid, completedDeliveries
             {
               const walletDoc = await getWalletDoc(user.uid).catch(() => null);
               setBalance(walletDoc?.balance ?? 0);
               setLifetimeEarnings(walletDoc?.totalEarnings ?? 0);
               setTotalPaid(walletDoc?.totalPaid ?? 0);
-              setDriverTrips(walletDoc?.completedDeliveries ?? driverDoc.totalTrips ?? 0);
+              setDriverTrips(walletDoc?.completedDeliveries ?? 0);
             }
             void loadDriverTransactions(user.uid);
-            setVerifStatus(driverDoc.verificationStatus ?? null);
-            // Fix B: persist verificationStatus so the session-restore timeout path
-            // can route approved drivers to /(tabs) even when Firestore is slow.
-            if (driverDoc.verificationStatus) {
-              void AsyncStorage.setItem(LOCAL_VERIFICATION_KEY, driverDoc.verificationStatus).catch(() => {});
+            setVerifStatus(pgProfile.verificationStatus ?? null);
+            if (pgProfile.verificationStatus) {
+              void AsyncStorage.setItem(LOCAL_VERIFICATION_KEY, pgProfile.verificationStatus).catch(() => {});
             }
-            setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
-            setKycRejectionReason(driverDoc.kycRejectionReason ?? null);
-            setKycDocuments(driverDoc.documents ?? null);
-            setBackgroundSetupShown(driverDoc.backgroundSetupShown ?? false);
+            setDocsSubmitted(pgProfile.documentsSubmitted ?? false);
+            setKycRejectionReason(pgProfile.kycRejectionReason ?? null);
+            setKycDocuments(pgProfile.documents as unknown as NonNullable<DriverDoc["documents"]>);
+            setBackgroundSetupShown(pgProfile.backgroundSetupShown ?? false);
             {
-              const firestorePermVer = driverDoc.permissionSetupVersion ?? 0;
-              setPermissionSetupVersion(firestorePermVer);
-              // Sync local AsyncStorage cache — Firestore is authoritative when reachable.
+              const pgPermVer = pgProfile.permissionSetupVersion ?? 0;
+              setPermissionSetupVersion(pgPermVer);
+              // Sync local AsyncStorage cache — PG is authoritative when reachable.
               const localVer = await localPermVerRef.current;
-              if (firestorePermVer > localVer) {
-                localPermVerRef.current = Promise.resolve(firestorePermVer);
-                setLocalPermissionVersion(firestorePermVer);
-                void AsyncStorage.setItem(LOCAL_PERMISSION_KEY, String(firestorePermVer)).catch(() => {});
-                console.log("[PERMISSION_GATE] local cache updated from Firestore:", firestorePermVer);
+              if (pgPermVer > localVer) {
+                localPermVerRef.current = Promise.resolve(pgPermVer);
+                setLocalPermissionVersion(pgPermVer);
+                void AsyncStorage.setItem(LOCAL_PERMISSION_KEY, String(pgPermVer)).catch(() => {});
+                console.log("[PERMISSION_GATE] local cache updated from PG:", pgPermVer);
               }
             }
-            setOnboardingFeeApplies(driverDoc.onboardingFeeApplies ?? false);
-            setOnboardingFeeStatus(driverDoc.onboardingFeeStatus ?? null);
-            setOnboardingFeeAmount(driverDoc.onboardingFeeAmount ?? null);
-            setDriverRating(driverDoc.rating ?? "5.0");
+            setOnboardingFeeApplies(pgProfile.onboardingFeeApplies ?? false);
+            setOnboardingFeeStatus(pgProfile.onboardingFeeStatus ?? null);
+            setOnboardingFeeAmount(pgProfile.onboardingFeeAmount ?? null);
           }
           // Restore active orders (mid-delivery app restart).
           try {
@@ -710,8 +724,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           } catch {
             // Active order restore failed — driver sees no active delivery after restart.
           }
-        } catch (firestoreErr) {
-          console.error("[Auth] background Firestore hydration failed:", firestoreErr);
+        } catch (err) {
+          console.error("[Auth] background profile hydration failed:", err);
         }
 
         // ── 4. Session restore navigation ────────────────────────────────────
@@ -721,17 +735,17 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         if (sessionValid) {
           const localVer = await localPermVerRef.current;
           let nextRoute: OnboardingRoute;
-          if (driverDoc) {
-            // Firestore responded in time — use authoritative driverDoc.
-            console.log("[SESSION_RESTORE_DOC] Firestore success —", JSON.stringify({
-              verificationStatus:     driverDoc.verificationStatus     ?? null,
-              vehicleId:              driverDoc.vehicleId              ?? null,
-              name:                   driverDoc.name                   ?? null,
-              documentsSubmitted:     driverDoc.documentsSubmitted     ?? false,
-              permissionSetupVersion: driverDoc.permissionSetupVersion ?? 0,
+          if (pgProfile) {
+            // PG responded in time — use authoritative pgProfile.
+            console.log("[SESSION_RESTORE_DOC] PG success —", JSON.stringify({
+              verificationStatus:     pgProfile.verificationStatus     ?? null,
+              vehicleId:              pgProfile.vehicleId              ?? null,
+              name:                   pgProfile.name                   ?? null,
+              documentsSubmitted:     pgProfile.documentsSubmitted     ?? false,
+              permissionSetupVersion: pgProfile.permissionSetupVersion ?? 0,
             }));
-            console.log("[KYC_GATE] Firestore success — running deriveNextRoute");
-            nextRoute = await deriveNextRoute(driverDoc);
+            console.log("[KYC_GATE] PG success — running deriveNextRoute");
+            nextRoute = await deriveNextRoute(pgProfile);
             console.log("[ROUTE_DECISION] session restore chosenRoute =", nextRoute, "(deriveNextRoute)");
           } else {
             // Fix B: Firestore timed out (>3.5 s) — verificationStatus unknown from
@@ -875,89 +889,48 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     }
   }, [subscriptionActive, isOnline, activeOrders.length]);
 
-  // ─── Real-time accountStatus enforcement ──────────────────────────────────
-  // Subscribes to the driver's own Firestore doc via onSnapshot.
-  // Purpose: detect admin suspend / blacklist WHILE the app is open and
-  // enforce immediately (≤ Firestore propagation time, typically < 2 s).
+  // ─── Account-status polling ────────────────────────────────────────────────
+  // Replaces the Firestore subscribeDriverDoc real-time listener.
+  // Polls GET /api/drivers/me every 30 s to detect admin account-status changes
+  // (suspend / blacklist / block) while the app is open.
   //
-  // LOOP GUARD: subscribeDriverDoc watches the entire driver document.
-  // When we write isOnline=false to Firestore as part of block enforcement,
-  // that write re-triggers this onSnapshot listener. Without the guard,
-  // every re-fire would write again → infinite loop → app crash → white screen.
-  //
-  // hasEnforcedBlock is a closure-scoped boolean (not a React ref) so it
-  // persists across listener calls but resets cleanly when the effect tears
-  // down (driverUid changed / component unmounted).
+  // LOOP GUARD: enforcing a block sets isOnline=false via updateDriverOnlineStatus.
+  // Unlike the Firestore listener, an HTTP poll is not re-triggered by our own
+  // Firestore write — no infinite loop is possible. The guard is kept for safety.
   useEffect(() => {
     if (!driverUid) return;
 
-    let isFirstSnapshot = true;
     let hasEnforcedBlock = false;
 
-    const unsub = subscribeDriverDoc(driverUid, (snap) => {
-      if (isFirstSnapshot) {
-        isFirstSnapshot = false;
-        // Sync subscription fields as a fallback for the 3.5 s Firestore-timeout
-        // path in onAuthStateChanged — when getDriverDoc loses the race, this is
-        // the only remaining chance to hydrate plan state before the home screen
-        // renders.  Account-block enforcement is intentionally NOT run on the
-        // first snapshot to preserve the infinite-loop fix.
-        if (snap) {
-          if (snap.subscriptionPlan)      setSubPlan(snap.subscriptionPlan as SubPlan);
-          if (snap.subscriptionExpiresAt) setSubExp(snap.subscriptionExpiresAt);
-        }
-        return;
-      }
-      if (!snap) return;
+    const poll = async () => {
+      const profile = await getDriverProfile().catch(() => null);
+      if (!profile) return;
 
       const blocked =
-        snap.accountStatus === "suspended" ||
-        snap.accountStatus === "blacklisted" ||
-        snap.accountStatus === "blocked";
+        profile.accountStatus === "suspended" ||
+        profile.accountStatus === "blacklisted" ||
+        profile.accountStatus === "blocked";
 
-      // Always sync accountStatus and reasons so the blocked screen is up to date.
-      setAccountStatus(snap.accountStatus ?? null);
-      setSuspendReason(snap.suspendReason ?? null);
-      setBlacklistReason(snap.blacklistReason ?? null);
-      if (snap.suspendReason)   console.log("[ACCOUNT_SUSPEND_REASON] live update:", snap.suspendReason);
-      if (snap.blacklistReason) console.log("[ACCOUNT_BLACKLIST_REASON] live update:", snap.blacklistReason);
-
-      // Sync subscription fields so live admin/server changes (plan activation,
-      // plan expiry, admin extension) are immediately reflected in the UI.
-      // React bails out automatically when the value is identical to current state.
-      setSubPlan((snap.subscriptionPlan as SubPlan) ?? null);
-      setSubExp(snap.subscriptionExpiresAt ?? null);
+      setAccountStatus(profile.accountStatus ?? null);
+      setSuspendReason(profile.suspendReason ?? null);
+      setBlacklistReason(profile.blacklistReason ?? null);
+      if (profile.suspendReason)   console.log("[ACCOUNT_SUSPEND_REASON] poll update:", profile.suspendReason);
+      if (profile.blacklistReason) console.log("[ACCOUNT_BLACKLIST_REASON] poll update:", profile.blacklistReason);
 
       if (blocked) {
         if (hasEnforcedBlock) {
-          // Listener re-fired because our own updateDriverOnlineStatus write
-          // touched the doc. Block is already enforced — do nothing.
-          console.log(
-            "[ACCOUNT_STATUS_LISTENER] still blocked — skipping (loop guard active)",
-          );
-          console.log("[ACCOUNT_ENFORCEMENT_REFRESH] Firestore re-fire suppressed — screen stays mounted");
+          console.log("[ACCOUNT_STATUS_POLL] still blocked — skipping (loop guard active)");
           return;
         }
-
-        // First time blocked is detected in this subscription — enforce once.
         hasEnforcedBlock = true;
-        console.log(
-          "[ACCOUNT_STATUS_LISTENER] blocked — accountStatus =",
-          snap.accountStatus,
-          "→ enforcing ONCE (subsequent re-fires suppressed by loop guard)",
-        );
+        console.log("[ACCOUNT_STATUS_POLL] blocked — accountStatus =", profile.accountStatus, "→ enforcing ONCE");
         setOnlineState(false);
-        // Persist offline to Firestore. This write WILL re-trigger the listener,
-        // but hasEnforcedBlock=true ensures that re-fire is a no-op.
         updateDriverOnlineStatus(driverUid, false).catch(console.error);
-        // Stop GPS tracking immediately.
         if (locationIntervalRef.current !== null) {
           clearInterval(locationIntervalRef.current);
           locationIntervalRef.current = null;
           console.log("[GPS_STATUS] tracking stopped (account blocked)");
         }
-        // Navigation guard — skip if already on the blocked screen (prevents
-        // remount blink if this listener fires after session restore already navigated).
         if (hasNavigatedToBlockedRef.current) {
           console.log("[ACCOUNT_ENFORCEMENT_REFRESH] blocked screen already mounted — navigation suppressed");
         } else {
@@ -965,9 +938,17 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           router.replace("/account-blocked");
         }
       }
-    });
+    };
 
-    return unsub;
+    // First poll after 5 s (profile already hydrated in onAuthStateChanged).
+    // Subsequent polls every 30 s.
+    const initialDelay = setTimeout(() => { void poll(); }, 5_000);
+    const intervalId   = setInterval(() => { void poll(); }, 30_000);
+
+    return () => {
+      clearTimeout(initialDelay);
+      clearInterval(intervalId);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [driverUid]);
 
@@ -1105,8 +1086,21 @@ export function DriverProvider({ children }: { children: ReactNode }) {
    *   5. Not yet approved          → await verification
    *   6. Approved + perms missing  → background-setup (native only)
    *   7. Approved + perms ok       → main app
+   *
+   * Accepts DriverDoc (Firestore) or PgDriverProfile (PostgreSQL) — both satisfy
+   * the RoutingDoc structural type that uses only fields present in both sources.
    */
-  async function deriveNextRoute(d: DriverDoc): Promise<OnboardingRoute> {
+  type RoutingDoc = {
+    accountStatus?:          string | null;
+    vehicleId?:              string | null;
+    name?:                   string | null;
+    documentsSubmitted?:     boolean | null;
+    onboardingFeeApplies?:   boolean | null;
+    onboardingFeeStatus?:    string | null;
+    permissionSetupVersion?: number  | null;
+    verificationStatus?:     string | null;
+  };
+  async function deriveNextRoute(d: RoutingDoc): Promise<OnboardingRoute> {
     // Block check FIRST — suspended / blacklisted drivers must never reach the home screen.
     const isBlocked =
       d.accountStatus === "suspended" ||
@@ -1205,102 +1199,170 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       setDriverUid(uid);
       setPhoneState(phone);
 
-      let driverDoc = await getDriverDoc(uid);
-      if (!driverDoc) {
-        // Brand-new driver: fetch onboarding fee config, stamp onto new driver doc.
-        const feeConfig = await getOnboardingFeeConfig();
-        driverDoc = await createDriverDoc(uid, phone, feeConfig);
-        // Update local state for the fee fields stamped on the new doc.
-        if (feeConfig.enabled) {
-          setOnboardingFeeApplies(true);
-          setOnboardingFeeStatus("pending");
-          setOnboardingFeeAmount(feeConfig.amount);
+      // ── Try PostgreSQL profile first (primary path) ──────────────────────
+      const pgProfile = await getDriverProfile();
+
+      let driverDoc: DriverDoc | null = null;   // Firestore fallback for new/unmigrated drivers
+      let routingDoc: RoutingDoc;               // used for deriveNextRoute
+
+      if (!pgProfile) {
+        // ── Firestore fallback: driver not in PG yet ────────────────────────
+        // Covers: brand-new drivers (never registered in PG) and drivers
+        // still in the migration window (bulk migration not yet run for this uid).
+        driverDoc = await getDriverDoc(uid);
+        if (!driverDoc) {
+          // Brand-new driver: fetch onboarding fee config, stamp onto new driver doc.
+          const feeConfig = await getOnboardingFeeConfig();
+          driverDoc = await createDriverDoc(uid, phone, feeConfig);
+          if (feeConfig.enabled) {
+            setOnboardingFeeApplies(true);
+            setOnboardingFeeStatus("pending");
+            setOnboardingFeeAmount(feeConfig.amount);
+          }
+        } else {
+          if (driverDoc.name) {
+            setProfileState({
+              name:   driverDoc.name   ?? "",
+              city:   driverDoc.city   ?? "",
+              gender: driverDoc.gender ?? "",
+            });
+          }
+          if (driverDoc.vehicleId) {
+            setVehicleState({ id: driverDoc.vehicleId, name: driverDoc.vehicleName ?? "" });
+          }
+          setAccountStatus(driverDoc.accountStatus ?? null);
+          {
+            const isSuspended =
+              driverDoc.accountStatus === "suspended" ||
+              driverDoc.accountStatus === "blacklisted" ||
+              driverDoc.accountStatus === "blocked";
+            setOnlineState(isSuspended ? false : (driverDoc.isOnline ?? false));
+          }
+          if (driverDoc.subscriptionPlan)      setSubPlan(driverDoc.subscriptionPlan as SubPlan);
+          if (driverDoc.subscriptionExpiresAt) setSubExp(driverDoc.subscriptionExpiresAt);
+          persistSubscriptionCache(
+            (driverDoc.subscriptionPlan as SubPlan) ?? null,
+            driverDoc.subscriptionExpiresAt ?? null,
+          );
+          {
+            const today   = new Date().toISOString().slice(0, 10);
+            const sameDay = driverDoc.todayDate === today;
+            setTodayEarnings(sameDay ? (driverDoc.todayEarnings ?? 0) : 0);
+            setTripsToday   (sameDay ? (driverDoc.tripsToday    ?? 0) : 0);
+          }
+          {
+            const walletDoc = await getWalletDoc(uid).catch(() => null);
+            setBalance(walletDoc?.balance ?? 0);
+            setLifetimeEarnings(walletDoc?.totalEarnings ?? 0);
+            setTotalPaid(walletDoc?.totalPaid ?? 0);
+            setDriverTrips(walletDoc?.completedDeliveries ?? driverDoc.totalTrips ?? 0);
+          }
+          void loadDriverTransactions(uid);
+          setVerifStatus(driverDoc.verificationStatus ?? null);
+          if (driverDoc.verificationStatus) {
+            void AsyncStorage.setItem(LOCAL_VERIFICATION_KEY, driverDoc.verificationStatus).catch(() => {});
+          }
+          setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
+          setKycRejectionReason(driverDoc.kycRejectionReason ?? null);
+          setKycDocuments(driverDoc.documents ?? null);
+          setBackgroundSetupShown(driverDoc.backgroundSetupShown ?? false);
+          {
+            const firestorePermVer = driverDoc.permissionSetupVersion ?? 0;
+            setPermissionSetupVersion(firestorePermVer);
+            if (firestorePermVer > 0) {
+              setLocalPermissionVersion(firestorePermVer);
+              void AsyncStorage.setItem(LOCAL_PERMISSION_KEY, String(firestorePermVer)).catch(() => {});
+              console.log("[PERMISSION_GATE] confirmOtp — localVer synced =", firestorePermVer);
+            }
+          }
+          setOnboardingFeeApplies(driverDoc.onboardingFeeApplies ?? false);
+          setOnboardingFeeStatus(driverDoc.onboardingFeeStatus ?? null);
+          setOnboardingFeeAmount(driverDoc.onboardingFeeAmount ?? null);
+          setDriverRating(driverDoc.rating ?? "5.0");
         }
+        routingDoc = driverDoc;
       } else {
-        if (driverDoc.name) {
+        // ── PG path: existing driver with PostgreSQL row (primary) ────────────
+        if (pgProfile.name) {
           setProfileState({
-            name:   driverDoc.name   ?? "",
-            city:   driverDoc.city   ?? "",
-            gender: driverDoc.gender ?? "",
+            name:          pgProfile.name          ?? "",
+            city:          pgProfile.city          ?? "",
+            gender:        pgProfile.gender        ?? "",
+            licenseNumber: pgProfile.licenseNumber ?? "",
+            vehicleNumber: pgProfile.vehicleNumber ?? "",
           });
         }
-        if (driverDoc.vehicleId) {
-          setVehicleState({ id: driverDoc.vehicleId, name: driverDoc.vehicleName ?? "" });
+        if (pgProfile.vehicleId) {
+          setVehicleState({ id: pgProfile.vehicleId, name: pgProfile.vehicleName ?? "" });
         }
-        // Restore online status — suspended/blacklisted/blocked drivers are forced offline.
-        setAccountStatus(driverDoc.accountStatus ?? null);
+        setAccountStatus(pgProfile.accountStatus ?? null);
+        setSuspendReason(pgProfile.suspendReason ?? null);
+        setBlacklistReason(pgProfile.blacklistReason ?? null);
         {
           const isSuspended =
-            driverDoc.accountStatus === "suspended" ||
-            driverDoc.accountStatus === "blacklisted" ||
-            driverDoc.accountStatus === "blocked";
-          setOnlineState(isSuspended ? false : (driverDoc.isOnline ?? false));
+            pgProfile.accountStatus === "suspended" ||
+            pgProfile.accountStatus === "blacklisted" ||
+            pgProfile.accountStatus === "blocked";
+          setOnlineState(isSuspended ? false : false); // isOnline not stored in PG
         }
-        if (driverDoc.subscriptionPlan)      setSubPlan(driverDoc.subscriptionPlan as SubPlan);
-        if (driverDoc.subscriptionExpiresAt) setSubExp(driverDoc.subscriptionExpiresAt);
-        // Persist subscription cache so the next cold start can restore plan state
-        // immediately even if Firestore times out on the session-restore path.
-        persistSubscriptionCache(
-          (driverDoc.subscriptionPlan as SubPlan) ?? null,
-          driverDoc.subscriptionExpiresAt ?? null,
-        );
-        // Restore daily stats
-        {
+        // Subscription + daily stats: background Firestore fetch (remaining dep until PG migration).
+        void getDriverDoc(uid).then((fsDoc) => {
+          if (!fsDoc) return;
+          if (fsDoc.subscriptionPlan)      setSubPlan(fsDoc.subscriptionPlan as SubPlan);
+          if (fsDoc.subscriptionExpiresAt) setSubExp(fsDoc.subscriptionExpiresAt);
+          persistSubscriptionCache(
+            (fsDoc.subscriptionPlan as SubPlan) ?? null,
+            fsDoc.subscriptionExpiresAt ?? null,
+          );
           const today   = new Date().toISOString().slice(0, 10);
-          const sameDay = driverDoc.todayDate === today;
-          setTodayEarnings(sameDay ? (driverDoc.todayEarnings ?? 0) : 0);
-          setTripsToday   (sameDay ? (driverDoc.tripsToday    ?? 0) : 0);
-        }
-        // Wallet doc — authoritative balance, totalEarnings, totalPaid, completedDeliveries
+          const sameDay = fsDoc.todayDate === today;
+          setTodayEarnings(sameDay ? (fsDoc.todayEarnings ?? 0) : 0);
+          setTripsToday   (sameDay ? (fsDoc.tripsToday    ?? 0) : 0);
+          setDriverRating(fsDoc.rating ?? "5.0");
+        }).catch(console.error);
         {
           const walletDoc = await getWalletDoc(uid).catch(() => null);
           setBalance(walletDoc?.balance ?? 0);
           setLifetimeEarnings(walletDoc?.totalEarnings ?? 0);
           setTotalPaid(walletDoc?.totalPaid ?? 0);
-          setDriverTrips(walletDoc?.completedDeliveries ?? driverDoc.totalTrips ?? 0);
+          setDriverTrips(walletDoc?.completedDeliveries ?? 0);
         }
         void loadDriverTransactions(uid);
-        // Restore verification/document state (needed for routing below)
-        setVerifStatus(driverDoc.verificationStatus ?? null);
-        // Fix B: persist verificationStatus so the session-restore timeout path
-        // can route approved drivers to /(tabs) even when Firestore is slow.
-        if (driverDoc.verificationStatus) {
-          void AsyncStorage.setItem(LOCAL_VERIFICATION_KEY, driverDoc.verificationStatus).catch(() => {});
+        setVerifStatus(pgProfile.verificationStatus ?? null);
+        if (pgProfile.verificationStatus) {
+          void AsyncStorage.setItem(LOCAL_VERIFICATION_KEY, pgProfile.verificationStatus).catch(() => {});
         }
-        setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
-        setKycRejectionReason(driverDoc.kycRejectionReason ?? null);
-        setKycDocuments(driverDoc.documents ?? null);
-        setBackgroundSetupShown(driverDoc.backgroundSetupShown ?? false);
+        setDocsSubmitted(pgProfile.documentsSubmitted ?? false);
+        setKycRejectionReason(pgProfile.kycRejectionReason ?? null);
+        setKycDocuments(pgProfile.documents as unknown as NonNullable<DriverDoc["documents"]>);
+        setBackgroundSetupShown(pgProfile.backgroundSetupShown ?? false);
         {
-          const firestorePermVer = driverDoc.permissionSetupVersion ?? 0;
-          setPermissionSetupVersion(firestorePermVer);
-          // Keep local AsyncStorage cache in sync after every fresh OTP login so
-          // the boot-time permission gate is accurate on the next cold start.
-          if (firestorePermVer > 0) {
-            setLocalPermissionVersion(firestorePermVer);
-            void AsyncStorage.setItem(LOCAL_PERMISSION_KEY, String(firestorePermVer)).catch(() => {});
-            console.log("[PERMISSION_GATE] confirmOtp — localVer synced =", firestorePermVer);
+          const pgPermVer = pgProfile.permissionSetupVersion ?? 0;
+          setPermissionSetupVersion(pgPermVer);
+          if (pgPermVer > 0) {
+            setLocalPermissionVersion(pgPermVer);
+            void AsyncStorage.setItem(LOCAL_PERMISSION_KEY, String(pgPermVer)).catch(() => {});
+            console.log("[PERMISSION_GATE] confirmOtp — localVer synced =", pgPermVer);
           }
         }
-        // Restore onboarding fee state — absent on existing/old drivers (defaults to false/null).
-        setOnboardingFeeApplies(driverDoc.onboardingFeeApplies ?? false);
-        setOnboardingFeeStatus(driverDoc.onboardingFeeStatus ?? null);
-        setOnboardingFeeAmount(driverDoc.onboardingFeeAmount ?? null);
-        setDriverRating(driverDoc.rating ?? "5.0");
+        setOnboardingFeeApplies(pgProfile.onboardingFeeApplies ?? false);
+        setOnboardingFeeStatus(pgProfile.onboardingFeeStatus ?? null);
+        setOnboardingFeeAmount(pgProfile.onboardingFeeAmount ?? null);
+        routingDoc = pgProfile;
       }
 
-      const profileComplete = !!(driverDoc.name && driverDoc.vehicleId);
-      const nextRoute       = await deriveNextRoute(driverDoc);
+      const profileComplete = !!(routingDoc.name && routingDoc.vehicleId);
+      const nextRoute       = await deriveNextRoute(routingDoc);
 
       // ── OTP_ROUTE logs — required by auth policy ──────────────────────────
       console.log("[OTP_ROUTE] otp_success_uid =", uid);
       console.log("[OTP_ROUTE] driver_doc =", JSON.stringify({
-        vehicleId:          driverDoc.vehicleId          ?? null,
-        name:               driverDoc.name               ?? null,
-        documentsSubmitted: driverDoc.documentsSubmitted ?? false,
-        verificationStatus: driverDoc.verificationStatus ?? null,
-        onboardingFeeStatus: driverDoc.onboardingFeeStatus ?? null,
-        permissionSetupVersion: driverDoc.permissionSetupVersion ?? 0,
+        vehicleId:              routingDoc.vehicleId              ?? null,
+        name:                   routingDoc.name                   ?? null,
+        documentsSubmitted:     routingDoc.documentsSubmitted     ?? false,
+        verificationStatus:     routingDoc.verificationStatus     ?? null,
+        onboardingFeeStatus:    routingDoc.onboardingFeeStatus    ?? null,
+        permissionSetupVersion: routingDoc.permissionSetupVersion ?? 0,
       }));
       console.log("[OTP_ROUTE] chosenRoute =", nextRoute);
 
@@ -1334,12 +1396,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
   const setProfile = (p: Profile) => {
     setProfileState(p);
-    if (driverUid) updateDriverProfile(driverUid, p).catch(console.error);
+    if (driverUid) patchDriverProfile(p).catch(console.error);
   };
 
   const setVehicle = (v: Vehicle) => {
     setVehicleState(v);
-    if (driverUid) updateDriverVehicle(driverUid, v).catch(console.error);
+    if (driverUid) patchDriverVehicle(v).catch(console.error);
   };
 
   const markBackgroundSetupShown = async (): Promise<void> => {
@@ -1352,7 +1414,11 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     localPermVerRef.current = Promise.resolve(PERMISSION_SETUP_VERSION);
     console.log("[PERMISSION_GATE] markBackgroundSetupShown — localVer written =", PERMISSION_SETUP_VERSION);
     if (driverUid) {
-      await updateDriverBackgroundSetup(driverUid);
+      await patchDriverBackgroundSetup({
+        backgroundSetupShown:       true,
+        permissionSetupVersion:     PERMISSION_SETUP_VERSION,
+        permissionSetupCompletedAt: new Date().toISOString(),
+      });
     }
   };
 
@@ -1552,12 +1618,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const refreshKycStatus = async (): Promise<void> => {
     if (!driverUid) return;
     try {
-      const doc = await getDriverDoc(driverUid);
+      const doc = await getDriverVerificationStatus();
       if (!doc) return;
       setVerifStatus(doc.verificationStatus ?? null);
       setDocsSubmitted(doc.documentsSubmitted ?? false);
       setKycRejectionReason(doc.kycRejectionReason ?? null);
-      setKycDocuments(doc.documents ?? null);
+      setKycDocuments(doc.documents as unknown as NonNullable<DriverDoc["documents"]>);
       if (doc.verificationStatus) {
         void AsyncStorage.setItem(LOCAL_VERIFICATION_KEY, doc.verificationStatus).catch(() => {});
       }
