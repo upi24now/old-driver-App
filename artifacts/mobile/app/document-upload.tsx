@@ -42,7 +42,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDriver } from "@/contexts/DriverContext";
 // onboardingFeeApplies is true only for brand-new signup drivers.
 import { useColors } from "@/hooks/useColors";
-import { registerDriverKeys } from "@/utils/driver-api";
+import { registerDriverKeys, submitDocumentsToPostgres } from "@/utils/driver-api";
 import { getDriverDoc, submitDriverDocuments } from "@/utils/firestore";
 import { uploadDocumentImage, isRemoteUrl } from "@/utils/storage";
 import { firebaseAuth } from "@/utils/firebase";
@@ -942,16 +942,40 @@ export default function DocumentUploadScreen() {
     }
     console.log("[KYC] phase 2 — all VPS uploads done. docUris keys:", Object.keys(docUris));
 
-    // ── Phase 3: Firestore write ──────────────────────────────────────────────
+    // ── Phase 3a: PostgreSQL write (primary) ─────────────────────────────────
+    // Strip null entries — the API only accepts { docId: url } string pairs.
     setUploadStatusText("Saving documents…");
-    console.log("[KYC] phase 3 — Firestore write start");
-    console.log("[KYC] phase 3 — payload:", JSON.stringify(docUris));
+    console.log("[KYC] phase 3a — PostgreSQL write start");
+    const pgDocuments: Record<string, string> = {};
+    for (const [id, url] of Object.entries(docUris)) {
+      if (url !== null) pgDocuments[id] = url;
+    }
+    console.log("[KYC] phase 3a — pgDocuments keys:", JSON.stringify(Object.keys(pgDocuments)));
+    const pgResult = await submitDocumentsToPostgres(pgDocuments);
+    if (!pgResult.ok) {
+      console.error("[KYC] phase 3a — PostgreSQL FAILED:", pgResult.error, pgResult.message);
+      Alert.alert(
+        "Submission Failed",
+        `Could not save documents.\n\n${pgResult.message}`,
+        [{ text: "OK" }],
+      );
+      setSubmitting(false);
+      setUploadStatusText("");
+      return;
+    }
+    console.log("[KYC] phase 3a — PostgreSQL SUCCESS, count:", pgResult.count);
+
+    // ── Phase 3b: Firestore write (safety backup) ─────────────────────────────
+    // Firestore remains the safety backup until full cutover is confirmed.
+    // Only reached after a successful PostgreSQL write above.
+    console.log("[KYC] phase 3b — Firestore backup write start");
+    console.log("[KYC] phase 3b — payload:", JSON.stringify(docUris));
     try {
       await submitDriverDocuments(driverUid, docUris);
-      console.log("[KYC] phase 3 — Firestore write SUCCESS");
+      console.log("[KYC] phase 3b — Firestore backup write SUCCESS");
     } catch (err) {
       const e = err as Error & { code?: string };
-      console.error("[KYC] phase 3 — Firestore FAILED");
+      console.error("[KYC] phase 3b — Firestore FAILED");
       console.error("[KYC]   code   :", e?.code);
       console.error("[KYC]   message:", e?.message);
       console.error("[KYC]   stack  :", e?.stack);

@@ -73,6 +73,83 @@ export async function postDriverLocation(
   }
 }
 
+export type SubmitDocumentsResult =
+  | { ok: true;  count: number }
+  | { ok: false; error: string; message: string };
+
+/**
+ * POST /api/drivers/documents
+ *
+ * Upserts KYC document URLs into the PostgreSQL `driver_documents` table and
+ * marks the driver row as submitted (verification_status → "pending").
+ *
+ * Part of the Firestore → PostgreSQL migration (Step 7 dual-write).
+ * Called BEFORE the Firestore safety-backup write in document-upload.tsx.
+ * If this call fails the caller must NOT proceed to the Firestore write.
+ *
+ * @param documents  Map of docId → public VPS URL.
+ *                   Null / undefined entries must be stripped by the caller.
+ */
+export async function submitDocumentsToPostgres(
+  documents: Record<string, string>,
+): Promise<SubmitDocumentsResult> {
+  const user = firebaseAuth.currentUser;
+  if (!user) {
+    return {
+      ok:      false,
+      error:   "not_authenticated",
+      message: "You must be signed in to submit documents. Please restart the app and try again.",
+    };
+  }
+
+  let idToken: string;
+  try {
+    // Force-refresh: upload phase may have taken several minutes; token could be stale.
+    idToken = await user.getIdToken(/* forceRefresh */ true);
+  } catch {
+    return {
+      ok:      false,
+      error:   "token_error",
+      message: "Could not verify your session. Please restart the app and try again.",
+    };
+  }
+
+  try {
+    const res = await fetch(`${BASE_URL}/drivers/documents`, {
+      method:  "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({ documents }),
+    });
+
+    const json = (await res.json()) as {
+      ok?:      boolean;
+      count?:   number;
+      error?:   string;
+      message?: string;
+    };
+
+    if (!res.ok || !json.ok) {
+      return {
+        ok:      false,
+        error:   json.error   ?? "server_error",
+        message: json.message ?? "Could not save documents to server. Please try again.",
+      };
+    }
+
+    return { ok: true, count: json.count ?? 0 };
+  } catch (err) {
+    const e = err as Error;
+    return {
+      ok:      false,
+      error:   "network_error",
+      message: `Network error: ${e?.message ?? String(err)}`,
+    };
+  }
+}
+
 export type RegisterKeysResult =
   | { ok: true }
   | { ok: false; error: string; message: string };
