@@ -890,14 +890,35 @@ export default function DocumentUploadScreen() {
   const licenseTrigger = lastInGroup(actionDocs, ["licenseFront", "licenseBack"]);
   const rcTrigger      = lastInGroup(actionDocs, ["rcFront", "rcBack"]);
 
+  // Number input is only shown after ALL images in its group are uploaded.
+  // Driver reads the number from the uploaded scan — images must come first.
+  const aadhaarNumVisible = aadhaarTrigger !== null
+    && isDocReady(docs["aadhaarFront"])
+    && isDocReady(docs["aadhaarBack"]);
+  const panNumVisible     = panTrigger !== null
+    && isDocReady(docs["pan"]);
+  const licenseNumVisible = licenseTrigger !== null
+    && isDocReady(docs["licenseFront"])
+    && isDocReady(docs["licenseBack"]);
+  const rcNumVisible      = rcTrigger !== null
+    && isDocReady(docs["rcFront"])
+    && isDocReady(docs["rcBack"]);
+
+  // Validation only applies to visible fields.
+  // When all 8 images are uploaded every field is visible and all 4 numbers are required.
   const numbersValid = (
-    (aadhaarTrigger ? validateAadhaar(docNumbers.aadhaar ?? "") === null : true) &&
-    (panTrigger     ? validatePAN(docNumbers.pan ?? "") === null         : true) &&
-    (licenseTrigger ? validateDL(docNumbers.license ?? "") === null      : true) &&
-    (rcTrigger      ? validateRC(docNumbers.rc ?? "") === null           : true)
+    (aadhaarNumVisible ? validateAadhaar(docNumbers.aadhaar ?? "") === null : true) &&
+    (panNumVisible     ? validatePAN(docNumbers.pan ?? "") === null         : true) &&
+    (licenseNumVisible ? validateDL(docNumbers.license ?? "") === null      : true) &&
+    (rcNumVisible      ? validateRC(docNumbers.rc ?? "") === null           : true)
   );
 
-  /** Submit enabled only when every document is ready AND all visible numbers are valid. */
+  /**
+   * allReady = true only when:
+   *   • every required document image is uploaded   (DOCS.every isDocReady)
+   *   • every visible number field passes validation (numbersValid)
+   * Either condition being false keeps the submit button disabled.
+   */
   const allReady = DOCS.every((d) => isDocReady(docs[d.id])) && numbersValid;
 
   async function handleSubmit() {
@@ -1151,8 +1172,8 @@ export default function DocumentUploadScreen() {
                   onRemove={() => removeDoc(doc.id)}
                 />
 
-                {/* ── Aadhaar Number — appears after the last Aadhaar card ── */}
-                {doc.id === aadhaarTrigger && (()=>{
+                {/* ── Aadhaar Number — shown only after BOTH Aadhaar images are uploaded ── */}
+                {doc.id === aadhaarTrigger && aadhaarNumVisible && (()=>{
                   const err = numTouched.aadhaar ? validateAadhaar(docNumbers.aadhaar ?? "") : null;
                   return (
                     <View style={[styles.numInline, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -1175,8 +1196,8 @@ export default function DocumentUploadScreen() {
                   );
                 })()}
 
-                {/* ── PAN Number — appears after the PAN card ── */}
-                {doc.id === panTrigger && (()=>{
+                {/* ── PAN Number — shown only after the PAN image is uploaded ── */}
+                {doc.id === panTrigger && panNumVisible && (()=>{
                   const err = numTouched.pan ? validatePAN(docNumbers.pan ?? "") : null;
                   return (
                     <View style={[styles.numInline, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -1199,8 +1220,8 @@ export default function DocumentUploadScreen() {
                   );
                 })()}
 
-                {/* ── Driving Licence Number — appears after the last Licence card ── */}
-                {doc.id === licenseTrigger && (()=>{
+                {/* ── Driving Licence Number — shown only after BOTH Licence images are uploaded ── */}
+                {doc.id === licenseTrigger && licenseNumVisible && (()=>{
                   const err = numTouched.license ? validateDL(docNumbers.license ?? "") : null;
                   return (
                     <View style={[styles.numInline, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -1222,8 +1243,8 @@ export default function DocumentUploadScreen() {
                   );
                 })()}
 
-                {/* ── RC / Registration Number — appears after the last RC card ── */}
-                {doc.id === rcTrigger && (()=>{
+                {/* ── RC / Registration Number — shown only after BOTH RC images are uploaded ── */}
+                {doc.id === rcTrigger && rcNumVisible && (()=>{
                   const err = numTouched.rc ? validateRC(docNumbers.rc ?? "") : null;
                   return (
                     <View style={[styles.numInline, { backgroundColor: colors.surface, borderColor: colors.border }]}>
