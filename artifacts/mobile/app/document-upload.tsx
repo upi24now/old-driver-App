@@ -1106,11 +1106,11 @@ export default function DocumentUploadScreen() {
         <View style={styles.progressRow}>
           {[1, 2, 3, 4].map((s, i) => (
             <View key={s} style={styles.progressSegment}>
-              <View style={[styles.stepDot, { backgroundColor: "#E83272" }]}>
+              <View style={[styles.stepDot, { backgroundColor: "#F59E0B" }]}>
                 <SafeInlineIcon name="check" size={9} color="#fff" />
               </View>
               {i < 3 && (
-                <View style={[styles.progressLine, { backgroundColor: "#E83272" }]} />
+                <View style={[styles.progressLine, { backgroundColor: "#F59E0B" }]} />
               )}
             </View>
           ))}
@@ -1124,7 +1124,7 @@ export default function DocumentUploadScreen() {
                 styles.uploadFill,
                 {
                   width:           `${Math.max(progress * 100, 3)}%`,
-                  backgroundColor: progress >= 1 ? "#10B981" : "#E83272",
+                  backgroundColor: progress >= 1 ? "#10B981" : "#F59E0B",
                 },
               ]}
             />
@@ -1361,7 +1361,7 @@ export default function DocumentUploadScreen() {
           <LinearGradient
             colors={
               allReady && !submitting
-                ? ["#FF6B9D", "#E8336C"]
+                ? ["#FBBF24", "#F59E0B"]
                 : ["#E5E7EB", "#E5E7EB"]
             }
             start={{ x: 0, y: 0 }}

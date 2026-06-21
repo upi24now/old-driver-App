@@ -40,12 +40,12 @@ import { firebaseAuth } from "@/utils/firebase";
 import { getOnboardingFeeConfig, type OnboardingFeeConfig } from "@/utils/firestore";
 
 // ── Premium brand constants (screen-specific, outside token system) ──────────
-const PINK        = "#E83272";
-const HOT_PINK    = "#F43F8F";
+const PINK        = "#F59E0B";
+const HOT_PINK    = "#FBBF24";
 const SUCCESS     = "#10B981";
-const GOLD        = "#F59E0B";
+const GOLD        = "#EA580C";
 const MUTED       = "#6B7280";
-const PINK_SOFT   = "rgba(232,50,114,0.10)";
+const PINK_SOFT   = "rgba(245,158,11,0.10)";
 const SUCCESS_SOFT= "rgba(16,185,129,0.12)";
 
 const DOMAIN   = process.env["EXPO_PUBLIC_DOMAIN"] ?? "";

@@ -33,11 +33,11 @@ import { useDriver } from "@/contexts/DriverContext";
 
 // ─── Design tokens (matches vehicle-selection style) ─────────────────────────
 const D = {
-  bg:          "#F8FAFC",
+  bg:          "#FFFBF0",
   white:       "#FFFFFF",
-  primary:     "#E83272",
-  primarySoft: "#FFF1F5",
-  primaryBold: "#C41E5A",
+  primary:     "#F59E0B",
+  primarySoft: "#FFFBEB",
+  primaryBold: "#D97706",
   success:     "#10B981",
   successBg:   "#D1FAE5",
   textDark:    "#111827",
@@ -165,7 +165,7 @@ function CardTitle({ label, icon }: { label: string; icon?: SafeIconName }) {
         <SafeIcon3D
           name={icon}
           size={26}
-          bg="rgba(232,50,114,0.10)"
+          bg="rgba(245,158,11,0.10)"
           color={D.primary}
           glow={D.primary}
           rounded={8}
@@ -397,7 +397,7 @@ export default function ProfileSetupScreen() {
         <SectionCard>
           {/* Gradient banner */}
           <LinearGradient
-            colors={["#F43F8F", "#E83272"]}
+            colors={["#FBBF24", "#F59E0B"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={styles.profileBanner}
@@ -761,7 +761,7 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: 8,
-    backgroundColor: "rgba(232,50,114,0.10)",
+    backgroundColor: "rgba(245,158,11,0.10)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -822,7 +822,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: "#E83272",
+    backgroundColor: "#F59E0B",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2.5,
@@ -1045,7 +1045,7 @@ const styles = StyleSheet.create({
   },
   ctaWrap: {
     borderRadius: 14,
-    shadowColor: "#E83272",
+    shadowColor: "#F59E0B",
     shadowOpacity: 0.28,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },

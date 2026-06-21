@@ -23,16 +23,16 @@ import { callSupport } from "@/utils/support";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const D = {
-  bg:           "#F6F7FB",
+  bg:           "#FFFBF0",
   white:        "#FFFFFF",
   textPrimary:  "#0F172A",
   textMuted:    "#6B7280",
   border:       "#E5E7EB",
-  primary:      "#E8336C",
-  primarySoft:  "#FFF0F5",
+  primary:      "#F59E0B",
+  primarySoft:  "#FFFBEB",
   muted:        "#F3F4F6",
   mutedFg:      "#9CA3AF",
-  chipSelected: "#E8336C",
+  chipSelected: "#F59E0B",
 } as const;
 
 // ─── Categories ───────────────────────────────────────────────────────────────
@@ -519,7 +519,7 @@ export default function VehicleSelectionScreen() {
           ]}
         >
           <LinearGradient
-            colors={selectedId ? ["#FF6B9D", "#E8336C"] : ["#E5E7EB", "#E5E7EB"]}
+            colors={selectedId ? ["#FBBF24", "#F59E0B"] : ["#E5E7EB", "#E5E7EB"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={styles.ctaGradient}
@@ -590,7 +590,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  helpText: { fontSize: 12, fontWeight: "700", color: "#E8336C" },
+  helpText: { fontSize: 12, fontWeight: "700", color: "#F59E0B" },
 
   // Progress
   progressRow: {
@@ -680,10 +680,10 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: "#E8336C",
+    backgroundColor: "#F59E0B",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#E8336C",
+    shadowColor: "#F59E0B",
     shadowOpacity: 0.55,
     shadowRadius: 5,
     shadowOffset: { width: 0, height: 2 },
@@ -799,7 +799,7 @@ const styles = StyleSheet.create({
   },
   summaryRight: { alignItems: "flex-end", gap: 1 },
   summaryCap:   { fontSize: 10, fontWeight: "600", color: "#6B7280" },
-  summaryPrice: { fontSize: 14, fontWeight: "800", color: "#E8336C" },
+  summaryPrice: { fontSize: 14, fontWeight: "800", color: "#F59E0B" },
   summaryEmpty: {
     flex: 1,
     flexDirection: "row",
@@ -816,7 +816,7 @@ const styles = StyleSheet.create({
   // CTA
   ctaWrap: {
     borderRadius: 14,
-    shadowColor: "#E8336C",
+    shadowColor: "#F59E0B",
     shadowOpacity: 0.28,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },

@@ -111,8 +111,8 @@ function ContinueButton({
       loading={loading}
       disabled={!enabled || loading}
       onPress={onPress}
-      bg={B.orange}
-      bgDark="#C85A0D"
+      bg={B.amber}
+      bgDark="#B45309"
       rightIcon={undefined}
       style={styles.ctaWrap}
     />
@@ -175,7 +175,7 @@ export default function LoginScreen() {
     console.log("[SPINNER_PROOF] component = LoginSpinner — authLoading=", authLoading, "isOtpVerified=", isOtpVerified);
     return (
       <View style={[styles.root, { alignItems: "center", justifyContent: "center" }]}>
-        <ActivityIndicator size="large" color={B.orange} />
+        <ActivityIndicator size="large" color={B.amber} />
       </View>
     );
   }
@@ -197,7 +197,7 @@ export default function LoginScreen() {
         {/* ── 1. Brand Hero ── */}
         <View style={styles.hero}>
           <LinearGradient
-            colors={[B.orange, B.pink]}
+            colors={[B.amber, B.orange]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.logoCircle}
@@ -250,7 +250,7 @@ export default function LoginScreen() {
               returnKeyType="done"
               onSubmitEditing={() => void goToOtp()}
               underlineColorAndroid="transparent"
-              selectionColor={B.orange}
+              selectionColor={B.amber}
               {...(Platform.OS === "web" ? ({ outlineWidth: 0 } as object) : {})}
             />
           </Pressable>
@@ -262,7 +262,7 @@ export default function LoginScreen() {
                 styles.progressFill,
                 {
                   width:           `${(charCount / 10) * 100}%` as `${number}%`,
-                  backgroundColor: charCount === 10 ? B.green : B.orange,
+                  backgroundColor: charCount === 10 ? B.green : B.amber,
                 },
               ]}
             />
@@ -354,7 +354,7 @@ const styles = StyleSheet.create({
     borderRadius:   32,
     alignItems:     "center",
     justifyContent: "center",
-    shadowColor:    B.orange,
+    shadowColor:    B.amber,
     shadowOpacity:  0.40,
     shadowRadius:   16,
     shadowOffset:   { width: 0, height: 5 },
@@ -382,7 +382,7 @@ const styles = StyleSheet.create({
   titleCourier: {
     fontSize:      32,
     fontWeight:    "800",
-    color:         B.orange,
+    color:         B.amber,
     letterSpacing: -1,
   },
 
@@ -471,7 +471,7 @@ const styles = StyleSheet.create({
     borderRadius:      24,
     borderWidth:       1,
     borderColor:       B.cardBorder,
-    shadowColor:       B.orange,
+    shadowColor:       B.amber,
     shadowOpacity:     0.08,
     shadowRadius:      20,
     shadowOffset:      { width: 0, height: 6 },
@@ -488,7 +488,7 @@ const styles = StyleSheet.create({
     width:           8,
     height:          8,
     borderRadius:    4,
-    backgroundColor: B.orange,
+    backgroundColor: B.amber,
   },
   cardHeaderText: {
     fontSize:      11,
@@ -508,8 +508,8 @@ const styles = StyleSheet.create({
     backgroundColor:   B.bg,
   },
   inputRowFocused: {
-    borderColor:     B.orange,
-    backgroundColor: "#FFFAF8",
+    borderColor:     B.amber,
+    backgroundColor: "#FFFBEB",
   },
 
   countryFlag: {
@@ -653,7 +653,7 @@ const styles = StyleSheet.create({
   termsLink: {
     fontSize:   12,
     fontWeight: "700",
-    color:      B.orange,
+    color:      B.amber,
   },
   termsNote: {
     fontSize:   11,
