@@ -55,44 +55,45 @@ const VALID_DOC_NUMBER_TYPES = new Set(Object.keys(DOC_NUMBER_TYPE_TO_DOC_TYPE))
 
 // ─── Onboarding step computation ─────────────────────────────────────────────
 //
-// Single source of truth for server-authoritative onboarding routing.
+// Single source of truth for server-authoritative post-auth onboarding routing.
 // Mobile V2 reads nextRoute from GET /me (or /verification-status) and calls
-// router.replace(nextRoute) — no client-side logic required.
+// router.replace(nextRoute) — no client-side routing logic required.
+//
+// Scope: authenticated drivers only. Pre-auth concerns (permission readiness,
+// notification/location/battery setup) are handled entirely client-side before
+// the login screen is shown, without any PG row or Firebase user.
 //
 // Priority order (first matching condition wins):
-//   1. account_blocked         — account suspended/blacklisted/blocked
-//   2. background_setup_required — permission setup not completed at current version
-//   3. vehicle_required        — no vehicle selected
-//   4. profile_required        — name or city missing
-//   5. documents_required      — documents not yet submitted
-//   6. fee_required            — onboarding fee applies and unpaid
-//   7. document_reupload_required — KYC rejected; driver must re-upload
-//   8. verification_pending    — awaiting admin review
-//   9. dashboard_ready         — fully approved; route to main app
-
-// Must be incremented whenever the permission setup flow changes in a way that
-// requires drivers to re-complete it. Mirrors PERMISSION_SETUP_VERSION in
-// artifacts/mobile/utils/firestore.ts.
-const REQUIRED_PERMISSION_VERSION = 6;
+//   1. account_blocked           — suspended / blacklisted / blocked
+//   2. vehicle_required          — no vehicle selected
+//   3. profile_required          — name or city missing
+//   4. documents_required        — KYC docs not yet submitted
+//   5. fee_required              — onboarding fee unpaid
+//   6. document_reupload_required — KYC rejected; driver must re-upload
+//   7. verification_pending      — awaiting admin review
+//   8. dashboard_ready           — approved; route to main app
 
 // Account statuses that lock the driver out of the app.
 const BLOCKED_STATUSES = new Set(["suspended", "blacklisted", "blocked"]);
 
+/**
+ * Steps emitted by the server for authenticated drivers.
+ *
+ * "background_setup_required" is intentionally absent — permission/notification
+ * setup is a pre-auth, client-side gate that runs before the login screen and
+ * never depends on a Firebase user or a PG row.
+ */
 export type OnboardingStep =
-  | "login_required"
-  | "background_setup_required"
+  | "account_blocked"
   | "vehicle_required"
   | "profile_required"
   | "documents_required"
   | "fee_required"
   | "document_reupload_required"
   | "verification_pending"
-  | "dashboard_ready"
-  | "account_blocked";
+  | "dashboard_ready";
 
 export type OnboardingRoute =
-  | "/login"
-  | "/background-setup"
   | "/vehicle-selection"
   | "/profile-setup"
   | "/document-upload"
@@ -113,33 +114,18 @@ type OnboardingStepResult = {
  * Called after every SELECT on the drivers row so the response always reflects
  * the current database state.
  *
- * Priority order (first matching condition wins):
- *   1. account_blocked              — suspended/blacklisted/blocked
- *   2. vehicle_required             — no vehicle chosen yet
- *   3. profile_required             — name or city missing
- *   4. documents_required           — documents not yet submitted
- *   5. fee_required                 — onboarding fee unpaid
- *   6. document_reupload_required   — KYC rejected
- *   7. verification_pending         — awaiting admin review
- *   8. background_setup_required    — approved but permission setup incomplete
- *   9. dashboard_ready              — approved + permission setup complete
- *
- * Background setup intentionally sits AFTER the full signup funnel so that
- * fresh drivers flow straight through Phone → Vehicle → Profile → Documents →
- * Fee → Pending without hitting the permission gate mid-funnel. The gate only
- * fires once the driver is approved and ready to take their first order.
+ * Permission/notification/battery setup is pre-auth and client-only — it is
+ * not represented here. This function only describes post-auth onboarding state.
  */
 function computeOnboardingStep(driver: {
-  accountStatus:          string | null | undefined;
-  backgroundSetupShown:   boolean | null | undefined;
-  permissionSetupVersion: number | null | undefined;
-  vehicleId:              string | null | undefined;
-  name:                   string | null | undefined;
-  city:                   string | null | undefined;
-  documentsSubmitted:     boolean | null | undefined;
-  onboardingFeeApplies:   boolean | null | undefined;
-  onboardingFeeStatus:    string | null | undefined;
-  verificationStatus:     string | null | undefined;
+  accountStatus:        string | null | undefined;
+  vehicleId:            string | null | undefined;
+  name:                 string | null | undefined;
+  city:                 string | null | undefined;
+  documentsSubmitted:   boolean | null | undefined;
+  onboardingFeeApplies: boolean | null | undefined;
+  onboardingFeeStatus:  string | null | undefined;
+  verificationStatus:   string | null | undefined;
 }): OnboardingStepResult {
   // 1. Account blocked — highest priority; driver cannot proceed regardless of
   //    onboarding progress.
@@ -184,16 +170,7 @@ function computeOnboardingStep(driver: {
     return { onboardingStep: "verification_pending", nextRoute: "/verification-pending" };
   }
 
-  // Steps 8–9 only reached when verificationStatus is "approved" or "verified".
-
-  // 8. Background / permission setup — checked only after KYC approval so that
-  //    the permission gate never interrupts the signup funnel mid-flow.
-  const permVersion = driver.permissionSetupVersion ?? 0;
-  if (!driver.backgroundSetupShown || permVersion < REQUIRED_PERMISSION_VERSION) {
-    return { onboardingStep: "background_setup_required", nextRoute: "/background-setup" };
-  }
-
-  // 9. Dashboard ready — KYC approved and permission setup complete.
+  // 8. Dashboard ready — KYC approved; driver can access the main app.
   if (
     driver.verificationStatus === "approved" ||
     driver.verificationStatus === "verified"
@@ -201,8 +178,8 @@ function computeOnboardingStep(driver: {
     return { onboardingStep: "dashboard_ready", nextRoute: "/(tabs)" };
   }
 
-  // Fallback: unknown verificationStatus value; treat as still pending to avoid
-  // routing a driver into the main app with an unexpected state.
+  // Fallback: unknown verificationStatus value — treat as pending to avoid
+  // routing an unverified driver into the main app.
   return { onboardingStep: "verification_pending", nextRoute: "/verification-pending" };
 }
 
@@ -641,18 +618,16 @@ router.get("/drivers/verification-status", async (req, res) => {
   try {
     const [driver] = await db
       .select({
-        accountStatus:          driversTable.accountStatus,
-        backgroundSetupShown:   driversTable.backgroundSetupShown,
-        permissionSetupVersion: driversTable.permissionSetupVersion,
-        vehicleId:              driversTable.vehicleId,
-        name:                   driversTable.name,
-        city:                   driversTable.city,
-        documentsSubmitted:     driversTable.documentsSubmitted,
-        onboardingFeeApplies:   driversTable.onboardingFeeApplies,
-        onboardingFeeStatus:    driversTable.onboardingFeeStatus,
-        verificationStatus:     driversTable.verificationStatus,
-        kycRejectionReason:     driversTable.kycRejectionReason,
-        rejectedDocuments:      driversTable.rejectedDocuments,
+        accountStatus:        driversTable.accountStatus,
+        vehicleId:            driversTable.vehicleId,
+        name:                 driversTable.name,
+        city:                 driversTable.city,
+        documentsSubmitted:   driversTable.documentsSubmitted,
+        onboardingFeeApplies: driversTable.onboardingFeeApplies,
+        onboardingFeeStatus:  driversTable.onboardingFeeStatus,
+        verificationStatus:   driversTable.verificationStatus,
+        kycRejectionReason:   driversTable.kycRejectionReason,
+        rejectedDocuments:    driversTable.rejectedDocuments,
       })
       .from(driversTable)
       .where(eq(driversTable.uid, uid))
