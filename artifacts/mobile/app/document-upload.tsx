@@ -25,7 +25,7 @@ import { File, Paths } from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -200,6 +200,18 @@ function validateDL(s: string): string | null {
 function validateRC(s: string): string | null {
   const clean = s.trim();
   if (!clean) return "RC / registration number is required";
+  return null;
+}
+
+/**
+ * Returns the id of the LAST card in `arr` whose id is in `ids`.
+ * Used to decide which card gets the inline number input rendered below it.
+ * Returns null when none of the ids appear (group not visible → input skipped).
+ */
+function lastInGroup(arr: DocSpec[], ids: DocId[]): DocId | null {
+  for (let i = arr.length - 1; i >= 0; i--) {
+    if (ids.includes(arr[i]!.id)) return arr[i]!.id;
+  }
   return null;
 }
 
@@ -869,14 +881,23 @@ export default function DocumentUploadScreen() {
   const total    = reuploadModeActive ? actionDocs.length : DOCS.length;
   const progress = total > 0 ? uploadedCount / total : 0;
 
+  // Which card in each group is the last one visible in actionDocs?
+  // The inline number input renders beneath that card.
+  // If a group has no cards (e.g. all approved in re-upload mode),
+  // its trigger is null and its number is not required for submission.
+  const aadhaarTrigger = lastInGroup(actionDocs, ["aadhaarFront", "aadhaarBack"]);
+  const panTrigger     = lastInGroup(actionDocs, ["pan"]);
+  const licenseTrigger = lastInGroup(actionDocs, ["licenseFront", "licenseBack"]);
+  const rcTrigger      = lastInGroup(actionDocs, ["rcFront", "rcBack"]);
+
   const numbersValid = (
-    validateAadhaar(docNumbers.aadhaar ?? "") === null &&
-    validatePAN(docNumbers.pan ?? "") === null &&
-    validateDL(docNumbers.license ?? "") === null &&
-    validateRC(docNumbers.rc ?? "") === null
+    (aadhaarTrigger ? validateAadhaar(docNumbers.aadhaar ?? "") === null : true) &&
+    (panTrigger     ? validatePAN(docNumbers.pan ?? "") === null         : true) &&
+    (licenseTrigger ? validateDL(docNumbers.license ?? "") === null      : true) &&
+    (rcTrigger      ? validateRC(docNumbers.rc ?? "") === null           : true)
   );
 
-  /** Submit enabled only when every document is ready AND all numbers are valid. */
+  /** Submit enabled only when every document is ready AND all visible numbers are valid. */
   const allReady = DOCS.every((d) => isDocReady(docs[d.id])) && numbersValid;
 
   async function handleSubmit() {
@@ -1121,14 +1142,109 @@ export default function DocumentUploadScreen() {
           {actionDocs.map((doc) => {
             const st = docs[doc.id];
             return (
-              <DocumentCard
-                key={doc.id}
-                doc={doc}
-                state={st}
-                lockState={normalizeLock(st.status, !!st.uri)}
-                onUpload={() => handleUpload(doc)}
-                onRemove={() => removeDoc(doc.id)}
-              />
+              <Fragment key={doc.id}>
+                <DocumentCard
+                  doc={doc}
+                  state={st}
+                  lockState={normalizeLock(st.status, !!st.uri)}
+                  onUpload={() => handleUpload(doc)}
+                  onRemove={() => removeDoc(doc.id)}
+                />
+
+                {/* ── Aadhaar Number — appears after the last Aadhaar card ── */}
+                {doc.id === aadhaarTrigger && (()=>{
+                  const err = numTouched.aadhaar ? validateAadhaar(docNumbers.aadhaar ?? "") : null;
+                  return (
+                    <View style={[styles.numInline, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                      <Text style={[styles.numLabel, { color: colors.foreground }]}>
+                        Aadhaar Number <Text style={{ color: colors.error }}>*</Text>
+                      </Text>
+                      <TextInput
+                        style={[styles.numInput, { borderColor: err ? colors.error : colors.border, color: colors.foreground, backgroundColor: colors.background }]}
+                        placeholder="12-digit Aadhaar number"
+                        placeholderTextColor={colors.mutedForeground}
+                        keyboardType="numeric"
+                        maxLength={14}
+                        value={docNumbers.aadhaar}
+                        onChangeText={(t) => setDocNumbers((p) => ({ ...p, aadhaar: t.replace(/[^\d]/g, "") }))}
+                        onBlur={() => setNumTouched((p) => ({ ...p, aadhaar: true }))}
+                        returnKeyType="next"
+                      />
+                      {err ? <Text style={[styles.numError, { color: colors.error }]}>{err}</Text> : null}
+                    </View>
+                  );
+                })()}
+
+                {/* ── PAN Number — appears after the PAN card ── */}
+                {doc.id === panTrigger && (()=>{
+                  const err = numTouched.pan ? validatePAN(docNumbers.pan ?? "") : null;
+                  return (
+                    <View style={[styles.numInline, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                      <Text style={[styles.numLabel, { color: colors.foreground }]}>
+                        PAN Number <Text style={{ color: colors.error }}>*</Text>
+                      </Text>
+                      <TextInput
+                        style={[styles.numInput, { borderColor: err ? colors.error : colors.border, color: colors.foreground, backgroundColor: colors.background }]}
+                        placeholder="e.g. ABCDE1234F"
+                        placeholderTextColor={colors.mutedForeground}
+                        autoCapitalize="characters"
+                        maxLength={10}
+                        value={docNumbers.pan}
+                        onChangeText={(t) => setDocNumbers((p) => ({ ...p, pan: t.toUpperCase().replace(/[^A-Z0-9]/g, "") }))}
+                        onBlur={() => setNumTouched((p) => ({ ...p, pan: true }))}
+                        returnKeyType="next"
+                      />
+                      {err ? <Text style={[styles.numError, { color: colors.error }]}>{err}</Text> : null}
+                    </View>
+                  );
+                })()}
+
+                {/* ── Driving Licence Number — appears after the last Licence card ── */}
+                {doc.id === licenseTrigger && (()=>{
+                  const err = numTouched.license ? validateDL(docNumbers.license ?? "") : null;
+                  return (
+                    <View style={[styles.numInline, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                      <Text style={[styles.numLabel, { color: colors.foreground }]}>
+                        Driving Licence Number <Text style={{ color: colors.error }}>*</Text>
+                      </Text>
+                      <TextInput
+                        style={[styles.numInput, { borderColor: err ? colors.error : colors.border, color: colors.foreground, backgroundColor: colors.background }]}
+                        placeholder="e.g. DL0420110012345"
+                        placeholderTextColor={colors.mutedForeground}
+                        autoCapitalize="characters"
+                        value={docNumbers.license}
+                        onChangeText={(t) => setDocNumbers((p) => ({ ...p, license: t.toUpperCase() }))}
+                        onBlur={() => setNumTouched((p) => ({ ...p, license: true }))}
+                        returnKeyType="next"
+                      />
+                      {err ? <Text style={[styles.numError, { color: colors.error }]}>{err}</Text> : null}
+                    </View>
+                  );
+                })()}
+
+                {/* ── RC / Registration Number — appears after the last RC card ── */}
+                {doc.id === rcTrigger && (()=>{
+                  const err = numTouched.rc ? validateRC(docNumbers.rc ?? "") : null;
+                  return (
+                    <View style={[styles.numInline, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                      <Text style={[styles.numLabel, { color: colors.foreground }]}>
+                        RC / Registration Number <Text style={{ color: colors.error }}>*</Text>
+                      </Text>
+                      <TextInput
+                        style={[styles.numInput, { borderColor: err ? colors.error : colors.border, color: colors.foreground, backgroundColor: colors.background }]}
+                        placeholder="e.g. MH12AB1234"
+                        placeholderTextColor={colors.mutedForeground}
+                        autoCapitalize="characters"
+                        value={docNumbers.rc}
+                        onChangeText={(t) => setDocNumbers((p) => ({ ...p, rc: t.toUpperCase() }))}
+                        onBlur={() => setNumTouched((p) => ({ ...p, rc: true }))}
+                        returnKeyType="done"
+                      />
+                      {err ? <Text style={[styles.numError, { color: colors.error }]}>{err}</Text> : null}
+                    </View>
+                  );
+                })()}
+              </Fragment>
             );
           })}
 
@@ -1151,113 +1267,6 @@ export default function DocumentUploadScreen() {
               ))}
             </View>
           )}
-        </View>
-
-        {/* ── Document Numbers ── */}
-        <View style={[styles.numSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={styles.numHeader}>
-            <SafeInlineIcon name="doc" size={14} color={colors.primary} />
-            <Text style={[styles.numHeaderText, { color: colors.foreground }]}>
-              Document Numbers
-            </Text>
-          </View>
-          <Text style={[styles.numSubText, { color: colors.mutedForeground }]}>
-            Enter the number printed on each document. These are required for KYC verification.
-          </Text>
-
-          {/* Aadhaar */}
-          {(()=>{
-            const err = numTouched.aadhaar ? validateAadhaar(docNumbers.aadhaar ?? "") : null;
-            return (
-              <View style={styles.numField}>
-                <Text style={[styles.numLabel, { color: colors.foreground }]}>
-                  Aadhaar Number <Text style={{ color: colors.error }}>*</Text>
-                </Text>
-                <TextInput
-                  style={[styles.numInput, { borderColor: err ? colors.error : colors.border, color: colors.foreground, backgroundColor: colors.background }]}
-                  placeholder="12-digit Aadhaar number"
-                  placeholderTextColor={colors.mutedForeground}
-                  keyboardType="numeric"
-                  maxLength={14}
-                  value={docNumbers.aadhaar}
-                  onChangeText={(t) => setDocNumbers((p) => ({ ...p, aadhaar: t.replace(/[^\d]/g, "") }))}
-                  onBlur={() => setNumTouched((p) => ({ ...p, aadhaar: true }))}
-                  returnKeyType="next"
-                />
-                {err ? <Text style={[styles.numError, { color: colors.error }]}>{err}</Text> : null}
-              </View>
-            );
-          })()}
-
-          {/* PAN */}
-          {(()=>{
-            const err = numTouched.pan ? validatePAN(docNumbers.pan ?? "") : null;
-            return (
-              <View style={styles.numField}>
-                <Text style={[styles.numLabel, { color: colors.foreground }]}>
-                  PAN Number <Text style={{ color: colors.error }}>*</Text>
-                </Text>
-                <TextInput
-                  style={[styles.numInput, { borderColor: err ? colors.error : colors.border, color: colors.foreground, backgroundColor: colors.background }]}
-                  placeholder="e.g. ABCDE1234F"
-                  placeholderTextColor={colors.mutedForeground}
-                  autoCapitalize="characters"
-                  maxLength={10}
-                  value={docNumbers.pan}
-                  onChangeText={(t) => setDocNumbers((p) => ({ ...p, pan: t.toUpperCase().replace(/[^A-Z0-9]/g, "") }))}
-                  onBlur={() => setNumTouched((p) => ({ ...p, pan: true }))}
-                  returnKeyType="next"
-                />
-                {err ? <Text style={[styles.numError, { color: colors.error }]}>{err}</Text> : null}
-              </View>
-            );
-          })()}
-
-          {/* Driving Licence */}
-          {(()=>{
-            const err = numTouched.license ? validateDL(docNumbers.license ?? "") : null;
-            return (
-              <View style={styles.numField}>
-                <Text style={[styles.numLabel, { color: colors.foreground }]}>
-                  Driving Licence Number <Text style={{ color: colors.error }}>*</Text>
-                </Text>
-                <TextInput
-                  style={[styles.numInput, { borderColor: err ? colors.error : colors.border, color: colors.foreground, backgroundColor: colors.background }]}
-                  placeholder="e.g. DL0420110012345"
-                  placeholderTextColor={colors.mutedForeground}
-                  autoCapitalize="characters"
-                  value={docNumbers.license}
-                  onChangeText={(t) => setDocNumbers((p) => ({ ...p, license: t.toUpperCase() }))}
-                  onBlur={() => setNumTouched((p) => ({ ...p, license: true }))}
-                  returnKeyType="next"
-                />
-                {err ? <Text style={[styles.numError, { color: colors.error }]}>{err}</Text> : null}
-              </View>
-            );
-          })()}
-
-          {/* RC */}
-          {(()=>{
-            const err = numTouched.rc ? validateRC(docNumbers.rc ?? "") : null;
-            return (
-              <View style={styles.numField}>
-                <Text style={[styles.numLabel, { color: colors.foreground }]}>
-                  RC / Registration Number <Text style={{ color: colors.error }}>*</Text>
-                </Text>
-                <TextInput
-                  style={[styles.numInput, { borderColor: err ? colors.error : colors.border, color: colors.foreground, backgroundColor: colors.background }]}
-                  placeholder="e.g. MH12AB1234"
-                  placeholderTextColor={colors.mutedForeground}
-                  autoCapitalize="characters"
-                  value={docNumbers.rc}
-                  onChangeText={(t) => setDocNumbers((p) => ({ ...p, rc: t.toUpperCase() }))}
-                  onBlur={() => setNumTouched((p) => ({ ...p, rc: true }))}
-                  returnKeyType="done"
-                />
-                {err ? <Text style={[styles.numError, { color: colors.error }]}>{err}</Text> : null}
-              </View>
-            );
-          })()}
         </View>
 
         {/* Tips */}
@@ -1652,6 +1661,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 16,
     gap: 16,
+  },
+  // Inline number input — rendered directly beneath the last card of its group
+  numInline: {
+    marginTop: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 14,
+    gap: 6,
   },
   numHeader: {
     flexDirection: "row",
