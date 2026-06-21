@@ -112,6 +112,22 @@ type OnboardingStepResult = {
  *
  * Called after every SELECT on the drivers row so the response always reflects
  * the current database state.
+ *
+ * Priority order (first matching condition wins):
+ *   1. account_blocked              — suspended/blacklisted/blocked
+ *   2. vehicle_required             — no vehicle chosen yet
+ *   3. profile_required             — name or city missing
+ *   4. documents_required           — documents not yet submitted
+ *   5. fee_required                 — onboarding fee unpaid
+ *   6. document_reupload_required   — KYC rejected
+ *   7. verification_pending         — awaiting admin review
+ *   8. background_setup_required    — approved but permission setup incomplete
+ *   9. dashboard_ready              — approved + permission setup complete
+ *
+ * Background setup intentionally sits AFTER the full signup funnel so that
+ * fresh drivers flow straight through Phone → Vehicle → Profile → Documents →
+ * Fee → Pending without hitting the permission gate mid-funnel. The gate only
+ * fires once the driver is approved and ready to take their first order.
  */
 function computeOnboardingStep(driver: {
   accountStatus:          string | null | undefined;
@@ -131,52 +147,53 @@ function computeOnboardingStep(driver: {
     return { onboardingStep: "account_blocked", nextRoute: "/account-blocked" };
   }
 
-  // 2. Background / permission setup — must be completed at the current version
-  //    before the driver can access the rest of the onboarding flow.
-  const permVersion = driver.permissionSetupVersion ?? 0;
-  if (!driver.backgroundSetupShown || permVersion < REQUIRED_PERMISSION_VERSION) {
-    return { onboardingStep: "background_setup_required", nextRoute: "/background-setup" };
-  }
-
-  // 3. Vehicle selection — no vehicleId means the driver never chose a vehicle.
+  // 2. Vehicle selection — no vehicleId means the driver never chose a vehicle.
   if (!driver.vehicleId) {
     return { onboardingStep: "vehicle_required", nextRoute: "/vehicle-selection" };
   }
 
-  // 4. Profile — name and city are the minimum required profile fields.
+  // 3. Profile — name and city are the minimum required profile fields.
   if (!driver.name || !driver.city) {
     return { onboardingStep: "profile_required", nextRoute: "/profile-setup" };
   }
 
-  // 5. Documents — driver has not yet submitted KYC documents.
+  // 4. Documents — driver has not yet submitted KYC documents.
   if (!driver.documentsSubmitted) {
     return { onboardingStep: "documents_required", nextRoute: "/document-upload" };
   }
 
-  // 6. Onboarding fee — applies only to new signup drivers; skipped for existing
+  // 5. Onboarding fee — applies only to new signup drivers; skipped for existing
   //    drivers where onboardingFeeApplies is false.
   if (driver.onboardingFeeApplies && driver.onboardingFeeStatus !== "paid") {
     return { onboardingStep: "fee_required", nextRoute: "/onboarding-fee" };
   }
 
-  // 7. Document reupload — admin rejected the submission; driver must fix and resubmit.
-  //    Checked after fee so a rejected driver who also owes a fee sees the fee first.
+  // 6. Document reupload — admin rejected the submission; driver must fix and resubmit.
   if (driver.verificationStatus === "rejected") {
     return { onboardingStep: "document_reupload_required", nextRoute: "/document-upload" };
   }
 
-  // 8. Verification pending — documents submitted and under review (or default
+  // 7. Verification pending — documents submitted and under review (or default
   //    "unsubmitted" state that can arise from a partial migration).
   if (
-    driver.verificationStatus === "pending"      ||
-    driver.verificationStatus === "unsubmitted"  ||
-    driver.verificationStatus === null           ||
+    driver.verificationStatus === "pending"     ||
+    driver.verificationStatus === "unsubmitted" ||
+    driver.verificationStatus === null          ||
     driver.verificationStatus === undefined
   ) {
     return { onboardingStep: "verification_pending", nextRoute: "/verification-pending" };
   }
 
-  // 9. Dashboard ready — KYC approved; driver can access the main app.
+  // Steps 8–9 only reached when verificationStatus is "approved" or "verified".
+
+  // 8. Background / permission setup — checked only after KYC approval so that
+  //    the permission gate never interrupts the signup funnel mid-flow.
+  const permVersion = driver.permissionSetupVersion ?? 0;
+  if (!driver.backgroundSetupShown || permVersion < REQUIRED_PERMISSION_VERSION) {
+    return { onboardingStep: "background_setup_required", nextRoute: "/background-setup" };
+  }
+
+  // 9. Dashboard ready — KYC approved and permission setup complete.
   if (
     driver.verificationStatus === "approved" ||
     driver.verificationStatus === "verified"
