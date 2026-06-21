@@ -113,3 +113,9 @@ id = "HHnbB_CaRsSBGEiHvHuW7"
 uri = "file://artifacts/api-server/api-deploy-step7.tar.gz"
 type = "unspecified"
 title = "api-deploy-step7.tar.gz"
+
+[[outputs]]
+id = "BpZOgI4phlQiDz1rkvMyz"
+uri = "file://artifacts/api-server/api-deploy-v2.tar.gz"
+type = "unspecified"
+title = "api-deploy-v2.tar.gz"
