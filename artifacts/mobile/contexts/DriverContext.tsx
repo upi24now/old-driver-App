@@ -918,6 +918,15 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       if (profile.suspendReason)   console.log("[ACCOUNT_SUSPEND_REASON] poll update:", profile.suspendReason);
       if (profile.blacklistReason) console.log("[ACCOUNT_BLACKLIST_REASON] poll update:", profile.blacklistReason);
 
+      // Also propagate verificationStatus so the verification-pending screen's
+      // isApproved flag reacts to admin approval without waiting for its own
+      // refreshKycStatus interval.
+      if (profile.verificationStatus) {
+        setVerifStatus(profile.verificationStatus);
+        void AsyncStorage.setItem(LOCAL_VERIFICATION_KEY, profile.verificationStatus).catch(() => {});
+        console.log("[ACCOUNT_STATUS_POLL] verificationStatus =", profile.verificationStatus);
+      }
+
       if (blocked) {
         if (hasEnforcedBlock) {
           console.log("[ACCOUNT_STATUS_POLL] still blocked — skipping (loop guard active)");
@@ -1289,11 +1298,16 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         {
           const signupResult = await ensureDriverSignup({
             phone,
-            name:        driverDoc?.name        ?? null,
-            city:        driverDoc?.city        ?? null,
-            gender:      driverDoc?.gender      ?? null,
-            vehicleId:   driverDoc?.vehicleId   ?? null,
-            vehicleName: driverDoc?.vehicleName ?? null,
+            name:                 driverDoc?.name                ?? null,
+            city:                 driverDoc?.city                ?? null,
+            gender:               driverDoc?.gender              ?? null,
+            vehicleId:            driverDoc?.vehicleId           ?? null,
+            vehicleName:          driverDoc?.vehicleName         ?? null,
+            verificationStatus:   driverDoc?.verificationStatus  ?? null,
+            documentsSubmitted:   driverDoc?.documentsSubmitted  ?? null,
+            onboardingFeeApplies: driverDoc?.onboardingFeeApplies ?? null,
+            onboardingFeeStatus:  driverDoc?.onboardingFeeStatus ?? null,
+            onboardingFeeAmount:  typeof driverDoc?.onboardingFeeAmount === "number" ? driverDoc.onboardingFeeAmount : null,
           });
           if (signupResult.ok) {
             console.log("[SIGNUP_PG] driver row upserted for uid =", uid);

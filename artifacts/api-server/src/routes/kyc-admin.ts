@@ -42,7 +42,7 @@ import { adminFirestore } from "../lib/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { requireAdminJwt } from "../lib/require-admin-jwt";
 import { db, driversTable, driverDocumentsTable } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import type { Logger } from "pino";
 
 const router = Router();
@@ -249,9 +249,29 @@ router.post("/kyc/:uid/approve", requireAdminJwt, async (req, res) => {
       return !!(entry && (entry.url ?? entry.uri));
     });
 
-    void pgMirrorDriver(req.log, uid, "approve", {
-      verificationStatus: "approved",
-    });
+    // Use UPSERT (INSERT ON CONFLICT) so that old Firestore-only drivers
+    // (who have no PG row yet) also get their approval written to PostgreSQL.
+    // For drivers that already have a PG row this is equivalent to an UPDATE.
+    void (async () => {
+      try {
+        const phoneFromFirestore = typeof data["phone"] === "string" ? (data["phone"] as string) : "";
+        // Fallback: UIDs in this system are formatted as "91<phone>".
+        const phone = phoneFromFirestore || (uid.startsWith("91") ? uid.slice(2) : uid);
+        await db
+          .insert(driversTable)
+          .values({ uid, phone, verificationStatus: "approved" })
+          .onConflictDoUpdate({
+            target: driversTable.uid,
+            set: {
+              verificationStatus: "approved",
+              updatedAt:          sql`NOW()`,
+            },
+          });
+        req.log.info({ uid }, "kyc-admin: PG approve — driver row upserted");
+      } catch (pgErr) {
+        req.log.error({ pgErr, uid }, "kyc-admin: PG approve upsert failed — Firestore remains authoritative");
+      }
+    })();
     void pgMirrorDocuments(req.log, uid, "approve-docs", approvedDocIds, {
       status: "approved",
     });

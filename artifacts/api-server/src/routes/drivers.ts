@@ -35,14 +35,19 @@ router.post("/drivers/signup", async (req, res) => {
   if (!uid) return;
 
   const body = (req.body ?? {}) as {
-    phone?:         unknown;
-    name?:          unknown;
-    city?:          unknown;
-    gender?:        unknown;
-    vehicleId?:     unknown;
-    vehicleName?:   unknown;
-    licenseNumber?: unknown;
-    vehicleNumber?: unknown;
+    phone?:               unknown;
+    name?:                unknown;
+    city?:                unknown;
+    gender?:              unknown;
+    vehicleId?:           unknown;
+    vehicleName?:         unknown;
+    licenseNumber?:       unknown;
+    vehicleNumber?:       unknown;
+    verificationStatus?:  unknown;
+    documentsSubmitted?:  unknown;
+    onboardingFeeApplies?: unknown;
+    onboardingFeeStatus?: unknown;
+    onboardingFeeAmount?: unknown;
   };
 
   const phone = typeof body.phone === "string" ? body.phone.trim() : "";
@@ -55,13 +60,20 @@ router.post("/drivers/signup", async (req, res) => {
   const str = (v: unknown): string | null =>
     typeof v === "string" && v.trim() ? v.trim() : null;
 
-  const name          = str(body.name);
-  const city          = str(body.city);
-  const gender        = str(body.gender);
-  const vehicleId     = str(body.vehicleId);
-  const vehicleName   = str(body.vehicleName);
-  const licenseNumber = str(body.licenseNumber)?.toUpperCase() ?? null;
-  const vehicleNumber = str(body.vehicleNumber)?.toUpperCase() ?? null;
+  const name               = str(body.name);
+  const city               = str(body.city);
+  const gender             = str(body.gender);
+  const vehicleId          = str(body.vehicleId);
+  const vehicleName        = str(body.vehicleName);
+  const licenseNumber      = str(body.licenseNumber)?.toUpperCase() ?? null;
+  const vehicleNumber      = str(body.vehicleNumber)?.toUpperCase() ?? null;
+  const verificationStatus = str(body.verificationStatus);
+  const onboardingFeeStatus= str(body.onboardingFeeStatus);
+  const documentsSubmitted : boolean | null = typeof body.documentsSubmitted  === "boolean" ? body.documentsSubmitted  : null;
+  const onboardingFeeApplies: boolean | null= typeof body.onboardingFeeApplies === "boolean" ? body.onboardingFeeApplies : null;
+  const onboardingFeeAmount : number | null  = typeof body.onboardingFeeAmount  === "number"  && body.onboardingFeeAmount > 0
+    ? Math.round(body.onboardingFeeAmount as number)
+    : null;
 
   try {
     await db
@@ -69,13 +81,18 @@ router.post("/drivers/signup", async (req, res) => {
       .values({
         uid,
         phone,
-        ...(name          !== null && { name }),
-        ...(city          !== null && { city }),
-        ...(gender        !== null && { gender }),
-        ...(vehicleId     !== null && { vehicleId }),
-        ...(vehicleName   !== null && { vehicleName }),
-        ...(licenseNumber !== null && { licenseNumber }),
-        ...(vehicleNumber !== null && { vehicleNumber }),
+        ...(name               !== null && { name }),
+        ...(city               !== null && { city }),
+        ...(gender             !== null && { gender }),
+        ...(vehicleId          !== null && { vehicleId }),
+        ...(vehicleName        !== null && { vehicleName }),
+        ...(licenseNumber      !== null && { licenseNumber }),
+        ...(vehicleNumber      !== null && { vehicleNumber }),
+        ...(verificationStatus !== null && { verificationStatus }),
+        ...(documentsSubmitted !== null && { documentsSubmitted }),
+        ...(onboardingFeeApplies !== null && { onboardingFeeApplies }),
+        ...(onboardingFeeStatus  !== null && { onboardingFeeStatus }),
+        ...(onboardingFeeAmount  !== null && { onboardingFeeAmount }),
       })
       .onConflictDoUpdate({
         target: driversTable.uid,
@@ -90,6 +107,15 @@ router.post("/drivers/signup", async (req, res) => {
           vehicleName:   sql`COALESCE(NULLIF(EXCLUDED.vehicle_name, ''),   drivers.vehicle_name)`,
           licenseNumber: sql`COALESCE(NULLIF(EXCLUDED.license_number, ''), drivers.license_number)`,
           vehicleNumber: sql`COALESCE(NULLIF(EXCLUDED.vehicle_number, ''), drivers.vehicle_number)`,
+          // KYC / onboarding fields — only written when the caller explicitly
+          // provides them (conditional spread in INSERT values above).
+          // Text fields use COALESCE so empty strings never overwrite valid data.
+          // Boolean / numeric fields are written directly (caller provides authoritative state).
+          ...(verificationStatus   !== null && { verificationStatus:   sql`COALESCE(NULLIF(EXCLUDED.verification_status, ''), drivers.verification_status)` }),
+          ...(documentsSubmitted   !== null && { documentsSubmitted:   documentsSubmitted }),
+          ...(onboardingFeeApplies !== null && { onboardingFeeApplies: onboardingFeeApplies }),
+          ...(onboardingFeeStatus  !== null && { onboardingFeeStatus:  sql`COALESCE(NULLIF(EXCLUDED.onboarding_fee_status, ''), drivers.onboarding_fee_status)` }),
+          ...(onboardingFeeAmount  !== null && { onboardingFeeAmount:  sql`COALESCE(EXCLUDED.onboarding_fee_amount, drivers.onboarding_fee_amount)` }),
           updatedAt:     sql`NOW()`,
         },
       });

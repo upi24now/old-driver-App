@@ -265,6 +265,14 @@ export default function VerificationPendingScreen() {
     return () => sub.remove();
   }, [isApproved, doRefresh]);
 
+  // Auto-navigate the moment polling detects approval — driver should not
+  // have to tap the button manually when the approval happens while they watch.
+  useEffect(() => {
+    if (!isApproved) return;
+    router.replace("/(tabs)");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isApproved]);
+
   if (isRejected) {
     return (
       <View style={[styles.root, { backgroundColor: colors.background }]}>

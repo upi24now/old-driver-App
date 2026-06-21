@@ -230,14 +230,19 @@ export async function patchDriverVehicle(v: Vehicle): Promise<{ ok: boolean }> {
  * exists before document submission attempts the FK-guarded insert.
  */
 export async function ensureDriverSignup(params: {
-  phone:          string;
-  name?:          string | null;
-  city?:          string | null;
-  gender?:        string | null;
-  vehicleId?:     string | null;
-  vehicleName?:   string | null;
-  licenseNumber?: string | null;
-  vehicleNumber?: string | null;
+  phone:                string;
+  name?:                string | null;
+  city?:                string | null;
+  gender?:              string | null;
+  vehicleId?:           string | null;
+  vehicleName?:         string | null;
+  licenseNumber?:       string | null;
+  vehicleNumber?:       string | null;
+  verificationStatus?:  string | null;
+  documentsSubmitted?:  boolean | null;
+  onboardingFeeApplies?: boolean | null;
+  onboardingFeeStatus?: string | null;
+  onboardingFeeAmount?: number | null;
 }): Promise<{ ok: boolean }> {
   const idToken = await getIdToken();
   if (!idToken) {
@@ -253,14 +258,19 @@ export async function ensureDriverSignup(params: {
         Authorization:  `Bearer ${idToken}`,
       },
       body: JSON.stringify({
-        phone:         params.phone,
-        name:          params.name          || undefined,
-        city:          params.city          || undefined,
-        gender:        params.gender        || undefined,
-        vehicleId:     params.vehicleId     || undefined,
-        vehicleName:   params.vehicleName   || undefined,
-        licenseNumber: params.licenseNumber || undefined,
-        vehicleNumber: params.vehicleNumber || undefined,
+        phone:                params.phone,
+        name:                 params.name                || undefined,
+        city:                 params.city                || undefined,
+        gender:               params.gender              || undefined,
+        vehicleId:            params.vehicleId           || undefined,
+        vehicleName:          params.vehicleName         || undefined,
+        licenseNumber:        params.licenseNumber       || undefined,
+        vehicleNumber:        params.vehicleNumber       || undefined,
+        verificationStatus:   params.verificationStatus  || undefined,
+        documentsSubmitted:   params.documentsSubmitted  ?? undefined,
+        onboardingFeeApplies: params.onboardingFeeApplies ?? undefined,
+        onboardingFeeStatus:  params.onboardingFeeStatus || undefined,
+        onboardingFeeAmount:  params.onboardingFeeAmount  ?? undefined,
       }),
     });
 

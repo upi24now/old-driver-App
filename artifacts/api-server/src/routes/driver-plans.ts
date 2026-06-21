@@ -3,6 +3,8 @@ import { Router, type Request, type Response } from "express";
 import Razorpay from "razorpay";
 import { adminFirestore } from "../lib/firebase-admin";
 import { requireAuth } from "../lib/require-auth";
+import { db, driversTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 
 const router = Router();
 
@@ -470,6 +472,31 @@ router.post("/driver-plans/onboarding-fee/verify-payment", async (req, res) => {
 
     req.log.info({ driverUid, razorpayPaymentId, registrationFeeAmount }, "Onboarding fee paid and recorded");
     res.json({ ok: true });
+
+    // ── PostgreSQL mirror (fire-and-forget, non-fatal) ────────────────────────
+    // Firestore is authoritative for the payment record; PG is mirrored so that
+    // GET /api/drivers/me returns the correct onboardingFeeStatus, and session
+    // restore (deriveNextRoute) does not loop back to /document-upload or /onboarding-fee.
+    void (async () => {
+      try {
+        const now = new Date();
+        await db
+          .update(driversTable)
+          .set({
+            onboardingFeeStatus:  "paid",
+            registrationFeePaid:  true,
+            registrationFeeAmount,
+            registrationFeePaidAt: now,
+            documentsSubmitted:   true,
+            verificationStatus:   "pending",
+            updatedAt:            now,
+          })
+          .where(eq(driversTable.uid, driverUid));
+        req.log.info({ driverUid }, "onboarding-fee: PG mirror updated");
+      } catch (pgErr) {
+        req.log.error({ pgErr, driverUid }, "onboarding-fee: PG mirror failed — Firestore authoritative");
+      }
+    })();
   } catch (err) {
     req.log.error({ err }, "Firestore write failed after onboarding fee signature verify");
     res.status(500).json({
