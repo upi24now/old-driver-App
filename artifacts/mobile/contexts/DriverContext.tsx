@@ -588,6 +588,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           // Await the already-started promise (kicked off at mount time, not now).
           // On a normal device this resolves in <50 ms — well before this code runs.
           const storedUid = await sessionKeyRef.current;
+          console.log("[PERF] auth_state_ready ts=" + Date.now());
           console.log("[AUTH_RESTORE] firebaseUid =", user.uid);
           console.log("[AUTH_RESTORE] storedVerifiedUid =", storedUid);
           sessionValid = storedUid === user.uid;
@@ -617,6 +618,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         // Remaining Firestore reads (background): subscription + daily stats (not yet in PG).
         let pgProfile: PgDriverProfile | null = null;
         try {
+          console.log("[PERF] get_driver_profile_start ts=" + Date.now());
           const profileFetch = getDriverProfile();
           pgProfile = sessionValid
             ? await Promise.race([
@@ -624,6 +626,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
                 new Promise<null>((r) => setTimeout(() => r(null), 3500)),
               ])
             : await profileFetch;
+          console.log("[PERF] get_driver_profile_end ts=" + Date.now() + " pgProfile=" + (pgProfile ? "ok" : "null"));
 
           if (pgProfile) {
             if (pgProfile.name) {
@@ -675,14 +678,16 @@ export function DriverProvider({ children }: { children: ReactNode }) {
               setTripsToday   (sameDay ? (fsDoc.tripsToday    ?? 0) : 0);
               setDriverRating(fsDoc.rating ?? "5.0");
             }).catch(console.error);
-            // Wallet doc — authoritative balance, totalEarnings, totalPaid, completedDeliveries
-            {
-              const walletDoc = await getWalletDoc(user.uid).catch(() => null);
-              setBalance(walletDoc?.balance ?? 0);
-              setLifetimeEarnings(walletDoc?.totalEarnings ?? 0);
-              setTotalPaid(walletDoc?.totalPaid ?? 0);
-              setDriverTrips(walletDoc?.completedDeliveries ?? 0);
-            }
+            // Wallet doc — fire-and-forget (Firestore cold-start must NOT block navigation)
+            console.log("[PERF] wallet_fetch_start");
+            void getWalletDoc(user.uid).then((walletDoc) => {
+              console.log("[PERF] wallet_fetch_end");
+              if (!walletDoc) return;
+              setBalance(walletDoc.balance ?? 0);
+              setLifetimeEarnings(walletDoc.totalEarnings ?? 0);
+              setTotalPaid(walletDoc.totalPaid ?? 0);
+              setDriverTrips(walletDoc.completedDeliveries ?? 0);
+            }).catch(() => {});
             void loadDriverTransactions(user.uid);
             setVerifStatus(pgProfile.verificationStatus ?? null);
             if (pgProfile.verificationStatus) {
@@ -708,9 +713,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             setOnboardingFeeStatus(pgProfile.onboardingFeeStatus ?? null);
             setOnboardingFeeAmount(pgProfile.onboardingFeeAmount ?? null);
           }
-          // Restore active orders (mid-delivery app restart).
-          try {
-            const activeOrderDocs = await getActiveOrdersForDriver(user.uid, MAX_ACTIVE_ORDERS);
+          // Restore active orders — fire-and-forget (must NOT block navigation)
+          console.log("[PERF] active_orders_restore_start");
+          void getActiveOrdersForDriver(user.uid, MAX_ACTIVE_ORDERS).then((activeOrderDocs) => {
+            console.log("[PERF] active_orders_restore_end count=" + activeOrderDocs.length);
             if (activeOrderDocs.length > 0) {
               const restoredRides: ActiveRide[] = activeOrderDocs.map((doc) => {
                 const ride = orderDocToRide(doc);
@@ -722,9 +728,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
               setActiveOrders(restoredRides);
               setCurrentActiveOrderId(restoredRides[0]!.id);
             }
-          } catch {
+          }).catch(() => {
             // Active order restore failed — driver sees no active delivery after restart.
-          }
+          });
         } catch (err) {
           console.error("[Auth] background profile hydration failed:", err);
         }
@@ -1188,6 +1194,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     // false at that moment, _layout.tsx routes to /login → flash.
     // Setting isOtpVerifying=true here tells _layout.tsx to skip all routing
     // until we clear the flag together with setIsOtpVerified(true) below.
+    console.log("[PERF] otp_verify_start ts=" + Date.now());
     console.log("[OTP_VERIFY_START] blocking layout route-guard; about to call signInWithCustomToken");
     setIsOtpVerifying(true);
 
@@ -1199,7 +1206,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       setPhoneState(phone);
 
       // ── Try PostgreSQL profile first (primary path) ──────────────────────
+      console.log("[PERF] get_driver_profile_start confirmOtp ts=" + Date.now());
       const pgProfile = await getDriverProfile();
+      console.log("[PERF] get_driver_profile_end confirmOtp ts=" + Date.now() + " pgProfile=" + (pgProfile ? "ok" : "null"));
 
       let driverDoc: DriverDoc | null = null;   // Firestore fallback for new/unmigrated drivers
       let routingDoc: RoutingDoc;               // used for deriveNextRoute
@@ -1250,13 +1259,16 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             setTodayEarnings(sameDay ? (driverDoc.todayEarnings ?? 0) : 0);
             setTripsToday   (sameDay ? (driverDoc.tripsToday    ?? 0) : 0);
           }
-          {
-            const walletDoc = await getWalletDoc(uid).catch(() => null);
-            setBalance(walletDoc?.balance ?? 0);
-            setLifetimeEarnings(walletDoc?.totalEarnings ?? 0);
-            setTotalPaid(walletDoc?.totalPaid ?? 0);
-            setDriverTrips(walletDoc?.completedDeliveries ?? driverDoc.totalTrips ?? 0);
-          }
+          // Wallet — fire-and-forget (Firestore must NOT block OTP→next-screen routing)
+          console.log("[PERF] wallet_fetch_start confirmOtp_fs");
+          void getWalletDoc(uid).then((walletDoc) => {
+            console.log("[PERF] wallet_fetch_end confirmOtp_fs");
+            if (!walletDoc) return;
+            setBalance(walletDoc.balance ?? 0);
+            setLifetimeEarnings(walletDoc.totalEarnings ?? 0);
+            setTotalPaid(walletDoc.totalPaid ?? 0);
+            setDriverTrips(walletDoc.completedDeliveries ?? driverDoc?.totalTrips ?? 0);
+          }).catch(() => {});
           void loadDriverTransactions(uid);
           setVerifStatus(driverDoc.verificationStatus ?? null);
           if (driverDoc.verificationStatus) {
@@ -1346,13 +1358,16 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           setTripsToday   (sameDay ? (fsDoc.tripsToday    ?? 0) : 0);
           setDriverRating(fsDoc.rating ?? "5.0");
         }).catch(console.error);
-        {
-          const walletDoc = await getWalletDoc(uid).catch(() => null);
-          setBalance(walletDoc?.balance ?? 0);
-          setLifetimeEarnings(walletDoc?.totalEarnings ?? 0);
-          setTotalPaid(walletDoc?.totalPaid ?? 0);
-          setDriverTrips(walletDoc?.completedDeliveries ?? 0);
-        }
+        // Wallet — fire-and-forget (Firestore must NOT block OTP→next-screen routing)
+        console.log("[PERF] wallet_fetch_start confirmOtp_pg");
+        void getWalletDoc(uid).then((walletDoc) => {
+          console.log("[PERF] wallet_fetch_end confirmOtp_pg");
+          if (!walletDoc) return;
+          setBalance(walletDoc.balance ?? 0);
+          setLifetimeEarnings(walletDoc.totalEarnings ?? 0);
+          setTotalPaid(walletDoc.totalPaid ?? 0);
+          setDriverTrips(walletDoc.completedDeliveries ?? 0);
+        }).catch(() => {});
         void loadDriverTransactions(uid);
         setVerifStatus(pgProfile.verificationStatus ?? null);
         if (pgProfile.verificationStatus) {
@@ -1379,7 +1394,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       }
 
       const profileComplete = !!(routingDoc.name && routingDoc.vehicleId);
+      console.log("[PERF] next_route_start confirmOtp ts=" + Date.now());
       const nextRoute       = (serverNextRoute as OnboardingRoute | undefined) ?? await deriveNextRoute(routingDoc);
+      console.log("[PERF] next_route_end confirmOtp ts=" + Date.now() + " nextRoute=" + nextRoute);
 
       // ── OTP_ROUTE logs — required by auth policy ──────────────────────────
       console.log("[OTP_ROUTE] otp_success_uid =", uid);

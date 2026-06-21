@@ -34,6 +34,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -42,7 +43,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDriver } from "@/contexts/DriverContext";
 // onboardingFeeApplies is true only for brand-new signup drivers.
 import { useColors } from "@/hooks/useColors";
-import { registerDriverKeys, submitDocumentsToPostgres } from "@/utils/driver-api";
+import { registerDriverKeys, submitDocumentsToPostgres, type DocumentNumbers } from "@/utils/driver-api";
 import { getDriverVerificationStatus } from "@/utils/profile-api";
 import { uploadDocumentImage, isRemoteUrl } from "@/utils/storage";
 import { firebaseAuth } from "@/utils/firebase";
@@ -176,6 +177,31 @@ type DocState = {
 };
 
 const blankDoc = (): DocState => ({ uri: null, originalUri: null, uploadedAt: null, loading: false, freshUpload: false });
+
+// ─── Document number validation ───────────────────────────────────────────────
+
+function validateAadhaar(s: string): string | null {
+  const clean = s.replace(/\s/g, "");
+  if (!clean) return "Aadhaar number is required";
+  if (!/^\d{12}$/.test(clean)) return "Must be exactly 12 digits";
+  return null;
+}
+function validatePAN(s: string): string | null {
+  const clean = s.trim().toUpperCase();
+  if (!clean) return "PAN number is required";
+  if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(clean)) return "Format: ABCDE1234F";
+  return null;
+}
+function validateDL(s: string): string | null {
+  const clean = s.trim();
+  if (!clean) return "DL number is required";
+  return null;
+}
+function validateRC(s: string): string | null {
+  const clean = s.trim();
+  if (!clean) return "RC / registration number is required";
+  return null;
+}
 
 // ─── Permission helpers ───────────────────────────────────────────────────────
 
@@ -637,6 +663,9 @@ export default function DocumentUploadScreen() {
   const [uploadStatusText,  setUploadStatusText]  = useState<string>("");
 
   const [docsLoading, setDocsLoading] = useState(true);
+
+  const [docNumbers, setDocNumbers] = useState<DocumentNumbers>({ aadhaar: "", pan: "", license: "", rc: "" });
+  const [numTouched, setNumTouched] = useState({ aadhaar: false, pan: false, license: false, rc: false });
   const [docs, setDocs] = useState<Record<DocId, DocState>>(() =>
     Object.fromEntries(DOCS.map((d) => [d.id, blankDoc()])) as Record<DocId, DocState>,
   );
@@ -840,8 +869,15 @@ export default function DocumentUploadScreen() {
   const total    = reuploadModeActive ? actionDocs.length : DOCS.length;
   const progress = total > 0 ? uploadedCount / total : 0;
 
-  /** Submit enabled only when every document is ready. */
-  const allReady = DOCS.every((d) => isDocReady(docs[d.id]));
+  const numbersValid = (
+    validateAadhaar(docNumbers.aadhaar ?? "") === null &&
+    validatePAN(docNumbers.pan ?? "") === null &&
+    validateDL(docNumbers.license ?? "") === null &&
+    validateRC(docNumbers.rc ?? "") === null
+  );
+
+  /** Submit enabled only when every document is ready AND all numbers are valid. */
+  const allReady = DOCS.every((d) => isDocReady(docs[d.id])) && numbersValid;
 
   async function handleSubmit() {
     if (!allReady || submitting || docsLoading) return;
@@ -945,14 +981,23 @@ export default function DocumentUploadScreen() {
     // ── Phase 3a: PostgreSQL write (primary) ─────────────────────────────────
     // Strip null entries — the API only accepts { docId: url } string pairs.
     setUploadStatusText("Saving documents…");
+    console.log("[PERF] submit_documents_start ts=" + Date.now());
     console.log("[KYC] phase 3a — PostgreSQL write start");
     console.log("[DOC_DUAL_WRITE] pg_start");
     const pgDocuments: Record<string, string> = {};
     for (const [id, url] of Object.entries(docUris)) {
       if (url !== null) pgDocuments[id] = url;
     }
+    const pgDocNums: DocumentNumbers = {
+      aadhaar: docNumbers.aadhaar?.trim() || undefined,
+      pan:     docNumbers.pan?.trim().toUpperCase() || undefined,
+      license: docNumbers.license?.trim().toUpperCase() || undefined,
+      rc:      docNumbers.rc?.trim().toUpperCase() || undefined,
+    };
     console.log("[KYC] phase 3a — pgDocuments keys:", JSON.stringify(Object.keys(pgDocuments)));
-    const pgResult = await submitDocumentsToPostgres(pgDocuments);
+    console.log("[KYC] phase 3a — pgDocNums:", JSON.stringify(pgDocNums));
+    const pgResult = await submitDocumentsToPostgres(pgDocuments, pgDocNums);
+    console.log("[PERF] submit_documents_end ts=" + Date.now());
     if (!pgResult.ok) {
       console.error("[KYC] phase 3a — PostgreSQL FAILED:", pgResult.error, pgResult.message);
       console.error("[DOC_DUAL_WRITE] pg_failed error=" + pgResult.error);
@@ -1106,6 +1151,113 @@ export default function DocumentUploadScreen() {
               ))}
             </View>
           )}
+        </View>
+
+        {/* ── Document Numbers ── */}
+        <View style={[styles.numSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.numHeader}>
+            <SafeInlineIcon name="doc" size={14} color={colors.primary} />
+            <Text style={[styles.numHeaderText, { color: colors.foreground }]}>
+              Document Numbers
+            </Text>
+          </View>
+          <Text style={[styles.numSubText, { color: colors.mutedForeground }]}>
+            Enter the number printed on each document. These are required for KYC verification.
+          </Text>
+
+          {/* Aadhaar */}
+          {(()=>{
+            const err = numTouched.aadhaar ? validateAadhaar(docNumbers.aadhaar ?? "") : null;
+            return (
+              <View style={styles.numField}>
+                <Text style={[styles.numLabel, { color: colors.foreground }]}>
+                  Aadhaar Number <Text style={{ color: colors.error }}>*</Text>
+                </Text>
+                <TextInput
+                  style={[styles.numInput, { borderColor: err ? colors.error : colors.border, color: colors.foreground, backgroundColor: colors.background }]}
+                  placeholder="12-digit Aadhaar number"
+                  placeholderTextColor={colors.mutedForeground}
+                  keyboardType="numeric"
+                  maxLength={14}
+                  value={docNumbers.aadhaar}
+                  onChangeText={(t) => setDocNumbers((p) => ({ ...p, aadhaar: t.replace(/[^\d]/g, "") }))}
+                  onBlur={() => setNumTouched((p) => ({ ...p, aadhaar: true }))}
+                  returnKeyType="next"
+                />
+                {err ? <Text style={[styles.numError, { color: colors.error }]}>{err}</Text> : null}
+              </View>
+            );
+          })()}
+
+          {/* PAN */}
+          {(()=>{
+            const err = numTouched.pan ? validatePAN(docNumbers.pan ?? "") : null;
+            return (
+              <View style={styles.numField}>
+                <Text style={[styles.numLabel, { color: colors.foreground }]}>
+                  PAN Number <Text style={{ color: colors.error }}>*</Text>
+                </Text>
+                <TextInput
+                  style={[styles.numInput, { borderColor: err ? colors.error : colors.border, color: colors.foreground, backgroundColor: colors.background }]}
+                  placeholder="e.g. ABCDE1234F"
+                  placeholderTextColor={colors.mutedForeground}
+                  autoCapitalize="characters"
+                  maxLength={10}
+                  value={docNumbers.pan}
+                  onChangeText={(t) => setDocNumbers((p) => ({ ...p, pan: t.toUpperCase().replace(/[^A-Z0-9]/g, "") }))}
+                  onBlur={() => setNumTouched((p) => ({ ...p, pan: true }))}
+                  returnKeyType="next"
+                />
+                {err ? <Text style={[styles.numError, { color: colors.error }]}>{err}</Text> : null}
+              </View>
+            );
+          })()}
+
+          {/* Driving Licence */}
+          {(()=>{
+            const err = numTouched.license ? validateDL(docNumbers.license ?? "") : null;
+            return (
+              <View style={styles.numField}>
+                <Text style={[styles.numLabel, { color: colors.foreground }]}>
+                  Driving Licence Number <Text style={{ color: colors.error }}>*</Text>
+                </Text>
+                <TextInput
+                  style={[styles.numInput, { borderColor: err ? colors.error : colors.border, color: colors.foreground, backgroundColor: colors.background }]}
+                  placeholder="e.g. DL0420110012345"
+                  placeholderTextColor={colors.mutedForeground}
+                  autoCapitalize="characters"
+                  value={docNumbers.license}
+                  onChangeText={(t) => setDocNumbers((p) => ({ ...p, license: t.toUpperCase() }))}
+                  onBlur={() => setNumTouched((p) => ({ ...p, license: true }))}
+                  returnKeyType="next"
+                />
+                {err ? <Text style={[styles.numError, { color: colors.error }]}>{err}</Text> : null}
+              </View>
+            );
+          })()}
+
+          {/* RC */}
+          {(()=>{
+            const err = numTouched.rc ? validateRC(docNumbers.rc ?? "") : null;
+            return (
+              <View style={styles.numField}>
+                <Text style={[styles.numLabel, { color: colors.foreground }]}>
+                  RC / Registration Number <Text style={{ color: colors.error }}>*</Text>
+                </Text>
+                <TextInput
+                  style={[styles.numInput, { borderColor: err ? colors.error : colors.border, color: colors.foreground, backgroundColor: colors.background }]}
+                  placeholder="e.g. MH12AB1234"
+                  placeholderTextColor={colors.mutedForeground}
+                  autoCapitalize="characters"
+                  value={docNumbers.rc}
+                  onChangeText={(t) => setDocNumbers((p) => ({ ...p, rc: t.toUpperCase() }))}
+                  onBlur={() => setNumTouched((p) => ({ ...p, rc: true }))}
+                  returnKeyType="done"
+                />
+                {err ? <Text style={[styles.numError, { color: colors.error }]}>{err}</Text> : null}
+              </View>
+            );
+          })()}
         </View>
 
         {/* Tips */}
@@ -1492,6 +1644,50 @@ const styles = StyleSheet.create({
   alreadySubmittedTitle: { fontSize: 13, fontWeight: "700" },
   alreadySubmittedRow:   { flexDirection: "row", alignItems: "center", gap: 7, paddingLeft: 2 },
   alreadySubmittedItem:  { fontSize: 13 },
+
+  // Document number fields
+  numSection: {
+    marginTop: 20,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 16,
+    gap: 16,
+  },
+  numHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  numHeaderText: {
+    fontSize: 15,
+    fontWeight: "700",
+    letterSpacing: -0.2,
+  },
+  numSubText: {
+    fontSize: 12.5,
+    lineHeight: 18,
+    marginTop: -8,
+  },
+  numField: {
+    gap: 5,
+  },
+  numLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  numInput: {
+    height: 46,
+    borderWidth: 1.5,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    fontSize: 14,
+    letterSpacing: 0.5,
+  },
+  numError: {
+    fontSize: 11.5,
+    fontWeight: "500",
+    marginLeft: 2,
+  },
 
   // Tips
   tipBox: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 8 },

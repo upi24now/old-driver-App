@@ -90,8 +90,16 @@ export type SubmitDocumentsResult =
  * @param documents  Map of docId → public VPS URL.
  *                   Null / undefined entries must be stripped by the caller.
  */
+export type DocumentNumbers = {
+  aadhaar?: string;
+  pan?:     string;
+  license?: string;
+  rc?:      string;
+};
+
 export async function submitDocumentsToPostgres(
-  documents: Record<string, string>,
+  documents:       Record<string, string>,
+  documentNumbers?: DocumentNumbers,
 ): Promise<SubmitDocumentsResult> {
   const user = firebaseAuth.currentUser;
   if (!user) {
@@ -121,7 +129,7 @@ export async function submitDocumentsToPostgres(
         "Content-Type":  "application/json",
         "Authorization": `Bearer ${idToken}`,
       },
-      body: JSON.stringify({ documents }),
+      body: JSON.stringify({ documents, ...(documentNumbers ? { documentNumbers } : {}) }),
     });
 
     const json = (await res.json()) as {

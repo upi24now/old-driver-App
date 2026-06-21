@@ -115,34 +115,25 @@ router.post("/kyc/:uid/approve", requireAdminJwt, async (req, res) => {
     return;
   }
 
-  // ── Firestore read (existence check + doc list for Firestore mirror) ───────
-  let firestoreData: Record<string, unknown> = {};
+  // ── PostgreSQL writes (AUTHORITATIVE — no Firestore read required) ─────────
+  //
+  // Firestore dependency was removed from this path. V2 drivers may not have
+  // a Firestore doc at all; requiring it blocked PG approval for those drivers.
+  // Phone is read from PG (fast, local). If no PG row yet, uid-derived placeholder.
   try {
-    const fsDb = await adminFirestore();
-    const snap = await fsDb.collection("drivers").doc(uid).get();
-    if (!snap.exists) {
-      res.status(404).json({ ok: false, error: "driver_not_found" });
-      return;
-    }
-    firestoreData = snap.data() ?? {};
-  } catch (fsReadErr) {
-    req.log.error({ fsReadErr, uid }, "kyc-admin approve: Firestore read failed");
-    res.status(500).json({ ok: false, error: "Failed to read driver record." });
-    return;
-  }
+    // Read existing phone from PG (fast local query, avoids Firestore round-trip).
+    const existingRows = await db
+      .select({ phone: driversTable.phone })
+      .from(driversTable)
+      .where(eq(driversTable.uid, uid))
+      .limit(1);
 
-  // ── PostgreSQL writes (AUTHORITATIVE) ─────────────────────────────────────
-  try {
-    const now = new Date();
+    const phone = existingRows[0]?.phone ?? (uid.startsWith("91") ? uid.slice(2) : uid);
 
-    // 1. UPSERT drivers row — handles both pre-migration (no PG row) and migrated drivers.
-    const phoneFromFs = typeof firestoreData["phone"] === "string"
-      ? firestoreData["phone"] as string
-      : (uid.startsWith("91") ? uid.slice(2) : uid);
-
+    // 1. UPSERT drivers row — handles both pre-migration (no PG row) and V2 drivers.
     await db
       .insert(driversTable)
-      .values({ uid, phone: phoneFromFs, verificationStatus: "approved" })
+      .values({ uid, phone, verificationStatus: "approved" })
       .onConflictDoUpdate({
         target: driversTable.uid,
         set: {
@@ -172,27 +163,34 @@ router.post("/kyc/:uid/approve", requireAdminJwt, async (req, res) => {
   // ── Response ──────────────────────────────────────────────────────────────
   res.json({ ok: true });
 
-  // ── Firestore mirror (fire-and-forget — admin panel) ─────────────────────
+  // ── Firestore mirror (fire-and-forget — admin panel list view) ────────────
   void (async () => {
     try {
-      const fsDb    = await adminFirestore();
-      const ref     = fsDb.collection("drivers").doc(uid);
-      const existing = (firestoreData["documents"] ?? {}) as Record<
-        string,
-        { url?: string | null; uri?: string | null; status?: string | null }
-      >;
+      const fsDb = await adminFirestore();
+      const ref  = fsDb.collection("drivers").doc(uid);
+      const snap = await ref.get();
 
       const updates: Record<string, string | typeof FieldValue> = {
         verificationStatus: "approved",
       };
-      for (const docId of DOC_IDS) {
-        const entry = existing[docId];
-        if (entry && (entry.url ?? entry.uri)) {
-          updates[`documents.${docId}.status`] = "approved";
-        }
-      }
 
-      await ref.update(updates);
+      if (snap.exists) {
+        const existing = ((snap.data() ?? {})["documents"] ?? {}) as Record<
+          string,
+          { url?: string | null; uri?: string | null } | undefined
+        >;
+        for (const docId of DOC_IDS) {
+          const entry = existing[docId];
+          if (entry && (entry.url ?? entry.uri)) {
+            updates[`documents.${docId}.status`] = "approved";
+          }
+        }
+        await ref.update(updates);
+      } else {
+        // V2 driver — no Firestore doc yet. Create minimal mirror so admin panel
+        // list reflects the correct status without a full document.
+        await ref.set({ verificationStatus: "approved" }, { merge: true });
+      }
       req.log.info({ uid }, "kyc-admin: Firestore approve mirror updated");
     } catch (fsErr) {
       req.log.error({ fsErr, uid }, "kyc-admin: Firestore approve mirror failed — PG remains authoritative");
