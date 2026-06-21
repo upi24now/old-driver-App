@@ -18,6 +18,7 @@
     },
     "android": {
       "package": "in.bikecourierservice.driver",
+      "versionCode": 6,
       "googleServicesFile": "./google-services.json",
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
