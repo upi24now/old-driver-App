@@ -124,6 +124,7 @@ function RootLayoutNav() {
         <Stack.Screen name="index" options={{ animation: "none" }} />
         <Stack.Screen name="login" />
         <Stack.Screen name="otp" />
+        <Stack.Screen name="registration" />
         <Stack.Screen name="vehicle-selection" />
         <Stack.Screen name="profile-setup" />
         <Stack.Screen name="document-upload" />

@@ -158,6 +158,7 @@ const PLAN_PRICE: Record<SubPlan, number> = { daily: 3,  weekly: 19,  monthly: 1
 
 type OnboardingRoute =
   | "/(tabs)"
+  | "/registration"
   | "/vehicle-selection"
   | "/profile-setup"
   | "/document-upload"
@@ -1130,25 +1131,25 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       permissionSetupVersion: d.permissionSetupVersion ?? 0,
     }));
 
-    if (!d.vehicleId) {
-      console.log("[DERIVE_NEXT_ROUTE_REASON] no vehicleId → /vehicle-selection");
-      return "/vehicle-selection";
-    }
-    if (!d.name) {
-      console.log("[DERIVE_NEXT_ROUTE_REASON] no name → /profile-setup");
-      return "/profile-setup";
+    // Any incomplete onboarding step → single registration screen.
+    const needsRegistration =
+      !d.vehicleId ||
+      !d.name ||
+      (!isApproved && !d.documentsSubmitted) ||
+      (!isApproved && d.onboardingFeeApplies === true && d.onboardingFeeStatus !== "paid");
+
+    if (needsRegistration) {
+      console.log("[DERIVE_NEXT_ROUTE_REASON] onboarding incomplete → /registration", JSON.stringify({
+        vehicleId:          d.vehicleId ?? null,
+        name:               d.name ?? null,
+        documentsSubmitted: d.documentsSubmitted,
+        feeApplies:         d.onboardingFeeApplies,
+        feeStatus:          d.onboardingFeeStatus ?? null,
+      }));
+      return "/registration";
     }
 
     if (!isApproved) {
-      if (!d.documentsSubmitted) {
-        console.log("[DERIVE_NEXT_ROUTE_REASON] not approved + docs not submitted → /document-upload");
-        return "/document-upload";
-      }
-      // Fee screen: only when onboardingFeeApplies is explicitly true (brand-new signup).
-      if (d.onboardingFeeApplies === true && d.onboardingFeeStatus !== "paid") {
-        console.log("[DERIVE_NEXT_ROUTE_REASON] not approved + fee pending → /onboarding-fee");
-        return "/onboarding-fee";
-      }
       console.log("[DERIVE_NEXT_ROUTE_REASON] not approved + docs submitted → /verification-pending");
       return "/verification-pending";
     }
