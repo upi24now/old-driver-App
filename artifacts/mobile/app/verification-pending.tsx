@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { TS } from "@/constants/typography";
 import { useDriver } from "@/contexts/DriverContext";
+import { getDriverVerificationStatus } from "@/utils/profile-api";
 
 const DOC_LABELS: Record<string, string> = {
   selfie:       "Selfie / Profile Photo",
@@ -231,8 +232,14 @@ export default function VerificationPendingScreen() {
     : [];
 
   const doRefresh = useCallback(async () => {
+    const status = await getDriverVerificationStatus();
+    if (status?.nextRoute && status.nextRoute !== "/verification-pending") {
+      router.replace(status.nextRoute as never);
+      return;
+    }
+    // Still pending — sync DriverContext state from the server response.
     await refreshKycStatus();
-  }, [refreshKycStatus]);
+  }, [refreshKycStatus, router]);
 
   // ── Diagnostic log — fires on mount and whenever KYC state changes ──
   useEffect(() => {

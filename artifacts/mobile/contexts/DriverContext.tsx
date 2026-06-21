@@ -746,8 +746,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
               permissionSetupVersion: pgProfile.permissionSetupVersion ?? 0,
             }));
             console.log("[KYC_GATE] PG success — running deriveNextRoute");
-            nextRoute = await deriveNextRoute(pgProfile);
-            console.log("[ROUTE_DECISION] session restore chosenRoute =", nextRoute, "(deriveNextRoute)");
+            const serverRoute = pgProfile.nextRoute as OnboardingRoute | undefined;
+            nextRoute = serverRoute ?? await deriveNextRoute(pgProfile);
+            console.log("[ROUTE_DECISION] session restore chosenRoute =", nextRoute, serverRoute ? "(server nextRoute)" : "(deriveNextRoute fallback)");
           } else {
             // Fix B: Firestore timed out (>3.5 s) — verificationStatus unknown from
             // live doc.  Read the local AsyncStorage cache written on the last
@@ -783,27 +784,15 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
             if (cachedApproved) {
               console.log("[APPROVED_DRIVER_CACHE_HIT] local cache confirms", cachedVerifStatus, "— bypassing /verification-pending");
-              // Still guard on permission setup so a driver whose permissions were
-              // revoked after approval doesn't silently land on the dashboard.
-              if (localVer < PERMISSION_SETUP_VERSION) {
-                nextRoute = "/background-setup";
-                console.log("[APPROVED_DRIVER_ROUTE] approved (cached) but permSetup incomplete (localVer =", localVer, ") → /background-setup");
-              } else {
-                nextRoute = "/(tabs)";
-                console.log("[APPROVED_DRIVER_ROUTE] approved (cached) + permSetup ok → /(tabs)");
-              }
+              nextRoute = "/(tabs)";
+              console.log("[APPROVED_DRIVER_ROUTE] approved (cached) → /(tabs)");
             } else {
               // No cache or status is not approved — safe defaults apply.
               console.log("[DOC_TIMEOUT_APPROVED_UNKNOWN] cachedVerifStatus =", cachedVerifStatus ?? "(none)", "— cannot confirm approval; using safe fallback");
-              if (localVer < PERMISSION_SETUP_VERSION) {
-                nextRoute = "/background-setup";
-                console.log("[FIRESTORE_TIMEOUT_SAFE_ROUTE] perm setup incomplete — localVer =", localVer, "→ /background-setup");
-              } else {
-                nextRoute = "/verification-pending";
-                console.log("[FIRESTORE_TIMEOUT_SAFE_ROUTE] localVer =", localVer, "→ /verification-pending (not approved / status unknown)");
-              }
+              nextRoute = "/verification-pending";
+              console.log("[FIRESTORE_TIMEOUT_SAFE_ROUTE] → /verification-pending (not approved / status unknown)");
             }
-            console.log("[ROUTE_DECISION] session restore chosenRoute =", nextRoute, "(Firestore timeout — localVer =", localVer, ")");
+            console.log("[ROUTE_DECISION] session restore chosenRoute =", nextRoute, "(PG timeout fallback)");
           }
           // Guard: only navigate to /account-blocked once per session.
           // If onAuthStateChanged re-fires (e.g. Firebase reconnect), skip the
@@ -1214,6 +1203,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
       let driverDoc: DriverDoc | null = null;   // Firestore fallback for new/unmigrated drivers
       let routingDoc: RoutingDoc;               // used for deriveNextRoute
+      let serverNextRoute: string | undefined;  // nextRoute from server (PG path; primary)
 
       if (!pgProfile) {
         // ── Firestore fallback: driver not in PG yet ────────────────────────
@@ -1384,11 +1374,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         setOnboardingFeeApplies(pgProfile.onboardingFeeApplies ?? false);
         setOnboardingFeeStatus(pgProfile.onboardingFeeStatus ?? null);
         setOnboardingFeeAmount(pgProfile.onboardingFeeAmount ?? null);
+        serverNextRoute = pgProfile.nextRoute;
         routingDoc = pgProfile;
       }
 
       const profileComplete = !!(routingDoc.name && routingDoc.vehicleId);
-      const nextRoute       = await deriveNextRoute(routingDoc);
+      const nextRoute       = (serverNextRoute as OnboardingRoute | undefined) ?? await deriveNextRoute(routingDoc);
 
       // ── OTP_ROUTE logs — required by auth policy ──────────────────────────
       console.log("[OTP_ROUTE] otp_success_uid =", uid);

@@ -46,6 +46,7 @@ import {
   requestForegroundLocation,
   requestNotificationPermissions,
 } from "@/utils/permissions";
+import { getDriverProfile } from "@/utils/profile-api";
 
 // ─── Default "all pending" state ──────────────────────────────────────────────
 
@@ -251,8 +252,12 @@ export default function PermissionCenterScreen() {
       // Opened from Profile settings — go back to where we came from.
       router.back();
     } else if (driverUid) {
-      // Authenticated session (session restore sent us here) → dashboard.
-      router.replace("/(tabs)");
+      // Already logged in — ask server for the authoritative next route now
+      // that permission version has been written to PG.
+      const pgProfile = await getDriverProfile();
+      const nextRoute = pgProfile?.nextRoute ?? "/(tabs)";
+      console.log("[PERMISSION_GATE] background-setup complete — logged in → server nextRoute =", nextRoute);
+      router.replace(nextRoute as never);
     } else {
       // First install (no session yet) → mobile number entry.
       console.log("[PERMISSION_GATE] first install complete → /login");
@@ -278,12 +283,7 @@ export default function PermissionCenterScreen() {
         </Text>
         <TouchableOpacity
           style={[ws.btn, { backgroundColor: colors.primary }]}
-          onPress={() => {
-            setFinishing(true);
-            void markBackgroundSetupShown()
-              .then(() => driverUid ? router.replace("/(tabs)") : router.replace("/login"))
-              .finally(() => setFinishing(false));
-          }}
+          onPress={() => void finish()}
           activeOpacity={0.85}
           disabled={finishing}
         >

@@ -84,6 +84,8 @@ export type PgDriverProfile = {
   createdAt:                  string;
   updatedAt:                  string;
   documents:                  Record<string, PgDocEntry>;
+  onboardingStep?:            string;
+  nextRoute?:                 string;
 };
 
 /** KYC status response from GET /api/drivers/verification-status. */
@@ -93,6 +95,8 @@ export type PgVerificationStatus = {
   kycRejectionReason: string | null;
   rejectedDocuments:  string[] | null;
   documents:          Record<string, PgDocEntry>;
+  onboardingStep?:    string;
+  nextRoute?:         string;
 };
 
 // ─── GET /api/drivers/me ──────────────────────────────────────────────────────
@@ -118,8 +122,9 @@ export async function getDriverProfile(): Promise<PgDriverProfile | null> {
       return null;
     }
 
-    const json = (await res.json()) as { ok?: boolean; driver?: PgDriverProfile };
-    return json.driver ?? null;
+    const json = (await res.json()) as { ok?: boolean; driver?: PgDriverProfile; onboardingStep?: string; nextRoute?: string };
+    if (!json.driver) return null;
+    return { ...json.driver, onboardingStep: json.onboardingStep, nextRoute: json.nextRoute };
   } catch (err) {
     console.error("[profile-api] GET /drivers/me network error:", err instanceof Error ? err.message : String(err));
     return null;
@@ -148,7 +153,7 @@ export async function getDriverVerificationStatus(): Promise<PgVerificationStatu
       return null;
     }
 
-    const json = (await res.json()) as { ok?: boolean } & Partial<PgVerificationStatus>;
+    const json = (await res.json()) as { ok?: boolean; nextRoute?: string } & Partial<PgVerificationStatus>;
     if (!json.ok) return null;
     return {
       verificationStatus: json.verificationStatus ?? null,
@@ -156,6 +161,7 @@ export async function getDriverVerificationStatus(): Promise<PgVerificationStatu
       kycRejectionReason: json.kycRejectionReason  ?? null,
       rejectedDocuments:  json.rejectedDocuments   ?? null,
       documents:          json.documents           ?? {},
+      nextRoute:          json.nextRoute,
     };
   } catch (err) {
     console.error("[profile-api] GET /drivers/verification-status network error:", err instanceof Error ? err.message : String(err));
