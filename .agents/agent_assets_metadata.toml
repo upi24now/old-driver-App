@@ -125,3 +125,9 @@ id = "YvuzMj6SjH46NNjuLhPNd"
 uri = "file://artifacts/api-server/api-deploy-v2.1.tar.gz"
 type = "unspecified"
 title = "api-deploy-v2.1.tar.gz — includes kyc-admin approve fix"
+
+[[outputs]]
+id = "nQWAk-ujxC9nb0CRaT8dm"
+uri = "file://api-deploy-v2.2-auth.tar.gz"
+type = "unspecified"
+title = "api-deploy-v2.2-auth.tar.gz — API Server with auth routes"
