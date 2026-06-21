@@ -46,6 +46,7 @@ import {
   patchDriverProfile,
   patchDriverVehicle,
   patchDriverBackgroundSetup,
+  ensureDriverSignup,
   type PgDriverProfile,
 } from "@/utils/profile-api";
 import { requestPayout } from "@/utils/wallet-api";
@@ -1280,6 +1281,27 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           setOnboardingFeeAmount(driverDoc.onboardingFeeAmount ?? null);
           setDriverRating(driverDoc.rating ?? "5.0");
         }
+        // ── Ensure PostgreSQL drivers row exists ─────────────────────────────
+        // The document-upload route (POST /api/drivers/documents) has an FK
+        // constraint on driver_documents.driver_uid → drivers.uid. For drivers
+        // in the Firestore path the PG row may not exist yet, so we upsert it
+        // here — safely, without overwriting any existing non-null fields.
+        {
+          const signupResult = await ensureDriverSignup({
+            phone,
+            name:        driverDoc?.name        ?? null,
+            city:        driverDoc?.city        ?? null,
+            gender:      driverDoc?.gender      ?? null,
+            vehicleId:   driverDoc?.vehicleId   ?? null,
+            vehicleName: driverDoc?.vehicleName ?? null,
+          });
+          if (signupResult.ok) {
+            console.log("[SIGNUP_PG] driver row upserted for uid =", uid);
+          } else {
+            console.warn("[SIGNUP_PG] ensureDriverSignup returned not-ok (non-fatal) for uid =", uid);
+          }
+        }
+
         routingDoc = driverDoc;
       } else {
         // ── PG path: existing driver with PostgreSQL row (primary) ────────────

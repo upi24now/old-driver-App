@@ -1,9 +1,106 @@
 import { Router, type IRouter } from "express";
 import { adminAuth, adminFirestore } from "../lib/firebase-admin";
+import { requireAuth } from "../lib/require-auth";
 import { db, driversTable } from "@workspace/db";
-import { eq, and, ne } from "drizzle-orm";
+import { eq, and, ne, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
+
+/**
+ * POST /api/drivers/signup
+ *
+ * Upserts the driver row in PostgreSQL. Called after OTP success so that the
+ * drivers row exists before document submission (which has a FK constraint on
+ * driver_documents.driver_uid → drivers.uid).
+ *
+ * Safe to call repeatedly — existing non-null fields are never overwritten with
+ * null or empty values (COALESCE pattern). Phone is required; all other fields
+ * are optional and only written when non-empty.
+ *
+ * Authentication:
+ *   Authorization: Bearer <Firebase ID token>
+ *   The token uid becomes drivers.uid.
+ *
+ * Body: { phone: string; name?: string; city?: string; gender?: string;
+ *         vehicleId?: string; vehicleName?: string;
+ *         licenseNumber?: string; vehicleNumber?: string }
+ *
+ * Response 200: { ok: true }
+ * Response 400: { ok: false; error: "missing_phone" }
+ * Response 401: { ok: false; error: "..." }
+ * Response 500: { ok: false; error: "server_error" }
+ */
+router.post("/drivers/signup", async (req, res) => {
+  const uid = await requireAuth(req, res);
+  if (!uid) return;
+
+  const body = (req.body ?? {}) as {
+    phone?:         unknown;
+    name?:          unknown;
+    city?:          unknown;
+    gender?:        unknown;
+    vehicleId?:     unknown;
+    vehicleName?:   unknown;
+    licenseNumber?: unknown;
+    vehicleNumber?: unknown;
+  };
+
+  const phone = typeof body.phone === "string" ? body.phone.trim() : "";
+  if (!phone) {
+    res.status(400).json({ ok: false, error: "missing_phone", message: "phone is required." });
+    return;
+  }
+
+  // Helper: accept non-empty strings only; ignore null/undefined/empty.
+  const str = (v: unknown): string | null =>
+    typeof v === "string" && v.trim() ? v.trim() : null;
+
+  const name          = str(body.name);
+  const city          = str(body.city);
+  const gender        = str(body.gender);
+  const vehicleId     = str(body.vehicleId);
+  const vehicleName   = str(body.vehicleName);
+  const licenseNumber = str(body.licenseNumber)?.toUpperCase() ?? null;
+  const vehicleNumber = str(body.vehicleNumber)?.toUpperCase() ?? null;
+
+  try {
+    await db
+      .insert(driversTable)
+      .values({
+        uid,
+        phone,
+        ...(name          !== null && { name }),
+        ...(city          !== null && { city }),
+        ...(gender        !== null && { gender }),
+        ...(vehicleId     !== null && { vehicleId }),
+        ...(vehicleName   !== null && { vehicleName }),
+        ...(licenseNumber !== null && { licenseNumber }),
+        ...(vehicleNumber !== null && { vehicleNumber }),
+      })
+      .onConflictDoUpdate({
+        target: driversTable.uid,
+        set: {
+          // For each field: use the incoming value only when it is non-null and
+          // non-empty; otherwise preserve the existing database value.
+          phone:         sql`COALESCE(NULLIF(EXCLUDED.phone, ''),          drivers.phone)`,
+          name:          sql`COALESCE(NULLIF(EXCLUDED.name, ''),           drivers.name)`,
+          city:          sql`COALESCE(NULLIF(EXCLUDED.city, ''),           drivers.city)`,
+          gender:        sql`COALESCE(NULLIF(EXCLUDED.gender, ''),         drivers.gender)`,
+          vehicleId:     sql`COALESCE(NULLIF(EXCLUDED.vehicle_id, ''),     drivers.vehicle_id)`,
+          vehicleName:   sql`COALESCE(NULLIF(EXCLUDED.vehicle_name, ''),   drivers.vehicle_name)`,
+          licenseNumber: sql`COALESCE(NULLIF(EXCLUDED.license_number, ''), drivers.license_number)`,
+          vehicleNumber: sql`COALESCE(NULLIF(EXCLUDED.vehicle_number, ''), drivers.vehicle_number)`,
+          updatedAt:     sql`NOW()`,
+        },
+      });
+
+    req.log.info({ uid }, "signup: driver row upserted");
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err, uid }, "signup: PostgreSQL error");
+    res.status(500).json({ ok: false, error: "server_error", message: "Could not create driver record." });
+  }
+});
 
 /**
  * POST /api/drivers/register-keys

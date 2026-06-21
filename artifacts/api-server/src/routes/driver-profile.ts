@@ -377,9 +377,10 @@ router.post("/drivers/documents", async (req, res) => {
     res.json({ ok: true, count: validEntries.length });
   } catch (err: unknown) {
     // FK violation: drivers row doesn't exist in PostgreSQL yet.
-    // The mobile still uses Firestore for this operation; PG row may not exist.
-    const pgErr = err as { code?: string };
-    if (pgErr?.code === "23503") {
+    // Drizzle wraps PG errors in _DrizzleQueryError so the PG code lives on
+    // err.cause.code, not err.code directly.
+    const pgErr = err as { code?: string; cause?: { code?: string } };
+    if (pgErr?.code === "23503" || pgErr?.cause?.code === "23503") {
       req.log.warn({ uid }, "driver-profile: FK violation — driver not yet in PG");
       res.status(409).json({
         ok:      false,

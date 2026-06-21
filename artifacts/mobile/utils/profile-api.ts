@@ -221,6 +221,62 @@ export async function patchDriverVehicle(v: Vehicle): Promise<{ ok: boolean }> {
   }
 }
 
+// ─── POST /api/drivers/signup ─────────────────────────────────────────────────
+
+/**
+ * Upserts the authenticated driver's row in PostgreSQL.
+ * Safe to call repeatedly — existing non-null fields are never overwritten with
+ * null or empty values. Must be called after OTP success so the drivers row
+ * exists before document submission attempts the FK-guarded insert.
+ */
+export async function ensureDriverSignup(params: {
+  phone:          string;
+  name?:          string | null;
+  city?:          string | null;
+  gender?:        string | null;
+  vehicleId?:     string | null;
+  vehicleName?:   string | null;
+  licenseNumber?: string | null;
+  vehicleNumber?: string | null;
+}): Promise<{ ok: boolean }> {
+  const idToken = await getIdToken();
+  if (!idToken) {
+    console.warn("[profile-api] ensureDriverSignup: no id token");
+    return { ok: false };
+  }
+
+  try {
+    const res = await fetch(`${BASE_URL}/drivers/signup`, {
+      method:  "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization:  `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({
+        phone:         params.phone,
+        name:          params.name          || undefined,
+        city:          params.city          || undefined,
+        gender:        params.gender        || undefined,
+        vehicleId:     params.vehicleId     || undefined,
+        vehicleName:   params.vehicleName   || undefined,
+        licenseNumber: params.licenseNumber || undefined,
+        vehicleNumber: params.vehicleNumber || undefined,
+      }),
+    });
+
+    if (!res.ok) {
+      console.error("[profile-api] POST /drivers/signup status:", res.status);
+      return { ok: false };
+    }
+
+    const json = (await res.json()) as { ok?: boolean };
+    return { ok: !!json.ok };
+  } catch (err) {
+    console.error("[profile-api] POST /drivers/signup network error:", err instanceof Error ? err.message : String(err));
+    return { ok: false };
+  }
+}
+
 // ─── PATCH /api/drivers/background-setup ──────────────────────────────────────
 
 /**
