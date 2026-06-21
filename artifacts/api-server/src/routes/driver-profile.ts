@@ -8,11 +8,11 @@
  *   Authorization: Bearer <Firebase ID token>
  *
  * Routes:
- *   GET    /api/drivers/me                  — full profile from PG
+ *   GET    /api/drivers/me                  — full profile + onboardingStep/nextRoute
  *   PATCH  /api/drivers/profile             — name, city, gender, license, vehicle number
  *   PATCH  /api/drivers/vehicle             — vehicle_id, vehicle_name
  *   POST   /api/drivers/documents           — upsert document URLs + document numbers
- *   GET    /api/drivers/verification-status — KYC status + documents map
+ *   GET    /api/drivers/verification-status — KYC status + documents map + onboardingStep/nextRoute
  *   PATCH  /api/drivers/background-setup    — background / permission setup flags
  *
  * Document number storage:
@@ -29,7 +29,7 @@
 import { Router } from "express";
 import { requireAuth } from "../lib/require-auth";
 import { db, driversTable, driverDocumentsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 const router = Router();
 
@@ -52,6 +52,142 @@ const DOC_NUMBER_TYPE_TO_DOC_TYPE: Record<string, string> = {
 
 // Valid documentNumberType values
 const VALID_DOC_NUMBER_TYPES = new Set(Object.keys(DOC_NUMBER_TYPE_TO_DOC_TYPE));
+
+// ─── Onboarding step computation ─────────────────────────────────────────────
+//
+// Single source of truth for server-authoritative onboarding routing.
+// Mobile V2 reads nextRoute from GET /me (or /verification-status) and calls
+// router.replace(nextRoute) — no client-side logic required.
+//
+// Priority order (first matching condition wins):
+//   1. account_blocked         — account suspended/blacklisted/blocked
+//   2. background_setup_required — permission setup not completed at current version
+//   3. vehicle_required        — no vehicle selected
+//   4. profile_required        — name or city missing
+//   5. documents_required      — documents not yet submitted
+//   6. fee_required            — onboarding fee applies and unpaid
+//   7. document_reupload_required — KYC rejected; driver must re-upload
+//   8. verification_pending    — awaiting admin review
+//   9. dashboard_ready         — fully approved; route to main app
+
+// Must be incremented whenever the permission setup flow changes in a way that
+// requires drivers to re-complete it. Mirrors PERMISSION_SETUP_VERSION in
+// artifacts/mobile/utils/firestore.ts.
+const REQUIRED_PERMISSION_VERSION = 6;
+
+// Account statuses that lock the driver out of the app.
+const BLOCKED_STATUSES = new Set(["suspended", "blacklisted", "blocked"]);
+
+export type OnboardingStep =
+  | "login_required"
+  | "background_setup_required"
+  | "vehicle_required"
+  | "profile_required"
+  | "documents_required"
+  | "fee_required"
+  | "document_reupload_required"
+  | "verification_pending"
+  | "dashboard_ready"
+  | "account_blocked";
+
+export type OnboardingRoute =
+  | "/login"
+  | "/background-setup"
+  | "/vehicle-selection"
+  | "/profile-setup"
+  | "/document-upload"
+  | "/onboarding-fee"
+  | "/verification-pending"
+  | "/(tabs)"
+  | "/account-blocked";
+
+type OnboardingStepResult = {
+  onboardingStep: OnboardingStep;
+  nextRoute:      OnboardingRoute;
+};
+
+/**
+ * Derives the driver's current onboarding step and mobile next route purely
+ * from PostgreSQL state. No Firestore reads, no local cache.
+ *
+ * Called after every SELECT on the drivers row so the response always reflects
+ * the current database state.
+ */
+function computeOnboardingStep(driver: {
+  accountStatus:          string | null | undefined;
+  backgroundSetupShown:   boolean | null | undefined;
+  permissionSetupVersion: number | null | undefined;
+  vehicleId:              string | null | undefined;
+  name:                   string | null | undefined;
+  city:                   string | null | undefined;
+  documentsSubmitted:     boolean | null | undefined;
+  onboardingFeeApplies:   boolean | null | undefined;
+  onboardingFeeStatus:    string | null | undefined;
+  verificationStatus:     string | null | undefined;
+}): OnboardingStepResult {
+  // 1. Account blocked — highest priority; driver cannot proceed regardless of
+  //    onboarding progress.
+  if (driver.accountStatus && BLOCKED_STATUSES.has(driver.accountStatus)) {
+    return { onboardingStep: "account_blocked", nextRoute: "/account-blocked" };
+  }
+
+  // 2. Background / permission setup — must be completed at the current version
+  //    before the driver can access the rest of the onboarding flow.
+  const permVersion = driver.permissionSetupVersion ?? 0;
+  if (!driver.backgroundSetupShown || permVersion < REQUIRED_PERMISSION_VERSION) {
+    return { onboardingStep: "background_setup_required", nextRoute: "/background-setup" };
+  }
+
+  // 3. Vehicle selection — no vehicleId means the driver never chose a vehicle.
+  if (!driver.vehicleId) {
+    return { onboardingStep: "vehicle_required", nextRoute: "/vehicle-selection" };
+  }
+
+  // 4. Profile — name and city are the minimum required profile fields.
+  if (!driver.name || !driver.city) {
+    return { onboardingStep: "profile_required", nextRoute: "/profile-setup" };
+  }
+
+  // 5. Documents — driver has not yet submitted KYC documents.
+  if (!driver.documentsSubmitted) {
+    return { onboardingStep: "documents_required", nextRoute: "/document-upload" };
+  }
+
+  // 6. Onboarding fee — applies only to new signup drivers; skipped for existing
+  //    drivers where onboardingFeeApplies is false.
+  if (driver.onboardingFeeApplies && driver.onboardingFeeStatus !== "paid") {
+    return { onboardingStep: "fee_required", nextRoute: "/onboarding-fee" };
+  }
+
+  // 7. Document reupload — admin rejected the submission; driver must fix and resubmit.
+  //    Checked after fee so a rejected driver who also owes a fee sees the fee first.
+  if (driver.verificationStatus === "rejected") {
+    return { onboardingStep: "document_reupload_required", nextRoute: "/document-upload" };
+  }
+
+  // 8. Verification pending — documents submitted and under review (or default
+  //    "unsubmitted" state that can arise from a partial migration).
+  if (
+    driver.verificationStatus === "pending"      ||
+    driver.verificationStatus === "unsubmitted"  ||
+    driver.verificationStatus === null           ||
+    driver.verificationStatus === undefined
+  ) {
+    return { onboardingStep: "verification_pending", nextRoute: "/verification-pending" };
+  }
+
+  // 9. Dashboard ready — KYC approved; driver can access the main app.
+  if (
+    driver.verificationStatus === "approved" ||
+    driver.verificationStatus === "verified"
+  ) {
+    return { onboardingStep: "dashboard_ready", nextRoute: "/(tabs)" };
+  }
+
+  // Fallback: unknown verificationStatus value; treat as still pending to avoid
+  // routing a driver into the main app with an unexpected state.
+  return { onboardingStep: "verification_pending", nextRoute: "/verification-pending" };
+}
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
@@ -91,12 +227,14 @@ function buildDocumentsMap(
 // ─── GET /api/drivers/me ──────────────────────────────────────────────────────
 
 /**
- * Returns the full driver profile from PostgreSQL including a documents map
- * compatible with the mobile DriverDoc shape.
+ * Returns the full driver profile from PostgreSQL plus server-computed
+ * onboardingStep and nextRoute so mobile V2 can route without local logic.
  *
  * Response 200:
  * {
  *   ok: true,
+ *   onboardingStep: OnboardingStep,
+ *   nextRoute:      OnboardingRoute,
  *   driver: {
  *     uid, phone, name, city, gender,
  *     vehicleId, vehicleName, licenseNumber, vehicleNumber,
@@ -138,8 +276,12 @@ router.get("/drivers/me", async (req, res) => {
       .from(driverDocumentsTable)
       .where(eq(driverDocumentsTable.driverUid, uid));
 
+    const { onboardingStep, nextRoute } = computeOnboardingStep(driver);
+
     res.json({
-      ok: true,
+      ok:            true,
+      onboardingStep,
+      nextRoute,
       driver: {
         uid:                        driver.uid,
         phone:                      driver.phone,
@@ -173,7 +315,7 @@ router.get("/drivers/me", async (req, res) => {
       },
     });
 
-    req.log.info({ uid }, "driver-profile: GET /drivers/me");
+    req.log.info({ uid, onboardingStep }, "driver-profile: GET /drivers/me");
   } catch (err) {
     req.log.error({ err, uid }, "driver-profile: GET /drivers/me failed");
     res.status(500).json({ ok: false, error: "server_error", message: "Failed to fetch driver profile." });
@@ -452,11 +594,15 @@ router.post("/drivers/documents", async (req, res) => {
 // ─── GET /api/drivers/verification-status ────────────────────────────────────
 
 /**
- * Returns KYC status + per-document map including document numbers.
+ * Returns KYC status + per-document map including document numbers, plus
+ * server-computed onboardingStep/nextRoute for the verification-pending screen
+ * to determine when to route to /(tabs) after admin approval.
  *
  * Response 200:
  * {
  *   ok: true,
+ *   onboardingStep:      OnboardingStep,
+ *   nextRoute:           OnboardingRoute,
  *   verificationStatus:  string | null,
  *   documentsSubmitted:  boolean,
  *   kycRejectionReason:  string | null,
@@ -478,10 +624,18 @@ router.get("/drivers/verification-status", async (req, res) => {
   try {
     const [driver] = await db
       .select({
-        verificationStatus:  driversTable.verificationStatus,
-        documentsSubmitted:  driversTable.documentsSubmitted,
-        kycRejectionReason:  driversTable.kycRejectionReason,
-        rejectedDocuments:   driversTable.rejectedDocuments,
+        accountStatus:          driversTable.accountStatus,
+        backgroundSetupShown:   driversTable.backgroundSetupShown,
+        permissionSetupVersion: driversTable.permissionSetupVersion,
+        vehicleId:              driversTable.vehicleId,
+        name:                   driversTable.name,
+        city:                   driversTable.city,
+        documentsSubmitted:     driversTable.documentsSubmitted,
+        onboardingFeeApplies:   driversTable.onboardingFeeApplies,
+        onboardingFeeStatus:    driversTable.onboardingFeeStatus,
+        verificationStatus:     driversTable.verificationStatus,
+        kycRejectionReason:     driversTable.kycRejectionReason,
+        rejectedDocuments:      driversTable.rejectedDocuments,
       })
       .from(driversTable)
       .where(eq(driversTable.uid, uid))
@@ -497,9 +651,13 @@ router.get("/drivers/verification-status", async (req, res) => {
       .from(driverDocumentsTable)
       .where(eq(driverDocumentsTable.driverUid, uid));
 
-    req.log.info({ uid }, "driver-profile: GET /drivers/verification-status");
+    const { onboardingStep, nextRoute } = computeOnboardingStep(driver);
+
+    req.log.info({ uid, onboardingStep }, "driver-profile: GET /drivers/verification-status");
     res.json({
       ok:                  true,
+      onboardingStep,
+      nextRoute,
       verificationStatus:  driver.verificationStatus  ?? null,
       documentsSubmitted:  driver.documentsSubmitted   ?? false,
       kycRejectionReason:  driver.kycRejectionReason  ?? null,
