@@ -13,9 +13,21 @@ const router: IRouter = Router();
  * drivers row exists before document submission (which has a FK constraint on
  * driver_documents.driver_uid → drivers.uid).
  *
- * Safe to call repeatedly — existing non-null fields are never overwritten with
- * null or empty values (COALESCE pattern). Phone is required; all other fields
- * are optional and only written when non-empty.
+ * New-driver defaults (always stamped on INSERT):
+ *   onboarding_fee_applies = true
+ *   onboarding_fee_status  = "pending"
+ *   onboarding_fee_amount  = 10   (₹10 floor)
+ *   verification_status    = "unsubmitted"
+ *   documents_submitted    = false
+ *   account_status         = "active"
+ *
+ * Body-supplied values take precedence over defaults at INSERT time so that
+ * the mobile can pass already-known Firestore state during migration.
+ *
+ * ON CONFLICT: COALESCE(existing, incoming) is used for all KYC/onboarding
+ * columns so that a more-advanced state (e.g. "paid", "approved") is never
+ * overwritten by a stale body value. Profile text fields use the previous
+ * non-empty COALESCE pattern.
  *
  * Authentication:
  *   Authorization: Bearer <Firebase ID token>
@@ -23,7 +35,10 @@ const router: IRouter = Router();
  *
  * Body: { phone: string; name?: string; city?: string; gender?: string;
  *         vehicleId?: string; vehicleName?: string;
- *         licenseNumber?: string; vehicleNumber?: string }
+ *         licenseNumber?: string; vehicleNumber?: string;
+ *         verificationStatus?: string; documentsSubmitted?: boolean;
+ *         onboardingFeeApplies?: boolean; onboardingFeeStatus?: string;
+ *         onboardingFeeAmount?: number }
  *
  * Response 200: { ok: true }
  * Response 400: { ok: false; error: "missing_phone" }
@@ -35,19 +50,19 @@ router.post("/drivers/signup", async (req, res) => {
   if (!uid) return;
 
   const body = (req.body ?? {}) as {
-    phone?:               unknown;
-    name?:                unknown;
-    city?:                unknown;
-    gender?:              unknown;
-    vehicleId?:           unknown;
-    vehicleName?:         unknown;
-    licenseNumber?:       unknown;
-    vehicleNumber?:       unknown;
-    verificationStatus?:  unknown;
-    documentsSubmitted?:  unknown;
+    phone?:                unknown;
+    name?:                 unknown;
+    city?:                 unknown;
+    gender?:               unknown;
+    vehicleId?:            unknown;
+    vehicleName?:          unknown;
+    licenseNumber?:        unknown;
+    vehicleNumber?:        unknown;
+    verificationStatus?:   unknown;
+    documentsSubmitted?:   unknown;
     onboardingFeeApplies?: unknown;
-    onboardingFeeStatus?: unknown;
-    onboardingFeeAmount?: unknown;
+    onboardingFeeStatus?:  unknown;
+    onboardingFeeAmount?:  unknown;
   };
 
   const phone = typeof body.phone === "string" ? body.phone.trim() : "";
@@ -60,20 +75,26 @@ router.post("/drivers/signup", async (req, res) => {
   const str = (v: unknown): string | null =>
     typeof v === "string" && v.trim() ? v.trim() : null;
 
-  const name               = str(body.name);
-  const city               = str(body.city);
-  const gender             = str(body.gender);
-  const vehicleId          = str(body.vehicleId);
-  const vehicleName        = str(body.vehicleName);
-  const licenseNumber      = str(body.licenseNumber)?.toUpperCase() ?? null;
-  const vehicleNumber      = str(body.vehicleNumber)?.toUpperCase() ?? null;
-  const verificationStatus = str(body.verificationStatus);
-  const onboardingFeeStatus= str(body.onboardingFeeStatus);
-  const documentsSubmitted : boolean | null = typeof body.documentsSubmitted  === "boolean" ? body.documentsSubmitted  : null;
-  const onboardingFeeApplies: boolean | null= typeof body.onboardingFeeApplies === "boolean" ? body.onboardingFeeApplies : null;
-  const onboardingFeeAmount : number | null  = typeof body.onboardingFeeAmount  === "number"  && body.onboardingFeeAmount > 0
-    ? Math.round(body.onboardingFeeAmount as number)
-    : null;
+  const name          = str(body.name);
+  const city          = str(body.city);
+  const gender        = str(body.gender);
+  const vehicleId     = str(body.vehicleId);
+  const vehicleName   = str(body.vehicleName);
+  const licenseNumber = str(body.licenseNumber)?.toUpperCase() ?? null;
+  const vehicleNumber = str(body.vehicleNumber)?.toUpperCase() ?? null;
+
+  // KYC / onboarding fields — body values override defaults at INSERT time.
+  // Defaults ensure new drivers always start with the correct initial state.
+  const verificationStatus  = str(body.verificationStatus)    ?? "unsubmitted";
+  const onboardingFeeStatus = str(body.onboardingFeeStatus)   ?? "pending";
+  const documentsSubmitted : boolean =
+    typeof body.documentsSubmitted  === "boolean" ? body.documentsSubmitted  : false;
+  const onboardingFeeApplies: boolean =
+    typeof body.onboardingFeeApplies === "boolean" ? body.onboardingFeeApplies : true;
+  const onboardingFeeAmount : number =
+    typeof body.onboardingFeeAmount === "number" && (body.onboardingFeeAmount as number) > 0
+      ? Math.round(body.onboardingFeeAmount as number)
+      : 10;   // ₹10 floor
 
   try {
     await db
@@ -81,24 +102,27 @@ router.post("/drivers/signup", async (req, res) => {
       .values({
         uid,
         phone,
-        ...(name               !== null && { name }),
-        ...(city               !== null && { city }),
-        ...(gender             !== null && { gender }),
-        ...(vehicleId          !== null && { vehicleId }),
-        ...(vehicleName        !== null && { vehicleName }),
-        ...(licenseNumber      !== null && { licenseNumber }),
-        ...(vehicleNumber      !== null && { vehicleNumber }),
-        ...(verificationStatus !== null && { verificationStatus }),
-        ...(documentsSubmitted !== null && { documentsSubmitted }),
-        ...(onboardingFeeApplies !== null && { onboardingFeeApplies }),
-        ...(onboardingFeeStatus  !== null && { onboardingFeeStatus }),
-        ...(onboardingFeeAmount  !== null && { onboardingFeeAmount }),
+        // Profile (optional at signup; filled in profile-setup screen)
+        ...(name          !== null && { name }),
+        ...(city          !== null && { city }),
+        ...(gender        !== null && { gender }),
+        ...(vehicleId     !== null && { vehicleId }),
+        ...(vehicleName   !== null && { vehicleName }),
+        ...(licenseNumber !== null && { licenseNumber }),
+        ...(vehicleNumber !== null && { vehicleNumber }),
+        // Onboarding — always stamped on first INSERT (body can override for migration)
+        onboardingFeeApplies,
+        onboardingFeeStatus,
+        onboardingFeeAmount,
+        onboardingFeeCurrency: "INR",
+        verificationStatus,
+        documentsSubmitted,
+        accountStatus: "active",
       })
       .onConflictDoUpdate({
         target: driversTable.uid,
         set: {
-          // For each field: use the incoming value only when it is non-null and
-          // non-empty; otherwise preserve the existing database value.
+          // Profile text fields: keep existing non-empty value; fall back to incoming.
           phone:         sql`COALESCE(NULLIF(EXCLUDED.phone, ''),          drivers.phone)`,
           name:          sql`COALESCE(NULLIF(EXCLUDED.name, ''),           drivers.name)`,
           city:          sql`COALESCE(NULLIF(EXCLUDED.city, ''),           drivers.city)`,
@@ -107,16 +131,15 @@ router.post("/drivers/signup", async (req, res) => {
           vehicleName:   sql`COALESCE(NULLIF(EXCLUDED.vehicle_name, ''),   drivers.vehicle_name)`,
           licenseNumber: sql`COALESCE(NULLIF(EXCLUDED.license_number, ''), drivers.license_number)`,
           vehicleNumber: sql`COALESCE(NULLIF(EXCLUDED.vehicle_number, ''), drivers.vehicle_number)`,
-          // KYC / onboarding fields — only written when the caller explicitly
-          // provides them (conditional spread in INSERT values above).
-          // Text fields use COALESCE so empty strings never overwrite valid data.
-          // Boolean / numeric fields are written directly (caller provides authoritative state).
-          ...(verificationStatus   !== null && { verificationStatus:   sql`COALESCE(NULLIF(EXCLUDED.verification_status, ''), drivers.verification_status)` }),
-          ...(documentsSubmitted   !== null && { documentsSubmitted:   documentsSubmitted }),
-          ...(onboardingFeeApplies !== null && { onboardingFeeApplies: onboardingFeeApplies }),
-          ...(onboardingFeeStatus  !== null && { onboardingFeeStatus:  sql`COALESCE(NULLIF(EXCLUDED.onboarding_fee_status, ''), drivers.onboarding_fee_status)` }),
-          ...(onboardingFeeAmount  !== null && { onboardingFeeAmount:  sql`COALESCE(EXCLUDED.onboarding_fee_amount, drivers.onboarding_fee_amount)` }),
-          updatedAt:     sql`NOW()`,
+          // KYC / onboarding: preserve existing non-null DB value so that a
+          // more-advanced state ("paid", "approved") is never overwritten.
+          // COALESCE(existing, incoming): existing wins if already set.
+          verificationStatus:   sql`COALESCE(drivers.verification_status,   EXCLUDED.verification_status)`,
+          documentsSubmitted:   sql`COALESCE(drivers.documents_submitted,   EXCLUDED.documents_submitted)`,
+          onboardingFeeApplies: sql`COALESCE(drivers.onboarding_fee_applies, EXCLUDED.onboarding_fee_applies)`,
+          onboardingFeeStatus:  sql`COALESCE(drivers.onboarding_fee_status,  EXCLUDED.onboarding_fee_status)`,
+          onboardingFeeAmount:  sql`COALESCE(drivers.onboarding_fee_amount,  EXCLUDED.onboarding_fee_amount)`,
+          updatedAt:            sql`NOW()`,
         },
       });
 
@@ -147,9 +170,7 @@ router.post("/drivers/signup", async (req, res) => {
  * No matched-driver details are returned — only a boolean ok / duplicate
  * signal — so no private driver data is leaked to the caller.
  *
- * Read path: PostgreSQL `drivers` table (migration step #5).
- *   Previously read from the Firestore `drivers` collection.
- *   Firestore is no longer used for this route.
+ * Read path: PostgreSQL `drivers` table.
  *
  * Headers:
  *   Authorization: Bearer <Firebase ID token>

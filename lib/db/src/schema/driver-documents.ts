@@ -26,6 +26,21 @@ import { driversTable } from "./drivers";
 // The UNIQUE constraint on (driver_uid, doc_type) enables upsert semantics:
 //   INSERT … ON CONFLICT (driver_uid, doc_type) DO UPDATE SET …
 // so re-submitting a document overwrites the old row cleanly.
+//
+// document_number / document_number_type
+// ─────────────────────────────────────
+// Human-readable document numbers extracted from the physical document:
+//   document_number_type  "aadhaar" | "pan" | "license" | "rc"
+//   document_number       the raw number string (e.g. "1234 5678 9012")
+//
+// Stored on the primary document row for that type:
+//   aadhaar  → aadhaarFront row
+//   pan      → pan row
+//   license  → licenseFront row
+//   rc       → rcFront row
+//
+// Back-side rows (aadhaarBack, licenseBack, rcBack) do not carry a number.
+// Null when the driver app has not yet been updated to V2 upload flow.
 
 export const driverDocumentsTable = pgTable(
   "driver_documents",
@@ -45,10 +60,15 @@ export const driverDocumentsTable = pgTable(
     // "pending" | "approved" | "rejected"
     status: text("status").default("pending"),
 
+    // Document number fields (V2 upload flow — null for legacy V1 submissions)
+    // Type tells the admin/validation what kind of ID number this is.
+    documentNumber:     text("document_number"),
+    documentNumberType: text("document_number_type"),
+
     // Timestamps
-    uploadedAt:      timestamp("uploaded_at",       { withTimezone: true }).defaultNow(),
+    uploadedAt:      timestamp("uploaded_at",  { withTimezone: true }).defaultNow(),
     rejectionReason: text("rejection_reason"),
-    rejectedAt:      timestamp("rejected_at",        { withTimezone: true }),
+    rejectedAt:      timestamp("rejected_at",  { withTimezone: true }),
   },
   (table) => [
     // Primary lookup: all documents for a driver
