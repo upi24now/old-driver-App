@@ -15,11 +15,13 @@ import Svg, { Ellipse, Line, Rect } from "react-native-svg";
 import {
   ActivityIndicator,
   Animated,
+  Dimensions,
   Easing,
   Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -54,14 +56,46 @@ const D = {
 const OTP_LENGTH     = 6;
 const RESEND_SECONDS = 30;
 
+// ─── Responsive layout config ─────────────────────────────────────────────────
+const WIN_H  = Dimensions.get("window").height;
+const small  = WIN_H < 700;
+const medium = WIN_H >= 700 && WIN_H < 850;
+
+const r = {
+  topPad:       small ? 12  : medium ? 18  : 24,
+  botPad:       small ? 12  : medium ? 16  : 22,
+  logoSize:     small ? 48  : medium ? 54  : 64,
+  logoBorderR:  small ? 24  : medium ? 27  : 32,
+  logoFontSize: small ? 16  : medium ? 18  : 22,
+  logoMb:       small ? 8   : medium ? 10  : 12,
+  brandSize:    small ? 16  : medium ? 17  : 20,
+  partnerMb:    small ? 6   : medium ? 12  : 16,
+  headlineSize: small ? 22  : medium ? 25  : 28,
+  showSubline:  !small,
+  heroMb:       small ? 2   : medium ? 5   : 8,
+  illustMt:     small ? 6   : medium ? 12  : 16,
+  illustH:      small ? 118 : medium ? 145 : 160,
+  illustMb:     small ? 8   : medium ? 14  : 18,
+  scooterW:     small ? 166 : medium ? 200 : 220,
+  scooterH:     small ? 104 : medium ? 127 : 140,
+  cardMb:       small ? 8   : medium ? 12  : 14,
+  trustMb:      small ? 12  : medium ? 16  : 20,
+  btnMb:        small ? 12  : medium ? 18  : 24,
+  scrollable:   WIN_H < 620,
+} as const;
+
 // ─── Hero illustration ─────────────────────────────────────────────────────────
-function HeroIllustration() {
+function HeroIllustration({
+  h, scooterW, scooterH, mt, mb,
+}: {
+  h: number; scooterW: number; scooterH: number; mt: number; mb: number;
+}) {
   return (
-    <View style={ss.heroIllustration}>
-      {/* Background scene — absolute fill, stays behind scooter */}
+    <View style={[ss.heroIllustration, { height: h, marginTop: mt, marginBottom: mb }]}>
+      {/* Background scene — scales proportionally with container height */}
       <Svg
         width="100%"
-        height="160"
+        height="100%"
         viewBox="0 0 320 160"
         style={StyleSheet.absoluteFillObject}
       >
@@ -88,10 +122,10 @@ function HeroIllustration() {
         <Ellipse cx="160" cy="142" rx="82" ry="6" fill="#C05000" opacity="0.12" />
       </Svg>
 
-      {/* Premium delivery scooter — transparent-bg PNG, contain mode guarantees no clipping */}
+      {/* Premium delivery scooter — size driven by responsive props */}
       <Image
         source={require("@/assets/images/vehicles/scooter-hero.png")}
-        style={ss.heroScooter}
+        style={[ss.heroScooter, { width: scooterW, height: scooterH }]}
         resizeMode="contain"
       />
     </View>
@@ -279,35 +313,48 @@ export default function LoginScreen() {
       style={ss.root}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <View
-        style={[
+      <ScrollView
+        contentContainerStyle={[
           ss.scroll,
-          { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 22 },
+          { paddingTop: insets.top + r.topPad, paddingBottom: insets.bottom + r.botPad },
         ]}
+        scrollEnabled={r.scrollable}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        bounces={false}
+        overScrollMode="never"
       >
 
         {/* ── PHASE: PHONE ── */}
         {phase === "phone" && (
           <>
             {/* ── Brand hero ── */}
-            <View style={ss.hero}>
-              <View style={ss.logoCircle}>
-                <Text style={ss.logoText}>BC</Text>
+            <View style={[ss.hero, { marginBottom: r.heroMb }]}>
+              <View style={[ss.logoCircle, { width: r.logoSize, height: r.logoSize, borderRadius: r.logoBorderR, marginBottom: r.logoMb }]}>
+                <Text style={[ss.logoText, { fontSize: r.logoFontSize }]}>BC</Text>
               </View>
-              <Text style={ss.brandName}>
+              <Text style={[ss.brandName, { fontSize: r.brandSize }]}>
                 <Text style={{ color: D.text }}>Bike</Text>
                 <Text style={{ color: D.primary }}>Courier</Text>
               </Text>
-              <Text style={ss.partnerLabel}>PARTNER</Text>
-              <Text style={ss.headline}>Welcome Partner</Text>
-              <Text style={ss.subline}>Start earning with BikeCourier</Text>
+              <Text style={[ss.partnerLabel, { marginBottom: r.partnerMb }]}>PARTNER</Text>
+              <Text style={[ss.headline, { fontSize: r.headlineSize }]}>Welcome Partner</Text>
+              {r.showSubline && (
+                <Text style={ss.subline}>Start earning with BikeCourier</Text>
+              )}
             </View>
 
             {/* ── Delivery illustration ── */}
-            <HeroIllustration />
+            <HeroIllustration
+              h={r.illustH}
+              scooterW={r.scooterW}
+              scooterH={r.scooterH}
+              mt={r.illustMt}
+              mb={r.illustMb}
+            />
 
             {/* ── Phone input card ── */}
-            <View style={ss.loginCard}>
+            <View style={[ss.loginCard, { marginBottom: r.cardMb }]}>
               <Text style={ss.cardLabel}>Mobile Number</Text>
 
               <Pressable
@@ -349,7 +396,7 @@ export default function LoginScreen() {
             </View>
 
             {/* ── Trust note ── */}
-            <View style={ss.trustRow}>
+            <View style={[ss.trustRow, { marginBottom: r.trustMb }]}>
               <Feather name="shield" size={14} color={D.primary} />
               <Text style={ss.trustText}>
                 Your number is used only for secure login and delivery updates.
@@ -358,7 +405,7 @@ export default function LoginScreen() {
 
             {/* ── Continue button ── */}
             <TouchableOpacity
-              style={[ss.continueBtn, !isValid && ss.continueBtnDisabled]}
+              style={[ss.continueBtn, !isValid && ss.continueBtnDisabled, { marginBottom: r.btnMb }]}
               onPress={() => void handleSendOtp()}
               activeOpacity={0.85}
               disabled={!isValid || sending}
@@ -539,7 +586,7 @@ export default function LoginScreen() {
           </View>
         )}
 
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -613,18 +660,15 @@ const ss = StyleSheet.create({
   // ── Hero illustration ─────────────────────────────────────────────────────
   heroIllustration: {
     alignSelf:      "stretch",
-    height:         160,
-    marginTop:      16,
-    marginBottom:   18,
     alignItems:     "center",
     justifyContent: "flex-end",
     overflow:       "hidden",
+    // height / marginTop / marginBottom come from responsive props
   },
   heroScooter: {
-    width:        220,
-    height:       140,
     zIndex:       1,
     marginBottom: 2,
+    // width / height come from responsive props
   },
 
   // ── Phone Input Card ──────────────────────────────────────────────────────
