@@ -9,4 +9,5 @@
 - [Wallet Firestore schema](wallet-firestore-schema.md) — authoritative schema: wallets/{uid}, transactions sub-collection; type "credit"/"payout"/"adjustment"; payouts via server route only.
 - [Expo Router typed routes](expo-router-typed-routes.md) — new screen files require manual update to .expo/types/router.d.ts (hrefInputParams, hrefOutputParams, href) until dev server regenerates.
 - [Firebase-to-PG migration patterns](firebase-to-pg-migration.md) — RoutingDoc structural type, setKycDocuments cast, subscription remaining-dep pattern for Step 1.
+- [FCM token PG migration](fcm-token-pg-migration.md) — Phase 4A: token storage dual-written to drivers table (PG) + Firestore shadow; dispatcher still reads Firestore; saved≠ok log semantics.
 - [Wallet PG migration constraints](wallet-pg-migration.md) — payout sign divergence (FS neg/PG pos), credit shadow not idempotent, FS→PG-only comparator; resolve before PG-primary cutover.

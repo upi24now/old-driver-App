@@ -73,6 +73,37 @@ export async function postDriverLocation(
   }
 }
 
+/**
+ * PATCH /api/drivers/me/fcm-token
+ * Phase 4A — saves the driver's Expo/FCM push token to PostgreSQL. The uid is
+ * derived server-side from the Firebase ID token, so none is passed here.
+ * Fire-and-forget safe — returns { ok: false } on any error so the caller can
+ * fall back to the Firestore shadow write.
+ */
+export async function saveDriverFcmToken(
+  fcmToken: string,
+): Promise<{ ok: boolean; saved: boolean }> {
+  const idToken = await getIdToken();
+  if (!idToken) return { ok: false, saved: false };
+  try {
+    const res  = await fetch(`${BASE_URL}/drivers/me/fcm-token`, {
+      method:  "PATCH",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({ fcmToken }),
+    });
+    const json = (await res.json()) as { ok?: boolean; saved?: boolean };
+    // `saved` is only true when the row was actually written to PG. The server
+    // returns ok:true, saved:false when no drivers row exists yet (the
+    // Firestore shadow write below still persists the token in that case).
+    return { ok: !!json.ok, saved: !!json.saved };
+  } catch {
+    return { ok: false, saved: false };
+  }
+}
+
 export type SubmitDocumentsResult =
   | { ok: true;  count: number }
   | { ok: false; error: string; message: string };

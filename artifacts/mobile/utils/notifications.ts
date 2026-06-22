@@ -566,6 +566,19 @@ export async function registerDriverPushToken(uid: string): Promise<void> {
       return;
     }
 
+    // Phase 4A — save the token to PostgreSQL first. The uid is derived
+    // server-side from the Firebase ID token. Firestore remains the
+    // shadow/fallback store and is always written below for now (the FCM
+    // dispatcher still reads the token from Firestore — unchanged).
+    const { saveDriverFcmToken } = await import("./driver-api");
+    const pg = await saveDriverFcmToken(tokenData.data);
+    if (pg.saved) {
+      console.log("[PG_FCM_TOKEN_SAVE] push token saved to PostgreSQL");
+    } else {
+      console.warn("[PG_FCM_TOKEN_FALLBACK] PG save skipped/failed — relying on Firestore shadow");
+    }
+
+    // Firestore shadow/fallback write (kept for now — dispatch still reads here).
     const { updateDriverPushToken } = await import("./firestore");
     await updateDriverPushToken(uid, tokenData.data);
 

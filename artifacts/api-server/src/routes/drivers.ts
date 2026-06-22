@@ -302,6 +302,64 @@ router.post("/drivers/register-keys", async (req, res) => {
 });
 
 /**
+ * PATCH /api/drivers/me/fcm-token
+ *
+ * Phase 4A — persists the driver's Expo/FCM push token in PostgreSQL.
+ * Firestore drivers/{uid}.fcmToken remains the shadow/fallback store (the
+ * mobile still writes both for now) and the FCM dispatcher is UNCHANGED — it
+ * continues to read the token from Firestore. This endpoint only adds the
+ * PG-side storage.
+ *
+ * Auth:
+ *   Authorization: Bearer <Firebase ID token>
+ *   The token uid identifies the driver — no uid is taken from the path/body.
+ *
+ * Body: { fcmToken: string }
+ *
+ * Response 200: { ok: true, saved: true }   — token written to drivers.fcm_token
+ * Response 200: { ok: true, saved: false }  — no drivers row yet; Firestore shadow still persists it
+ * Response 400: { ok: false, error: "missing_token" }
+ * Response 401: { ok: false, error: "..." }
+ * Response 500: { ok: false, error: "server_error" }
+ */
+router.patch("/drivers/me/fcm-token", async (req, res) => {
+  const uid = await requireAuth(req, res);
+  if (!uid) return;
+
+  const { fcmToken } = (req.body ?? {}) as { fcmToken?: unknown };
+  if (typeof fcmToken !== "string" || !fcmToken.trim()) {
+    res.status(400).json({ ok: false, error: "missing_token", message: "fcmToken is required." });
+    return;
+  }
+
+  try {
+    const updated = await db
+      .update(driversTable)
+      .set({
+        fcmToken:          fcmToken.trim(),
+        fcmTokenUpdatedAt: new Date(),
+        updatedAt:         new Date(),
+      })
+      .where(eq(driversTable.uid, uid))
+      .returning({ uid: driversTable.uid });
+
+    if (updated.length === 0) {
+      // No drivers row in PG yet (signup not migrated for this uid). The mobile
+      // Firestore shadow write still persists the token, so this is non-fatal.
+      req.log.warn({ uid }, "[PG_FCM_TOKEN_FALLBACK] no drivers row — token not saved to PG");
+      res.json({ ok: true, saved: false });
+      return;
+    }
+
+    req.log.info({ uid }, "[PG_FCM_TOKEN_SAVE]");
+    res.json({ ok: true, saved: true });
+  } catch (err) {
+    req.log.error({ err, uid }, "[PG_FCM_TOKEN_FALLBACK] PG update failed");
+    res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
+/**
  * PATCH /api/drivers/:uid/status
  *
  * Updates the driver's online status in Firestore.

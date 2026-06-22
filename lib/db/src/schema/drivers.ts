@@ -20,7 +20,6 @@ import { z } from "zod/v4";
 // driver_documents table below.
 //
 // OUT OF SCOPE for this table (belong to later migration modules):
-//   - fcm_token / fcm_token_updated_at  → fcm_tokens table (FCM module)
 //   - subscription_*                    → drivers table (subscription module)
 //   - is_online / latitude / longitude  → drivers table (online-status module)
 //   - today_earnings / trips_today      → drivers table (wallet/stats module)
@@ -77,6 +76,12 @@ export const driversTable = pgTable(
     backgroundSetupShown:       boolean("background_setup_shown").default(false),
     permissionSetupVersion:     integer("permission_setup_version").default(0),
     permissionSetupCompletedAt: timestamp("permission_setup_completed_at", { withTimezone: true }),
+
+    // ── Push / FCM (Phase 4A) ────────────────────────────────────────────────
+    // Expo/FCM push token + last-write time. Firestore drivers/{uid}.fcmToken
+    // remains the shadow store and is still what the FCM dispatcher reads.
+    fcmToken:          text("fcm_token"),
+    fcmTokenUpdatedAt: timestamp("fcm_token_updated_at", { withTimezone: true }),
 
     // ── Timestamps ───────────────────────────────────────────────────────────
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
