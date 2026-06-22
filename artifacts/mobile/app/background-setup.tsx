@@ -14,7 +14,7 @@
 
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   AppState,
@@ -32,6 +32,7 @@ import { useDriver } from "@/contexts/DriverContext";
 import {
   type AllPermissionsStatus,
   checkAllPermissions,
+  openBatterySettings,
   openNotificationSettings,
   openPermissionSettings,
   requestBackgroundLocation,
@@ -168,10 +169,16 @@ export default function PermissionCenterScreen() {
   const params  = useLocalSearchParams<{ back?: string }>();
   const fromProfile = params.back === "1";
 
-  const [perms,        setPerms]        = useState<AllPermissionsStatus>(DEFAULT_PERMS);
-  const [initializing, setInitializing] = useState(true);
-  const [requestingBg, setRequestingBg] = useState(false);
-  const [finishing,    setFinishing]    = useState(false);
+  const [perms,           setPerms]          = useState<AllPermissionsStatus>(DEFAULT_PERMS);
+  const [initializing,    setInitializing]   = useState(true);
+  const [requestingBg,    setRequestingBg]   = useState(false);
+  const [finishing,       setFinishing]      = useState(false);
+  const [batteryGranted,  setBatteryGranted] = useState(false);
+  const [requestingBatt,  setRequestingBatt] = useState(false);
+  // Optimistic: JS cannot read PowerManager.isIgnoringBatteryOptimizations()
+  // without a native module, so we mark granted when the app returns from
+  // background after the user tapped Allow (same pattern as dashboard health card).
+  const battWaiting = useRef(false);
 
   // ── Refresh all permission states ─────────────────────────────────────────
   async function refresh() {
@@ -183,7 +190,15 @@ export default function PermissionCenterScreen() {
   // ── AppState listener — re-check when app returns from Settings ───────────
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
-      if (state === "active") void refresh();
+      if (state === "active") {
+        void refresh();
+        // Battery: optimistic grant when user returns after tapping Allow
+        if (battWaiting.current) {
+          battWaiting.current = false;
+          setBatteryGranted(true);
+          setRequestingBatt(false);
+        }
+      }
     });
     return () => sub.remove();
   }, []);
@@ -250,6 +265,22 @@ export default function PermissionCenterScreen() {
     await requestBackgroundLocation().catch(() => ({ granted: false, canAskAgain: false }));
     await refresh();
     setRequestingBg(false);
+  }
+
+  // ── Battery optimization handler ──────────────────────────────────────────
+  async function handleAllowBattery() {
+    if (batteryGranted) return;
+    setRequestingBatt(true);
+    // Mark that we're waiting for the user to return from the battery dialog.
+    // The AppState 'active' listener will mark batteryGranted=true on return.
+    battWaiting.current = true;
+    await openBatterySettings().catch(() => {});
+    // If openBatterySettings() returned without going to background
+    // (e.g. web / dialog dismissed instantly), clear the loading state.
+    if (battWaiting.current) {
+      battWaiting.current = false;
+      setRequestingBatt(false);
+    }
   }
 
   // ── Web bypass ────────────────────────────────────────────────────────────
@@ -385,6 +416,24 @@ export default function PermissionCenterScreen() {
           disabledNote={!perms.location.granted ? "Grant Location first" : undefined}
           onAllow={() => void handleAllowBgLoc()}
           onOpenSettings={() => void openPermissionSettings()}
+        />
+
+        {/* ══════════════════════════════════════════════════
+            CARD 4 — Battery Optimization
+        ══════════════════════════════════════════════════ */}
+        <PermCard
+          icon="battery"
+          iconColor="#16A34A"
+          iconBg="#DCFCE7"
+          title="Battery Optimization"
+          description="Improve order reliability and background tracking."
+          required={false}
+          granted={batteryGranted}
+          canAskAgain={!batteryGranted}
+          loading={requestingBatt}
+          actionDisabled={false}
+          onAllow={() => void handleAllowBattery()}
+          onOpenSettings={() => void handleAllowBattery()}
         />
 
         {/* ── Privacy note ── */}
