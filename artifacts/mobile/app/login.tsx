@@ -449,23 +449,21 @@ export default function LoginScreen() {
         {/* ── PHASE: OTP ── */}
         {phase === "otp" && (
           <View style={ss.otpPhase}>
-            {/* Back to phone */}
-            <TouchableOpacity
-              style={ss.backBtn}
-              onPress={() => {
-                setOtp(""); setOtpErr(""); transitionTo("phone");
-              }}
-              activeOpacity={0.7}
-            >
-              <Feather name="arrow-left" size={18} color={D.navy} />
-              <Text style={ss.backBtnText}>Change number</Text>
-            </TouchableOpacity>
 
-            {/* OTP Header */}
-            <View style={ss.otpHeader}>
-              <View style={ss.shieldWrap}>
-                <Feather name="shield" size={22} color={D.amber} />
+            {/* ── BC logo + branding (mirrors phone phase) ── */}
+            <View style={ss.otpBranding}>
+              <View style={[ss.logoCircle, { width: r.logoSize, height: r.logoSize, borderRadius: r.logoBorderR, marginBottom: r.logoMb }]}>
+                <Text style={[ss.logoText, { fontSize: r.logoFontSize }]}>BC</Text>
               </View>
+              <Text style={[ss.brandName, { fontSize: r.brandSize }]}>
+                <Text style={{ color: D.text }}>Bike</Text>
+                <Text style={{ color: D.primary }}>Courier</Text>
+              </Text>
+              <Text style={ss.partnerLabel}>PARTNER</Text>
+            </View>
+
+            {/* ── Heading ── */}
+            <View style={ss.otpHeader}>
               <Text style={ss.otpHeadline}>Verify your number</Text>
               <View style={ss.codeSentRow}>
                 <Text style={ss.codeSentText}>Code sent to </Text>
@@ -473,29 +471,30 @@ export default function LoginScreen() {
               </View>
             </View>
 
-            {/* OTP Cells */}
+            {/* ── OTP Cells ── */}
             <Pressable onPress={() => otpRef.current?.focus()} style={ss.cellsRow}>
               {otpDigits.map((d, i) => {
                 const isFilled = i < otp.length;
                 const isActive = i === otp.length && !verifying;
+                const hasError = !!otpErr;
                 return (
                   <CellPop key={i} trigger={isFilled}>
                     <View
                       style={[
                         ss.cellShell,
                         {
-                          borderColor:     isActive ? D.amber       : isFilled ? D.navy + "60" : D.cardBorder,
-                          borderWidth:     isActive ? 2             : 1,
+                          borderColor:     hasError ? D.error : isActive ? D.primary : isFilled ? D.navy + "60" : D.cardBorder,
+                          borderWidth:     isActive || hasError ? 2 : 1,
                           backgroundColor: isActive ? D.primarySoft : D.white,
-                          shadowColor:     isActive ? D.amber       : "#000",
-                          shadowOpacity:   isActive ? 0.16          : 0.04,
-                          shadowRadius:    isActive ? 10            : 4,
+                          shadowColor:     isActive ? D.primary : "#000",
+                          shadowOpacity:   isActive ? 0.16 : 0.04,
+                          shadowRadius:    isActive ? 10 : 4,
                           shadowOffset:    { width: 0, height: isActive ? 4 : 2 },
-                          elevation:       isActive ? 4             : 1,
+                          elevation:       isActive ? 4 : 1,
                         },
                       ]}
                     >
-                      <Text style={[ss.cellText, { color: isActive ? D.amber : D.navy }]}>
+                      <Text style={[ss.cellText, { color: isActive ? D.primary : D.text }]}>
                         {isFilled ? d : ""}
                       </Text>
                     </View>
@@ -527,62 +526,66 @@ export default function LoginScreen() {
               autoCorrect={false}
             />
 
-            {/* OTP error */}
-            {!!otpErr && (
-              <View style={ss.errorRow}>
-                <Feather name="alert-circle" size={13} color={D.error} />
-                <Text style={[ss.errorText, { marginTop: 0 }]}>{otpErr}</Text>
-              </View>
-            )}
-
             {/* Dev hint */}
             {!!devOtp && (
               <Text style={ss.devHint}>Dev — code: {devOtp}</Text>
             )}
 
-            {/* Verify button */}
-            <View style={ss.verifyWrap}>
-              <Pressable
-                onPress={() => void handleVerify(otp)}
-                disabled={otp.length < OTP_LENGTH || verifying}
-                style={[
-                  ss.verifyBtn,
-                  { backgroundColor: otp.length === OTP_LENGTH ? D.amber : D.cardBorder },
-                ]}
-              >
-                {verifying ? (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                    <VerifyingDots />
-                    <Text style={[ss.verifyBtnText, { color: D.white }]}>Verifying…</Text>
-                  </View>
-                ) : (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <Text style={[ss.verifyBtnText, { color: otp.length === OTP_LENGTH ? D.white : D.textMuted }]}>
-                      {otp.length === OTP_LENGTH ? "Verify" : `Enter code (${otp.length}/${OTP_LENGTH})`}
-                    </Text>
-                    {otp.length === OTP_LENGTH && (
-                      <Feather name="arrow-right" size={18} color={D.white} />
-                    )}
-                  </View>
-                )}
-              </Pressable>
-            </View>
+            {/* OTP error */}
+            {!!otpErr && (
+              <View style={ss.otpErrRow}>
+                <Feather name="alert-circle" size={13} color={D.error} />
+                <Text style={ss.otpErrText}>{otpErr}</Text>
+              </View>
+            )}
 
-            {/* Resend */}
+            {/* Verify & Continue button */}
+            <TouchableOpacity
+              style={[ss.verifyBtn, otp.length < OTP_LENGTH && ss.verifyBtnDisabled]}
+              onPress={() => void handleVerify(otp)}
+              activeOpacity={0.85}
+              disabled={otp.length < OTP_LENGTH || verifying}
+            >
+              {verifying ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <VerifyingDots />
+                  <Text style={ss.verifyBtnText}>Verifying...</Text>
+                </View>
+              ) : (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Text style={[ss.verifyBtnText, otp.length < OTP_LENGTH && ss.verifyBtnTextDisabled]}>
+                    {otp.length === OTP_LENGTH ? "Verify & Continue" : `Enter code (${otp.length}/${OTP_LENGTH})`}
+                  </Text>
+                  {otp.length === OTP_LENGTH && (
+                    <Feather name="arrow-right" size={18} color={D.white} />
+                  )}
+                </View>
+              )}
+            </TouchableOpacity>
+
+            {/* Resend timer */}
             <View style={ss.resendRow}>
               {canResend ? (
                 <TouchableOpacity onPress={() => void handleResend()} activeOpacity={0.6}>
-                  <Text style={ss.resendText}>
-                    Didn't receive it?{" "}
-                    <Text style={[ss.resendText, { color: D.amber, fontWeight: "700" }]}>Resend code</Text>
-                  </Text>
+                  <Text style={ss.resendActiveText}>Resend OTP</Text>
                 </TouchableOpacity>
               ) : (
                 <Text style={ss.resendText}>
-                  Resend in <Text style={{ color: D.navy, fontWeight: "700" }}>{timer}s</Text>
+                  Resend in <Text style={{ color: D.text, fontWeight: "700" }}>{timer}s</Text>
                 </Text>
               )}
             </View>
+
+            {/* Change number — bottom */}
+            <TouchableOpacity
+              style={ss.changeNumBtn}
+              onPress={() => { setOtp(""); setOtpErr(""); transitionTo("phone"); }}
+              activeOpacity={0.7}
+            >
+              <Feather name="arrow-left" size={15} color={D.navy} />
+              <Text style={ss.changeNumText}>Change number</Text>
+            </TouchableOpacity>
+
           </View>
         )}
 
@@ -833,53 +836,24 @@ const ss = StyleSheet.create({
   // ── OTP Phase ─────────────────────────────────────────────────────────────
   otpPhase: {
     alignSelf:  "stretch",
-    paddingTop: 8,
     alignItems: "center",
-    gap:        20,
+    gap:        16,
   },
-  backBtn: {
-    alignSelf:         "flex-start",
-    flexDirection:     "row",
-    alignItems:        "center",
-    gap:               6,
-    paddingVertical:   8,
-    paddingHorizontal: 12,
-    borderRadius:      12,
-    backgroundColor:   D.white,
-    borderWidth:       1,
-    borderColor:       D.cardBorder,
-    shadowColor:       "#000",
-    shadowOpacity:     0.05,
-    shadowRadius:      6,
-    shadowOffset:      { width: 0, height: 2 },
-    elevation:         2,
-  },
-  backBtnText: {
-    fontSize:   14,
-    fontWeight: "600",
-    color:      D.navy,
+  otpBranding: {
+    alignItems: "center",
+    gap:        4,
   },
   otpHeader: {
     alignItems: "center",
-    gap:        8,
+    gap:        6,
     width:      "100%",
   },
-  shieldWrap: {
-    width:           52,
-    height:          52,
-    borderRadius:    16,
-    backgroundColor: D.primarySoft,
-    borderWidth:     1,
-    borderColor:     D.amber + "60",
-    alignItems:      "center",
-    justifyContent:  "center",
-    marginBottom:    4,
-  },
   otpHeadline: {
-    fontSize:      28,
+    fontSize:      26,
     fontWeight:    "800",
     letterSpacing: -0.5,
     color:         D.navy,
+    textAlign:     "center",
   },
   codeSentRow: {
     flexDirection:  "row",
@@ -898,19 +872,19 @@ const ss = StyleSheet.create({
   },
   cellsRow: {
     flexDirection: "row",
-    gap:           10,
+    gap:           8,
+    alignSelf:     "stretch",
     alignItems:    "center",
-    marginTop:     8,
   },
   cellShell: {
-    width:          50,
-    height:         62,
-    borderRadius:   17,
+    flex:           1,
+    height:         56,
+    borderRadius:   14,
     alignItems:     "center",
     justifyContent: "center",
   },
   cellText: {
-    fontSize:   24,
+    fontSize:   22,
     fontWeight: "700",
   },
   hiddenInput: {
@@ -926,36 +900,86 @@ const ss = StyleSheet.create({
     backgroundColor: D.white,
   },
   devHint: {
-    fontSize: 12,
-    color:    D.textMuted,
+    fontSize:  12,
+    color:     D.textMuted,
+    marginTop: -4,
   },
-  verifyWrap: {
-    alignSelf: "stretch",
+  otpErrRow: {
+    flexDirection: "row",
+    alignItems:    "center",
+    gap:           5,
+    alignSelf:     "stretch",
+    marginTop:     -4,
+  },
+  otpErrText: {
+    fontSize:   13,
+    fontWeight: "500",
+    color:      D.error,
+    flex:       1,
   },
   verifyBtn: {
-    height:            58,
-    borderRadius:      20,
-    flexDirection:     "row",
-    alignItems:        "center",
-    justifyContent:    "center",
-    paddingHorizontal: 20,
-    width:             "100%",
-    shadowColor:       D.amber,
-    shadowOpacity:     0.30,
-    shadowRadius:      14,
-    shadowOffset:      { width: 0, height: 6 },
-    elevation:         5,
+    alignSelf:       "stretch",
+    height:          56,
+    borderRadius:    16,
+    backgroundColor: D.primary,
+    flexDirection:   "row",
+    alignItems:      "center",
+    justifyContent:  "center",
+    shadowColor:     D.primary,
+    shadowOpacity:   0.30,
+    shadowRadius:    10,
+    shadowOffset:    { width: 0, height: 4 },
+    elevation:       4,
+  },
+  verifyBtnDisabled: {
+    backgroundColor: "#E5E7EB",
+    borderWidth:     1,
+    borderColor:     "#D1D5DB",
+    shadowOpacity:   0,
+    elevation:       0,
   },
   verifyBtnText: {
-    fontSize:   18,
-    fontWeight: "700",
+    fontSize:      17,
+    fontWeight:    "700",
+    color:         D.white,
+    letterSpacing: 0.2,
+  },
+  verifyBtnTextDisabled: {
+    color:      "#6B7280",
+    fontWeight: "600",
   },
   resendRow: {
     alignItems: "center",
-    marginTop:  4,
+    marginTop:  -4,
   },
   resendText: {
     fontSize: 14,
     color:    D.textMuted,
+  },
+  resendActiveText: {
+    fontSize:   14,
+    fontWeight: "700",
+    color:      D.primary,
+  },
+  changeNumBtn: {
+    flexDirection:     "row",
+    alignItems:        "center",
+    gap:               6,
+    paddingVertical:   9,
+    paddingHorizontal: 14,
+    borderRadius:      12,
+    backgroundColor:   D.white,
+    borderWidth:       1,
+    borderColor:       D.cardBorder,
+    shadowColor:       "#000",
+    shadowOpacity:     0.05,
+    shadowRadius:      6,
+    shadowOffset:      { width: 0, height: 2 },
+    elevation:         2,
+  },
+  changeNumText: {
+    fontSize:   14,
+    fontWeight: "600",
+    color:      D.navy,
   },
 });
