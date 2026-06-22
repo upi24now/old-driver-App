@@ -410,6 +410,7 @@ router.patch("/drivers/:uid/status", async (req, res) => {
     return;
   }
 
+  // ── Firestore write — source of truth, unchanged ──────────────────────────
   try {
     const fsDb = await adminFirestore();
     await fsDb.collection("drivers").doc(uid).update({
@@ -417,11 +418,40 @@ router.patch("/drivers/:uid/status", async (req, res) => {
       lastSeenAt: Date.now(),
     });
     req.log.info({ uid, isOnline }, "driver status updated");
-    res.json({ ok: true });
   } catch (err) {
     req.log.error({ err, uid }, "status: Firestore update failed");
     res.status(500).json({ ok: false, error: "server_error" });
+    return;
   }
+
+  // ── Phase 4C — mirror the same state into PostgreSQL (shadow) ──────────────
+  // Firestore stays the source of truth. This is fully non-blocking: a PG
+  // failure must never affect the Firestore result or the response, and no
+  // dispatcher reads these columns yet.
+  void (async () => {
+    try {
+      const mirrored = await db
+        .update(driversTable)
+        .set({
+          isOnline,
+          onlineStatus: isOnline ? "online" : "offline",
+          lastSeenAt:   new Date(),
+          updatedAt:    new Date(),
+        })
+        .where(eq(driversTable.uid, uid))
+        .returning({ uid: driversTable.uid });
+
+      if (mirrored.length === 0) {
+        req.log.warn({ uid }, "[PG_ONLINE_STATUS_FALLBACK] no drivers row — status not mirrored to PG");
+      } else {
+        req.log.info({ uid, isOnline }, "[PG_ONLINE_STATUS_SAVE]");
+      }
+    } catch (err) {
+      req.log.warn({ err, uid }, "[PG_ONLINE_STATUS_FALLBACK] PG mirror failed");
+    }
+  })();
+
+  res.json({ ok: true });
 });
 
 /**

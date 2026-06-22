@@ -21,7 +21,7 @@ import { z } from "zod/v4";
 //
 // OUT OF SCOPE for this table (belong to later migration modules):
 //   - subscription_*                    → drivers table (subscription module)
-//   - is_online / latitude / longitude  → drivers table (online-status module)
+//   - latitude / longitude              → drivers table (live-tracking module)
 //   - today_earnings / trips_today      → drivers table (wallet/stats module)
 
 export const driversTable = pgTable(
@@ -82,6 +82,15 @@ export const driversTable = pgTable(
     // remains the shadow store and is still what the FCM dispatcher reads.
     fcmToken:          text("fcm_token"),
     fcmTokenUpdatedAt: timestamp("fcm_token_updated_at", { withTimezone: true }),
+
+    // ── Online status (Phase 4C) ─────────────────────────────────────────────
+    // PG shadow of the driver's online/offline state. Firestore drivers/{uid}
+    // (isOnline / onlineStatus / lastSeenAt) remains the source of truth; these
+    // columns are mirrored from the PATCH /drivers/:uid/status route. Nothing
+    // reads them yet (no dispatcher switch).
+    isOnline:     boolean("is_online").default(false),
+    onlineStatus: text("online_status"),   // "online" | "offline"
+    lastSeenAt:   timestamp("last_seen_at", { withTimezone: true }),
 
     // ── Timestamps ───────────────────────────────────────────────────────────
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
