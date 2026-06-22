@@ -627,7 +627,7 @@ const ss = StyleSheet.create({
     width:        "68%",
     height:       124,
     zIndex:       1,
-    marginBottom: 18,
+    marginBottom: 30,
   },
 
   // ── Phone Input Card ──────────────────────────────────────────────────────
