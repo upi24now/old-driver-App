@@ -2,7 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { Router, type Request, type Response } from "express";
 import { adminFirestore } from "../lib/firebase-admin";
 import { requireAuth } from "../lib/require-auth";
-import { pgCreatePayoutRequest } from "../lib/wallet-pg-service";
+import { pgCreatePayoutRequest, pgShadowPayoutTransaction } from "../lib/wallet-pg-service";
 
 const router = Router();
 
@@ -91,6 +91,13 @@ router.post("/payouts/request", async (req: Request, res: Response) => {
     void pgCreatePayoutRequest(driverUid, amount)
       .then(() => req.log.info({ driverUid, amount }, "[PG_PAYOUT_SHADOW]"))
       .catch((e) => req.log.error({ err: e, driverUid, amount }, "[PG_PAYOUT_SHADOW] shadow write failed — non-blocking"));
+
+    // ── PG shadow write: payout ledger row (non-blocking) ─────────────────────
+    // Mirrors the Firestore "payout" transaction into wallet_transactions so the
+    // ledger stays count-consistent. Does NOT debit driver_wallets.
+    void pgShadowPayoutTransaction(driverUid, amount, "pending")
+      .then(() => req.log.info({ driverUid, amount }, "[PG_PAYOUT_LEDGER_SHADOW]"))
+      .catch((e) => req.log.error({ err: e, driverUid, amount }, "[PG_PAYOUT_LEDGER_SHADOW] shadow write failed — non-blocking"));
 
     res.json({ ok: true, requestId: payoutRef.id });
   } catch (err: unknown) {

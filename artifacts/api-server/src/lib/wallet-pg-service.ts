@@ -173,6 +173,49 @@ export async function pgCreatePayoutRequest(
   }
 }
 
+// ── pgShadowPayoutTransaction ─────────────────────────────────────────────────
+
+/**
+ * Shadow-write a payout ledger row into wallet_transactions.
+ *
+ * Mirrors the Firestore "payout" transaction created at request time so the
+ * wallet_transactions ledger stays count-consistent with Firestore.
+ *
+ * IMPORTANT: this does NOT touch driver_wallets — no balance debit happens here.
+ * The authoritative debit lives in pgMarkPayoutProcessed (admin approval path,
+ * not yet wired).  This function only inserts the immutable ledger row.
+ *
+ *   type        = "payout"
+ *   status      = "pending" (default) | "completed"
+ *   amount      = payout amount (positive, matching pgMarkPayoutProcessed)
+ *   order_id    = null
+ *   description = "payout request"
+ */
+export async function pgShadowPayoutTransaction(
+  driverUid: string,
+  amount:    number,
+  status:    "pending" | "completed" = "pending",
+): Promise<WalletResult> {
+  const amountStr = amount.toFixed(2);
+
+  try {
+    await db.insert(walletTransactionsTable).values({
+      driverUid,
+      orderId:     null,
+      type:        "payout",
+      amount:      amountStr,
+      status,
+      description: "payout request",
+    });
+
+    logger.info({ driverUid, amount, status }, "[pgShadowPayoutTransaction] inserted");
+    return { ok: true };
+  } catch (err) {
+    logger.error({ err, driverUid, amount }, "[pgShadowPayoutTransaction] failed");
+    throw err;
+  }
+}
+
 // ── pgMarkPayoutProcessed ─────────────────────────────────────────────────────
 
 /**
