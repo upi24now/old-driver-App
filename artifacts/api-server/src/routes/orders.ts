@@ -2,7 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { Router, type Request, type Response } from "express";
 import { adminFirestore } from "../lib/firebase-admin";
 import { requireAuth } from "../lib/require-auth";
-import { pgShadowSetStatus } from "../lib/order-pg-service";
+import { pgGetOrder, pgShadowSetStatus } from "../lib/order-pg-service";
 
 const router = Router();
 
@@ -193,6 +193,106 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
     req.log.error({ err, orderId, driverUid }, "complete-order: transaction failed unexpectedly");
     res.status(500).json({ ok: false, error: "server_error" });
   }
+});
+
+// ─── GET /api/orders/:orderId ──────────────────────────────────────────────────
+//
+// Dual-read verification endpoint — Phase 2B-1.
+//
+// Reads the order from BOTH PostgreSQL and Firestore in parallel, then
+// compares 9 key fields to verify shadow-write fidelity.  The Firestore
+// document is always returned to the caller — PG is verification-only.
+//
+// Log tags:
+//   [PG_COMPARE_MATCH] — all 9 fields match exactly
+//   [PG_COMPARE_DIFF]  — one or more fields diverge (diffs logged as structured data)
+//
+// Field comparison notes:
+//   fareEstimate / distanceKm — PG stores as numeric string ("85.00"); Firestore
+//     stores as JS number (85).  Compared after parseFloat with ±0.01 tolerance.
+//   durationMin — PG stores as integer; compared with Number() coercion.
+//   All other fields — strict string equality after String() coercion.
+
+router.get("/orders/:orderId", async (req: Request, res: Response) => {
+  const driverUid = await requireAuth(req, res);
+  if (!driverUid) return;
+
+  const { orderId } = req.params as { orderId: string };
+
+  const db = await adminFirestore();
+
+  // ── 1. Parallel reads ────────────────────────────────────────────────────────
+  const [pgResult, fsResult] = await Promise.allSettled([
+    pgGetOrder(orderId),
+    db.doc(`orders/${orderId}`).get(),
+  ]);
+
+  // ── 2. Firestore result — source of truth returned to caller ─────────────────
+  if (fsResult.status === "rejected" || !fsResult.value.exists) {
+    if (fsResult.status === "rejected") {
+      req.log.error({ err: fsResult.reason, orderId }, "GET /orders/:orderId Firestore read failed");
+      res.status(500).json({ ok: false, error: "firestore_error" });
+    } else {
+      res.status(404).json({ ok: false, error: "not_found" });
+    }
+    return;
+  }
+
+  const fsData = { id: fsResult.value.id, ...fsResult.value.data() } as Record<string, unknown>;
+
+  // ── 3. PG comparison (non-blocking; never alters response) ───────────────────
+  if (pgResult.status === "rejected") {
+    req.log.error({ err: pgResult.reason, orderId }, "[PG_COMPARE_DIFF] PG read threw — skipping compare");
+  } else if (pgResult.value === null) {
+    req.log.info({ orderId }, "[PG_COMPARE_DIFF] PG row not found");
+  } else {
+    const pg   = pgResult.value;
+    const diffs: { field: string; pg: unknown; fs: unknown }[] = [];
+
+    // String fields — strict equality after null normalisation
+    const strFields = ["status", "paymentMode", "pickup", "drop", "customerName", "customerPhone"] as const;
+    for (const field of strFields) {
+      const pgVal = (pg[field] as string | null) ?? null;
+      const fsVal = (fsData[field] as string | null | undefined) ?? null;
+      if (pgVal !== fsVal) {
+        diffs.push({ field, pg: pgVal, fs: fsVal });
+      }
+    }
+
+    // Numeric fields — PG returns numeric columns as strings; compare as floats
+    const numFields: { pg: string | null; fs: unknown; field: string }[] = [
+      { field: "fareEstimate", pg: pg.fareEstimate, fs: fsData["fareEstimate"] },
+      { field: "distanceKm",   pg: pg.distanceKm,   fs: fsData["distanceKm"]   },
+    ];
+    for (const { field, pg: pgVal, fs: fsVal } of numFields) {
+      if (pgVal === null && (fsVal == null)) continue;
+      if (pgVal === null || fsVal == null) {
+        diffs.push({ field, pg: pgVal, fs: fsVal });
+        continue;
+      }
+      if (Math.abs(parseFloat(pgVal) - Number(fsVal)) > 0.01) {
+        diffs.push({ field, pg: pgVal, fs: fsVal });
+      }
+    }
+
+    // durationMin — integer
+    const durPg = pg.durationMin;
+    const durFs = fsData["durationMin"];
+    if (!(durPg == null && durFs == null)) {
+      if (durPg == null || durFs == null || durPg !== Number(durFs)) {
+        diffs.push({ field: "durationMin", pg: durPg, fs: durFs });
+      }
+    }
+
+    if (diffs.length === 0) {
+      req.log.info({ orderId }, "[PG_COMPARE_MATCH]");
+    } else {
+      req.log.info({ orderId, diffs }, "[PG_COMPARE_DIFF]");
+    }
+  }
+
+  // ── 4. Always return Firestore data ──────────────────────────────────────────
+  res.json({ ok: true, order: fsData });
 });
 
 export default router;

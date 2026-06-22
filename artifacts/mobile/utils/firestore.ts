@@ -16,8 +16,12 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import { db } from "./firebase";
+import { db, firebaseAuth } from "./firebase";
 import type { Profile, Vehicle } from "@/contexts/DriverContext";
+
+// ─── API base URL (dual-read path for PG comparison) ─────────────────────────
+const _DOMAIN   = process.env["EXPO_PUBLIC_DOMAIN"] ?? "";
+const _BASE_URL = _DOMAIN ? `https://${_DOMAIN}/api` : "/api";
 
 // ─── Driver doc ───────────────────────────────────────────────────────────────
 
@@ -590,11 +594,38 @@ export type OrderDoc = {
 };
 
 /**
- * Listen for the single "dispatched" order assigned to this driver.
- * The customer app sets { status: "dispatched", driverUid: uid } to trigger this.
- * Returns an unsubscribe function; call it on cleanup.
+ * Fetch a single order by ID.
+ *
+ * Phase 2B-1 dual-read strategy:
+ *   1. If a Firebase auth token is available, call GET /api/orders/:orderId on
+ *      the server.  The server reads BOTH Firestore and PostgreSQL in parallel,
+ *      logs [PG_COMPARE_MATCH] or [PG_COMPARE_DIFF], and returns Firestore data.
+ *      This path is verification-only — the user always receives Firestore data.
+ *   2. If the server call fails for any reason (network, auth, 4xx/5xx), fall
+ *      back to a direct Firestore read so cold-start recovery is never blocked.
  */
 export async function fetchOrderById(orderId: string): Promise<OrderDoc | null> {
+  // ── Server dual-read path ───────────────────────────────────────────────────
+  try {
+    const user = firebaseAuth.currentUser;
+    if (user) {
+      const token = await user.getIdToken();
+      const res   = await fetch(`${_BASE_URL}/orders/${orderId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const json = await res.json() as { ok?: boolean; order?: OrderDoc };
+        if (json.ok && json.order) {
+          return json.order;
+        }
+      }
+      // Server returned non-ok (e.g. 404) — fall through to Firestore
+    }
+  } catch {
+    // Network failure or auth error — fall through to direct Firestore read
+  }
+
+  // ── Firestore fallback (original path) ────────────────────────────────────
   try {
     const snap = await getDoc(doc(db, "orders", orderId));
     if (!snap.exists()) return null;
