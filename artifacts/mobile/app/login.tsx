@@ -65,17 +65,17 @@ function HeroIllustration() {
         viewBox="0 0 320 160"
         style={StyleSheet.absoluteFillObject}
       >
-        {/* Left buildings — low opacity, stay in background */}
-        <Rect x="0"  y="10" width="30" height="150" rx="3" fill="#FFE8D6" opacity="0.80" />
-        <Rect x="10" y="0"  width="14" height="160" rx="2" fill="#FFD8C0" opacity="0.70" />
-        <Rect x="36" y="20" width="24" height="140" rx="3" fill="#FFE8D6" opacity="0.80" />
-        <Rect x="46" y="8"  width="11" height="152" rx="2" fill="#FFD0B4" opacity="0.60" />
-        <Rect x="68" y="28" width="18" height="132" rx="3" fill="#FFE8D6" opacity="0.50" />
+        {/* Left buildings */}
+        <Rect x="0"  y="10" width="30" height="150" rx="3" fill="#FFE8D6" opacity="0.90" />
+        <Rect x="10" y="0"  width="14" height="160" rx="2" fill="#FFD8C0" opacity="0.80" />
+        <Rect x="36" y="20" width="24" height="140" rx="3" fill="#FFE8D6" opacity="0.90" />
+        <Rect x="46" y="8"  width="11" height="152" rx="2" fill="#FFD0B4" opacity="0.70" />
+        <Rect x="68" y="28" width="18" height="132" rx="3" fill="#FFE8D6" opacity="0.60" />
         {/* Right buildings */}
-        <Rect x="234" y="24" width="18" height="136" rx="3" fill="#FFE8D6" opacity="0.50" />
-        <Rect x="252" y="8"  width="26" height="152" rx="3" fill="#FFE8D6" opacity="0.80" />
-        <Rect x="264" y="0"  width="13" height="160" rx="2" fill="#FFD8C0" opacity="0.70" />
-        <Rect x="285" y="16" width="35" height="144" rx="3" fill="#FFE8D6" opacity="0.80" />
+        <Rect x="234" y="24" width="18" height="136" rx="3" fill="#FFE8D6" opacity="0.60" />
+        <Rect x="252" y="8"  width="26" height="152" rx="3" fill="#FFE8D6" opacity="0.90" />
+        <Rect x="264" y="0"  width="13" height="160" rx="2" fill="#FFD8C0" opacity="0.80" />
+        <Rect x="285" y="16" width="35" height="144" rx="3" fill="#FFE8D6" opacity="0.90" />
         {/* Road platform */}
         <Rect x="0" y="142" width="320" height="18" rx="0" fill="#FFF3EC" />
         <Line x1="0" y1="142" x2="320" y2="142" stroke="#FFDCC8" strokeWidth="1.5" />
@@ -282,7 +282,7 @@ export default function LoginScreen() {
       <View
         style={[
           ss.scroll,
-          { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 36 },
+          { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 22 },
         ]}
       >
 
@@ -741,7 +741,9 @@ const ss = StyleSheet.create({
     elevation:       4,
   },
   continueBtnDisabled: {
-    backgroundColor: D.border,
+    backgroundColor: "#E5E7EB",
+    borderWidth:     1,
+    borderColor:     "#D1D5DB",
     shadowOpacity:   0,
     elevation:       0,
   },
@@ -752,7 +754,8 @@ const ss = StyleSheet.create({
     letterSpacing: 0.2,
   },
   continueBtnTextDisabled: {
-    color: D.textSecondary,
+    color:      "#6B7280",
+    fontWeight: "600",
   },
 
   // ── Terms ─────────────────────────────────────────────────────────────────
