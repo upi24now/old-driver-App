@@ -229,7 +229,11 @@ function VehiclePickerModal({
               onPress={() => { onSelect(item); onClose(); }}
               activeOpacity={0.72}
             >
-              <View style={vpm.iconWrap}>
+              <View style={[
+                vpm.iconWrap,
+                item.id === "two_wheeler"          && { width: 72, padding: 10 },
+                item.id === "loader_three_wheeler" && { width: 76, padding: 10 },
+              ]}>
                 <Image source={item.image} style={vpm.icon} contentFit="contain" />
               </View>
               <View style={vpm.textCol}>
