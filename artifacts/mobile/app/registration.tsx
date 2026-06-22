@@ -28,11 +28,14 @@ import { uploadDocumentImage, isRemoteUrl } from "@/utils/storage";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -338,6 +341,20 @@ export default function RegistrationScreen() {
   const [feeAmount,       setFeeAmount]       = useState(REGISTRATION_FEE);
   const [checkoutParams,  setCheckoutParams]  = useState<RazorpayCheckoutParams | null>(null);
   const [checkoutVisible, setCheckoutVisible] = useState(false);
+  const [paymentSuccessVisible, setPaymentSuccessVisible] = useState(false);
+  const successScale   = useRef(new Animated.Value(0)).current;
+  const successOpacity = useRef(new Animated.Value(0)).current;
+
+  function showPaymentSuccess() {
+    setPaymentSuccessVisible(true);
+    Animated.parallel([
+      Animated.spring(successScale, { toValue: 1, useNativeDriver: true, speed: 14, bounciness: 10 }),
+      Animated.timing(successOpacity, { toValue: 1, duration: 250, useNativeDriver: true, easing: Easing.out(Easing.ease) }),
+    ]).start();
+    setTimeout(() => {
+      router.replace("/verification-pending");
+    }, 1600);
+  }
 
   // ── Submit ─────────────────────────────────────────────────────────────────
   const [submitting, setSubmitting] = useState(false);
@@ -447,9 +464,9 @@ export default function RegistrationScreen() {
         return;
       }
 
-      // 5a. No fee — go straight to verification
+      // 5a. No fee — show success animation then navigate
       if (onboardingFeeApplies !== true) {
-        router.replace("/verification-pending");
+        showPaymentSuccess();
         return;
       }
 
@@ -530,7 +547,7 @@ export default function RegistrationScreen() {
         return;
       }
       markOnboardingFeePaidLocally();
-      router.replace("/verification-pending");
+      showPaymentSuccess();
     } catch {
       Alert.alert("Error", "Payment verification failed. Please contact support.");
     } finally {
@@ -940,6 +957,29 @@ export default function RegistrationScreen() {
           }}
         />
       )}
+
+      {/* ── Payment Success Overlay ── */}
+      <Modal
+        visible={paymentSuccessVisible}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+      >
+        <View style={ss.successBackdrop}>
+          <Animated.View
+            style={[
+              ss.successCard,
+              { opacity: successOpacity, transform: [{ scale: successScale }] },
+            ]}
+          >
+            <View style={ss.successIconWrap}>
+              <Text style={ss.successCheckmark}>✓</Text>
+            </View>
+            <Text style={ss.successTitle}>Payment Successful!</Text>
+            <Text style={ss.successSub}>Redirecting to verification…</Text>
+          </Animated.View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -1143,4 +1183,49 @@ const ss = StyleSheet.create({
   submitRow:  { flexDirection: "row", alignItems: "center", gap: 10 },
   submitText: { fontSize: 16, fontWeight: "800", color: "#fff", letterSpacing: 0.2 },
   footerHint: { fontSize: 12, color: D.textMuted, textAlign: "center" },
+
+  // ── Payment Success Overlay ────────────────────────────────────────────────
+  successBackdrop: {
+    flex:            1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    alignItems:      "center",
+    justifyContent:  "center",
+  },
+  successCard: {
+    backgroundColor: D.white,
+    borderRadius:    28,
+    paddingVertical:   40,
+    paddingHorizontal: 36,
+    alignItems:      "center",
+    gap:             14,
+    shadowColor:     "#000",
+    shadowOpacity:   0.25,
+    shadowRadius:    30,
+    shadowOffset:    { width: 0, height: 12 },
+    elevation:       20,
+    minWidth:        240,
+  },
+  successIconWrap: {
+    width:           80,
+    height:          80,
+    borderRadius:    40,
+    backgroundColor: D.successSoft,
+    alignItems:      "center",
+    justifyContent:  "center",
+  },
+  successCheckmark: {
+    fontSize:   38,
+    color:      D.success,
+    fontWeight: "800",
+  },
+  successTitle: {
+    fontSize:      22,
+    fontWeight:    "800",
+    color:         D.textDark,
+    letterSpacing: -0.4,
+  },
+  successSub: {
+    fontSize: 14,
+    color:    D.textMuted,
+  },
 });
