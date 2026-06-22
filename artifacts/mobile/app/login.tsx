@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -258,6 +259,16 @@ export default function LoginScreen() {
               <Text style={ss.partnerLabel}>PARTNER</Text>
               <Text style={ss.headline}>Welcome Partner</Text>
               <Text style={ss.subline}>Start earning with BikeCourier</Text>
+            </View>
+
+            {/* ── Delivery illustration ── */}
+            <View style={ss.illustrationWrap}>
+              <View style={ss.illustrationBg} />
+              <Image
+                source={require("@/assets/images/bike-delivery.png")}
+                style={ss.illustrationImg}
+                resizeMode="contain"
+              />
             </View>
 
             {/* ── Phone input card ── */}
@@ -513,7 +524,7 @@ const ss = StyleSheet.create({
   // ── Hero ──────────────────────────────────────────────────────────────────
   hero: {
     alignItems:   "center",
-    marginBottom: 24,
+    marginBottom: 8,
     width:        "100%",
   },
   logoCircle: {
@@ -562,6 +573,28 @@ const ss = StyleSheet.create({
     fontSize:  14,
     color:     D.textSecondary,
     textAlign: "center",
+  },
+
+  // ── Illustration ──────────────────────────────────────────────────────────
+  illustrationWrap: {
+    alignSelf:      "stretch",
+    height:         155,
+    marginBottom:   16,
+    alignItems:     "center",
+    justifyContent: "center",
+  },
+  illustrationBg: {
+    position:        "absolute",
+    bottom:          0,
+    left:            20,
+    right:           20,
+    height:          80,
+    borderRadius:    40,
+    backgroundColor: "#FFF0E5",
+  },
+  illustrationImg: {
+    width:  "100%",
+    height: 160,
   },
 
   // ── Phone Input Card ──────────────────────────────────────────────────────
@@ -650,7 +683,7 @@ const ss = StyleSheet.create({
     alignItems:        "center",
     gap:               8,
     alignSelf:         "stretch",
-    marginBottom:      28,
+    marginBottom:      20,
     paddingHorizontal: 4,
   },
   trustText: {
