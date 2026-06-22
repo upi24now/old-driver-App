@@ -10,5 +10,5 @@
 - [Expo Router typed routes](expo-router-typed-routes.md) — new screen files require manual update to .expo/types/router.d.ts (hrefInputParams, hrefOutputParams, href) until dev server regenerates.
 - [Firebase-to-PG migration patterns](firebase-to-pg-migration.md) — RoutingDoc structural type, setKycDocuments cast, subscription remaining-dep pattern for Step 1.
 - [FCM token PG migration](fcm-token-pg-migration.md) — Phase 4A write + 4B dispatcher read: tokens dual-written (PG primary + FS shadow); dispatcher reads PG-first via resolveDriverFcmToken, FS fallback; PG read errors never block push.
-- [Driver online-status PG migration](online-status-pg-migration.md) — Phase 4C: online/offline mirrored to PG drivers table (is_online/online_status/last_seen_at) via PATCH /drivers/:uid/status fire-and-forget; FS source of truth; auto-offline paths don't mirror (accepted shadow-lag).
+- [Driver online-status & location PG migration](online-status-pg-migration.md) — Phase 4C/4D: online/offline + latest GPS mirrored to PG drivers table via PATCH /status & POST /location (fire-and-forget); FS source of truth; auto-offline paths don't mirror (accepted shadow-lag).
 - [Wallet PG migration constraints](wallet-pg-migration.md) — payout sign divergence (FS neg/PG pos), credit shadow not idempotent, FS→PG-only comparator; resolve before PG-primary cutover.

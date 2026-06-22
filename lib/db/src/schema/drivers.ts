@@ -1,5 +1,6 @@
 import {
   boolean,
+  doublePrecision,
   index,
   integer,
   pgTable,
@@ -21,7 +22,6 @@ import { z } from "zod/v4";
 //
 // OUT OF SCOPE for this table (belong to later migration modules):
 //   - subscription_*                    → drivers table (subscription module)
-//   - latitude / longitude              → drivers table (live-tracking module)
 //   - today_earnings / trips_today      → drivers table (wallet/stats module)
 
 export const driversTable = pgTable(
@@ -91,6 +91,15 @@ export const driversTable = pgTable(
     isOnline:     boolean("is_online").default(false),
     onlineStatus: text("online_status"),   // "online" | "offline"
     lastSeenAt:   timestamp("last_seen_at", { withTimezone: true }),
+
+    // ── Latest location (Phase 4D) ───────────────────────────────────────────
+    // PG shadow of the driver's most-recent GPS fix (latest only, no history).
+    // Firestore drivers/{uid} remains the source of truth for customer live
+    // tracking; these columns are mirrored from the POST /drivers/:uid/location
+    // route. Nothing reads them yet (no customer-map / dispatcher switch).
+    latitude:  doublePrecision("latitude"),
+    longitude: doublePrecision("longitude"),
+    accuracy:  doublePrecision("accuracy"),   // metres; null when platform omits it
 
     // ── Timestamps ───────────────────────────────────────────────────────────
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

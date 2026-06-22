@@ -532,11 +532,42 @@ router.post("/drivers/:uid/location", async (req, res) => {
 
     await fsDb.collection("drivers").doc(uid).update(update);
     req.log.info({ uid, latitude, longitude, isOnline }, "driver location updated");
-    res.json({ ok: true });
   } catch (err) {
     req.log.error({ err, uid }, "location: Firestore update failed");
     res.status(500).json({ ok: false, error: "server_error" });
+    return;
   }
+
+  // ── Phase 4D — mirror the latest location into PostgreSQL (shadow) ─────────
+  // Firestore stays the source of truth for customer live tracking. Fully
+  // non-blocking: a PG failure must never affect the Firestore result or the
+  // response, and nothing reads these columns yet.
+  void (async () => {
+    try {
+      const mirrored = await db
+        .update(driversTable)
+        .set({
+          latitude,
+          longitude,
+          ...(typeof accuracy === "number" ? { accuracy } : {}),
+          isOnline,
+          lastSeenAt: new Date(),
+          updatedAt:  new Date(),
+        })
+        .where(eq(driversTable.uid, uid))
+        .returning({ uid: driversTable.uid });
+
+      if (mirrored.length === 0) {
+        req.log.warn({ uid }, "[PG_DRIVER_LOCATION_FALLBACK] no drivers row — location not mirrored to PG");
+      } else {
+        req.log.info({ uid, latitude, longitude, isOnline }, "[PG_DRIVER_LOCATION_SAVE]");
+      }
+    } catch (err) {
+      req.log.warn({ err, uid }, "[PG_DRIVER_LOCATION_FALLBACK] PG mirror failed");
+    }
+  })();
+
+  res.json({ ok: true });
 });
 
 // ─── GET /api/drivers/:uid/active-orders ──────────────────────────────────────
