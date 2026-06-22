@@ -255,17 +255,17 @@ const vpm = StyleSheet.create({
     paddingVertical: 10,
   },
   iconWrap: {
-    width:           60,
-    height:          52,
+    width:           64,
+    height:          56,
     borderRadius:    10,
     backgroundColor: "#F3F4F6",
     alignItems:      "center",
     justifyContent:  "center",
-    overflow:        "hidden",
+    padding:         6,
   },
   icon: {
-    width:  54,
-    height: 46,
+    width:  52,
+    height: 44,
   },
   textCol: { flex: 1 },
   name: {
