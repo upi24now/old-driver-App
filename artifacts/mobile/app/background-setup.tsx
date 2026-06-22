@@ -1,22 +1,15 @@
 /**
- * Permission Center — Card Wall (v6)
+ * Permission Center — App Permissions screen (Screen 1 of onboarding)
  *
- * Replaced the step-by-step wizard with a single screen showing all
- * 4 mandatory permissions simultaneously as cards.
+ * UI redesigned to match professional logistics app style (Rapido/Porter/Uber Driver).
+ * ALL permission logic, navigation, and AppState handling are unchanged.
  *
  * Permissions:
  *   1. Notifications      — required;     auto-fired on mount
  *   2. Location           — required;     auto-fired after notifications settle
- *   3. Background Loc     — recommended;  explicit "Allow All The Time" tap
+ *   3. Background Loc     — recommended;  explicit tap
  *
  * Continue button unlocks only when Notifications + Location are granted.
- * Background Location is strongly recommended but not a blocker.
- *
- * Android restrictions respected:
- *   - Only one OS dialog is shown at a time (sequential auto-fire).
- *   - Background location can only be requested after foreground is granted.
- *   - If canAskAgain=false, button switches to "Open Settings".
- *   - AppState listener refreshes all statuses when app returns to foreground.
  */
 
 import { Feather } from "@expo/vector-icons";
@@ -36,7 +29,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
-import { useColors } from "@/hooks/useColors";
 import {
   type AllPermissionsStatus,
   checkAllPermissions,
@@ -48,32 +40,49 @@ import {
 } from "@/utils/permissions";
 import { getDriverProfile } from "@/utils/profile-api";
 
-// ─── Default "all pending" state ──────────────────────────────────────────────
+// ─── Design tokens ────────────────────────────────────────────────────────────
+const D = {
+  bg:          "#F8FAFC",
+  primary:     "#FF6B00",
+  primarySoft: "#FFF3EC",
+  success:     "#16A34A",
+  successSoft: "#DCFCE7",
+  text:        "#111827",
+  textMuted:   "#6B7280",
+  white:       "#FFFFFF",
+  border:      "#E5E7EB",
+  divider:     "#F3F4F6",
+  errorSoft:   "#FEE2E2",
+  errorText:   "#DC2626",
+  blueSoft:    "#DBEAFE",
+  blueText:    "#2563EB",
+  blueIcon:    "#3B82F6",
+} as const;
 
+// ─── Default "all pending" state ──────────────────────────────────────────────
 const DEFAULT_PERMS: AllPermissionsStatus = {
   notifications:      { granted: false, canAskAgain: true },
   location:           { granted: false, canAskAgain: true },
   backgroundLocation: { granted: false, canAskAgain: true },
 };
 
-// ─── Individual permission card ───────────────────────────────────────────────
-
+// ─── Permission card ──────────────────────────────────────────────────────────
 type IconName = React.ComponentProps<typeof Feather>["name"];
 
 interface CardProps {
-  icon: IconName;
-  iconColor: string;
-  iconBg: string;
-  title: string;
-  description: string;
-  required: boolean;
-  granted: boolean;
-  canAskAgain: boolean;
+  icon:            IconName;
+  iconColor:       string;
+  iconBg:          string;
+  title:           string;
+  description:     string;
+  required:        boolean;
+  granted:         boolean;
+  canAskAgain:     boolean;
   actionDisabled?: boolean;
-  disabledNote?: string;
-  loading?: boolean;
-  onAllow: () => void;
-  onOpenSettings: () => void;
+  disabledNote?:   string;
+  loading?:        boolean;
+  onAllow:         () => void;
+  onOpenSettings:  () => void;
 }
 
 function PermCard({
@@ -81,91 +90,71 @@ function PermCard({
   granted, canAskAgain, actionDisabled, disabledNote, loading,
   onAllow, onOpenSettings,
 }: CardProps) {
-  const colors = useColors();
-
-  const chipBg    = required ? colors.errorSoft : colors.infoSoft;
-  const chipColor = required ? colors.errorText  : colors.infoText;
+  const badgeBg    = required ? D.errorSoft  : D.blueSoft;
+  const badgeColor = required ? D.errorText  : D.blueText;
+  const badgeLabel = required ? "Required"   : "Recommended";
 
   return (
-    <View
-      style={[
-        cs.card,
-        {
-          backgroundColor: colors.card,
-          borderColor: granted
-            ? (colors.success as string) + "50"
-            : colors.border,
-        },
-      ]}
-    >
-      {/* Card header — icon + title + badge */}
+    <View style={cs.card}>
+      {/* Top: icon + title + badge */}
       <View style={cs.cardTop}>
-        <View style={[cs.iconCircle, { backgroundColor: iconBg }]}>
+        <View style={[cs.iconWrap, { backgroundColor: iconBg }]}>
           <Feather name={icon} size={22} color={iconColor} />
         </View>
 
-        <View style={cs.cardMeta}>
+        <View style={{ flex: 1, gap: 3 }}>
           <View style={cs.titleRow}>
-            <Text style={[cs.cardTitle, { color: colors.foreground }]}>{title}</Text>
-            <View style={[cs.chip, { backgroundColor: chipBg }]}>
-              <Text style={[cs.chipText, { color: chipColor }]}>
-                {required ? "Required" : "Recommended"}
-              </Text>
+            <Text style={cs.cardTitle}>{title}</Text>
+            <View style={[cs.badge, { backgroundColor: badgeBg }]}>
+              <Text style={[cs.badgeText, { color: badgeColor }]}>{badgeLabel}</Text>
             </View>
           </View>
-          <Text style={[cs.cardDesc, { color: colors.mutedForeground }]}>
-            {description}
-          </Text>
+          <Text style={cs.cardDesc}>{description}</Text>
         </View>
       </View>
 
-      {/* Status + action row */}
-      <View style={[cs.statusRow, { borderTopColor: colors.border }]}>
-        {granted ? (
-          <View style={[cs.statusChip, { backgroundColor: colors.successSoft }]}>
-            <Feather name="check-circle" size={12} color={colors.success} />
-            <Text style={[cs.statusText, { color: colors.successText }]}>Granted</Text>
-          </View>
+      {/* Divider */}
+      <View style={cs.divider} />
+
+      {/* Status row */}
+      <View style={cs.statusRow}>
+        {/* Left: status indicator */}
+        <View style={cs.statusLeft}>
+          <Feather
+            name="check-circle"
+            size={16}
+            color={granted ? D.success : D.success}
+          />
+          <Text style={[cs.statusText, { color: granted ? D.success : D.textMuted }]}>
+            {granted ? "Granted" : "Not Granted"}
+          </Text>
+        </View>
+
+        {/* Right: action */}
+        {loading ? (
+          <ActivityIndicator size="small" color={D.primary} />
+        ) : granted ? (
+          <Feather name="chevron-right" size={16} color={D.border} />
+        ) : actionDisabled && disabledNote ? (
+          <Text style={cs.disabledNote}>{disabledNote}</Text>
+        ) : canAskAgain ? (
+          <TouchableOpacity
+            style={cs.allowBtn}
+            onPress={onAllow}
+            activeOpacity={0.8}
+          >
+            <Text style={cs.allowBtnText}>Allow</Text>
+            <Feather name="chevron-right" size={13} color={D.white} />
+          </TouchableOpacity>
         ) : (
-          <View style={[cs.statusChip, { backgroundColor: colors.warningSoft }]}>
-            <Feather name="clock" size={12} color={colors.warning} />
-            <Text style={[cs.statusText, { color: colors.warningText }]}>Pending</Text>
-          </View>
-        )}
-
-        {/* Spacer */}
-        <View style={{ flex: 1 }} />
-
-        {/* Action area (only shown when not granted) */}
-        {!granted && (
-          <>
-            {loading ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : actionDisabled && disabledNote ? (
-              <Text style={[cs.disabledNote, { color: colors.mutedForeground }]}>
-                {disabledNote}
-              </Text>
-            ) : canAskAgain ? (
-              <TouchableOpacity
-                style={[cs.allowBtn, { backgroundColor: colors.primary }]}
-                onPress={onAllow}
-                activeOpacity={0.8}
-              >
-                <Text style={cs.allowBtnText}>Allow</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={[cs.settingsBtn, { borderColor: colors.border }]}
-                onPress={onOpenSettings}
-                activeOpacity={0.8}
-              >
-                <Feather name="settings" size={12} color={colors.foreground} />
-                <Text style={[cs.settingsBtnText, { color: colors.foreground }]}>
-                  Open Settings
-                </Text>
-              </TouchableOpacity>
-            )}
-          </>
+          <TouchableOpacity
+            style={cs.settingsBtn}
+            onPress={onOpenSettings}
+            activeOpacity={0.8}
+          >
+            <Feather name="settings" size={12} color={D.text} />
+            <Text style={cs.settingsBtnText}>Settings</Text>
+          </TouchableOpacity>
         )}
       </View>
     </View>
@@ -173,18 +162,16 @@ function PermCard({
 }
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
-
 export default function PermissionCenterScreen() {
-  const colors  = useColors();
   const insets  = useSafeAreaInsets();
   const { markBackgroundSetupShown, driverUid } = useDriver();
   const params  = useLocalSearchParams<{ back?: string }>();
   const fromProfile = params.back === "1";
 
-  const [perms,          setPerms]          = useState<AllPermissionsStatus>(DEFAULT_PERMS);
-  const [initializing,   setInitializing]   = useState(true);
-  const [requestingBg,   setRequestingBg]   = useState(false);
-  const [finishing,      setFinishing]      = useState(false);
+  const [perms,        setPerms]        = useState<AllPermissionsStatus>(DEFAULT_PERMS);
+  const [initializing, setInitializing] = useState(true);
+  const [requestingBg, setRequestingBg] = useState(false);
+  const [finishing,    setFinishing]    = useState(false);
 
   // ── Refresh all permission states ─────────────────────────────────────────
   async function refresh() {
@@ -214,15 +201,12 @@ export default function PermissionCenterScreen() {
       const current = await checkAllPermissions().catch(() => DEFAULT_PERMS);
       setPerms(current);
 
-      // Step 1 — Notifications
       if (!current.notifications.granted && current.notifications.canAskAgain) {
         await requestNotificationPermissions().catch(() => false);
       }
 
-      // Brief pause so Android can settle between dialogs
       await new Promise<void>((r) => setTimeout(r, 350));
 
-      // Step 2 — Location (foreground)
       const afterNotif = await checkAllPermissions().catch(() => DEFAULT_PERMS);
       setPerms(afterNotif);
 
@@ -230,7 +214,6 @@ export default function PermissionCenterScreen() {
         await requestForegroundLocation().catch(() => ({ granted: false, canAskAgain: false }));
       }
 
-      // Final state
       const final = await checkAllPermissions().catch(() => DEFAULT_PERMS);
       setPerms(final);
       setInitializing(false);
@@ -249,17 +232,13 @@ export default function PermissionCenterScreen() {
       setFinishing(false);
     }
     if (fromProfile) {
-      // Opened from Profile settings — go back to where we came from.
       router.back();
     } else if (driverUid) {
-      // Already logged in — ask server for the authoritative next route now
-      // that permission version has been written to PG.
       const pgProfile = await getDriverProfile();
       const nextRoute = pgProfile?.nextRoute ?? "/(tabs)";
       console.log("[PERMISSION_GATE] background-setup complete — logged in → server nextRoute =", nextRoute);
       router.replace(nextRoute as never);
     } else {
-      // First install (no session yet) → mobile number entry.
       console.log("[PERMISSION_GATE] first install complete → /login");
       router.replace("/login");
     }
@@ -276,13 +255,14 @@ export default function PermissionCenterScreen() {
   // ── Web bypass ────────────────────────────────────────────────────────────
   if (Platform.OS === "web") {
     return (
-      <View style={[ws.root, { paddingTop: insets.top + 40 }]}>
-        <Text style={[ws.title, { color: colors.foreground }]}>App Permissions</Text>
-        <Text style={[ws.sub, { color: colors.mutedForeground }]}>
-          Permission dialogs are not available in the web preview.
-        </Text>
+      <View style={[ws.root, { paddingTop: insets.top + 40, backgroundColor: D.bg }]}>
+        <View style={ws.logoCircle}>
+          <Text style={ws.logoText}>BC</Text>
+        </View>
+        <Text style={ws.title}>App Permissions</Text>
+        <Text style={ws.sub}>Permission dialogs are not available in the web preview.</Text>
         <TouchableOpacity
-          style={[ws.btn, { backgroundColor: colors.primary }]}
+          style={[ws.btn, { backgroundColor: D.primary }]}
           onPress={() => void finish()}
           activeOpacity={0.85}
           disabled={finishing}
@@ -297,58 +277,60 @@ export default function PermissionCenterScreen() {
     );
   }
 
-  // ── Derived values for card props ─────────────────────────────────────────
-  const primaryColor = colors.primary as string;
-  const infoColor    = colors.info    as string;
-
   return (
-    <View style={[cs.root, { backgroundColor: colors.background }]}>
+    <View style={[cs.root, { backgroundColor: D.bg }]}>
 
-      {/* Back button (profile entry only) */}
+      {/* Back button (only when opened from Profile) */}
       {fromProfile && (
         <View style={[cs.topBar, { paddingTop: insets.top + 8 }]}>
           <TouchableOpacity
-            style={[cs.backBtn, { backgroundColor: colors.muted }]}
+            style={cs.backBtn}
             onPress={() => router.back()}
             activeOpacity={0.7}
           >
-            <Feather name="arrow-left" size={18} color={colors.foreground} />
+            <Feather name="arrow-left" size={18} color={D.text} />
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Scrollable content */}
+      {/* ── Scrollable content ── */}
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={[
           cs.scroll,
-          { paddingTop: fromProfile ? 12 : insets.top + 20 },
+          { paddingTop: fromProfile ? 16 : insets.top + 32 },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Brand header */}
-        <View style={cs.brandRow}>
-          <View style={[cs.logoCircle, { backgroundColor: colors.primary }]}>
-            <Feather name="truck" size={20} color="#fff" />
+
+        {/* ── Brand hero ── */}
+        <View style={cs.heroSection}>
+          {/* BC logo circle */}
+          <View style={cs.logoCircle}>
+            <Text style={cs.logoText}>BC</Text>
           </View>
-          <Text style={[cs.appName, { color: colors.foreground }]}>Driver App</Text>
+
+          {/* BikeCourier + PARTNER label */}
+          <Text style={cs.brandName}>
+            <Text style={{ color: D.text }}>Bike</Text>
+            <Text style={{ color: D.primary }}>Courier</Text>
+          </Text>
+          <Text style={cs.partnerLabel}>PARTNER</Text>
+
+          {/* Main headline */}
+          <Text style={cs.headline}>Start Delivering Today</Text>
+          <Text style={cs.subline}>Complete setup in less than 2 minutes</Text>
         </View>
 
-        {/* Title */}
-        <Text style={[cs.heading, { color: colors.foreground }]}>
-          App Permissions
-        </Text>
-        <Text style={[cs.subheading, { color: colors.mutedForeground }]}>
-          Grant these permissions for the best delivery experience
-        </Text>
-
-        {/* ── Card 1 — Notifications ──────────────────────────────────────── */}
+        {/* ══════════════════════════════════════════════════
+            CARD 1 — Notifications
+        ══════════════════════════════════════════════════ */}
         <PermCard
           icon="bell"
-          iconColor="#fff"
-          iconBg={primaryColor}
+          iconColor={D.primary}
+          iconBg={D.primarySoft}
           title="Notifications"
-          description="Get instant alerts for new delivery orders, even when the screen is locked."
+          description="Get instant order alerts and updates."
           required
           granted={perms.notifications.granted}
           canAskAgain={perms.notifications.canAskAgain}
@@ -363,13 +345,15 @@ export default function PermissionCenterScreen() {
           onOpenSettings={() => void openNotificationSettings()}
         />
 
-        {/* ── Card 2 — Location ───────────────────────────────────────────── */}
+        {/* ══════════════════════════════════════════════════
+            CARD 2 — Precise Location
+        ══════════════════════════════════════════════════ */}
         <PermCard
           icon="map-pin"
-          iconColor="#fff"
-          iconBg={primaryColor}
+          iconColor={D.primary}
+          iconBg={D.primarySoft}
           title="Precise Location"
-          description="Required for finding nearby deliveries and navigating routes accurately."
+          description="Required to find nearby deliveries."
           required
           granted={perms.location.granted}
           canAskAgain={perms.location.canAskAgain}
@@ -384,13 +368,15 @@ export default function PermissionCenterScreen() {
           onOpenSettings={() => void openPermissionSettings()}
         />
 
-        {/* ── Card 3 — Background Location ────────────────────────────────── */}
+        {/* ══════════════════════════════════════════════════
+            CARD 3 — Background Location
+        ══════════════════════════════════════════════════ */}
         <PermCard
           icon="navigation"
-          iconColor={infoColor}
-          iconBg={(colors.infoSoft as string)}
+          iconColor={D.blueIcon}
+          iconBg={D.blueSoft}
           title="Background Location"
-          description="Allows the app to receive delivery requests and track routes even when minimised."
+          description="Receive orders even when app is minimized."
           required={false}
           granted={perms.backgroundLocation.granted}
           canAskAgain={perms.backgroundLocation.canAskAgain}
@@ -401,58 +387,44 @@ export default function PermissionCenterScreen() {
           onOpenSettings={() => void openPermissionSettings()}
         />
 
-        {/* Hint text */}
-        <Text style={[cs.hint, { color: colors.mutedForeground }]}>
-          Background Location is recommended but not mandatory to start delivering.
-        </Text>
+        {/* ── Privacy note ── */}
+        <View style={cs.privacyRow}>
+          <Feather name="shield" size={16} color={D.primary} />
+          <Text style={cs.privacyText}>
+            We respect your privacy. Your data is safe and used only to provide better delivery experience.
+          </Text>
+        </View>
 
-        {/* Bottom spacing for sticky footer */}
-        <View style={{ height: 24 }} />
+        <View style={{ height: 16 }} />
       </ScrollView>
 
-      {/* Sticky footer */}
-      <View
-        style={[
-          cs.footer,
-          {
-            paddingBottom: insets.bottom + 24,
-            backgroundColor: colors.background,
-            borderTopColor: colors.border,
-          },
-        ]}
-      >
+      {/* ── Sticky footer ── */}
+      <View style={[cs.footer, { paddingBottom: insets.bottom + 20 }]}>
         <TouchableOpacity
-          style={[
-            cs.continueBtn,
-            {
-              backgroundColor: canContinue ? colors.primary : colors.muted,
-            },
-          ]}
+          style={[cs.continueBtn, !canContinue && cs.continueBtnDisabled]}
           onPress={() => void finish()}
           activeOpacity={0.85}
           disabled={!canContinue || finishing}
         >
           {finishing || (initializing && !canContinue) ? (
-            <ActivityIndicator size="small" color={canContinue ? "#fff" : colors.mutedForeground} />
+            <ActivityIndicator
+              size="small"
+              color={canContinue ? D.white : D.textMuted}
+            />
           ) : (
             <>
-              <Text
-                style={[
-                  cs.continueBtnText,
-                  { color: canContinue ? "#fff" : colors.mutedForeground },
-                ]}
-              >
+              <Text style={[cs.continueBtnText, !canContinue && cs.continueBtnTextDisabled]}>
                 Continue
               </Text>
               {canContinue && (
-                <Feather name="arrow-right" size={16} color="#fff" style={{ marginLeft: 6 }} />
+                <Feather name="arrow-right" size={18} color={D.white} style={{ marginLeft: 8 }} />
               )}
             </>
           )}
         </TouchableOpacity>
 
         {!canContinue && !initializing && (
-          <Text style={[cs.gateNote, { color: colors.mutedForeground }]}>
+          <Text style={cs.gateNote}>
             Allow Notifications and Location to continue
           </Text>
         )}
@@ -462,11 +434,9 @@ export default function PermissionCenterScreen() {
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-
 const cs = StyleSheet.create({
-  root: {
-    flex: 1,
-  },
+  root: { flex: 1 },
+
   topBar: {
     paddingHorizontal: 20,
     paddingBottom: 4,
@@ -475,122 +445,157 @@ const cs = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
+    backgroundColor: "#F3F4F6",
     alignItems: "center",
     justifyContent: "center",
   },
+
   scroll: {
     paddingHorizontal: 20,
     gap: 12,
-    paddingBottom: 20,
+    paddingBottom: 16,
   },
-  brandRow: {
-    flexDirection: "row",
+
+  // ── Hero ────────────────────────────────────────────────────────────────────
+  heroSection: {
     alignItems: "center",
-    gap: 10,
-    marginBottom: 20,
+    marginBottom: 28,
+    gap: 6,
   },
   logoCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 11,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: D.primary,
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: 10,
+    shadowColor: D.primary,
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
   },
-  appName: {
-    fontSize: 17,
+  logoText: {
+    fontSize: 28,
+    fontWeight: "900",
+    color: D.white,
+    letterSpacing: 0.5,
+  },
+  brandName: {
+    fontSize: 20,
     fontWeight: "700",
-    letterSpacing: -0.2,
+    letterSpacing: -0.3,
   },
-  heading: {
-    fontSize: 26,
+  partnerLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: D.primary,
+    letterSpacing: 2.5,
+    textTransform: "uppercase",
+  },
+  headline: {
+    fontSize: 30,
     fontWeight: "800",
-    letterSpacing: -0.5,
-    marginBottom: 6,
+    color: D.text,
+    letterSpacing: -0.6,
+    textAlign: "center",
+    marginTop: 10,
+    lineHeight: 36,
   },
-  subheading: {
+  subline: {
     fontSize: 14,
+    color: D.textMuted,
+    textAlign: "center",
     lineHeight: 20,
-    marginBottom: 8,
   },
 
   // ── Card ────────────────────────────────────────────────────────────────────
   card: {
-    borderRadius: 16,
-    borderWidth: 1,
+    backgroundColor: D.white,
+    borderRadius: 20,
     overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
   cardTop: {
     flexDirection: "row",
     alignItems: "flex-start",
-    padding: 16,
+    padding: 18,
     gap: 14,
   },
-  iconCircle: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
+  iconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-  },
-  cardMeta: {
-    flex: 1,
   },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginBottom: 4,
     flexWrap: "wrap",
   },
   cardTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "700",
+    color: D.text,
   },
-  chip: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 20,
   },
-  chipText: {
+  badgeText: {
     fontSize: 10,
     fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
   cardDesc: {
     fontSize: 13,
+    color: D.textMuted,
     lineHeight: 18,
+    marginTop: 2,
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: D.border,
+    marginHorizontal: 18,
   },
 
   // ── Status row ──────────────────────────────────────────────────────────────
   statusRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    gap: 8,
+    justifyContent: "space-between",
+    paddingHorizontal: 18,
+    paddingVertical: 12,
   },
-  statusChip: {
+  statusLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 20,
+    gap: 6,
   },
   statusText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "600",
   },
   allowBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: D.primary,
     paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingVertical: 7,
+    borderRadius: 10,
   },
   allowBtnText: {
-    color: "#fff",
+    color: D.white,
     fontSize: 13,
     fontWeight: "700",
   },
@@ -599,79 +604,126 @@ const cs = StyleSheet.create({
     alignItems: "center",
     gap: 5,
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingVertical: 7,
+    borderRadius: 10,
     borderWidth: 1,
+    borderColor: D.border,
   },
   settingsBtnText: {
     fontSize: 12,
     fontWeight: "600",
+    color: D.text,
   },
   disabledNote: {
     fontSize: 12,
     fontStyle: "italic",
+    color: D.textMuted,
   },
 
-  // ── Hint ────────────────────────────────────────────────────────────────────
-  hint: {
-    fontSize: 12,
-    lineHeight: 17,
-    textAlign: "center",
-    paddingHorizontal: 8,
+  // ── Privacy note ─────────────────────────────────────────────────────────────
+  privacyRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: D.primarySoft,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     marginTop: 4,
   },
+  privacyText: {
+    flex: 1,
+    fontSize: 12,
+    color: D.textMuted,
+    lineHeight: 17,
+  },
 
-  // ── Footer ──────────────────────────────────────────────────────────────────
+  // ── Footer ───────────────────────────────────────────────────────────────────
   footer: {
     paddingHorizontal: 20,
     paddingTop: 14,
-    borderTopWidth: StyleSheet.hairlineWidth,
     gap: 8,
+    backgroundColor: D.bg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: D.border,
   },
   continueBtn: {
-    height: 52,
-    borderRadius: 14,
+    height: 56,
+    borderRadius: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: D.primary,
+    shadowColor: D.primary,
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 6,
+  },
+  continueBtnDisabled: {
+    backgroundColor: "#E5E7EB",
+    shadowOpacity: 0,
+    elevation: 0,
   },
   continueBtnText: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "700",
+    color: D.white,
+    letterSpacing: 0.2,
+  },
+  continueBtnTextDisabled: {
+    color: D.textMuted,
   },
   gateNote: {
     fontSize: 12,
     textAlign: "center",
+    color: D.textMuted,
     paddingBottom: 4,
   },
 });
 
 // ─── Web-only styles ──────────────────────────────────────────────────────────
-
 const ws = StyleSheet.create({
   root: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 32,
-    gap: 12,
+    gap: 14,
+  },
+  logoCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: D.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  logoText: {
+    fontSize: 28,
+    fontWeight: "900",
+    color: "#fff",
+    letterSpacing: 0.5,
   },
   title: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: "800",
+    color: D.text,
+    letterSpacing: -0.4,
   },
   sub: {
     fontSize: 14,
     textAlign: "center",
     lineHeight: 20,
+    color: D.textMuted,
   },
   btn: {
-    height: 50,
-    borderRadius: 14,
-    paddingHorizontal: 32,
+    height: 56,
+    borderRadius: 16,
+    paddingHorizontal: 40,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 8,
+    marginTop: 6,
   },
   btnText: {
     color: "#fff",
