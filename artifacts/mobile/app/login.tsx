@@ -62,34 +62,34 @@ function HeroIllustration() {
       {/* Background scene — absolute fill, stays behind scooter */}
       <Svg
         width="100%"
-        height="230"
-        viewBox="0 0 320 230"
+        height="160"
+        viewBox="0 0 320 160"
         style={StyleSheet.absoluteFillObject}
       >
-        {/* Left buildings — confined to top 60% so they stay behind scooter */}
-        <Rect x="0"  y="50"  width="32" height="148" rx="3" fill="#FFE8D6" opacity="0.85" />
-        <Rect x="10" y="32"  width="16" height="166" rx="2" fill="#FFD8C0" opacity="0.75" />
-        <Rect x="36" y="62"  width="26" height="136" rx="3" fill="#FFE8D6" opacity="0.85" />
-        <Rect x="46" y="44"  width="12" height="154" rx="2" fill="#FFD0B4" opacity="0.65" />
-        <Rect x="68" y="72"  width="20" height="126" rx="3" fill="#FFE8D6" opacity="0.55" />
+        {/* Left buildings — low opacity, stay in background */}
+        <Rect x="0"  y="10" width="30" height="150" rx="3" fill="#FFE8D6" opacity="0.80" />
+        <Rect x="10" y="0"  width="14" height="160" rx="2" fill="#FFD8C0" opacity="0.70" />
+        <Rect x="36" y="20" width="24" height="140" rx="3" fill="#FFE8D6" opacity="0.80" />
+        <Rect x="46" y="8"  width="11" height="152" rx="2" fill="#FFD0B4" opacity="0.60" />
+        <Rect x="68" y="28" width="18" height="132" rx="3" fill="#FFE8D6" opacity="0.50" />
         {/* Right buildings */}
-        <Rect x="232" y="68" width="20" height="130" rx="3" fill="#FFE8D6" opacity="0.55" />
-        <Rect x="252" y="48" width="28" height="150" rx="3" fill="#FFE8D6" opacity="0.85" />
-        <Rect x="264" y="32" width="14" height="166" rx="2" fill="#FFD8C0" opacity="0.75" />
-        <Rect x="284" y="58" width="36" height="140" rx="3" fill="#FFE8D6" opacity="0.85" />
+        <Rect x="234" y="24" width="18" height="136" rx="3" fill="#FFE8D6" opacity="0.50" />
+        <Rect x="252" y="8"  width="26" height="152" rx="3" fill="#FFE8D6" opacity="0.80" />
+        <Rect x="264" y="0"  width="13" height="160" rx="2" fill="#FFD8C0" opacity="0.70" />
+        <Rect x="285" y="16" width="35" height="144" rx="3" fill="#FFE8D6" opacity="0.80" />
         {/* Road platform */}
-        <Rect x="0" y="196" width="320" height="34" rx="0" fill="#FFF3EC" />
-        <Line x1="0" y1="196" x2="320" y2="196" stroke="#FFDCC8" strokeWidth="1.5" />
+        <Rect x="0" y="142" width="320" height="18" rx="0" fill="#FFF3EC" />
+        <Line x1="0" y1="142" x2="320" y2="142" stroke="#FFDCC8" strokeWidth="1.5" />
         {/* Road centre dashes */}
-        <Line x1="50"  y1="212" x2="88"  y2="212" stroke="#FF6B00" strokeWidth="1.5" strokeDasharray="10,8" opacity="0.22" />
-        <Line x1="110" y1="212" x2="148" y2="212" stroke="#FF6B00" strokeWidth="1.5" strokeDasharray="10,8" opacity="0.22" />
-        <Line x1="170" y1="212" x2="208" y2="212" stroke="#FF6B00" strokeWidth="1.5" strokeDasharray="10,8" opacity="0.22" />
-        <Line x1="230" y1="212" x2="268" y2="212" stroke="#FF6B00" strokeWidth="1.5" strokeDasharray="10,8" opacity="0.22" />
-        {/* Ground shadow ellipse — soft oval under where scooter will sit */}
-        <Ellipse cx="160" cy="196" rx="88" ry="7" fill="#C05000" opacity="0.13" />
+        <Line x1="50"  y1="151" x2="84"  y2="151" stroke="#FF6B00" strokeWidth="1.5" strokeDasharray="9,7" opacity="0.22" />
+        <Line x1="106" y1="151" x2="140" y2="151" stroke="#FF6B00" strokeWidth="1.5" strokeDasharray="9,7" opacity="0.22" />
+        <Line x1="162" y1="151" x2="196" y2="151" stroke="#FF6B00" strokeWidth="1.5" strokeDasharray="9,7" opacity="0.22" />
+        <Line x1="218" y1="151" x2="252" y2="151" stroke="#FF6B00" strokeWidth="1.5" strokeDasharray="9,7" opacity="0.22" />
+        {/* Soft ground shadow ellipse */}
+        <Ellipse cx="160" cy="142" rx="82" ry="6" fill="#C05000" opacity="0.12" />
       </Svg>
 
-      {/* Scooter — sits above ground at y=196, wheels fully visible */}
+      {/* Scooter — scaled to fit entirely within 160px container */}
       <Image
         source={require("@/assets/images/vehicles/scooter.png")}
         style={ss.heroScooter}
@@ -616,18 +616,18 @@ const ss = StyleSheet.create({
   // ── Hero illustration ─────────────────────────────────────────────────────
   heroIllustration: {
     alignSelf:      "stretch",
-    height:         230,
-    marginTop:      12,
-    marginBottom:   14,
+    height:         160,
+    marginTop:      16,
+    marginBottom:   18,
     alignItems:     "center",
     justifyContent: "flex-end",
     overflow:       "hidden",
   },
   heroScooter: {
-    width:        "76%",
-    height:       170,
+    width:        "68%",
+    height:       124,
     zIndex:       1,
-    marginBottom: 34,
+    marginBottom: 18,
   },
 
   // ── Phone Input Card ──────────────────────────────────────────────────────
