@@ -8,17 +8,13 @@
  * No push to /otp happens; /otp.tsx is a dead redirect stub.
  */
 
-import { SafeInlineIcon, SafeIconName, PremiumButton3D } from "@/components/SafeIcon";
-import { VehicleArt, VehicleArtType } from "@/components/VehicleArt";
-import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
   Easing,
-  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -34,80 +30,28 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDriver } from "@/contexts/DriverContext";
 import { sendOtp } from "@/utils/auth-api";
 
-// ─── Brand tokens ─────────────────────────────────────────────────────────────
-const B = {
-  bg:           "#FFF8F5",
-  navy:         "#111827",
-  orange:       "#F97316",
-  amber:        "#F59E0B",
-  indigo:       "#6366F1",
-  textSecondary:"#6B7280",
-  textMuted:    "#9CA3AF",
-  placeholder:  "#C4B5B0",
-  white:        "#FFFFFF",
-  cardBorder:   "#F3E8E2",
-  inputBorder:  "#E5D5CF",
-  error:        "#DC2626",
-  green:        "#10B981",
-  primarySoft:  "#FFFBEB",
+// ─── Design tokens ────────────────────────────────────────────────────────────
+const D = {
+  bg:            "#F8FAFC",
+  primary:       "#FF6B00",
+  primarySoft:   "#FFF3EC",
+  text:          "#111827",
+  textSecondary: "#6B7280",
+  textMuted:     "#9CA3AF",
+  border:        "#E5E7EB",
+  inputBg:       "#F9FAFB",
+  white:         "#FFFFFF",
+  success:       "#16A34A",
+  error:         "#DC2626",
+  placeholder:   "#9CA3AF",
+  // Aliases used by OTP phase
+  navy:          "#111827",
+  amber:         "#FF6B00",
+  cardBorder:    "#E5E7EB",
 } as const;
 
-const OTP_LENGTH    = 6;
+const OTP_LENGTH     = 6;
 const RESEND_SECONDS = 30;
-
-// ─── Service cards ────────────────────────────────────────────────────────────
-const BIKE_IMG       = require("@/assets/images/bike-delivery.png");
-const AUTO_CARGO_IMG = require("@/assets/images/auto-cargo-delivery.png");
-const TRUCK_IMG      = require("@/assets/images/truck-delivery.png");
-
-const SERVICES: Array<{
-  artType:    VehicleArtType;
-  image?:     ReturnType<typeof require>;
-  imgScale?:  number;
-  title:      string;
-  sub:        string;
-  accent:     string;
-}> = [
-  { artType: "bike",      image: BIKE_IMG,       title: "2-Wheeler", sub: "Express", accent: B.orange },
-  { artType: "autoCargo", image: AUTO_CARGO_IMG,  imgScale: 1.45, title: "3W Loader", sub: "Economy", accent: B.amber },
-  { artType: "truck",     image: TRUCK_IMG,        title: "4W Loader", sub: "Cargo",   accent: B.indigo },
-];
-
-const CHIPS: Array<{ icon: SafeIconName; label: string; color: string; bg: string }> = [
-  { icon: "lock",  label: "Secure OTP",    color: "#059669", bg: "#ECFDF5" },
-  { icon: "star",  label: "Instant Signup", color: "#D97706", bg: "#FFFBEB" },
-  { icon: "bell",  label: "No Spam",        color: "#DC2626", bg: "#FFF1F2" },
-];
-
-// ─── ServiceCard ──────────────────────────────────────────────────────────────
-function ServiceCard({ artType, image, imgScale, title, sub, accent }: typeof SERVICES[number]) {
-  return (
-    <View style={ss.serviceCard}>
-      <View style={[ss.accentDot, { backgroundColor: accent }]} />
-      {image
-        ? <Image
-            source={image}
-            style={[ss.serviceImg, imgScale ? { transform: [{ scale: imgScale }] } : undefined]}
-            resizeMode="contain"
-          />
-        : <VehicleArt type={artType} size={62} />
-      }
-      <Text style={ss.serviceTitle} numberOfLines={1}>{title}</Text>
-      <Text style={ss.serviceSub}   numberOfLines={1}>{sub}</Text>
-      <View style={[ss.accentLine, { backgroundColor: accent }]} />
-    </View>
-  );
-}
-
-// ─── TrustChip ────────────────────────────────────────────────────────────────
-function TrustChip({ icon, label, color, bg }: typeof CHIPS[number]) {
-  return (
-    <View style={[ss.chip, { backgroundColor: bg, borderColor: `${color}40` }]}>
-      <SafeInlineIcon name={icon} size={11} color={color} />
-      <Text style={[ss.chipText, { color }]}>{label}</Text>
-    </View>
-  );
-}
 
 // ─── OTP Cell Pop animation ────────────────────────────────────────────────────
 function CellPop({ children, trigger }: { children: React.ReactNode; trigger: boolean }) {
@@ -182,9 +126,8 @@ export default function LoginScreen() {
   const [timer,     setTimer]    = useState(RESEND_SECONDS);
   const [canResend, setCanResend] = useState(false);
 
-  const digits    = phone.replace(/\D/g, "");
-  const isValid   = digits.length === 10;
-  const charCount = digits.length;
+  const digits  = phone.replace(/\D/g, "");
+  const isValid = digits.length === 10;
 
   const otpDigits = otp.split("").concat(Array(OTP_LENGTH - otp.length).fill(""));
 
@@ -207,8 +150,8 @@ export default function LoginScreen() {
   // ── Phase transition animation ────────────────────────────────────────────
   function transitionTo(newPhase: "phone" | "otp") {
     Animated.timing(slideAnim, {
-      toValue:        newPhase === "otp" ? 1 : 0,
-      duration:       280,
+      toValue:         newPhase === "otp" ? 1 : 0,
+      duration:        280,
       useNativeDriver: true,
       easing:          Easing.out(Easing.cubic),
     }).start(() => setPhase(newPhase));
@@ -277,7 +220,7 @@ export default function LoginScreen() {
   if (authLoading || isOtpVerified) {
     return (
       <View style={[ss.root, { alignItems: "center", justifyContent: "center" }]}>
-        <ActivityIndicator size="large" color={B.amber} />
+        <ActivityIndicator size="large" color={D.primary} />
       </View>
     );
   }
@@ -300,44 +243,35 @@ export default function LoginScreen() {
         showsVerticalScrollIndicator={false}
       >
 
-        {/* ── 1. Brand Hero (always visible) ── */}
-        <View style={ss.hero}>
-          <LinearGradient
-            colors={[B.amber, B.orange]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={ss.logoCircle}
-          >
-            <Text style={ss.logoText}>BC</Text>
-          </LinearGradient>
-          <View style={ss.titleRow}>
-            <Text style={ss.titleBike}>Bike</Text>
-            <Text style={ss.titleCourier}>Courier</Text>
-          </View>
-          <Text style={ss.subtitle}>FAST · RELIABLE · SECURE</Text>
-        </View>
-
         {/* ── PHASE: PHONE ── */}
         {phase === "phone" && (
           <>
-            {/* Service Cards */}
-            <View style={ss.serviceRow}>
-              {SERVICES.map((s) => <ServiceCard key={s.title} {...s} />)}
+            {/* ── Brand hero ── */}
+            <View style={ss.hero}>
+              <View style={ss.logoCircle}>
+                <Text style={ss.logoText}>BC</Text>
+              </View>
+              <Text style={ss.brandName}>
+                <Text style={{ color: D.text }}>Bike</Text>
+                <Text style={{ color: D.primary }}>Courier</Text>
+              </Text>
+              <Text style={ss.partnerLabel}>PARTNER</Text>
+              <Text style={ss.headline}>Welcome Partner</Text>
+              <Text style={ss.subline}>Start earning with BikeCourier</Text>
             </View>
 
-            {/* Phone Input Card */}
+            {/* ── Phone input card ── */}
             <View style={ss.loginCard}>
-              <View style={ss.cardHeaderRow}>
-                <View style={ss.headerDot} />
-                <Text style={ss.cardHeaderText}>MOBILE NUMBER</Text>
-              </View>
+              <Text style={ss.cardLabel}>Mobile Number</Text>
 
               <Pressable
                 onPress={() => phoneRef.current?.focus()}
                 style={[ss.inputRow, focused && ss.inputRowFocused]}
               >
-                <Text style={ss.countryFlag}>IN</Text>
-                <Text style={ss.countryCode}>+91</Text>
+                <View style={ss.countryPill}>
+                  <Text style={ss.flagEmoji}>🇮🇳</Text>
+                  <Text style={ss.countryCode}>+91</Text>
+                </View>
                 <View style={ss.inputDivider} />
                 <TextInput
                   ref={phoneRef}
@@ -348,65 +282,59 @@ export default function LoginScreen() {
                     setSendErr("");
                   }}
                   keyboardType="phone-pad"
-                  placeholder="Mobile Number"
-                  placeholderTextColor={B.placeholder}
+                  placeholder="Enter 10-digit mobile number"
+                  placeholderTextColor={D.placeholder}
                   onFocus={() => setFocused(true)}
                   onBlur={() => setFocused(false)}
                   returnKeyType="done"
                   onSubmitEditing={() => void handleSendOtp()}
                   underlineColorAndroid="transparent"
-                  selectionColor={B.amber}
+                  selectionColor={D.primary}
                   {...(Platform.OS === "web" ? ({ outlineWidth: 0 } as object) : {})}
                 />
               </Pressable>
 
-              {/* Progress bar */}
-              <View style={ss.progressTrack}>
-                <View
-                  style={[
-                    ss.progressFill,
-                    {
-                      width:           `${(charCount / 10) * 100}%` as `${number}%`,
-                      backgroundColor: charCount === 10 ? B.green : B.amber,
-                    },
-                  ]}
-                />
-              </View>
-
-              <View style={ss.counterRow}>
-                <Text style={ss.helperText}>
-                  {charCount === 10
-                    ? "Ready to continue!"
-                    : focused || charCount > 0
-                      ? "Enter your 10-digit mobile number"
-                      : "Tap to enter your 10-digit number"}
-                </Text>
-                <Text style={[ss.counter, charCount === 10 && { color: B.green }]}>
-                  {charCount}/10
-                </Text>
-              </View>
-
-              {!!sendErr && <Text style={ss.errorText}>{sendErr}</Text>}
+              {!!sendErr && (
+                <View style={ss.errorRow}>
+                  <Feather name="alert-circle" size={13} color={D.error} />
+                  <Text style={ss.errorText}>{sendErr}</Text>
+                </View>
+              )}
             </View>
 
-            {/* Send OTP Button */}
-            <PremiumButton3D
-              title="CONTINUE WITH OTP"
-              loading={sending}
-              disabled={!isValid || sending}
+            {/* ── Trust note ── */}
+            <View style={ss.trustRow}>
+              <Feather name="shield" size={14} color={D.primary} />
+              <Text style={ss.trustText}>
+                Your number is used only for secure login and delivery updates.
+              </Text>
+            </View>
+
+            {/* ── Continue button ── */}
+            <TouchableOpacity
+              style={[ss.continueBtn, !isValid && ss.continueBtnDisabled]}
               onPress={() => void handleSendOtp()}
-              bg={B.amber}
-              bgDark="#B45309"
-              rightIcon={undefined}
-              style={ss.ctaWrap}
-            />
+              activeOpacity={0.85}
+              disabled={!isValid || sending}
+            >
+              {sending ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <ActivityIndicator size="small" color={D.white} />
+                  <Text style={ss.continueBtnText}>Sending OTP...</Text>
+                </View>
+              ) : (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Text style={[ss.continueBtnText, !isValid && ss.continueBtnTextDisabled]}>
+                    Continue
+                  </Text>
+                  {isValid && (
+                    <Feather name="arrow-right" size={18} color={D.white} />
+                  )}
+                </View>
+              )}
+            </TouchableOpacity>
 
-            {/* Trust Chips */}
-            <View style={ss.chipsRow}>
-              {CHIPS.map((c) => <TrustChip key={c.label} {...c} />)}
-            </View>
-
-            {/* Terms */}
+            {/* ── Terms ── */}
             <View style={ss.termsBlock}>
               <View style={ss.termsRow}>
                 <Text style={ss.termsText}>By continuing, you agree to our </Text>
@@ -436,14 +364,14 @@ export default function LoginScreen() {
               }}
               activeOpacity={0.7}
             >
-              <Feather name="arrow-left" size={18} color={B.navy} />
+              <Feather name="arrow-left" size={18} color={D.navy} />
               <Text style={ss.backBtnText}>Change number</Text>
             </TouchableOpacity>
 
             {/* OTP Header */}
             <View style={ss.otpHeader}>
               <View style={ss.shieldWrap}>
-                <Feather name="shield" size={22} color={B.amber} />
+                <Feather name="shield" size={22} color={D.amber} />
               </View>
               <Text style={ss.otpHeadline}>Verify your number</Text>
               <View style={ss.codeSentRow}>
@@ -463,18 +391,18 @@ export default function LoginScreen() {
                       style={[
                         ss.cellShell,
                         {
-                          borderColor:     isActive ? B.amber     : isFilled ? B.navy + "60" : B.cardBorder,
-                          borderWidth:     isActive ? 2           : 1,
-                          backgroundColor: isActive ? B.primarySoft : B.white,
-                          shadowColor:     isActive ? B.amber     : "#000",
-                          shadowOpacity:   isActive ? 0.16        : 0.04,
-                          shadowRadius:    isActive ? 10          : 4,
+                          borderColor:     isActive ? D.amber       : isFilled ? D.navy + "60" : D.cardBorder,
+                          borderWidth:     isActive ? 2             : 1,
+                          backgroundColor: isActive ? D.primarySoft : D.white,
+                          shadowColor:     isActive ? D.amber       : "#000",
+                          shadowOpacity:   isActive ? 0.16          : 0.04,
+                          shadowRadius:    isActive ? 10            : 4,
                           shadowOffset:    { width: 0, height: isActive ? 4 : 2 },
-                          elevation:       isActive ? 4           : 1,
+                          elevation:       isActive ? 4             : 1,
                         },
                       ]}
                     >
-                      <Text style={[ss.cellText, { color: isActive ? B.amber : B.navy }]}>
+                      <Text style={[ss.cellText, { color: isActive ? D.amber : D.navy }]}>
                         {isFilled ? d : ""}
                       </Text>
                     </View>
@@ -483,7 +411,7 @@ export default function LoginScreen() {
               })}
             </Pressable>
 
-            {/* Hidden input */}
+            {/* Hidden OTP input */}
             <TextInput
               ref={otpRef}
               value={otp}
@@ -506,10 +434,10 @@ export default function LoginScreen() {
               autoCorrect={false}
             />
 
-            {/* Error */}
+            {/* OTP error */}
             {!!otpErr && (
               <View style={ss.errorRow}>
-                <Feather name="alert-circle" size={13} color={B.error} />
+                <Feather name="alert-circle" size={13} color={D.error} />
                 <Text style={[ss.errorText, { marginTop: 0 }]}>{otpErr}</Text>
               </View>
             )}
@@ -526,29 +454,21 @@ export default function LoginScreen() {
                 disabled={otp.length < OTP_LENGTH || verifying}
                 style={[
                   ss.verifyBtn,
-                  {
-                    backgroundColor:
-                      otp.length === OTP_LENGTH ? B.amber : B.cardBorder,
-                  },
+                  { backgroundColor: otp.length === OTP_LENGTH ? D.amber : D.cardBorder },
                 ]}
               >
                 {verifying ? (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                     <VerifyingDots />
-                    <Text style={[ss.verifyBtnText, { color: B.white }]}>Verifying…</Text>
+                    <Text style={[ss.verifyBtnText, { color: D.white }]}>Verifying…</Text>
                   </View>
                 ) : (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <Text
-                      style={[
-                        ss.verifyBtnText,
-                        { color: otp.length === OTP_LENGTH ? B.white : B.textMuted },
-                      ]}
-                    >
+                    <Text style={[ss.verifyBtnText, { color: otp.length === OTP_LENGTH ? D.white : D.textMuted }]}>
                       {otp.length === OTP_LENGTH ? "Verify" : `Enter code (${otp.length}/${OTP_LENGTH})`}
                     </Text>
                     {otp.length === OTP_LENGTH && (
-                      <Feather name="arrow-right" size={18} color={B.white} />
+                      <Feather name="arrow-right" size={18} color={D.white} />
                     )}
                   </View>
                 )}
@@ -561,12 +481,12 @@ export default function LoginScreen() {
                 <TouchableOpacity onPress={() => void handleResend()} activeOpacity={0.6}>
                   <Text style={ss.resendText}>
                     Didn't receive it?{" "}
-                    <Text style={[ss.resendText, { color: B.amber, fontWeight: "700" }]}>Resend code</Text>
+                    <Text style={[ss.resendText, { color: D.amber, fontWeight: "700" }]}>Resend code</Text>
                   </Text>
                 </TouchableOpacity>
               ) : (
                 <Text style={ss.resendText}>
-                  Resend in <Text style={{ color: B.navy, fontWeight: "700" }}>{timer}s</Text>
+                  Resend in <Text style={{ color: D.navy, fontWeight: "700" }}>{timer}s</Text>
                 </Text>
               )}
             </View>
@@ -582,326 +502,250 @@ export default function LoginScreen() {
 const ss = StyleSheet.create({
   root: {
     flex:            1,
-    backgroundColor: B.bg,
+    backgroundColor: D.bg,
   },
   scroll: {
-    flexGrow:  1,
-    alignItems:"center",
+    flexGrow:          1,
+    alignItems:        "center",
+    paddingHorizontal: 20,
   },
 
   // ── Hero ──────────────────────────────────────────────────────────────────
   hero: {
-    alignItems:    "center",
-    paddingBottom: 24,
-    width:         "100%",
+    alignItems:   "center",
+    marginBottom: 24,
+    width:        "100%",
   },
   logoCircle: {
-    width:          64,
-    height:         64,
-    borderRadius:   32,
-    alignItems:     "center",
-    justifyContent: "center",
-    shadowColor:    B.amber,
-    shadowOpacity:  0.40,
-    shadowRadius:   16,
-    shadowOffset:   { width: 0, height: 5 },
-    elevation:      8,
+    width:           64,
+    height:          64,
+    borderRadius:    32,
+    backgroundColor: D.primary,
+    alignItems:      "center",
+    justifyContent:  "center",
+    marginBottom:    12,
+    shadowColor:     D.primary,
+    shadowOpacity:   0.30,
+    shadowRadius:    14,
+    shadowOffset:    { width: 0, height: 5 },
+    elevation:       6,
   },
   logoText: {
-    fontSize:      24,
-    fontWeight:    "800",
-    color:         B.white,
+    fontSize:      22,
+    fontWeight:    "900",
+    color:         D.white,
     letterSpacing: -0.5,
   },
-  titleRow: {
-    flexDirection: "row",
-    alignItems:    "baseline",
-    marginTop:     12,
-    gap:           3,
-  },
-  titleBike: {
-    fontSize:      32,
+  brandName: {
+    fontSize:      20,
     fontWeight:    "800",
-    color:         B.navy,
-    letterSpacing: -1,
+    letterSpacing: -0.5,
+    marginBottom:  2,
   },
-  titleCourier: {
-    fontSize:      32,
-    fontWeight:    "800",
-    color:         B.amber,
-    letterSpacing: -1,
-  },
-  subtitle: {
-    fontSize:      11,
-    fontWeight:    "600",
-    color:         B.textMuted,
-    letterSpacing: 3,
-    marginTop:     7,
+  partnerLabel: {
+    fontSize:      10,
+    fontWeight:    "700",
+    color:         D.primary,
+    letterSpacing: 2.5,
     textTransform: "uppercase",
-  },
-
-  // ── Service Cards ─────────────────────────────────────────────────────────
-  serviceRow: {
-    flexDirection:     "row",
-    paddingHorizontal: 20,
-    gap:               10,
-    width:             "100%",
-    marginBottom:      20,
-  },
-  serviceCard: {
-    flex:              1,
-    backgroundColor:   B.white,
-    borderRadius:      22,
-    paddingVertical:   16,
-    paddingHorizontal: 8,
-    alignItems:        "center",
-    shadowColor:       "#000",
-    shadowOpacity:     0.07,
-    shadowRadius:      10,
-    shadowOffset:      { width: 0, height: 4 },
-    elevation:         3,
-    overflow:          "visible",
-  },
-  accentDot: {
-    position:     "absolute",
-    top:          10,
-    right:        10,
-    width:        7,
-    height:       7,
-    borderRadius: 4,
-  },
-  serviceImg: {
-    width:        72,
-    height:       62,
-    marginBottom: 2,
-  },
-  serviceTitle: {
-    fontSize:   11,
-    fontWeight: "700",
-    color:      B.navy,
-    textAlign:  "center",
-    marginTop:  2,
-  },
-  serviceSub: {
-    fontSize:  10,
-    color:     B.textMuted,
-    marginTop: 2,
-    textAlign: "center",
-  },
-  accentLine: {
-    width:        22,
-    height:       3,
-    borderRadius: 2,
-    marginTop:    10,
-  },
-
-  // ── Login Card ────────────────────────────────────────────────────────────
-  loginCard: {
-    alignSelf:         "stretch",
-    marginHorizontal:  20,
-    paddingHorizontal: 20,
-    paddingVertical:   20,
-    backgroundColor:   B.white,
-    borderRadius:      24,
-    borderWidth:       1,
-    borderColor:       B.cardBorder,
-    shadowColor:       B.amber,
-    shadowOpacity:     0.08,
-    shadowRadius:      20,
-    shadowOffset:      { width: 0, height: 6 },
-    elevation:         5,
-  },
-  cardHeaderRow: {
-    flexDirection: "row",
-    alignItems:    "center",
-    gap:           8,
     marginBottom:  16,
   },
-  headerDot: {
-    width:           8,
-    height:          8,
-    borderRadius:    4,
-    backgroundColor: B.amber,
+  headline: {
+    fontSize:      28,
+    fontWeight:    "800",
+    color:         D.text,
+    letterSpacing: -0.5,
+    textAlign:     "center",
+    marginBottom:  4,
   },
-  cardHeaderText: {
-    fontSize:      11,
-    fontWeight:    "700",
-    color:         B.textMuted,
-    letterSpacing: 1.8,
+  subline: {
+    fontSize:  14,
+    color:     D.textSecondary,
+    textAlign: "center",
+  },
+
+  // ── Phone Input Card ──────────────────────────────────────────────────────
+  loginCard: {
+    alignSelf:       "stretch",
+    backgroundColor: D.white,
+    borderRadius:    20,
+    padding:         20,
+    shadowColor:     "#000",
+    shadowOpacity:   0.06,
+    shadowRadius:    16,
+    shadowOffset:    { width: 0, height: 4 },
+    elevation:       4,
+    marginBottom:    14,
+  },
+  cardLabel: {
+    fontSize:     13,
+    fontWeight:   "600",
+    color:        D.textSecondary,
+    marginBottom: 12,
   },
   inputRow: {
     flexDirection:     "row",
     alignItems:        "center",
     borderWidth:       1.5,
-    borderColor:       B.inputBorder,
-    borderRadius:      14,
-    height:            56,
-    paddingHorizontal: 14,
-    backgroundColor:   B.bg,
+    borderColor:       D.border,
+    borderRadius:      12,
+    height:            52,
+    paddingHorizontal: 12,
+    backgroundColor:   D.inputBg,
   },
   inputRowFocused: {
-    borderColor:     B.amber,
-    backgroundColor: B.primarySoft,
+    borderColor:     D.primary,
+    backgroundColor: D.primarySoft,
   },
-  countryFlag: {
-    fontSize:      12,
-    fontWeight:    "700",
-    color:         B.textSecondary,
-    marginRight:   4,
-    letterSpacing: 0.5,
+  countryPill: {
+    flexDirection: "row",
+    alignItems:    "center",
+    gap:           4,
+  },
+  flagEmoji: {
+    fontSize:   18,
+    lineHeight: 24,
   },
   countryCode: {
-    fontSize:      16,
-    fontWeight:    "700",
-    color:         B.navy,
-    marginRight:   10,
-    letterSpacing: 0.2,
+    fontSize:   15,
+    fontWeight: "700",
+    color:      D.text,
   },
   inputDivider: {
-    width:           1.5,
-    height:          22,
-    backgroundColor: B.inputBorder,
-    marginRight:     12,
+    width:             1.5,
+    height:            22,
+    backgroundColor:   D.border,
+    marginHorizontal:  12,
   },
   phoneInput: {
     flex:       1,
-    fontSize:   17,
-    fontWeight: "600",
-    color:      B.navy,
+    fontSize:   16,
+    fontWeight: "500",
+    color:      D.text,
     height:     "100%",
     ...Platform.select({
       web:     { outlineWidth: 0, outlineStyle: "none" } as object,
       default: {},
     }),
   },
-  progressTrack: {
-    height:          3,
-    backgroundColor: "#F3F4F6",
-    borderRadius:    2,
-    marginTop:       10,
-    overflow:        "hidden",
-  },
-  progressFill: {
-    height:       3,
-    borderRadius: 2,
-  },
-  counterRow: {
-    flexDirection:  "row",
-    justifyContent: "space-between",
-    alignItems:     "center",
-    marginTop:      6,
-  },
-  helperText: {
-    fontSize: 11,
-    color:    B.textMuted,
-    flex:     1,
-  },
-  counter: {
-    fontSize:   12,
-    fontWeight: "600",
-    color:      B.textMuted,
-    marginLeft: 8,
+  errorRow: {
+    flexDirection: "row",
+    alignItems:    "center",
+    gap:           5,
+    marginTop:     10,
+    alignSelf:     "stretch",
   },
   errorText: {
     fontSize:   13,
     fontWeight: "500",
-    color:      B.error,
-    marginTop:  10,
+    color:      D.error,
+    flex:       1,
   },
 
-  // ── CTA Button wrap ───────────────────────────────────────────────────────
-  ctaWrap: {
-    alignSelf:        "stretch",
-    marginHorizontal: 20,
-    marginTop:        16,
-    borderRadius:     22,
-  },
-
-  // ── Trust Chips ───────────────────────────────────────────────────────────
-  chipsRow: {
-    flexDirection:     "row",
-    justifyContent:    "center",
-    flexWrap:          "wrap",
-    gap:               8,
-    marginTop:         18,
-    paddingHorizontal: 20,
-  },
-  chip: {
+  // ── Trust note ────────────────────────────────────────────────────────────
+  trustRow: {
     flexDirection:     "row",
     alignItems:        "center",
-    gap:               5,
-    paddingHorizontal: 12,
-    paddingVertical:   7,
-    borderRadius:      20,
-    borderWidth:       1,
+    gap:               8,
+    alignSelf:         "stretch",
+    marginBottom:      28,
+    paddingHorizontal: 4,
   },
-  chipText: {
+  trustText: {
+    flex:       1,
     fontSize:   12,
-    fontWeight: "600",
+    color:      D.textSecondary,
+    lineHeight: 17,
+  },
+
+  // ── Continue button ───────────────────────────────────────────────────────
+  continueBtn: {
+    alignSelf:       "stretch",
+    height:          56,
+    borderRadius:    16,
+    backgroundColor: D.primary,
+    flexDirection:   "row",
+    alignItems:      "center",
+    justifyContent:  "center",
+    marginBottom:    24,
+    shadowColor:     D.primary,
+    shadowOpacity:   0.30,
+    shadowRadius:    10,
+    shadowOffset:    { width: 0, height: 4 },
+    elevation:       4,
+  },
+  continueBtnDisabled: {
+    backgroundColor: D.border,
+    shadowOpacity:   0,
+    elevation:       0,
+  },
+  continueBtnText: {
+    fontSize:      17,
+    fontWeight:    "700",
+    color:         D.white,
+    letterSpacing: 0.2,
+  },
+  continueBtnTextDisabled: {
+    color: D.textSecondary,
   },
 
   // ── Terms ─────────────────────────────────────────────────────────────────
   termsBlock: {
-    marginTop:         20,
-    paddingHorizontal: 20,
-    alignItems:        "center",
-    width:             "100%",
+    alignItems: "center",
+    alignSelf:  "stretch",
   },
   termsRow: {
-    flexDirection: "row",
-    flexWrap:      "wrap",
-    alignItems:    "center",
-    justifyContent:"center",
-    gap:           1,
+    flexDirection:  "row",
+    flexWrap:       "wrap",
+    alignItems:     "center",
+    justifyContent: "center",
+    gap:            1,
   },
   termsText: {
     fontSize: 12,
-    color:    B.textSecondary,
+    color:    D.textSecondary,
   },
   termsLink: {
     fontSize:   12,
     fontWeight: "700",
-    color:      B.amber,
+    color:      D.primary,
   },
   termsNote: {
     fontSize:  11,
-    color:     B.textMuted,
-    marginTop: 8,
+    color:     D.textMuted,
+    marginTop: 6,
     textAlign: "center",
   },
 
   // ── OTP Phase ─────────────────────────────────────────────────────────────
   otpPhase: {
-    alignSelf:         "stretch",
-    paddingHorizontal: 24,
-    paddingTop:        8,
-    alignItems:        "center",
-    gap:               20,
+    alignSelf:  "stretch",
+    paddingTop: 8,
+    alignItems: "center",
+    gap:        20,
   },
-
   backBtn: {
-    alignSelf:     "flex-start",
-    flexDirection: "row",
-    alignItems:    "center",
-    gap:           6,
+    alignSelf:         "flex-start",
+    flexDirection:     "row",
+    alignItems:        "center",
+    gap:               6,
     paddingVertical:   8,
     paddingHorizontal: 12,
-    borderRadius:  12,
-    backgroundColor: B.white,
-    borderWidth:    1,
-    borderColor:    B.cardBorder,
-    shadowColor:    "#000",
-    shadowOpacity:  0.05,
-    shadowRadius:   6,
-    shadowOffset:   { width: 0, height: 2 },
-    elevation:      2,
+    borderRadius:      12,
+    backgroundColor:   D.white,
+    borderWidth:       1,
+    borderColor:       D.cardBorder,
+    shadowColor:       "#000",
+    shadowOpacity:     0.05,
+    shadowRadius:      6,
+    shadowOffset:      { width: 0, height: 2 },
+    elevation:         2,
   },
   backBtnText: {
     fontSize:   14,
     fontWeight: "600",
-    color:      B.navy,
+    color:      D.navy,
   },
-
   otpHeader: {
     alignItems: "center",
     gap:        8,
@@ -911,9 +755,9 @@ const ss = StyleSheet.create({
     width:           52,
     height:          52,
     borderRadius:    16,
-    backgroundColor: B.primarySoft,
+    backgroundColor: D.primarySoft,
     borderWidth:     1,
-    borderColor:     B.amber + "60",
+    borderColor:     D.amber + "60",
     alignItems:      "center",
     justifyContent:  "center",
     marginBottom:    4,
@@ -922,24 +766,23 @@ const ss = StyleSheet.create({
     fontSize:      28,
     fontWeight:    "800",
     letterSpacing: -0.5,
-    color:         B.navy,
+    color:         D.navy,
   },
   codeSentRow: {
-    flexDirection: "row",
-    alignItems:    "center",
-    flexWrap:      "wrap",
-    justifyContent:"center",
+    flexDirection:  "row",
+    alignItems:     "center",
+    flexWrap:       "wrap",
+    justifyContent: "center",
   },
   codeSentText: {
     fontSize: 15,
-    color:    B.textSecondary,
+    color:    D.textSecondary,
   },
   codeSentPhone: {
     fontSize:   15,
     fontWeight: "700",
-    color:      B.navy,
+    color:      D.navy,
   },
-
   cellsRow: {
     flexDirection: "row",
     gap:           10,
@@ -967,49 +810,39 @@ const ss = StyleSheet.create({
     width:           6,
     height:          6,
     borderRadius:    3,
-    backgroundColor: B.white,
+    backgroundColor: D.white,
   },
-
-  errorRow: {
-    flexDirection: "row",
-    alignItems:    "center",
-    gap:           5,
-    alignSelf:     "stretch",
-  },
-
   devHint: {
     fontSize: 12,
-    color:    B.textMuted,
+    color:    D.textMuted,
   },
-
   verifyWrap: {
     alignSelf: "stretch",
   },
   verifyBtn: {
-    height:         58,
-    borderRadius:   20,
-    flexDirection:  "row",
-    alignItems:     "center",
-    justifyContent: "center",
+    height:            58,
+    borderRadius:      20,
+    flexDirection:     "row",
+    alignItems:        "center",
+    justifyContent:    "center",
     paddingHorizontal: 20,
-    width:          "100%",
-    shadowColor:    B.amber,
-    shadowOpacity:  0.30,
-    shadowRadius:   14,
-    shadowOffset:   { width: 0, height: 6 },
-    elevation:      5,
+    width:             "100%",
+    shadowColor:       D.amber,
+    shadowOpacity:     0.30,
+    shadowRadius:      14,
+    shadowOffset:      { width: 0, height: 6 },
+    elevation:         5,
   },
   verifyBtnText: {
     fontSize:   18,
     fontWeight: "700",
   },
-
   resendRow: {
     alignItems: "center",
     marginTop:  4,
   },
   resendText: {
     fontSize: 14,
-    color:    B.textMuted,
+    color:    D.textMuted,
   },
 });
