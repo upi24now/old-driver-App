@@ -13,13 +13,16 @@ function numClose(a: number, b: number): boolean {
 
 // ─── GET /api/wallet/:uid ──────────────────────────────────────────────────────
 //
-// Returns the wallets/{uid} document.
-// Zero-value defaults are returned if the document does not yet exist
-// (new drivers who have never completed a delivery).
+// Phase 3D-D — PostgreSQL primary with Firestore fallback.
 //
-// Phase 3C — dual-read: after sending the Firestore response, a fire-and-forget
-// PG read compares the four summary fields and logs [PG_WALLET_MATCH] or
-// [PG_WALLET_DIFF].  PG failure never affects the Firestore response.
+//   1. Read PG first (pgGetWallet).
+//   2. If PG returns a row → return PG result ([PG_WALLET_PRIMARY_HIT]) and run a
+//      non-blocking Firestore comparison ([PG_WALLET_MATCH] / [PG_WALLET_DIFF]).
+//   3. If PG throws OR has no row → fall back to Firestore
+//      ([PG_WALLET_PRIMARY_FALLBACK]). PG never breaks the response.
+//
+// Response shape is unchanged from the previous Firestore contract:
+//   { ok: true, wallet: { balance, totalEarnings, totalPaid, completedDeliveries } }
 router.get("/wallet/:uid", async (req: Request, res: Response) => {
   const driverUid = await requireAuth(req, res);
   if (!driverUid) return;
@@ -30,6 +33,79 @@ router.get("/wallet/:uid", async (req: Request, res: Response) => {
     return;
   }
 
+  // ── 1. PG primary read ───────────────────────────────────────────────────────
+  let pgRow: Awaited<ReturnType<typeof pgGetWallet>> = null;
+  let pgFailed = false;
+
+  try {
+    pgRow = await pgGetWallet(uid);
+  } catch (err) {
+    req.log.error({ err, uid }, "[PG_WALLET_PRIMARY_FALLBACK] PG read threw");
+    pgFailed = true;
+  }
+
+  // ── 2. PG hit — return PG data; compare Firestore in background ──────────────
+  if (!pgFailed && pgRow !== null) {
+    let pgWallet: { balance: number; totalEarnings: number; totalPaid: number; completedDeliveries: number } | null = null;
+    try {
+      pgWallet = {
+        balance:             parseFloat(pgRow.balance),
+        totalEarnings:       parseFloat(pgRow.totalEarnings),
+        totalPaid:           parseFloat(pgRow.totalPaid),
+        completedDeliveries: pgRow.completedDeliveries,
+      };
+    } catch (err) {
+      req.log.error({ err, uid }, "[PG_WALLET_PRIMARY_FALLBACK] PG field mapping threw");
+      pgFailed = true;
+    }
+
+    if (!pgFailed && pgWallet !== null) {
+      const pg = pgWallet;
+      req.log.info({ uid }, "[PG_WALLET_PRIMARY_HIT]");
+
+      // Non-blocking Firestore comparison (response already sent below).
+      void (async () => {
+        try {
+          const db   = await adminFirestore();
+          const snap = await db.doc(`wallets/${uid}`).get();
+          const w    = (snap.exists ? snap.data() ?? {} : {}) as Record<string, unknown>;
+
+          const fsBalance   = typeof w["balance"]             === "number" ? w["balance"]             : 0;
+          const fsEarnings  = typeof w["totalEarnings"]       === "number" ? w["totalEarnings"]       : 0;
+          const fsPaid      = typeof w["totalPaid"]           === "number" ? w["totalPaid"]           : 0;
+          const fsCompleted = typeof w["completedDeliveries"] === "number" ? w["completedDeliveries"] : 0;
+
+          if (!snap.exists) {
+            req.log.warn({ uid, pg }, "[PG_WALLET_DIFF] Firestore doc missing — PG has row");
+            return;
+          }
+
+          const diffs: string[] = [];
+          if (!numClose(pg.balance,       fsBalance))   diffs.push(`balance pg=${pg.balance} fs=${fsBalance}`);
+          if (!numClose(pg.totalEarnings, fsEarnings))  diffs.push(`totalEarnings pg=${pg.totalEarnings} fs=${fsEarnings}`);
+          if (!numClose(pg.totalPaid,     fsPaid))      diffs.push(`totalPaid pg=${pg.totalPaid} fs=${fsPaid}`);
+          if (pg.completedDeliveries      !== fsCompleted) diffs.push(`completedDeliveries pg=${pg.completedDeliveries} fs=${fsCompleted}`);
+
+          if (diffs.length === 0) {
+            req.log.info({ uid, balance: pg.balance, completedDeliveries: pg.completedDeliveries }, "[PG_WALLET_MATCH]");
+          } else {
+            req.log.warn({ uid, diffs }, "[PG_WALLET_DIFF]");
+          }
+        } catch (e) {
+          req.log.error({ err: e, uid }, "[PG_WALLET_DIFF] background Firestore compare failed — non-blocking");
+        }
+      })();
+
+      res.json({ ok: true, wallet: pg });
+      return;
+    }
+  }
+
+  // ── 3. Firestore fallback — PG missing or threw ───────────────────────────────
+  if (!pgFailed) {
+    req.log.info({ uid }, "[PG_WALLET_PRIMARY_FALLBACK] PG row not found");
+  }
+
   try {
     const db   = await adminFirestore();
     const snap = await db.doc(`wallets/${uid}`).get();
@@ -37,46 +113,6 @@ router.get("/wallet/:uid", async (req: Request, res: Response) => {
       ? snap.data()
       : { balance: 0, totalEarnings: 0, totalPaid: 0, completedDeliveries: 0 };
     res.json({ ok: true, wallet });
-
-    // ── PG dual-read: wallet balance comparison (non-blocking) ────────────────
-    const w             = (wallet ?? {}) as Record<string, unknown>;
-    const fsBalance     = typeof w["balance"]             === "number" ? w["balance"]             : 0;
-    const fsEarnings    = typeof w["totalEarnings"]       === "number" ? w["totalEarnings"]       : 0;
-    const fsPaid        = typeof w["totalPaid"]           === "number" ? w["totalPaid"]           : 0;
-    const fsCompleted   = typeof w["completedDeliveries"] === "number" ? w["completedDeliveries"] : 0;
-
-    void pgGetWallet(uid)
-      .then((pgRow) => {
-        if (!pgRow) {
-          const allZero = fsBalance === 0 && fsEarnings === 0 && fsPaid === 0 && fsCompleted === 0;
-          if (allZero) {
-            req.log.info({ uid }, "[PG_WALLET_MATCH] both empty");
-          } else {
-            req.log.warn({ uid, fsBalance, fsEarnings, fsPaid, fsCompleted },
-              "[PG_WALLET_DIFF] PG row missing but FS has data");
-          }
-          return;
-        }
-
-        const pgBalance   = parseFloat(pgRow.balance);
-        const pgEarnings  = parseFloat(pgRow.totalEarnings);
-        const pgPaid      = parseFloat(pgRow.totalPaid);
-        const pgCompleted = pgRow.completedDeliveries;
-
-        const diffs: string[] = [];
-        if (!numClose(fsBalance,  pgBalance))   diffs.push(`balance fs=${fsBalance} pg=${pgBalance}`);
-        if (!numClose(fsEarnings, pgEarnings))  diffs.push(`totalEarnings fs=${fsEarnings} pg=${pgEarnings}`);
-        if (!numClose(fsPaid,     pgPaid))      diffs.push(`totalPaid fs=${fsPaid} pg=${pgPaid}`);
-        if (fsCompleted          !== pgCompleted) diffs.push(`completedDeliveries fs=${fsCompleted} pg=${pgCompleted}`);
-
-        if (diffs.length === 0) {
-          req.log.info({ uid, balance: fsBalance, completedDeliveries: fsCompleted }, "[PG_WALLET_MATCH]");
-        } else {
-          req.log.warn({ uid, diffs }, "[PG_WALLET_DIFF]");
-        }
-      })
-      .catch((e) => req.log.error({ err: e, uid }, "[PG_WALLET_MATCH] PG read error — non-blocking"));
-
   } catch (err) {
     req.log.error({ err, uid }, "GET /wallet/:uid failed");
     res.status(500).json({ ok: false, error: "server_error" });
@@ -85,12 +121,17 @@ router.get("/wallet/:uid", async (req: Request, res: Response) => {
 
 // ─── GET /api/wallet/:uid/transactions ────────────────────────────────────────
 //
-// Returns up to `limit` (max 100, default 50) transactions from the
-// `transactions` collection, ordered newest-first.
+// Phase 3D-D — PostgreSQL primary with Firestore fallback.
 //
-// Phase 3C — dual-read: after sending the Firestore response, a fire-and-forget
-// PG read compares count and per-order-id amount/type/status, then logs
-// [PG_TX_MATCH] or [PG_TX_DIFF].  PG failure never affects the Firestore response.
+//   1. Read PG first (pgGetWalletTransactions).
+//   2. If PG returns rows → return PG result ([PG_TX_PRIMARY_HIT]) and run a
+//      non-blocking Firestore comparison ([PG_TX_MATCH] / [PG_TX_DIFF]).
+//   3. If PG throws OR returns no rows → fall back to Firestore
+//      ([PG_TX_PRIMARY_FALLBACK]). An empty PG result falls back rather than
+//      serving a possibly-blank history for a not-yet-backfilled driver.
+//
+// Response shape is unchanged from the previous Firestore contract:
+//   { ok: true, transactions: [{ id, driverUid, orderId, type, amount, status, description, createdAt }] }
 router.get("/wallet/:uid/transactions", async (req: Request, res: Response) => {
   const driverUid = await requireAuth(req, res);
   if (!driverUid) return;
@@ -104,6 +145,116 @@ router.get("/wallet/:uid/transactions", async (req: Request, res: Response) => {
   const limitParam = parseInt(String(req.query["limit"] ?? "50"), 10);
   const pageSize   = Math.min(Math.max(1, isNaN(limitParam) ? 50 : limitParam), 100);
 
+  // ── 1. PG primary read ───────────────────────────────────────────────────────
+  let pgTxns: Awaited<ReturnType<typeof pgGetWalletTransactions>> | null = null;
+  let pgFailed = false;
+
+  try {
+    pgTxns = await pgGetWalletTransactions(uid, pageSize);
+  } catch (err) {
+    req.log.error({ err, uid }, "[PG_TX_PRIMARY_FALLBACK] PG read threw");
+    pgFailed = true;
+  }
+
+  // ── 2. PG hit — return PG data; compare Firestore in background ──────────────
+  if (!pgFailed && pgTxns !== null && pgTxns.length > 0) {
+    let mapped: Array<Record<string, unknown>> | null = null;
+    try {
+      mapped = pgTxns.map((t) => {
+        // Payout-sign canonicalization (serialization boundary only).
+        // PG stores payout amounts with mixed signs — positive for rows written
+        // by pgShadowPayoutTransaction / pgMarkPayoutProcessed, and the verbatim
+        // Firestore sign for backfilled historical rows. The canonical ledger
+        // contract is "money out = debit", so payout rows are normalized to a
+        // negative amount here. This changes NO stored value and NO balance math
+        // (driver_wallets totals are untouched) — it only ensures the response
+        // sign is consistent regardless of how the underlying row was written.
+        const rawAmount = parseFloat(t.amount);
+        const amount = t.type === "payout" ? -Math.abs(rawAmount) : rawAmount;
+        return {
+          id:          t.id,
+          driverUid:   t.driverUid,
+          orderId:     t.orderId,
+          type:        t.type,
+          amount,
+          status:      t.status,
+          description: t.description,
+          createdAt:   t.createdAt instanceof Date ? t.createdAt.toISOString() : t.createdAt,
+        };
+      });
+    } catch (err) {
+      req.log.error({ err, uid }, "[PG_TX_PRIMARY_FALLBACK] PG field mapping threw");
+      pgFailed = true;
+    }
+
+    if (!pgFailed && mapped !== null) {
+      const pgForCompare = pgTxns;
+      req.log.info({ uid, count: mapped.length }, "[PG_TX_PRIMARY_HIT]");
+
+      // Non-blocking Firestore comparison (response already sent below).
+      void (async () => {
+        try {
+          const db   = await adminFirestore();
+          const snap = await db
+            .collection("transactions")
+            .where("driverUid", "==", uid)
+            .orderBy("createdAt", "desc")
+            .limit(pageSize)
+            .get();
+
+          const fsTxns = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Array<Record<string, unknown>>;
+
+          // Build orderId → FS transaction map (credit rows carry orderId).
+          const fsByOrderId = new Map<string, Record<string, unknown>>();
+          for (const t of fsTxns) {
+            const oid = typeof t["orderId"] === "string" ? t["orderId"] : null;
+            if (oid) fsByOrderId.set(oid, t);
+          }
+
+          const diffs: string[] = [];
+          if (pgForCompare.length !== fsTxns.length) {
+            diffs.push(`count pg=${pgForCompare.length} fs=${fsTxns.length}`);
+          }
+
+          // Per-order comparison: PG credit rows have orderId set.
+          for (const pgTx of pgForCompare) {
+            if (!pgTx.orderId) continue; // payout ledger rows have no orderId
+            const fsTx = fsByOrderId.get(pgTx.orderId);
+            if (!fsTx) {
+              diffs.push(`orderId=${pgTx.orderId} present in PG but missing in FS`);
+              continue;
+            }
+            const pgAmount = parseFloat(pgTx.amount);
+            const fsAmount = typeof fsTx["amount"] === "number" ? fsTx["amount"] : 0;
+            if (!numClose(pgAmount, fsAmount)) {
+              diffs.push(`orderId=${pgTx.orderId} amount pg=${pgAmount} fs=${fsAmount}`);
+            }
+            const fsType = typeof fsTx["type"] === "string" ? fsTx["type"] : "";
+            if (pgTx.type !== fsType) {
+              diffs.push(`orderId=${pgTx.orderId} type pg=${pgTx.type} fs=${fsType}`);
+            }
+          }
+
+          if (diffs.length === 0) {
+            req.log.info({ uid, pgCount: pgForCompare.length, fsCount: fsTxns.length }, "[PG_TX_MATCH]");
+          } else {
+            req.log.warn({ uid, diffs }, "[PG_TX_DIFF]");
+          }
+        } catch (e) {
+          req.log.error({ err: e, uid }, "[PG_TX_DIFF] background Firestore compare failed — non-blocking");
+        }
+      })();
+
+      res.json({ ok: true, transactions: mapped });
+      return;
+    }
+  }
+
+  // ── 3. Firestore fallback — PG threw or returned no rows ───────────────────────
+  if (!pgFailed) {
+    req.log.info({ uid }, "[PG_TX_PRIMARY_FALLBACK] PG returned no rows");
+  }
+
   try {
     const db   = await adminFirestore();
     const snap = await db
@@ -115,57 +266,6 @@ router.get("/wallet/:uid/transactions", async (req: Request, res: Response) => {
 
     const transactions = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     res.json({ ok: true, transactions });
-
-    // ── PG dual-read: transaction ledger comparison (non-blocking) ─────────────
-    void pgGetWalletTransactions(uid, pageSize)
-      .then((pgTxns) => {
-        const fsTxns = transactions as Array<Record<string, unknown>>;
-
-        // Build orderId → PG transaction map (credit rows have orderId set).
-        const pgByOrderId = new Map<string, typeof pgTxns[0]>();
-        for (const t of pgTxns) {
-          if (t.orderId) pgByOrderId.set(t.orderId, t);
-        }
-
-        const diffs: string[] = [];
-
-        // Count comparison: expected to diverge until all FS txns are mirrored
-        // (payouts not yet shadowed into wallet_transactions).
-        if (fsTxns.length !== pgTxns.length) {
-          diffs.push(`count fs=${fsTxns.length} pg=${pgTxns.length}`);
-        }
-
-        // Per-order comparison: only FS credit rows have orderId.
-        for (const fsTx of fsTxns) {
-          const fsOrderId = typeof fsTx["orderId"] === "string" ? fsTx["orderId"] : null;
-          if (!fsOrderId) continue; // payout ledger rows have no orderId — skip for now
-
-          const pgTx = pgByOrderId.get(fsOrderId);
-          if (!pgTx) {
-            diffs.push(`orderId=${fsOrderId} present in FS but missing in PG`);
-            continue;
-          }
-
-          const fsAmount = typeof fsTx["amount"] === "number" ? fsTx["amount"] : 0;
-          const pgAmount = parseFloat(pgTx.amount);
-          if (!numClose(fsAmount, pgAmount)) {
-            diffs.push(`orderId=${fsOrderId} amount fs=${fsAmount} pg=${pgAmount}`);
-          }
-
-          const fsType = typeof fsTx["type"] === "string" ? fsTx["type"] : "";
-          if (fsType !== pgTx.type) {
-            diffs.push(`orderId=${fsOrderId} type fs=${fsType} pg=${pgTx.type}`);
-          }
-        }
-
-        if (diffs.length === 0) {
-          req.log.info({ uid, fsCount: fsTxns.length, pgCount: pgTxns.length }, "[PG_TX_MATCH]");
-        } else {
-          req.log.warn({ uid, diffs }, "[PG_TX_DIFF]");
-        }
-      })
-      .catch((e) => req.log.error({ err: e, uid }, "[PG_TX_MATCH] PG read error — non-blocking"));
-
   } catch (err) {
     req.log.error({ err, uid }, "GET /wallet/:uid/transactions failed");
     res.status(500).json({ ok: false, error: "server_error" });

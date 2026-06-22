@@ -7,12 +7,12 @@ description: Durable data-consistency constraints for the Firestore→Postgres w
 
 The wallet migration is incremental: Firestore stays source of truth; PG is shadow-written and dual-read-compared. All PG writes/reads in the wallet/order/payout routes are fire-and-forget (`void promise.catch(log)`) so PG failures never affect the Firestore response. These items are safe to leave during shadow/dual-read phases but MUST be addressed before reads switch to PG.
 
-## 1. Payout amount sign divergence
-Firestore payout ledger rows store `amount` **negative** (`-amount`); the PG `wallet_transactions` payout shadow row stores `amount` **positive** (matching `pgMarkPayoutProcessed`'s convention).
+## 1. Payout amount sign divergence — RESOLVED (PG-primary cutover)
+Firestore payout ledger rows store `amount` **negative** (`-amount`); the PG `wallet_transactions` payout shadow row stores `amount` **positive** (matching `pgMarkPayoutProcessed`), and backfilled historical payout rows mirror the verbatim (mixed) FS sign.
 
-**Why:** the dual-read transaction comparator skips per-row amount checks for payout rows (they have no `order_id`), so the sign mismatch is invisible today and does not raise `[PG_TX_DIFF]`. On PG-primary cutover the mobile app would render flipped payout signs.
+**Why:** the dual-read transaction comparator skips per-row amount checks for payout rows (they have no `order_id`), so the sign mismatch was invisible during shadow/dual-read and never raised `[PG_TX_DIFF]`. Without canonicalization a PG-primary read would emit inconsistent payout signs.
 
-**How to apply:** before promoting transaction reads to PG, canonicalize the payout sign (either store negative in PG to mirror FS, or normalize at the read/serialization boundary) and document the chosen convention.
+**Chosen convention (resolved at the PG-primary cutover):** the transactions endpoint normalizes every `type === "payout"` row to a **negative** amount at the serialization boundary (`-Math.abs(parseFloat(amount))`) — canonical "money out = debit". This is serialization-only: no stored value and no `driver_wallets` balance math change. Credits and adjustments pass through with their stored sign. Note the REST wallet GET endpoints currently have **zero consumers** (mobile reads Firestore directly via the client SDK and only uses `POST /api/payouts/request`), so this established the canonical contract with no live behavior change.
 
 ## 2. Credit shadow writes are not DB-level idempotent
 `pgCreditOrderEarning` increments `driver_wallets` totals and inserts a credit `wallet_transactions` row with no unique constraint / `ON CONFLICT` guard.
