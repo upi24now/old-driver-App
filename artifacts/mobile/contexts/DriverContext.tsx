@@ -753,9 +753,26 @@ export function DriverProvider({ children }: { children: ReactNode }) {
               permissionSetupVersion: pgProfile.permissionSetupVersion ?? 0,
             }));
             console.log("[KYC_GATE] PG success — running deriveNextRoute");
-            const serverRoute = pgProfile.nextRoute as OnboardingRoute | undefined;
-            nextRoute = serverRoute ?? await deriveNextRoute(pgProfile);
-            console.log("[ROUTE_DECISION] session restore chosenRoute =", nextRoute, serverRoute ? "(server nextRoute)" : "(deriveNextRoute fallback)");
+            const serverRoute = pgProfile.nextRoute as string | undefined;
+            nextRoute = serverRoute
+              ? mapServerNextRoute(serverRoute)
+              : await deriveNextRoute(pgProfile);
+            {
+              const profileComplete = !!(pgProfile.name && pgProfile.city);
+              const vehicleComplete = !!pgProfile.vehicleId;
+              const docsComplete    = pgProfile.documentsSubmitted ?? false;
+              const feePaid         = !pgProfile.onboardingFeeApplies || pgProfile.onboardingFeeStatus === "paid";
+              console.log(
+                "[ROUTE_DECISION]",
+                "uid=" + user.uid,
+                "profileComplete=" + profileComplete,
+                "vehicleComplete=" + vehicleComplete,
+                "docsComplete="    + docsComplete,
+                "feePaid="         + feePaid,
+                "verificationStatus=" + (pgProfile.verificationStatus ?? "null"),
+                "nextRoute="       + nextRoute,
+              );
+            }
           } else {
             // Fix B: Firestore timed out (>3.5 s) — verificationStatus unknown from
             // live doc.  Read the local AsyncStorage cache written on the last
@@ -794,10 +811,16 @@ export function DriverProvider({ children }: { children: ReactNode }) {
               nextRoute = "/(tabs)";
               console.log("[APPROVED_DRIVER_ROUTE] approved (cached) → /(tabs)");
             } else {
-              // No cache or status is not approved — safe defaults apply.
-              console.log("[DOC_TIMEOUT_APPROVED_UNKNOWN] cachedVerifStatus =", cachedVerifStatus ?? "(none)", "— cannot confirm approval; using safe fallback");
-              nextRoute = "/verification-pending";
-              console.log("[FIRESTORE_TIMEOUT_SAFE_ROUTE] → /verification-pending (not approved / status unknown)");
+              // Cannot confirm onboarding state without a live server response.
+              // /registration is the safe default: it never bypasses a required step,
+              // and a genuinely-pending driver (docs submitted) will be correctly
+              // routed by the next successful session restore once the server responds.
+              // NEVER route to /verification-pending here — that requires server-confirmed
+              // state (documentsSubmitted + feePaid + !rejected), which local cache
+              // cannot reliably provide (cache may contain "unsubmitted" written at signup).
+              console.log("[DOC_TIMEOUT_APPROVED_UNKNOWN] cachedVerifStatus =", cachedVerifStatus ?? "(none)", "— using safe default /registration (server did not respond in time)");
+              nextRoute = "/registration";
+              console.log("[SAFE_FALLBACK_ROUTE] → /registration (onboarding state unconfirmed; must not assume verification-pending from cache)");
             }
             console.log("[ROUTE_DECISION] session restore chosenRoute =", nextRoute, "(PG timeout fallback)");
           }
@@ -1096,6 +1119,29 @@ export function DriverProvider({ children }: { children: ReactNode }) {
    * Accepts DriverDoc (Firestore) or PgDriverProfile (PostgreSQL) — both satisfy
    * the RoutingDoc structural type that uses only fields present in both sources.
    */
+  // ─── Server nextRoute → client OnboardingRoute mapping ───────────────────────
+  //
+  // The server emits specific sub-screens (/vehicle-selection, /profile-setup,
+  // /document-upload, /onboarding-fee) that the client does not expose directly.
+  // All pre-completion onboarding is handled by the single /registration screen.
+  // Only confirmed post-completion routes are forwarded verbatim.
+  //
+  // NEVER forward the server's /verification-pending via stale local cache —
+  // only use it when the server has actively confirmed the route this session.
+  function mapServerNextRoute(serverRoute: string): OnboardingRoute {
+    switch (serverRoute) {
+      case "/(tabs)":
+      case "/account-blocked":
+      case "/background-setup":
+      case "/verification-pending":
+        return serverRoute as OnboardingRoute;
+      default:
+        // /vehicle-selection, /profile-setup, /document-upload, /onboarding-fee
+        // and any unknown future steps all collapse to /registration.
+        return "/registration";
+    }
+  }
+
   type RoutingDoc = {
     accountStatus?:          string | null;
     vehicleId?:              string | null;
@@ -1396,8 +1442,25 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
       const profileComplete = !!(routingDoc.name && routingDoc.vehicleId);
       console.log("[PERF] next_route_start confirmOtp ts=" + Date.now());
-      const nextRoute       = (serverNextRoute as OnboardingRoute | undefined) ?? await deriveNextRoute(routingDoc);
+      const nextRoute = serverNextRoute
+        ? mapServerNextRoute(serverNextRoute)
+        : await deriveNextRoute(routingDoc);
       console.log("[PERF] next_route_end confirmOtp ts=" + Date.now() + " nextRoute=" + nextRoute);
+      {
+        const vehicleComplete = !!routingDoc.vehicleId;
+        const docsComplete    = routingDoc.documentsSubmitted ?? false;
+        const feePaid         = !routingDoc.onboardingFeeApplies || routingDoc.onboardingFeeStatus === "paid";
+        console.log(
+          "[ROUTE_DECISION]",
+          "uid=" + uid,
+          "profileComplete=" + profileComplete,
+          "vehicleComplete=" + vehicleComplete,
+          "docsComplete="    + docsComplete,
+          "feePaid="         + feePaid,
+          "verificationStatus=" + (routingDoc.verificationStatus ?? "null"),
+          "nextRoute="       + nextRoute,
+        );
+      }
 
       // ── OTP_ROUTE logs — required by auth policy ──────────────────────────
       console.log("[OTP_ROUTE] otp_success_uid =", uid);
