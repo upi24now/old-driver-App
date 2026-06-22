@@ -85,18 +85,12 @@ const GENDERS = ["Male", "Female", "Other"] as const;
 
 type VehicleOption = { id: string; name: string };
 const VEHICLES: VehicleOption[] = [
-  { id: "bike",       name: "2W - Bike"         },
-  { id: "scooter",    name: "2W - Scooter"       },
-  { id: "auto-pass",  name: "3W - Auto (Pass)"   },
-  { id: "auto-cargo", name: "3W - Auto (Cargo)"  },
-  { id: "mini-car",   name: "4W - Mini Car"      },
-  { id: "sedan",      name: "4W - Sedan"         },
-  { id: "suv",        name: "4W - SUV"           },
-  { id: "tata-ace",   name: "4W - Tata Ace"      },
-  { id: "pickup",     name: "4W - Pickup"        },
-  { id: "mini-truck", name: "4W - Mini Truck"    },
-  { id: "eicher",     name: "4W - Eicher"        },
-  { id: "truck-14ft", name: "4W - 14ft Truck"    },
+  { id: "two_wheeler",         name: "Two Wheeler"          },
+  { id: "loader_three_wheeler",name: "Loader Three Wheeler" },
+  { id: "tata_ace",            name: "Tata Ace"             },
+  { id: "mahindra_pickup",     name: "Mahindra Pickup"      },
+  { id: "tata_407",            name: "Tata 407"             },
+  { id: "canter",              name: "Canter"               },
 ];
 
 // ─── Validators ───────────────────────────────────────────────────────────────

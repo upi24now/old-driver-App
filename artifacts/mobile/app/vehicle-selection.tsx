@@ -36,8 +36,8 @@ const D = {
 } as const;
 
 // ─── Categories ───────────────────────────────────────────────────────────────
-type Category = "All" | "2 Wheeler" | "3 Wheeler" | "4 Wheeler" | "Cargo" | "Heavy";
-const CATEGORIES: Category[] = ["All", "2 Wheeler", "3 Wheeler", "4 Wheeler", "Cargo", "Heavy"];
+type Category = "All" | "2 Wheeler" | "3 Wheeler" | "Truck";
+const CATEGORIES: Category[] = ["All", "2 Wheeler", "3 Wheeler", "Truck"];
 
 // ─── Vehicle definitions ──────────────────────────────────────────────────────
 type VehicleOption = {
@@ -45,10 +45,8 @@ type VehicleOption = {
   name:         string;
   tagline:      string;
   capacity:     string;
-  price:        string;
   artType:      VehicleArtType;
   image?:       ReturnType<typeof require>;
-  capacityType: "passenger" | "cargo";
   category:     Exclude<Category, "All">;
   popular?:     boolean;
   gradStart:    string;
@@ -58,91 +56,49 @@ type VehicleOption = {
 
 const V_IMG = {
   bike:         require("@/assets/images/vehicles/bike-delivery.png"),
-  scooter:      require("@/assets/images/vehicles/scooter.png"),
-  autoPass:     require("@/assets/images/vehicles/auto-passenger.png"),
   autoCargo:    require("@/assets/images/vehicles/auto-cargo.png"),
-  miniCar:      require("@/assets/images/vehicles/mini-car.png"),
-  sedan:        require("@/assets/images/vehicles/sedan.png"),
-  suv:          require("@/assets/images/vehicles/suv.png"),
   tataAce:      require("@/assets/images/vehicles/tata-ace.png"),
   pickupTruck:  require("@/assets/images/vehicles/pickup-truck.png"),
   miniTruck:    require("@/assets/images/vehicles/mini-truck.png"),
   eicherTruck:  require("@/assets/images/vehicles/eicher-truck.png"),
-  truck14ft:    require("@/assets/images/vehicles/14-feet-truck.png"),
 };
 
 const VEHICLES: VehicleOption[] = [
   {
-    id: "bike",        name: "Bike Delivery",  tagline: "Quick parcel rides",
-    capacity: "1 Parcel",  price: "₹6/km",   artType: "bike",      capacityType: "cargo",
-    category: "2 Wheeler", popular: true,     image: V_IMG.bike,
-    gradStart: "#FF6B9D",  gradMid: "#E8336C",  gradEnd: "#9B59B6",
+    id: "two_wheeler",          name: "Two Wheeler",          tagline: "Quick parcel delivery",
+    capacity: "Up to 20 KG",   artType: "bike",               category: "2 Wheeler",
+    popular: true,              image: V_IMG.bike,
+    gradStart: "#FF6B9D",       gradMid: "#E8336C",            gradEnd: "#9B59B6",
   },
   {
-    id: "scooter",     name: "Scooter",        tagline: "Light delivery rides",
-    capacity: "1 Parcel",  price: "₹5/km",   artType: "scooter",   capacityType: "cargo",
-    category: "2 Wheeler", image: V_IMG.scooter,
-    gradStart: "#FF8C69",  gradEnd: "#FFA726",
+    id: "loader_three_wheeler", name: "Loader Three Wheeler",  tagline: "Small goods delivery",
+    capacity: "Up to 500 KG",  artType: "autoCargo",           category: "3 Wheeler",
+    image: V_IMG.autoCargo,
+    gradStart: "#FB923C",       gradEnd: "#F59E0B",
   },
   {
-    id: "auto-pass",   name: "Auto Passenger", tagline: "3-seater city rides",
-    capacity: "3 Seats",   price: "₹10/km",  artType: "auto",      capacityType: "passenger",
-    category: "3 Wheeler", image: V_IMG.autoPass,
-    gradStart: "#FFD43B",  gradEnd: "#FFA726",
+    id: "tata_ace",             name: "Tata Ace",              tagline: "Mini goods carrier",
+    capacity: "Up to 750 KG",  artType: "truck",               category: "Truck",
+    image: V_IMG.tataAce,
+    gradStart: "#4ADE80",       gradEnd: "#16A34A",
   },
   {
-    id: "auto-cargo",  name: "Auto Cargo",     tagline: "Small goods delivery",
-    capacity: "300 kg",    price: "₹12/km",  artType: "autoCargo", capacityType: "cargo",
-    category: "3 Wheeler", image: V_IMG.autoCargo,
-    gradStart: "#FB923C",  gradEnd: "#F59E0B",
+    id: "mahindra_pickup",      name: "Mahindra Pickup",       tagline: "Heavy parcel delivery",
+    capacity: "Up to 1700 KG", artType: "truck",               category: "Truck",
+    image: V_IMG.pickupTruck,
+    gradStart: "#A3E635",       gradEnd: "#65A30D",
   },
   {
-    id: "mini-car",    name: "Mini Car",       tagline: "Compact comfort",
-    capacity: "4 Seats",   price: "₹14/km",  artType: "car",       capacityType: "passenger",
-    category: "4 Wheeler", image: V_IMG.miniCar,
-    gradStart: "#38BDF8",  gradEnd: "#2563EB",
+    id: "tata_407",             name: "Tata 407",              tagline: "Bulk goods transport",
+    capacity: "Up to 2250 KG", artType: "truck",               category: "Truck",
+    image: V_IMG.miniTruck,
+    gradStart: "#22D3EE",       gradEnd: "#0EA5E9",
   },
   {
-    id: "sedan",       name: "Sedan",          tagline: "Premium comfort",
-    capacity: "4 Seats",   price: "₹18/km",  artType: "car",       capacityType: "passenger",
-    category: "4 Wheeler", image: V_IMG.sedan,
-    gradStart: "#818CF8",  gradEnd: "#4338CA",
-  },
-  {
-    id: "suv",         name: "SUV",            tagline: "Family rides",
-    capacity: "6 Seats",   price: "₹22/km",  artType: "car",       capacityType: "passenger",
-    category: "4 Wheeler", image: V_IMG.suv,
-    gradStart: "#2DD4BF",  gradEnd: "#0D9488",
-  },
-  {
-    id: "tata-ace",    name: "Tata Ace",       tagline: "Mini goods carrier",
-    capacity: "750 kg",    price: "₹16/km",  artType: "truck",     capacityType: "cargo",
-    category: "Cargo",     image: V_IMG.tataAce,
-    gradStart: "#4ADE80",  gradEnd: "#16A34A",
-  },
-  {
-    id: "pickup",      name: "Pickup Truck",   tagline: "Heavy parcel delivery",
-    capacity: "1 Ton",     price: "₹20/km",  artType: "truck",     capacityType: "cargo",
-    category: "Cargo",     image: V_IMG.pickupTruck,
-    gradStart: "#A3E635",  gradEnd: "#65A30D",
-  },
-  {
-    id: "mini-truck",  name: "Mini Truck",     tagline: "Bulk goods transport",
-    capacity: "1.5 Ton",   price: "₹24/km",  artType: "truck",     capacityType: "cargo",
-    category: "Cargo",     image: V_IMG.miniTruck,
-    gradStart: "#22D3EE",  gradEnd: "#0EA5E9",
-  },
-  {
-    id: "eicher",      name: "Eicher Truck",   tagline: "Commercial transport",
-    capacity: "3 Ton",     price: "₹32/km",  artType: "truck",     capacityType: "cargo",
-    category: "Heavy",     image: V_IMG.eicherTruck,
-    gradStart: "#94A3B8",  gradEnd: "#3B82F6",
-  },
-  {
-    id: "truck-14ft",  name: "14 Feet Truck",  tagline: "Large goods movement",
-    capacity: "5 Ton",     price: "₹40/km",  artType: "truck",     capacityType: "cargo",
-    category: "Heavy",     image: V_IMG.truck14ft,
-    gradStart: "#C084FC",  gradEnd: "#6D28D9",
+    id: "canter",               name: "Canter",                tagline: "Commercial transport",
+    capacity: "Up to 5000 KG", artType: "truck",               category: "Truck",
+    image: V_IMG.eicherTruck,
+    gradStart: "#94A3B8",       gradEnd: "#3B82F6",
   },
 ];
 
@@ -258,12 +214,6 @@ function VehicleCard({
               numberOfLines={1}
             >
               {vehicle.capacity}
-            </Text>
-            <View style={styles.infoDot} />
-            <Text
-              style={[styles.priceText, { color: selected ? D.primary : "#374151" }]}
-            >
-              {vehicle.price}
             </Text>
           </View>
         </View>
@@ -498,7 +448,6 @@ export default function VehicleSelectionScreen() {
 
               <View style={styles.summaryRight}>
                 <Text style={styles.summaryCap}>{selectedVehicle.capacity}</Text>
-                <Text style={styles.summaryPrice}>{selectedVehicle.price}</Text>
               </View>
             </>
           ) : (
