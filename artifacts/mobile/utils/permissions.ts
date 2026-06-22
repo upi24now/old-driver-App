@@ -128,8 +128,8 @@ export async function openBatterySettings(): Promise<void> {
   // ── D: All methods failed — show manual instructions ─────────────────────
   console.log("[BATTERY_SETTINGS_INTENT_FAIL] all intents failed — showing Alert");
   Alert.alert(
-    "Settings Open Nahi Ho Paaye",
-    "Manually open karo:\nSettings → Apps → Driver App → Battery → Unrestricted",
+    "Battery Settings",
+    "Open Battery Settings manually for BikeCourier.",
     [{ text: "OK" }],
   );
 }

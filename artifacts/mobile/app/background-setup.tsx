@@ -102,15 +102,15 @@ function PermCard({
         <Feather name={icon} size={20} color={iconColor} />
       </View>
 
-      {/* Title + description */}
+      {/* Title + badge + description */}
       <View style={cs.cardMid}>
-        <View style={cs.titleRow}>
-          <Text style={cs.cardTitle} numberOfLines={1}>{title}</Text>
+        <Text style={cs.cardTitle}>{title}</Text>
+        <View style={cs.descRow}>
           <View style={[cs.badge, { backgroundColor: badgeBg }]}>
             <Text style={[cs.badgeText, { color: badgeColor }]}>{badgeLabel}</Text>
           </View>
+          <Text style={cs.cardDesc} numberOfLines={1}>{description}</Text>
         </View>
-        <Text style={cs.cardDesc} numberOfLines={1}>{description}</Text>
       </View>
 
       {/* Action / status */}
@@ -248,13 +248,21 @@ export default function PermissionCenterScreen() {
   // ── Battery optimization handler ──────────────────────────────────────────
   async function handleAllowBattery() {
     if (batteryGranted) return;
+    console.log("[BATTERY] allow_pressed");
     setRequestingBatt(true);
     // Mark that we're waiting for the user to return from the battery dialog.
     // The AppState 'active' listener will mark batteryGranted=true on return.
     battWaiting.current = true;
-    await openBatterySettings().catch(() => {});
-    // If openBatterySettings() returned without going to background
-    // (e.g. web / dialog dismissed instantly), clear the loading state.
+    try {
+      console.log("[BATTERY] openBatterySettings_start");
+      await openBatterySettings();
+      console.log("[BATTERY] openBatterySettings_success");
+    } catch (err) {
+      console.log("[BATTERY] openBatterySettings_failed —", String(err));
+    }
+    // If openBatterySettings() returned without the app going to background
+    // (e.g. intent dismissed instantly or all intents failed → Alert shown),
+    // clear the loading state so the button isn't stuck as a spinner.
     if (battWaiting.current) {
       battWaiting.current = false;
       setRequestingBatt(false);
@@ -565,17 +573,16 @@ const cs = StyleSheet.create({
     flex: 1,
     gap: 3,
   },
-  titleRow: {
+  descRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 5,
     flexWrap: "nowrap",
   },
   cardTitle: {
     fontSize: 15,
     fontWeight: "700",
     color: D.text,
-    flexShrink: 1,
   },
   badge: {
     paddingHorizontal: 7,
