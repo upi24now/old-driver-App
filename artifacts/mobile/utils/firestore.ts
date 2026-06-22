@@ -718,56 +718,68 @@ const ACTIVE_STATUSES: OrderStatus[] = [
  * app restart.
  */
 export async function getActiveOrderForDriver(uid: string): Promise<OrderDoc | null> {
-  const snap = await getDocs(
-    query(
-      collection(db, "orders"),
-      where("driverUid", "==", uid),
-      where("status", "in", ACTIVE_STATUSES),
-      limit(3),
-    ),
-  );
-  const active = snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrderDoc));
-  if (active.length === 0) return null;
-  active.sort((a, b) => {
-    const ta = (a.acceptedAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
-    const tb = (b.acceptedAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
-    return tb - ta;
-  });
-  return active[0]!;
+  // Delegates to getActiveOrdersForDriver so both functions share the same
+  // Phase 2B-2B dual-read path (server comparison + Firestore fallback).
+  const all = await getActiveOrdersForDriver(uid, 3);
+  return all[0] ?? null;
 }
 
 /**
  * Returns up to maxResults (default 3) active orders for the given driver,
  * sorted by acceptedAt descending (newest first).
  *
- * Used by the auth-restore path in DriverContext so that after an app restart
- * the driver's full multi-order set is rebuilt rather than just the newest one.
- * The cap prevents edge-cases where Firestore holds stale in-progress docs from
- * a previous session from flooding the restored state.
- *
- * Both filters are evaluated by Firestore — only active-status docs are
- * downloaded (previously all orders for the driver were fetched and filtered
- * client-side).
+ * Phase 2B-2B dual-read strategy:
+ *   1. Call GET /api/drivers/:uid/active-orders on the server (Bearer token).
+ *      The server reads BOTH Firestore and PG in parallel, logs
+ *      [PG_ACTIVE_MATCH] or [PG_ACTIVE_DIFF], and returns Firestore data.
+ *      PG is verification-only — Firestore data is always returned.
+ *   2. If the server call fails (network, auth, 4xx/5xx), fall back to a
+ *      direct Firestore read so the auth-restore path is never blocked.
  */
 export async function getActiveOrdersForDriver(
   uid: string,
   maxResults = 3,
 ): Promise<OrderDoc[]> {
-  const snap = await getDocs(
-    query(
-      collection(db, "orders"),
-      where("driverUid", "==", uid),
-      where("status", "in", ACTIVE_STATUSES),
-      limit(maxResults),
-    ),
-  );
-  const active = snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrderDoc));
-  active.sort((a, b) => {
-    const ta = (a.acceptedAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
-    const tb = (b.acceptedAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
-    return tb - ta; // newest first
-  });
-  return active;
+  // ── Server dual-read path ───────────────────────────────────────────────────
+  try {
+    const user = firebaseAuth.currentUser;
+    if (user) {
+      const token = await user.getIdToken();
+      const res   = await fetch(`${_BASE_URL}/drivers/${uid}/active-orders?max=${maxResults}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const json = await res.json() as { ok?: boolean; orders?: OrderDoc[] };
+        if (json.ok && Array.isArray(json.orders)) {
+          return json.orders;
+        }
+      }
+      // Server returned non-ok — fall through to Firestore
+    }
+  } catch {
+    // Network failure or auth error — fall through to direct Firestore read
+  }
+
+  // ── Firestore fallback (original path) ────────────────────────────────────
+  try {
+    const snap = await getDocs(
+      query(
+        collection(db, "orders"),
+        where("driverUid", "==", uid),
+        where("status", "in", ACTIVE_STATUSES),
+        limit(maxResults),
+      ),
+    );
+    const active = snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrderDoc));
+    active.sort((a, b) => {
+      const ta = (a.acceptedAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
+      const tb = (b.acceptedAt as { toMillis?: () => number })?.toMillis?.() ?? 0;
+      return tb - ta; // newest first
+    });
+    return active;
+  } catch {
+    return [];
+  }
 }
 
 /**

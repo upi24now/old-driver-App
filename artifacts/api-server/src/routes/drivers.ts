@@ -3,6 +3,7 @@ import { adminAuth, adminFirestore } from "../lib/firebase-admin";
 import { requireAuth } from "../lib/require-auth";
 import { db, driversTable } from "@workspace/db";
 import { eq, and, ne, sql } from "drizzle-orm";
+import { pgGetActiveOrders } from "../lib/order-pg-service";
 
 const router: IRouter = Router();
 
@@ -448,6 +449,139 @@ router.post("/drivers/:uid/location", async (req, res) => {
     req.log.error({ err, uid }, "location: Firestore update failed");
     res.status(500).json({ ok: false, error: "server_error" });
   }
+});
+
+// ─── GET /api/drivers/:uid/active-orders ──────────────────────────────────────
+//
+// Dual-read verification endpoint — Phase 2B-2B.
+//
+// Reads the driver's active orders from BOTH Firestore and PostgreSQL in
+// parallel, compares them on four dimensions, logs the result, and always
+// returns the Firestore data.  PG is verification-only at this stage.
+//
+// Log tags:
+//   [PG_ACTIVE_MATCH] — count + IDs + status + driver_uid + accepted_at all agree
+//   [PG_ACTIVE_DIFF]  — any dimension diverges (diffs logged as structured data)
+//
+// Comparison dimensions:
+//   count       — total number of active orders
+//   ids         — set equality (order may differ)
+//   status      — string equality per matched order
+//   driver_uid  — string equality per matched order
+//   accepted_at — PG returns JS Date; Firestore returns Timestamp; ±1 s tolerance
+//
+// Auth: Bearer token uid must match :uid param.
+
+router.get("/drivers/:uid/active-orders", async (req, res) => {
+  const { uid } = req.params as { uid: string };
+
+  const tokenUid = await requireAuth(req, res);
+  if (!tokenUid) return;
+
+  if (tokenUid !== uid) {
+    req.log.warn({ tokenUid, uid }, "active-orders: uid mismatch");
+    res.status(403).json({ ok: false, error: "uid_mismatch" });
+    return;
+  }
+
+  const rawMax = req.query["max"];
+  const maxResults = typeof rawMax === "string" ? Math.min(parseInt(rawMax, 10) || 3, 10) : 3;
+
+  const firestoreDb = await adminFirestore();
+
+  // ── Parallel reads ────────────────────────────────────────────────────────────
+  const ACTIVE_STATUSES = [
+    "driver_assigned", "accepted", "to_pickup", "at_pickup", "to_drop", "at_drop",
+  ];
+
+  const [pgResult, fsResult] = await Promise.allSettled([
+    pgGetActiveOrders(uid, maxResults),
+    firestoreDb
+      .collection("orders")
+      .where("driverUid", "==", uid)
+      .where("status", "in", ACTIVE_STATUSES)
+      .limit(maxResults)
+      .get(),
+  ]);
+
+  // ── Firestore is always returned ──────────────────────────────────────────────
+  if (fsResult.status === "rejected") {
+    req.log.error({ err: fsResult.reason, uid }, "active-orders: Firestore read failed");
+    res.status(500).json({ ok: false, error: "firestore_error" });
+    return;
+  }
+
+  const fsDocs = fsResult.value.docs.map(
+    (d) => ({ id: d.id, ...d.data() } as Record<string, unknown>),
+  );
+  // Sort newest-first by acceptedAt (matching mobile sort)
+  fsDocs.sort((a, b) => {
+    const ta = (a["acceptedAt"] as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0;
+    const tb = (b["acceptedAt"] as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0;
+    return tb - ta;
+  });
+
+  // ── PG comparison ─────────────────────────────────────────────────────────────
+  if (pgResult.status === "rejected") {
+    req.log.error({ err: pgResult.reason, uid }, "[PG_ACTIVE_DIFF] PG read threw — skipping compare");
+  } else {
+    const pgRows = pgResult.value;
+    const diffs: { dimension: string; detail: unknown }[] = [];
+
+    // Count
+    if (pgRows.length !== fsDocs.length) {
+      diffs.push({ dimension: "count", detail: { pg: pgRows.length, fs: fsDocs.length } });
+    }
+
+    // ID sets
+    const pgIds = new Set(pgRows.map((r) => r.id));
+    const fsIds = new Set(fsDocs.map((d) => d["id"] as string));
+    const onlyInPg = [...pgIds].filter((id) => !fsIds.has(id));
+    const onlyInFs = [...fsIds].filter((id) => !pgIds.has(id));
+    if (onlyInPg.length > 0 || onlyInFs.length > 0) {
+      diffs.push({ dimension: "ids", detail: { onlyInPg, onlyInFs } });
+    }
+
+    // Per-order field comparison (matched by ID)
+    for (const pgRow of pgRows) {
+      const fsDoc = fsDocs.find((d) => d["id"] === pgRow.id);
+      if (!fsDoc) continue; // already captured in ids diff
+
+      const orderDiffs: { field: string; pg: unknown; fs: unknown }[] = [];
+
+      // status
+      const pgStatus = pgRow.status ?? null;
+      const fsStatus = (fsDoc["status"] as string | undefined) ?? null;
+      if (pgStatus !== fsStatus) orderDiffs.push({ field: "status", pg: pgStatus, fs: fsStatus });
+
+      // driver_uid
+      const pgDriver = pgRow.driverUid ?? null;
+      const fsDriver = (fsDoc["driverUid"] as string | undefined) ?? null;
+      if (pgDriver !== fsDriver) orderDiffs.push({ field: "driver_uid", pg: pgDriver, fs: fsDriver });
+
+      // accepted_at — PG: Date | null; Firestore: Timestamp | null
+      const pgMs = pgRow.acceptedAt instanceof Date ? pgRow.acceptedAt.getTime() : null;
+      const fsTs = fsDoc["acceptedAt"] as { toMillis?: () => number } | null | undefined;
+      const fsMs = fsTs?.toMillis?.() ?? null;
+      if (pgMs === null && fsMs === null) {
+        // both null — fine
+      } else if (pgMs === null || fsMs === null || Math.abs(pgMs - fsMs) > 1000) {
+        orderDiffs.push({ field: "accepted_at", pg: pgMs, fs: fsMs });
+      }
+
+      if (orderDiffs.length > 0) {
+        diffs.push({ dimension: `order:${pgRow.id}`, detail: orderDiffs });
+      }
+    }
+
+    if (diffs.length === 0) {
+      req.log.info({ uid, count: fsDocs.length }, "[PG_ACTIVE_MATCH]");
+    } else {
+      req.log.info({ uid, diffs }, "[PG_ACTIVE_DIFF]");
+    }
+  }
+
+  res.json({ ok: true, orders: fsDocs });
 });
 
 export default router;
