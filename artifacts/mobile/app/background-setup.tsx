@@ -102,14 +102,12 @@ function PermCard({
         <Feather name={icon} size={20} color={iconColor} />
       </View>
 
-      {/* Title + badge + description */}
+      {/* Title → Description → Badge stacked */}
       <View style={cs.cardMid}>
         <Text style={cs.cardTitle}>{title}</Text>
-        <View style={cs.descRow}>
-          <View style={[cs.badge, { backgroundColor: badgeBg }]}>
-            <Text style={[cs.badgeText, { color: badgeColor }]}>{badgeLabel}</Text>
-          </View>
-          <Text style={cs.cardDesc} numberOfLines={1}>{description}</Text>
+        <Text style={cs.cardDesc} numberOfLines={2}>{description}</Text>
+        <View style={[cs.badge, { backgroundColor: badgeBg, alignSelf: "flex-start" }]}>
+          <Text style={[cs.badgeText, { color: badgeColor }]}>{badgeLabel}</Text>
         </View>
       </View>
 
@@ -571,13 +569,7 @@ const cs = StyleSheet.create({
   },
   cardMid: {
     flex: 1,
-    gap: 3,
-  },
-  descRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    flexWrap: "nowrap",
+    gap: 4,
   },
   cardTitle: {
     fontSize: 15,
@@ -603,6 +595,7 @@ const cs = StyleSheet.create({
   cardAction: {
     alignItems: "flex-end",
     justifyContent: "center",
+    alignSelf: "center",
     flexShrink: 0,
     minWidth: 72,
   },
