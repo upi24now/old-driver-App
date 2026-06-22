@@ -11,7 +11,7 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import Svg, { Ellipse, Line, Rect } from "react-native-svg";
+import Svg, { Circle, Ellipse, G, Line, Path, Rect } from "react-native-svg";
 import {
   ActivityIndicator,
   Animated,
@@ -89,12 +89,51 @@ function HeroIllustration() {
         <Ellipse cx="160" cy="142" rx="82" ry="6" fill="#C05000" opacity="0.12" />
       </Svg>
 
-      {/* Scooter — scaled to fit entirely within 160px container */}
-      <Image
-        source={require("@/assets/images/vehicles/scooter.png")}
-        style={ss.heroScooter}
-        resizeMode="contain"
-      />
+      {/* Delivery scooter — pure SVG, viewBox 0 0 100 72, wheels at y=46–68, zero clipping */}
+      <Svg
+        width={194}
+        height={140}
+        viewBox="0 0 100 72"
+        preserveAspectRatio="xMidYMid meet"
+        style={{ zIndex: 1, marginBottom: 10 }}
+      >
+        {/* Cargo box — orange */}
+        <Rect x="7"  y="28" width="18" height="14" rx="2.5" fill="#FF6B00" />
+        <Rect x="7"  y="28" width="18" height="4"  rx="2.5" fill="#C2410C" />
+        <Rect x="10" y="34" width="12" height="2"  rx="1"   fill="rgba(255,255,255,0.50)" />
+        <Rect x="10" y="37" width="12" height="1.5" rx="1"  fill="rgba(255,255,255,0.30)" />
+        {/* Rear fender arc */}
+        <Path d="M10 46 Q18 38 26 38 Q32 38 37 43" fill="none" stroke="#C2410C" strokeWidth="3" strokeLinecap="round" />
+        {/* Floorboard / step-through deck */}
+        <Rect x="25" y="50" width="48" height="7" rx="3.5" fill="#FF6B00" />
+        {/* Rear body cowl */}
+        <Path d="M25 42 L50 36 L56 44 L40 50 L25 50 Z" fill="#FF6B00" />
+        <Path d="M26 42 L49 36 L54 41 L30 43 Z" fill="#FF8C40" />
+        {/* Front shield / legshield */}
+        <Path d="M68 33 L74 31 L76 46 L68 48 Z" fill="#C2410C" />
+        {/* Handlebar */}
+        <Rect x="64" y="22" width="18" height="5" rx="2.5" fill="#111827" />
+        {/* Head tube */}
+        <Rect x="68" y="27" width="5" height="22" rx="2.5" fill="#374151" />
+        {/* Seat */}
+        <Rect x="34" y="30" width="26" height="8" rx="4" fill="#111827" />
+        <Rect x="36" y="31" width="22" height="4" rx="2" fill="#374151" />
+        {/* Headlight */}
+        <Ellipse cx="77" cy="43" rx="4" ry="3.5" fill="#FDE68A" />
+        <Ellipse cx="77" cy="43" rx="2" ry="2"   fill="#FFFFFF" opacity="0.65" />
+        {/* Rear wheel — cx=26 cy=57 r=11 — bottom at y=68, inside viewBox 72 */}
+        <G>
+          <Circle cx={26} cy={57} r={11}         fill="#1F2937" />
+          <Circle cx={26} cy={57} r={11 * 0.55}  fill="#374151" />
+          <Circle cx={26} cy={57} r={11 * 0.22}  fill="#9CA3AF" />
+        </G>
+        {/* Front wheel — cx=74 cy=57 r=11 — bottom at y=68, inside viewBox 72 */}
+        <G>
+          <Circle cx={74} cy={57} r={11}         fill="#1F2937" />
+          <Circle cx={74} cy={57} r={11 * 0.55}  fill="#374151" />
+          <Circle cx={74} cy={57} r={11 * 0.22}  fill="#9CA3AF" />
+        </G>
+      </Svg>
     </View>
   );
 }
@@ -623,13 +662,6 @@ const ss = StyleSheet.create({
     justifyContent: "flex-end",
     overflow:       "hidden",
   },
-  heroScooter: {
-    width:        "68%",
-    height:       124,
-    zIndex:       1,
-    marginBottom: 30,
-  },
-
   // ── Phone Input Card ──────────────────────────────────────────────────────
   loginCard: {
     alignSelf:       "stretch",
