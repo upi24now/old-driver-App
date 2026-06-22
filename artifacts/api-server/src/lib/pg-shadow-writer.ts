@@ -23,7 +23,7 @@
 
 import { adminFirestore } from "./firebase-admin";
 import { logger } from "./logger";
-import { pgShadowMarkAccept, pgShadowSetStatus } from "./order-pg-service";
+import { pgShadowMarkAccept, pgShadowSetStatus, pgUpsertOrderOtp } from "./order-pg-service";
 
 // Delivery stages that the mobile transitions through after accept.
 // "delivered" is excluded — it is mirrored from POST /complete server-side.
@@ -101,5 +101,54 @@ export async function startPgShadowWriter(): Promise<void> {
       },
     );
 
-  logger.info("[PG shadow writer] Running — listening for driver_assigned and delivery stages");
+  // ── Listener 3: OTP shadow writer ─────────────────────────────────────────
+  // Mirrors orders/{orderId}/private/otp into the order_otps PG table.
+  //
+  // Uses a collection group query on "private" so a single listener covers
+  // the OTP subcollection across all orders.  Only documents named "otp"
+  // are processed; any other private subdocs (if added later) are skipped.
+  //
+  // The INSERT into order_otps carries a FK to orders.id, so if the order
+  // row does not yet exist in PG when the OTP arrives, the write will fail
+  // and be logged — this is expected for orders created before dispatch.
+  db.collectionGroup("private")
+    .onSnapshot(
+      (snapshot) => {
+        for (const change of snapshot.docChanges()) {
+          if (change.type !== "added" && change.type !== "modified") continue;
+
+          // Only the "otp" document within the private subcollection
+          if (change.doc.id !== "otp") continue;
+
+          // Path shape: "orders/{orderId}/private/otp"
+          const parts = change.doc.ref.path.split("/");
+          if (parts.length !== 4 || parts[0] !== "orders") continue;
+
+          const orderId = parts[1]!;
+          const docData = change.doc.data() as Record<string, unknown>;
+          const value   = typeof docData["value"] === "string"
+            ? docData["value"]
+            : typeof docData["value"] === "number"
+            ? String(docData["value"])
+            : null;
+
+          if (!value) {
+            logger.warn({ orderId }, "[PG_SHADOW_OTP] missing value field — skipping");
+            continue;
+          }
+
+          void (async () => {
+            await pgUpsertOrderOtp(orderId, value);
+            logger.info({ orderId }, "[PG_SHADOW_OTP]");
+          })().catch((e) =>
+            logger.error({ err: e, orderId }, "[PG_SHADOW_OTP] unexpected error — continuing"),
+          );
+        }
+      },
+      (err) => {
+        logger.error({ err }, "[PG shadow writer] OTP listener error");
+      },
+    );
+
+  logger.info("[PG shadow writer] Running — listening for driver_assigned, delivery stages, and OTP");
 }

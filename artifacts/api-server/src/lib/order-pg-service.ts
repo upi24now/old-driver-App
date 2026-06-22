@@ -30,6 +30,7 @@ import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   db,
   orderOffersTable,
+  orderOtpsTable,
   ordersTable,
   type Order,
   type OrderOffer,
@@ -483,6 +484,8 @@ export async function pgUpsertOrder(
         parcelWeight:   str("parcelWeight"),
         driverUid:      str("driverUid"),
         driverName:     str("driverName"),
+        driverRating:   str("driverRating"),
+        driverTrips:    intVal("driverTrips"),
         rejectedBy,
         lastDispatchedUid,
         dispatchTimeoutAt,
@@ -494,6 +497,8 @@ export async function pgUpsertOrder(
           status,
           driverUid:        str("driverUid"),
           driverName:       str("driverName"),
+          driverRating:     str("driverRating"),
+          driverTrips:      intVal("driverTrips"),
           rejectedBy,
           lastDispatchedUid,
           dispatchTimeoutAt,
@@ -596,5 +601,39 @@ export async function pgShadowMarkAccept(
       .where(eq(ordersTable.id, orderId));
   } catch (err) {
     logger.error({ err, orderId, driverUid }, "[pgShadowMarkAccept] error (non-blocking)");
+  }
+}
+
+// ── pgUpsertOrderOtp ──────────────────────────────────────────────────────────
+
+/**
+ * Upsert an OTP row from the Firestore orders/{orderId}/private/otp subcollection.
+ *
+ * Called by the PG shadow writer whenever the OTP document is created or
+ * updated in Firestore.  On conflict (same order_id already has an OTP row)
+ * the value is overwritten — this covers the rare case where the customer app
+ * re-generates the OTP before delivery.
+ *
+ * The INSERT will fail with a FK violation if the orders row does not yet
+ * exist in PG (OTP written before order is dispatched).  This is logged and
+ * swallowed — the OTP will be re-synced once the order row lands via
+ * pgUpsertOrder.
+ *
+ * Never throws.
+ */
+export async function pgUpsertOrderOtp(
+  orderId: string,
+  value:   string,
+): Promise<void> {
+  try {
+    await db
+      .insert(orderOtpsTable)
+      .values({ orderId, value })
+      .onConflictDoUpdate({
+        target: orderOtpsTable.orderId,
+        set:    { value },
+      });
+  } catch (err) {
+    logger.error({ err, orderId }, "[pgUpsertOrderOtp] error (non-blocking)");
   }
 }

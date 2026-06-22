@@ -34,6 +34,7 @@ import {
   pgShadowSetStatus,
   pgTimeoutOffer,
   pgUpsertOrder,
+  pgUpsertOrderOtp,
 } from "./order-pg-service";
 
 const DISPATCH_TIMEOUT_SECONDS = 60;
@@ -112,7 +113,12 @@ async function assignNextDriver(
     : null;
 
   // ── 1. Find available drivers ───────────────────────────────────────────────
-  let drivers: { uid: string }[] = [];
+  let drivers: {
+    uid:    string;
+    name:   string | null;
+    rating: string | null;
+    trips:  number | null;
+  }[] = [];
   try {
     const snap = await db.collection("drivers")
       .where("isOnline", "==", true)
@@ -125,13 +131,24 @@ async function assignNextDriver(
         const expiry = typeof dd["subscriptionExpiresAt"] === "number"
           ? dd["subscriptionExpiresAt"]
           : 0;
-        return { uid: d.id, expiry };
+        const name   = typeof dd["name"]   === "string" ? dd["name"]   : null;
+        const rating = typeof dd["rating"] === "number"
+          ? String(dd["rating"])
+          : typeof dd["rating"] === "string"
+          ? dd["rating"]
+          : null;
+        const trips  = typeof dd["tripsTotal"] === "number"
+          ? dd["tripsTotal"]
+          : typeof dd["trips"] === "number"
+          ? dd["trips"]
+          : null;
+        return { uid: d.id, expiry, name, rating, trips };
       })
       // Only drivers with a valid active subscription (expiry in the future).
       // Drivers without subscriptionExpiresAt (legacy / test drivers) are allowed through.
       .filter((d) => d.expiry === 0 || d.expiry > now)
       .filter((d) => !rejectedBy.includes(d.uid))
-      .map((d) => ({ uid: d.uid }));
+      .map((d) => ({ uid: d.uid, name: d.name, rating: d.rating, trips: d.trips }));
   } catch (err) {
     logger.error({ err, orderId }, "[RR dispatcher] Failed to query drivers");
     return;
@@ -226,9 +243,45 @@ async function assignNextDriver(
       // ── PG shadow writes (non-blocking; never throw) ─────────────────────────
       const timeoutAt = new Date(Date.now() + DISPATCH_TIMEOUT_SECONDS * 1000);
       void (async () => {
-        // Mirror the order row into PG (upsert — may be a returning order).
-        await pgUpsertOrder(orderId, data, "dispatched");
-        logger.info({ orderId, driverUid: chosen.uid }, "[PG_SHADOW_STATUS] dispatched");
+        // Mirror the order row into PG — override driver fields with the assigned
+        // driver (pre-dispatch snapshot has driverUid: null; chosen has the real uid).
+        await pgUpsertOrder(
+          orderId,
+          {
+            ...data,
+            driverUid:    chosen.uid,
+            driverName:   chosen.name,
+            driverRating: chosen.rating,
+            driverTrips:  chosen.trips,
+          },
+          "dispatched",
+        );
+        logger.info(
+          { orderId, driverUid: chosen.uid, driverName: chosen.name },
+          "[PG_SHADOW_DRIVER] dispatched",
+        );
+
+        // Proactively mirror the OTP from Firestore now that the orders row
+        // exists in PG.  Customer apps write the OTP at order creation — before
+        // dispatch — so the collectionGroup listener in pg-shadow-writer.ts
+        // fires while the orders FK row is still absent and fails.  We fetch
+        // it here immediately after pgUpsertOrder ensures the parent row is
+        // present, giving us a guaranteed write window.
+        const otpSnap = await db.doc(`orders/${orderId}/private/otp`).get();
+        if (otpSnap.exists) {
+          const od    = otpSnap.data() as Record<string, unknown>;
+          const otpVal = typeof od["value"] === "string"
+            ? od["value"]
+            : typeof od["value"] === "number"
+            ? String(od["value"])
+            : null;
+          if (otpVal) {
+            await pgUpsertOrderOtp(orderId, otpVal);
+            logger.info({ orderId }, "[PG_SHADOW_OTP] fetched at dispatch");
+          } else {
+            logger.warn({ orderId }, "[PG_SHADOW_OTP] private/otp exists but value field missing");
+          }
+        }
 
         // Create the offer row for this driver.
         const offerResult = await pgCreateOffer(orderId, chosen.uid, timeoutAt);
