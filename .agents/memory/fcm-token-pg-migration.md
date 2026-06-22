@@ -1,11 +1,19 @@
 ---
-name: FCM token PG migration (Phase 4A)
-description: How driver push-token storage was moved from Firestore to Postgres, and what is intentionally still shadowed.
+name: FCM token PG migration (Phase 4A + 4B)
+description: How driver push-token storage (write) and the dispatcher lookup (read) were moved from Firestore to Postgres, and what is intentionally still shadowed.
 ---
 
-# FCM push-token storage — Firestore → Postgres (Phase 4A)
+# FCM push-token storage — Firestore → Postgres (Phase 4A write, 4B read)
 
-Driver Expo/FCM push tokens are now written to **both** Postgres and Firestore. Postgres is the new primary store; Firestore is kept as a shadow/fallback.
+Driver Expo/FCM push tokens are written to **both** Postgres and Firestore. Postgres is the primary store for both write (4A) and the dispatcher's read (4B); Firestore is kept as a shadow/fallback on both sides.
+
+## Phase 4B — dispatcher reads PG-first (read side)
+
+The FCM dispatcher (`fcm-dispatcher.ts`) resolves each driver's token PG-first, Firestore-fallback via `resolveDriverFcmToken()`: PG `drivers.fcm_token` → `[PG_FCM_TOKEN_HIT]`; on PG empty/no-row/throw → Firestore `drivers/{uid}.fcmToken` → `[PG_FCM_TOKEN_FALLBACK]`; neither → `[PG_FCM_TOKEN_MISS]`.
+- **A PG read error must never block push** — it is caught/logged and falls through to Firestore, identical to a PG miss.
+- The PG `db` is imported **aliased as `pgDb`** because the dispatcher's local Firestore handle is already named `db`.
+- Send payload, claim transaction, order targeting, and Firestore writeback are untouched.
+- **Expected during rollout:** until drivers re-login through the 4A mobile build, `drivers.fcm_token` is null for everyone, so 100% of dispatches take the FALLBACK (Firestore) path. HIT share grows as drivers re-register. This is correct, not a bug.
 
 ## Decisions
 
