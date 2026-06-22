@@ -21,7 +21,17 @@ Firestore payout ledger rows store `amount` **negative** (`-amount`); the PG `wa
 
 **How to apply:** add a unique index on `(driver_uid, order_id, type)` for credits + conflict handling in `pgCreditOrderEarning` before PG becomes authoritative.
 
-## 3. Dual-read comparator is FS→PG only
+## 3. Historical wallet/transaction data needs an explicit backfill
+Shadow writes only mirror *new* activity from the moment they were deployed. The existing `wallets/{uid}` docs and historical `transactions` rows in Firestore are NOT in PG until a one-time backfill runs — same pattern as the Phase 2C delivered-trips backfill.
+
+**Why:** an audit found Firestore had real driver wallet+transaction data while `driver_wallets`/`wallet_transactions` were empty, so any PG-primary cutover would serve blank wallets. Shadow-only ≠ migrated.
+
+**How to apply:** write and run an idempotent backfill (wallets + transactions) before promotion, then re-run the readiness audit (`scripts/audit-wallet-pg-readiness.mjs`) until it returns READY_FOR_PG_PRIMARY.
+
+## 4. Firestore payout sign is itself inconsistent
+The live `transactions` collection contains both negative AND positive payout `amount` values (legacy/manual rows), not a uniform sign. Any sign canonicalization (see #1) must handle mixed-sign source data, not assume all FS payouts are negative.
+
+## 5. Dual-read comparator is FS→PG only
 The transaction comparator looks up FS rows in a PG-by-orderId map and compares counts; it does not detect unmatched PG rows or reconcile payout rows individually. Offsetting anomalies (e.g. a duplicate credit row plus a missing payout row yielding equal counts) can pass as a match.
 
 **How to apply:** strengthen the comparator (bidirectional matching + payout reconciliation) before relying on `[PG_TX_MATCH]` as a cutover gate.
