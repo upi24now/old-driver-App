@@ -11,6 +11,7 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
+import Svg, { Line, Rect } from "react-native-svg";
 import {
   ActivityIndicator,
   Animated,
@@ -53,6 +54,47 @@ const D = {
 
 const OTP_LENGTH     = 6;
 const RESEND_SECONDS = 30;
+
+// ─── Hero illustration ─────────────────────────────────────────────────────────
+function HeroIllustration() {
+  return (
+    <View style={ss.heroIllustration}>
+      {/* City silhouette — sits on the screen bg, no container box */}
+      <Svg
+        width="100%"
+        height="155"
+        viewBox="0 0 320 155"
+        style={StyleSheet.absoluteFillObject}
+      >
+        {/* Left buildings */}
+        <Rect x="0"  y="62" width="32" height="93" rx="3" fill="#FFE8D6" opacity="0.9" />
+        <Rect x="10" y="44" width="16" height="111" rx="2" fill="#FFD8C0" opacity="0.8" />
+        <Rect x="36" y="74" width="26" height="81" rx="3" fill="#FFE8D6" opacity="0.9" />
+        <Rect x="46" y="56" width="12" height="99" rx="2" fill="#FFD0B4" opacity="0.7" />
+        <Rect x="68" y="82" width="22" height="73" rx="3" fill="#FFE8D6" opacity="0.6" />
+        {/* Right buildings */}
+        <Rect x="230" y="78" width="22" height="77" rx="3" fill="#FFE8D6" opacity="0.6" />
+        <Rect x="252" y="60" width="28" height="95" rx="3" fill="#FFE8D6" opacity="0.9" />
+        <Rect x="264" y="44" width="14" height="111" rx="2" fill="#FFD8C0" opacity="0.8" />
+        <Rect x="284" y="70" width="36" height="85" rx="3" fill="#FFE8D6" opacity="0.9" />
+        {/* Ground strip */}
+        <Rect x="0" y="128" width="320" height="27" rx="0" fill="#FFF3EC" />
+        <Line x1="0" y1="128" x2="320" y2="128" stroke="#FFDCC8" strokeWidth="1.5" />
+        {/* Road centre dashes */}
+        <Line x1="60"  y1="141" x2="96"  y2="141" stroke="#FF6B00" strokeWidth="1.5" strokeDasharray="10,7" opacity="0.25" />
+        <Line x1="116" y1="141" x2="152" y2="141" stroke="#FF6B00" strokeWidth="1.5" strokeDasharray="10,7" opacity="0.25" />
+        <Line x1="172" y1="141" x2="208" y2="141" stroke="#FF6B00" strokeWidth="1.5" strokeDasharray="10,7" opacity="0.25" />
+        <Line x1="228" y1="141" x2="264" y2="141" stroke="#FF6B00" strokeWidth="1.5" strokeDasharray="10,7" opacity="0.25" />
+      </Svg>
+      {/* Transparent-bg scooter PNG — no box, blends naturally */}
+      <Image
+        source={require("@/assets/images/vehicles/scooter.png")}
+        style={ss.heroScooter}
+        resizeMode="contain"
+      />
+    </View>
+  );
+}
 
 // ─── OTP Cell Pop animation ────────────────────────────────────────────────────
 function CellPop({ children, trigger }: { children: React.ReactNode; trigger: boolean }) {
@@ -262,13 +304,7 @@ export default function LoginScreen() {
             </View>
 
             {/* ── Delivery illustration ── */}
-            <View style={ss.illustrationWrap}>
-              <Image
-                source={require("@/assets/images/bike-delivery.png")}
-                style={ss.illustrationImg}
-                resizeMode="contain"
-              />
-            </View>
+            <HeroIllustration />
 
             {/* ── Phone input card ── */}
             <View style={ss.loginCard}>
@@ -574,22 +610,21 @@ const ss = StyleSheet.create({
     textAlign: "center",
   },
 
-  // ── Illustration ──────────────────────────────────────────────────────────
-  illustrationWrap: {
-    width:           "82%",
-    height:          160,
-    borderRadius:    28,
-    backgroundColor: "#FFF3EC",
-    overflow:        "hidden",
-    alignSelf:       "center",
-    alignItems:      "center",
-    justifyContent:  "center",
-    marginTop:       16,
-    marginBottom:    18,
+  // ── Hero illustration ─────────────────────────────────────────────────────
+  heroIllustration: {
+    alignSelf:      "stretch",
+    height:         155,
+    marginTop:      16,
+    marginBottom:   18,
+    alignItems:     "center",
+    justifyContent: "flex-end",
+    overflow:       "hidden",
   },
-  illustrationImg: {
-    width:  "100%",
-    height: 160,
+  heroScooter: {
+    width:    "72%",
+    height:   118,
+    zIndex:   1,
+    marginBottom: 2,
   },
 
   // ── Phone Input Card ──────────────────────────────────────────────────────
