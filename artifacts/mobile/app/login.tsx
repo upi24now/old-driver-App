@@ -942,6 +942,7 @@ const ss = StyleSheet.create({
     borderColor:     "#D1D5DB",
     shadowOpacity:   0,
     elevation:       0,
+    opacity:         1,
   },
   verifyBtnText: {
     fontSize:      17,
