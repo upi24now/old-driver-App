@@ -97,63 +97,41 @@ function PermCard({
 
   return (
     <View style={cs.card}>
-      {/* Top: icon + title + badge */}
-      <View style={cs.cardTop}>
-        <View style={[cs.iconWrap, { backgroundColor: iconBg }]}>
-          <Feather name={icon} size={22} color={iconColor} />
-        </View>
-
-        <View style={{ flex: 1, gap: 3 }}>
-          <View style={cs.titleRow}>
-            <Text style={cs.cardTitle}>{title}</Text>
-            <View style={[cs.badge, { backgroundColor: badgeBg }]}>
-              <Text style={[cs.badgeText, { color: badgeColor }]}>{badgeLabel}</Text>
-            </View>
-          </View>
-          <Text style={cs.cardDesc}>{description}</Text>
-        </View>
+      {/* Icon */}
+      <View style={[cs.iconWrap, { backgroundColor: iconBg }]}>
+        <Feather name={icon} size={20} color={iconColor} />
       </View>
 
-      {/* Divider */}
-      <View style={cs.divider} />
-
-      {/* Status row */}
-      <View style={cs.statusRow}>
-        {/* Left: status indicator */}
-        <View style={cs.statusLeft}>
-          <Feather
-            name="check-circle"
-            size={16}
-            color={granted ? D.success : D.success}
-          />
-          <Text style={[cs.statusText, { color: granted ? D.success : D.textMuted }]}>
-            {granted ? "Granted" : "Not Granted"}
-          </Text>
+      {/* Title + description */}
+      <View style={cs.cardMid}>
+        <View style={cs.titleRow}>
+          <Text style={cs.cardTitle} numberOfLines={1}>{title}</Text>
+          <View style={[cs.badge, { backgroundColor: badgeBg }]}>
+            <Text style={[cs.badgeText, { color: badgeColor }]}>{badgeLabel}</Text>
+          </View>
         </View>
+        <Text style={cs.cardDesc} numberOfLines={1}>{description}</Text>
+      </View>
 
-        {/* Right: action */}
+      {/* Action / status */}
+      <View style={cs.cardAction}>
         {loading ? (
           <ActivityIndicator size="small" color={D.primary} />
         ) : granted ? (
-          <Feather name="chevron-right" size={16} color={D.border} />
+          <View style={cs.grantedChip}>
+            <Feather name="check" size={11} color={D.success} />
+            <Text style={cs.grantedText}>Granted</Text>
+          </View>
         ) : actionDisabled && disabledNote ? (
-          <Text style={cs.disabledNote}>{disabledNote}</Text>
+          <Text style={cs.disabledNote} numberOfLines={2}>{disabledNote}</Text>
         ) : canAskAgain ? (
-          <TouchableOpacity
-            style={cs.allowBtn}
-            onPress={onAllow}
-            activeOpacity={0.8}
-          >
+          <TouchableOpacity style={cs.allowBtn} onPress={onAllow} activeOpacity={0.8}>
             <Text style={cs.allowBtnText}>Allow</Text>
-            <Feather name="chevron-right" size={13} color={D.white} />
+            <Feather name="chevron-right" size={12} color={D.white} />
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity
-            style={cs.settingsBtn}
-            onPress={onOpenSettings}
-            activeOpacity={0.8}
-          >
-            <Feather name="settings" size={12} color={D.text} />
+          <TouchableOpacity style={cs.settingsBtn} onPress={onOpenSettings} activeOpacity={0.8}>
+            <Feather name="settings" size={11} color={D.text} />
             <Text style={cs.settingsBtnText}>Settings</Text>
           </TouchableOpacity>
         )}
@@ -329,7 +307,7 @@ export default function PermissionCenterScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={[
           cs.scroll,
-          { paddingTop: fromProfile ? 16 : insets.top + 32 },
+          { paddingTop: fromProfile ? 12 : insets.top + 20 },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -448,7 +426,7 @@ export default function PermissionCenterScreen() {
       </ScrollView>
 
       {/* ── Sticky footer ── */}
-      <View style={[cs.footer, { paddingBottom: insets.bottom + 20 }]}>
+      <View style={[cs.footer, { paddingBottom: insets.bottom + 12 }]}>
         <TouchableOpacity
           style={[cs.continueBtn, !canContinue && cs.continueBtnDisabled]}
           onPress={() => void finish()}
@@ -491,50 +469,50 @@ const cs = StyleSheet.create({
     paddingBottom: 4,
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     backgroundColor: "#F3F4F6",
     alignItems: "center",
     justifyContent: "center",
   },
 
   scroll: {
-    paddingHorizontal: 20,
-    gap: 10,
-    paddingBottom: 140,
+    paddingHorizontal: 16,
+    gap: 8,
+    paddingBottom: 16,
   },
 
   // ── Hero ────────────────────────────────────────────────────────────────────
   heroSection: {
     alignItems: "center",
-    marginBottom: 18,
+    marginBottom: 10,
   },
   logoCircle: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: D.primary,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 16,
+    marginBottom: 8,
     shadowColor: "#000",
     shadowOpacity: 0.12,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
   logoText: {
-    fontSize: 26,
+    fontSize: 20,
     fontWeight: "900",
     color: D.white,
     letterSpacing: 0.5,
   },
   brandName: {
-    fontSize: 19,
+    fontSize: 17,
     fontWeight: "700",
     letterSpacing: -0.3,
-    marginBottom: 8,
+    marginBottom: 2,
   },
   partnerLabel: {
     fontSize: 10,
@@ -544,104 +522,104 @@ const cs = StyleSheet.create({
     textTransform: "uppercase",
   },
   headline: {
-    fontSize: 27,
+    fontSize: 24,
     fontWeight: "800",
     color: D.text,
     letterSpacing: -0.5,
     textAlign: "center",
-    marginTop: 24,
-    lineHeight: 33,
+    marginTop: 10,
+    lineHeight: 29,
   },
   subline: {
-    fontSize: 13,
+    fontSize: 12,
     color: D.textMuted,
     textAlign: "center",
-    lineHeight: 19,
-    marginTop: 4,
+    lineHeight: 16,
+    marginTop: 2,
   },
 
-  // ── Card ────────────────────────────────────────────────────────────────────
+  // ── Card — compact single horizontal row ─────────────────────────────────
   card: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: D.white,
-    borderRadius: 20,
-    overflow: "hidden",
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 13,
+    gap: 10,
     shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  cardTop: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    padding: 14,
-    gap: 12,
-  },
   iconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 13,
+    width: 40,
+    height: 40,
+    borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
   },
+  cardMid: {
+    flex: 1,
+    gap: 3,
+  },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    flexWrap: "wrap",
+    gap: 6,
+    flexWrap: "nowrap",
   },
   cardTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "700",
     color: D.text,
+    flexShrink: 1,
   },
   badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
     borderRadius: 20,
+    flexShrink: 0,
   },
   badgeText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "700",
     letterSpacing: 0.2,
   },
   cardDesc: {
-    fontSize: 13,
-    color: D.textMuted,
-    lineHeight: 18,
-    marginTop: 2,
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: D.border,
-    marginHorizontal: 18,
-  },
-
-  // ── Status row ──────────────────────────────────────────────────────────────
-  statusRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  statusLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  statusText: {
     fontSize: 12,
-    fontWeight: "600",
+    color: D.textMuted,
+    lineHeight: 16,
+  },
+  cardAction: {
+    alignItems: "flex-end",
+    justifyContent: "center",
+    flexShrink: 0,
+    minWidth: 72,
+  },
+  grantedChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: D.successSoft,
+  },
+  grantedText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: D.success,
   },
   allowBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 3,
+    gap: 2,
     backgroundColor: D.primary,
-    paddingHorizontal: 11,
-    paddingVertical: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 8,
   },
   allowBtnText: {
@@ -652,54 +630,56 @@ const cs = StyleSheet.create({
   settingsBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
+    gap: 3,
+    paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: D.border,
   },
   settingsBtnText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "600",
     color: D.text,
   },
   disabledNote: {
-    fontSize: 12,
+    fontSize: 10,
     fontStyle: "italic",
     color: D.textMuted,
+    textAlign: "right",
+    maxWidth: 80,
   },
 
   // ── Privacy note ─────────────────────────────────────────────────────────────
   privacyRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
+    alignItems: "center",
+    gap: 8,
     backgroundColor: D.primarySoft,
-    borderRadius: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginTop: 4,
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginTop: 2,
   },
   privacyText: {
     flex: 1,
-    fontSize: 12,
+    fontSize: 11,
     color: D.textMuted,
-    lineHeight: 17,
+    lineHeight: 15,
   },
 
   // ── Footer ───────────────────────────────────────────────────────────────────
   footer: {
     paddingHorizontal: 20,
-    paddingTop: 14,
-    gap: 8,
+    paddingTop: 10,
+    gap: 6,
     backgroundColor: D.bg,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: D.border,
   },
   continueBtn: {
-    height: 56,
-    borderRadius: 16,
+    height: 50,
+    borderRadius: 14,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -716,7 +696,7 @@ const cs = StyleSheet.create({
     elevation: 0,
   },
   continueBtnText: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: "700",
     color: D.white,
     letterSpacing: 0.2,
@@ -725,10 +705,10 @@ const cs = StyleSheet.create({
     color: D.textMuted,
   },
   gateNote: {
-    fontSize: 12,
+    fontSize: 11,
     textAlign: "center",
     color: D.textMuted,
-    paddingBottom: 4,
+    paddingBottom: 2,
   },
 });
 
