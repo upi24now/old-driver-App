@@ -263,7 +263,6 @@ export default function LoginScreen() {
 
             {/* ── Delivery illustration ── */}
             <View style={ss.illustrationWrap}>
-              <View style={ss.illustrationBg} />
               <Image
                 source={require("@/assets/images/bike-delivery.png")}
                 style={ss.illustrationImg}
@@ -577,20 +576,16 @@ const ss = StyleSheet.create({
 
   // ── Illustration ──────────────────────────────────────────────────────────
   illustrationWrap: {
-    alignSelf:      "stretch",
-    height:         155,
-    marginBottom:   16,
-    alignItems:     "center",
-    justifyContent: "center",
-  },
-  illustrationBg: {
-    position:        "absolute",
-    bottom:          0,
-    left:            20,
-    right:           20,
-    height:          80,
-    borderRadius:    40,
-    backgroundColor: "#FFF0E5",
+    width:           "82%",
+    height:          160,
+    borderRadius:    28,
+    backgroundColor: "#FFF3EC",
+    overflow:        "hidden",
+    alignSelf:       "center",
+    alignItems:      "center",
+    justifyContent:  "center",
+    marginTop:       16,
+    marginBottom:    18,
   },
   illustrationImg: {
     width:  "100%",
@@ -651,12 +646,13 @@ const ss = StyleSheet.create({
     marginHorizontal:  12,
   },
   phoneInput: {
-    flex:              1,
-    fontSize:          16,
-    fontWeight:        "500",
-    color:             D.text,
-    paddingVertical:   0,
-    textAlignVertical: "center",
+    flex:               1,
+    fontSize:           16,
+    fontWeight:         "500",
+    color:              D.text,
+    lineHeight:         22,
+    paddingVertical:    0,
+    textAlignVertical:  "center",
     includeFontPadding: false,
     ...Platform.select({
       web:     { outlineWidth: 0, outlineStyle: "none" } as object,
