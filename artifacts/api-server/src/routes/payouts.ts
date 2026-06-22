@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { Router, type Request, type Response } from "express";
 import { adminFirestore } from "../lib/firebase-admin";
 import { requireAuth } from "../lib/require-auth";
+import { pgCreatePayoutRequest } from "../lib/wallet-pg-service";
 
 const router = Router();
 
@@ -85,6 +86,12 @@ router.post("/payouts/request", async (req: Request, res: Response) => {
     });
 
     req.log.info({ driverUid, amount }, "payouts/request: withdrawal request created");
+
+    // ── PG shadow write: payout request (non-blocking) ────────────────────────
+    void pgCreatePayoutRequest(driverUid, amount)
+      .then(() => req.log.info({ driverUid, amount }, "[PG_PAYOUT_SHADOW]"))
+      .catch((e) => req.log.error({ err: e, driverUid, amount }, "[PG_PAYOUT_SHADOW] shadow write failed — non-blocking"));
+
     res.json({ ok: true, requestId: payoutRef.id });
   } catch (err: unknown) {
     const code = (err as Partial<TxErr>).code;

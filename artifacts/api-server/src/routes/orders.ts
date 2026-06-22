@@ -3,6 +3,7 @@ import { Router, type Request, type Response } from "express";
 import { adminFirestore } from "../lib/firebase-admin";
 import { requireAuth } from "../lib/require-auth";
 import { pgGetOrder, pgShadowSetStatus } from "../lib/order-pg-service";
+import { pgCreditOrderEarning } from "../lib/wallet-pg-service";
 
 const router = Router();
 
@@ -88,6 +89,7 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
     return Object.assign(new Error(code), { code }) as TxError;
   }
 
+  let fareAmount    = 0;
   let newBalance    = 0;
   let newToday      = 0;
   let newTrips      = 0;
@@ -119,7 +121,7 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
       if (order["status"] !== "at_drop") throw txError("invalid_stage");
 
       // ── Fare and payment from order doc — never from client ───────────────────
-      const fareAmount  = typeof order["fareEstimate"] === "number" ? order["fareEstimate"] : 0;
+      fareAmount        = typeof order["fareEstimate"] === "number" ? order["fareEstimate"] : 0;
       const paymentMode = typeof order["paymentMode"]  === "string"  ? order["paymentMode"]  : "Cash";
 
       // ── Wallet arithmetic (wallets/{uid} is the authoritative balance) ─────────
@@ -180,6 +182,16 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
     void pgShadowSetStatus(orderId, "delivered")
       .then(() => req.log.info({ orderId, driverUid }, "[PG_SHADOW_STATUS] delivered"))
       .catch((e) => req.log.error({ err: e, orderId }, "[PG_SHADOW_STATUS] delivered error — continuing"));
+
+    // ── PG shadow write: wallet credit (non-blocking) ─────────────────────────
+    void pgCreditOrderEarning(
+      driverUid,
+      orderId,
+      fareAmount,
+      `Delivery #${orderId.slice(-6).toUpperCase()}`,
+    )
+      .then(() => req.log.info({ orderId, driverUid, fareAmount }, "[PG_WALLET_CREDIT]"))
+      .catch((e) => req.log.error({ err: e, orderId, driverUid }, "[PG_WALLET_CREDIT] shadow write failed — non-blocking"));
 
     res.json({ ok: true, newBalance, todayEarnings: newToday, tripsToday: newTrips, todayDate: today });
 
