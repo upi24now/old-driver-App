@@ -459,7 +459,7 @@ export default function LoginScreen() {
                 <Text style={{ color: D.text }}>Bike</Text>
                 <Text style={{ color: D.primary }}>Courier</Text>
               </Text>
-              <Text style={ss.partnerLabel}>PARTNER</Text>
+              <Text style={[ss.partnerLabel, { marginBottom: 0 }]}>PARTNER</Text>
             </View>
 
             {/* ── Heading ── */}
@@ -837,7 +837,7 @@ const ss = StyleSheet.create({
   otpPhase: {
     alignSelf:  "stretch",
     alignItems: "center",
-    gap:        16,
+    gap:        14,
   },
   otpBranding: {
     alignItems: "center",
@@ -878,7 +878,7 @@ const ss = StyleSheet.create({
   },
   cellShell: {
     flex:           1,
-    height:         56,
+    height:         54,
     borderRadius:   14,
     alignItems:     "center",
     justifyContent: "center",
