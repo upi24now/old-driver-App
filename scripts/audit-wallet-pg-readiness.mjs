@@ -180,8 +180,14 @@ console.log(`  onlyInPostgres  : ${totalOnlyInPg}\n`);
 console.log("Payout sign convention:");
 console.log(`  Firestore payouts → negative=${fsPayoutNeg} positive=${fsPayoutPos} zero=${fsPayoutZero}`);
 console.log(`  PostgreSQL payouts → negative=${pgPayoutNeg} positive=${pgPayoutPos} zero=${pgPayoutZero}`);
-const signDivergence = (fsPayoutNeg > 0 && pgPayoutPos > 0) || (fsPayoutPos > 0 && pgPayoutNeg > 0);
-console.log(`  Sign divergence : ${signDivergence ? "YES — FS and PG use opposite signs" : "no"}\n`);
+// Divergence = PG sign distribution does NOT mirror Firestore's. Because the
+// backfill copies amounts exactly, a faithful mirror has identical counts. A
+// store having an internally mixed sign (legacy FS data) is NOT divergence.
+const signDivergence = fsPayoutNeg !== pgPayoutNeg || fsPayoutPos !== pgPayoutPos || fsPayoutZero !== pgPayoutZero;
+const mixedSignSource = (fsPayoutNeg > 0 && fsPayoutPos > 0);
+console.log(`  Sign divergence (FS vs PG): ${signDivergence ? "YES — PG does not mirror FS signs" : "no — PG mirrors FS exactly"}`);
+if (mixedSignSource) console.log(`  Note: Firestore itself stores mixed-sign payouts (legacy data); PG preserves this faithfully.`);
+console.log("");
 
 console.log("Credit idempotency:");
 console.log(`  Duplicate credit rows (driver_uid+order_id, type=credit): ${duplicateCreditRows.length}`);

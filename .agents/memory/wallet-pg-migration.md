@@ -26,7 +26,7 @@ Shadow writes only mirror *new* activity from the moment they were deployed. The
 
 **Why:** an audit found Firestore had real driver wallet+transaction data while `driver_wallets`/`wallet_transactions` were empty, so any PG-primary cutover would serve blank wallets. Shadow-only ≠ migrated.
 
-**How to apply:** write and run an idempotent backfill (wallets + transactions) before promotion, then re-run the readiness audit (`scripts/audit-wallet-pg-readiness.mjs`) until it returns READY_FOR_PG_PRIMARY.
+**How to apply:** `scripts/backfill-wallet-pg.mjs` does this idempotently (credits dedupe on driver_uid+order_id+type; payouts/adjustments on driver_uid+type+amount+created_at; skips rows with neither orderId nor timestamp; copies FS amounts/signs verbatim — no balance math). Re-run `scripts/audit-wallet-pg-readiness.mjs` after; it now returns READY_FOR_PG_PRIMARY for the current dataset. Backfill is read-from-FS / write-PG-only — re-run it before any cutover to capture rows created since.
 
 ## 4. Firestore payout sign is itself inconsistent
 The live `transactions` collection contains both negative AND positive payout `amount` values (legacy/manual rows), not a uniform sign. Any sign canonicalization (see #1) must handle mixed-sign source data, not assume all FS payouts are negative.
