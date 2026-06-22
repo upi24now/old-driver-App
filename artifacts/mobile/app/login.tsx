@@ -20,7 +20,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -280,13 +279,11 @@ export default function LoginScreen() {
       style={ss.root}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <ScrollView
-        contentContainerStyle={[
+      <View
+        style={[
           ss.scroll,
           { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 36 },
         ]}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
       >
 
         {/* ── PHASE: PHONE ── */}
@@ -542,7 +539,7 @@ export default function LoginScreen() {
           </View>
         )}
 
-      </ScrollView>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -554,7 +551,7 @@ const ss = StyleSheet.create({
     backgroundColor: D.bg,
   },
   scroll: {
-    flexGrow:          1,
+    flex:              1,
     alignItems:        "center",
     paddingHorizontal: 20,
   },
