@@ -20,8 +20,6 @@ import {
 import { firebaseAuth } from "@/utils/firebase";
 import {
   getDriverDoc,
-  createDriverDoc,
-  getOnboardingFeeConfig,
   updateDriverOnlineStatus,
   updateDriverSubscription,
   getActiveOrderForDriver,
@@ -630,6 +628,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           console.log("[PERF] get_driver_profile_end ts=" + Date.now() + " pgProfile=" + (pgProfile ? "ok" : "null"));
 
           if (pgProfile) {
+            console.log("[PG_PROFILE_RESTORE] onAuthStateChanged uid=" + user.uid + " name=" + (pgProfile.name ?? "(null)") + " vehicleId=" + (pgProfile.vehicleId ?? "(null)") + " verificationStatus=" + (pgProfile.verificationStatus ?? "(null)"));
             if (pgProfile.name) {
               setProfileState({
                 name:          pgProfile.name          ?? "",
@@ -1257,115 +1256,99 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       const pgProfile = await getDriverProfile();
       console.log("[PERF] get_driver_profile_end confirmOtp ts=" + Date.now() + " pgProfile=" + (pgProfile ? "ok" : "null"));
 
-      let driverDoc: DriverDoc | null = null;   // Firestore fallback for new/unmigrated drivers
       let routingDoc: RoutingDoc;               // used for deriveNextRoute
       let serverNextRoute: string | undefined;  // nextRoute from server (PG path; primary)
 
       if (!pgProfile) {
-        // ── Firestore fallback: driver not in PG yet ────────────────────────
-        // Covers: brand-new drivers (never registered in PG) and drivers
-        // still in the migration window (bulk migration not yet run for this uid).
-        driverDoc = await getDriverDoc(uid);
-        if (!driverDoc) {
-          // Brand-new driver: fetch onboarding fee config, stamp onto new driver doc.
-          const feeConfig = await getOnboardingFeeConfig();
-          driverDoc = await createDriverDoc(uid, phone, feeConfig);
-          if (feeConfig.enabled) {
-            setOnboardingFeeApplies(true);
-            setOnboardingFeeStatus("pending");
-            setOnboardingFeeAmount(feeConfig.amount);
-          }
+        // ── Brand-new driver: no PG row yet ─────────────────────────────────
+        // Firestore fallback removed (Phase 1 migration complete). Create the
+        // PG row directly via ensureDriverSignup, then re-fetch so all state
+        // is always sourced from PostgreSQL — no Firestore reads in this path.
+        console.log("[FIRESTORE_FALLBACK_BLOCKED] uid=" + uid + " — pgProfile null; creating PG row (no Firestore fallback)");
+        const signupResult = await ensureDriverSignup({ phone });
+        if (signupResult.ok) {
+          console.log("[PG_PROFILE_RESTORE] ensureDriverSignup ok — re-fetching PG profile for uid =", uid);
         } else {
-          if (driverDoc.name) {
-            setProfileState({
-              name:   driverDoc.name   ?? "",
-              city:   driverDoc.city   ?? "",
-              gender: driverDoc.gender ?? "",
-            });
-          }
-          if (driverDoc.vehicleId) {
-            setVehicleState({ id: driverDoc.vehicleId, name: driverDoc.vehicleName ?? "" });
-          }
-          setAccountStatus(driverDoc.accountStatus ?? null);
-          {
-            const isSuspended =
-              driverDoc.accountStatus === "suspended" ||
-              driverDoc.accountStatus === "blacklisted" ||
-              driverDoc.accountStatus === "blocked";
-            setOnlineState(isSuspended ? false : (driverDoc.isOnline ?? false));
-          }
-          if (driverDoc.subscriptionPlan)      setSubPlan(driverDoc.subscriptionPlan as SubPlan);
-          if (driverDoc.subscriptionExpiresAt) setSubExp(driverDoc.subscriptionExpiresAt);
-          persistSubscriptionCache(
-            (driverDoc.subscriptionPlan as SubPlan) ?? null,
-            driverDoc.subscriptionExpiresAt ?? null,
-          );
-          {
-            const today   = new Date().toISOString().slice(0, 10);
-            const sameDay = driverDoc.todayDate === today;
-            setTodayEarnings(sameDay ? (driverDoc.todayEarnings ?? 0) : 0);
-            setTripsToday   (sameDay ? (driverDoc.tripsToday    ?? 0) : 0);
-          }
-          // Wallet — fire-and-forget (Firestore must NOT block OTP→next-screen routing)
-          console.log("[PERF] wallet_fetch_start confirmOtp_fs");
-          void getWalletDoc(uid).then((walletDoc) => {
-            console.log("[PERF] wallet_fetch_end confirmOtp_fs");
-            if (!walletDoc) return;
-            setBalance(walletDoc.balance ?? 0);
-            setLifetimeEarnings(walletDoc.totalEarnings ?? 0);
-            setTotalPaid(walletDoc.totalPaid ?? 0);
-            setDriverTrips(walletDoc.completedDeliveries ?? driverDoc?.totalTrips ?? 0);
-          }).catch(() => {});
-          void loadDriverTransactions(uid);
-          setVerifStatus(driverDoc.verificationStatus ?? null);
-          if (driverDoc.verificationStatus) {
-            void AsyncStorage.setItem(LOCAL_VERIFICATION_KEY, driverDoc.verificationStatus).catch(() => {});
-          }
-          setDocsSubmitted(driverDoc.documentsSubmitted ?? false);
-          setKycRejectionReason(driverDoc.kycRejectionReason ?? null);
-          setKycDocuments(driverDoc.documents ?? null);
-          setBackgroundSetupShown(driverDoc.backgroundSetupShown ?? false);
-          {
-            const firestorePermVer = driverDoc.permissionSetupVersion ?? 0;
-            setPermissionSetupVersion(firestorePermVer);
-            if (firestorePermVer > 0) {
-              setLocalPermissionVersion(firestorePermVer);
-              void AsyncStorage.setItem(LOCAL_PERMISSION_KEY, String(firestorePermVer)).catch(() => {});
-              console.log("[PERMISSION_GATE] confirmOtp — localVer synced =", firestorePermVer);
-            }
-          }
-          setOnboardingFeeApplies(driverDoc.onboardingFeeApplies ?? false);
-          setOnboardingFeeStatus(driverDoc.onboardingFeeStatus ?? null);
-          setOnboardingFeeAmount(driverDoc.onboardingFeeAmount ?? null);
-          setDriverRating(driverDoc.rating ?? "5.0");
+          console.warn("[PG_PROFILE_RESTORE] ensureDriverSignup failed (non-fatal) — using safe defaults uid =", uid);
         }
-        // ── Ensure PostgreSQL drivers row exists ─────────────────────────────
-        // The document-upload route (POST /api/drivers/documents) has an FK
-        // constraint on driver_documents.driver_uid → drivers.uid. For drivers
-        // in the Firestore path the PG row may not exist yet, so we upsert it
-        // here — safely, without overwriting any existing non-null fields.
-        {
-          const signupResult = await ensureDriverSignup({
-            phone,
-            name:                 driverDoc?.name                ?? null,
-            city:                 driverDoc?.city                ?? null,
-            gender:               driverDoc?.gender              ?? null,
-            vehicleId:            driverDoc?.vehicleId           ?? null,
-            vehicleName:          driverDoc?.vehicleName         ?? null,
-            verificationStatus:   driverDoc?.verificationStatus  ?? null,
-            documentsSubmitted:   driverDoc?.documentsSubmitted  ?? null,
-            onboardingFeeApplies: driverDoc?.onboardingFeeApplies ?? null,
-            onboardingFeeStatus:  driverDoc?.onboardingFeeStatus ?? null,
-            onboardingFeeAmount:  typeof driverDoc?.onboardingFeeAmount === "number" ? driverDoc.onboardingFeeAmount : null,
-          });
-          if (signupResult.ok) {
-            console.log("[SIGNUP_PG] driver row upserted for uid =", uid);
-          } else {
-            console.warn("[SIGNUP_PG] ensureDriverSignup returned not-ok (non-fatal) for uid =", uid);
-          }
-        }
+        const pg2 = await getDriverProfile();
+        console.log("[PG_PROFILE_RESTORE] re-fetch after ensureDriverSignup —", pg2 ? "ok" : "still null (using safe defaults)");
 
-        routingDoc = driverDoc;
+        const feeApplies = pg2?.onboardingFeeApplies ?? true;
+        const feeStatus  = pg2?.onboardingFeeStatus  ?? "pending";
+        const feeAmount  = pg2?.onboardingFeeAmount  ?? 10;
+
+        if (pg2?.name) {
+          setProfileState({
+            name:          pg2.name          ?? "",
+            city:          pg2.city          ?? "",
+            gender:        pg2.gender        ?? "",
+            licenseNumber: pg2.licenseNumber ?? "",
+            vehicleNumber: pg2.vehicleNumber ?? "",
+          });
+        }
+        if (pg2?.vehicleId) {
+          setVehicleState({ id: pg2.vehicleId, name: pg2.vehicleName ?? "" });
+        }
+        setAccountStatus(pg2?.accountStatus ?? null);
+        setSuspendReason(pg2?.suspendReason ?? null);
+        setBlacklistReason(pg2?.blacklistReason ?? null);
+        setOnlineState(false); // isOnline not stored in PG; always start offline
+        // Subscription + daily stats: background Firestore fetch (remaining dep until PG migration).
+        void getDriverDoc(uid).then((fsDoc) => {
+          if (!fsDoc) return;
+          if (fsDoc.subscriptionPlan)      setSubPlan(fsDoc.subscriptionPlan as SubPlan);
+          if (fsDoc.subscriptionExpiresAt) setSubExp(fsDoc.subscriptionExpiresAt);
+          persistSubscriptionCache(
+            (fsDoc.subscriptionPlan as SubPlan) ?? null,
+            fsDoc.subscriptionExpiresAt ?? null,
+          );
+          const today   = new Date().toISOString().slice(0, 10);
+          const sameDay = fsDoc.todayDate === today;
+          setTodayEarnings(sameDay ? (fsDoc.todayEarnings ?? 0) : 0);
+          setTripsToday   (sameDay ? (fsDoc.tripsToday    ?? 0) : 0);
+          setDriverRating(fsDoc.rating ?? "5.0");
+        }).catch(console.error);
+        // Wallet — fire-and-forget (must NOT block OTP→next-screen routing)
+        void getWalletDoc(uid).then((walletDoc) => {
+          if (!walletDoc) return;
+          setBalance(walletDoc.balance ?? 0);
+          setLifetimeEarnings(walletDoc.totalEarnings ?? 0);
+          setTotalPaid(walletDoc.totalPaid ?? 0);
+          setDriverTrips(walletDoc.completedDeliveries ?? 0);
+        }).catch(() => {});
+        void loadDriverTransactions(uid);
+        setVerifStatus(pg2?.verificationStatus ?? null);
+        if (pg2?.verificationStatus) {
+          void AsyncStorage.setItem(LOCAL_VERIFICATION_KEY, pg2.verificationStatus).catch(() => {});
+        }
+        setDocsSubmitted(pg2?.documentsSubmitted ?? false);
+        setKycRejectionReason(pg2?.kycRejectionReason ?? null);
+        setKycDocuments((pg2?.documents ?? null) as unknown as NonNullable<DriverDoc["documents"]>);
+        setBackgroundSetupShown(pg2?.backgroundSetupShown ?? false);
+        {
+          const pgPermVer = pg2?.permissionSetupVersion ?? 0;
+          setPermissionSetupVersion(pgPermVer);
+          if (pgPermVer > 0) {
+            setLocalPermissionVersion(pgPermVer);
+            void AsyncStorage.setItem(LOCAL_PERMISSION_KEY, String(pgPermVer)).catch(() => {});
+            console.log("[PERMISSION_GATE] confirmOtp new-driver — localVer synced =", pgPermVer);
+          }
+        }
+        setOnboardingFeeApplies(feeApplies);
+        setOnboardingFeeStatus(feeStatus);
+        setOnboardingFeeAmount(feeAmount);
+        serverNextRoute = pg2?.nextRoute;
+        routingDoc = {
+          accountStatus:          pg2?.accountStatus          ?? "active",
+          vehicleId:              pg2?.vehicleId              ?? null,
+          name:                   pg2?.name                   ?? null,
+          documentsSubmitted:     pg2?.documentsSubmitted     ?? false,
+          onboardingFeeApplies:   feeApplies,
+          onboardingFeeStatus:    feeStatus,
+          permissionSetupVersion: pg2?.permissionSetupVersion ?? 0,
+          verificationStatus:     pg2?.verificationStatus     ?? null,
+        };
       } else {
         // ── PG path: existing driver with PostgreSQL row (primary) ────────────
         if (pgProfile.name) {
@@ -1504,12 +1487,18 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
   const setProfile = (p: Profile) => {
     setProfileState(p);
-    if (driverUid) patchDriverProfile(p).catch(console.error);
+    if (driverUid) {
+      console.log("[PG_PROFILE_SAVE] uid=" + driverUid + " name=" + (p.name ?? "(null)"));
+      patchDriverProfile(p).catch(console.error);
+    }
   };
 
   const setVehicle = (v: Vehicle) => {
     setVehicleState(v);
-    if (driverUid) patchDriverVehicle(v).catch(console.error);
+    if (driverUid) {
+      console.log("[PG_VEHICLE_SAVE] uid=" + driverUid + " vehicleId=" + (v.id ?? "(null)"));
+      patchDriverVehicle(v).catch(console.error);
+    }
   };
 
   const markBackgroundSetupShown = async (): Promise<void> => {
@@ -1735,6 +1724,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       if (doc.verificationStatus) {
         void AsyncStorage.setItem(LOCAL_VERIFICATION_KEY, doc.verificationStatus).catch(() => {});
       }
+      console.log("[PG_VERIFICATION_STATUS] uid=" + driverUid + " verificationStatus=" + (doc.verificationStatus ?? "(null)") + " documentsSubmitted=" + (doc.documentsSubmitted ?? false));
       console.log("[refreshKycStatus] complete — verificationStatus:", doc.verificationStatus ?? "(null)", "kycRejectionReason:", doc.kycRejectionReason ?? "(absent/deleted)", "isRejected:", doc.verificationStatus === "rejected");
     } catch {
       // silent — stale state is fine while offline

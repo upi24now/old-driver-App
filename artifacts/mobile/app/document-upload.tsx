@@ -1053,6 +1053,7 @@ export default function DocumentUploadScreen() {
       return;
     }
     console.log("[KYC] phase 3a — PostgreSQL SUCCESS, count:", pgResult.count);
+    console.log("[PG_DOCUMENTS_SAVE] uid=" + driverUid + " documents_count=" + pgResult.count);
     console.log("[DOC_DUAL_WRITE] pg_success count=" + pgResult.count);
 
     // ── Flush context state before routing ────────────────────────────────────
