@@ -102,6 +102,34 @@ export async function pgGetActiveOrders(
   return rows;
 }
 
+// ── pgGetCompletedTrips ───────────────────────────────────────────────────────
+
+/**
+ * Return up to `limitCount` delivered orders for a driver, newest first.
+ *
+ * Equivalent to the Firestore query:
+ *   orders WHERE driverUid == uid AND status == "delivered"
+ *           ORDER BY deliveredAt DESC LIMIT 20
+ */
+export async function pgGetCompletedTrips(
+  driverUid:  string,
+  limitCount = 20,
+): Promise<Order[]> {
+  const rows = await db
+    .select()
+    .from(ordersTable)
+    .where(
+      and(
+        eq(ordersTable.driverUid, driverUid),
+        eq(ordersTable.status, "delivered"),
+      ),
+    )
+    .orderBy(sql`${ordersTable.deliveredAt} DESC NULLS LAST`)
+    .limit(limitCount);
+
+  return rows;
+}
+
 // ── pgGetPendingOffers ────────────────────────────────────────────────────────
 
 /**

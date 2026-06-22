@@ -3,7 +3,7 @@ import { adminAuth, adminFirestore } from "../lib/firebase-admin";
 import { requireAuth } from "../lib/require-auth";
 import { db, driversTable } from "@workspace/db";
 import { eq, and, ne, sql } from "drizzle-orm";
-import { pgGetActiveOrders } from "../lib/order-pg-service";
+import { pgGetActiveOrders, pgGetCompletedTrips } from "../lib/order-pg-service";
 
 const router: IRouter = Router();
 
@@ -635,6 +635,169 @@ router.get("/drivers/:uid/active-orders", async (req, res) => {
     req.log.error({ err, uid }, "active-orders: Firestore fallback read failed");
     res.status(500).json({ ok: false, error: "firestore_error" });
   }
+});
+
+// ─── GET /api/drivers/:uid/completed-trips ────────────────────────────────────
+//
+// Dual-read verification endpoint — Phase 2C-1.
+//
+// Reads the driver's completed (delivered) orders from BOTH Firestore and
+// PostgreSQL in parallel, compares them on six dimensions, logs the result,
+// and always returns Firestore data.  PG is verification-only at this stage.
+//
+// Log tags:
+//   [PG_TRIPS_MATCH] — all comparison dimensions agree
+//   [PG_TRIPS_DIFF]  — at least one dimension diverges (diffs logged as structured data)
+//
+// Comparison dimensions (per matched order):
+//   count        — total number of delivered orders
+//   ids          — set equality
+//   status       — string equality ("delivered" on both sides)
+//   fareEstimate — numeric equality with ≤ 0.01 tolerance (PG: numeric string; FS: number)
+//   pickup       — PG.pickup vs FS.pickupAddress||FS.pickup
+//   drop         — PG.drop vs FS.deliveryAddress||FS.drop
+//   delivered_at — ±1 s tolerance (PG: JS Date; FS: Timestamp or number)
+//
+// Auth: Bearer token uid must match :uid param.
+// PG failure is non-blocking — Firestore result is always returned.
+
+function compareCompletedTrips(
+  pgRows: Awaited<ReturnType<typeof pgGetCompletedTrips>>,
+  fsDocs: Record<string, unknown>[],
+  uid: string,
+  log: Request["log"],
+): void {
+  const strOf = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+  const diffs: { dimension: string; detail: unknown }[] = [];
+
+  // Count
+  if (pgRows.length !== fsDocs.length) {
+    diffs.push({ dimension: "count", detail: { pg: pgRows.length, fs: fsDocs.length } });
+  }
+
+  // ID sets
+  const pgIds = new Set(pgRows.map((r) => r.id));
+  const fsIds = new Set(fsDocs.map((d) => d["id"] as string));
+  const onlyInPg = [...pgIds].filter((id) => !fsIds.has(id));
+  const onlyInFs = [...fsIds].filter((id) => !pgIds.has(id));
+  if (onlyInPg.length > 0 || onlyInFs.length > 0) {
+    diffs.push({ dimension: "ids", detail: { onlyInPg, onlyInFs } });
+  }
+
+  // Per-order comparison (matched by ID)
+  for (const pgRow of pgRows) {
+    const fsDoc = fsDocs.find((d) => d["id"] === pgRow.id);
+    if (!fsDoc) continue;
+
+    const orderDiffs: { field: string; pg: unknown; fs: unknown }[] = [];
+
+    // status
+    const pgStatus = pgRow.status ?? null;
+    const fsStatus = strOf(fsDoc["status"]) || null;
+    if (pgStatus !== fsStatus) {
+      orderDiffs.push({ field: "status", pg: pgStatus, fs: fsStatus });
+    }
+
+    // fareEstimate — PG: numeric string; FS: number
+    const pgFare = pgRow.fareEstimate != null ? parseFloat(pgRow.fareEstimate) : null;
+    const fsFare = typeof fsDoc["fareEstimate"] === "number" ? fsDoc["fareEstimate"] : null;
+    if (pgFare === null && fsFare === null) {
+      // both absent — ok
+    } else if (pgFare === null || fsFare === null || Math.abs(pgFare - fsFare) > 0.01) {
+      orderDiffs.push({ field: "fareEstimate", pg: pgFare, fs: fsFare });
+    }
+
+    // pickup — PG: pickup column; FS: pickupAddress || pickup
+    const pgPickup = strOf(pgRow.pickup) || null;
+    const fsPickup = strOf(fsDoc["pickupAddress"]) || strOf(fsDoc["pickup"]) || null;
+    if (pgPickup !== fsPickup) {
+      orderDiffs.push({ field: "pickup", pg: pgPickup, fs: fsPickup });
+    }
+
+    // drop — PG: drop column; FS: deliveryAddress || drop
+    const pgDrop = strOf(pgRow.drop) || null;
+    const fsDrop = strOf(fsDoc["deliveryAddress"]) || strOf(fsDoc["drop"]) || null;
+    if (pgDrop !== fsDrop) {
+      orderDiffs.push({ field: "drop", pg: pgDrop, fs: fsDrop });
+    }
+
+    // delivered_at — PG: JS Date | null; FS: Timestamp | number | null
+    const pgMs = pgRow.deliveredAt instanceof Date ? pgRow.deliveredAt.getTime() : null;
+    const fsRaw = fsDoc["deliveredAt"];
+    let fsMs: number | null = null;
+    if (fsRaw != null) {
+      if (typeof fsRaw === "object" && typeof (fsRaw as { toMillis?: () => number }).toMillis === "function") {
+        fsMs = (fsRaw as { toMillis: () => number }).toMillis();
+      } else if (typeof fsRaw === "number") {
+        fsMs = fsRaw;
+      }
+    }
+    if (!(pgMs === null && fsMs === null)) {
+      if (pgMs === null || fsMs === null || Math.abs(pgMs - fsMs) > 1000) {
+        orderDiffs.push({ field: "delivered_at", pg: pgMs, fs: fsMs });
+      }
+    }
+
+    if (orderDiffs.length > 0) {
+      diffs.push({ dimension: `order:${pgRow.id}`, detail: orderDiffs });
+    }
+  }
+
+  if (diffs.length === 0) {
+    log.info({ uid, count: fsDocs.length }, "[PG_TRIPS_MATCH]");
+  } else {
+    log.info({ uid, diffs }, "[PG_TRIPS_DIFF]");
+  }
+}
+
+router.get("/drivers/:uid/completed-trips", async (req, res) => {
+  const { uid } = req.params as { uid: string };
+
+  const tokenUid = await requireAuth(req, res);
+  if (!tokenUid) return;
+
+  if (tokenUid !== uid) {
+    req.log.warn({ tokenUid, uid }, "completed-trips: uid mismatch");
+    res.status(403).json({ ok: false, error: "uid_mismatch" });
+    return;
+  }
+
+  const rawLimit = req.query["limit"];
+  const limitCount = typeof rawLimit === "string" ? Math.min(parseInt(rawLimit, 10) || 20, 50) : 20;
+
+  const firestoreDb = await adminFirestore();
+
+  // ── Parallel reads ────────────────────────────────────────────────────────────
+  const [pgResult, fsResult] = await Promise.allSettled([
+    pgGetCompletedTrips(uid, limitCount),
+    firestoreDb
+      .collection("orders")
+      .where("driverUid", "==", uid)
+      .where("status", "==", "delivered")
+      .orderBy("deliveredAt", "desc")
+      .limit(limitCount)
+      .get(),
+  ]);
+
+  // ── Firestore is always returned ──────────────────────────────────────────────
+  if (fsResult.status === "rejected") {
+    req.log.error({ err: fsResult.reason, uid }, "completed-trips: Firestore read failed");
+    res.status(500).json({ ok: false, error: "firestore_error" });
+    return;
+  }
+
+  const fsDocs = fsResult.value.docs.map(
+    (d) => ({ id: d.id, ...d.data() } as Record<string, unknown>),
+  );
+
+  // ── PG comparison (non-blocking on failure) ───────────────────────────────────
+  if (pgResult.status === "rejected") {
+    req.log.error({ err: pgResult.reason, uid }, "[PG_TRIPS_DIFF] PG read threw — skipping compare");
+  } else {
+    compareCompletedTrips(pgResult.value, fsDocs, uid, req.log);
+  }
+
+  res.json({ ok: true, trips: fsDocs });
 });
 
 export default router;
