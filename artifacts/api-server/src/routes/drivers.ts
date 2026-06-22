@@ -639,17 +639,23 @@ router.get("/drivers/:uid/active-orders", async (req, res) => {
 
 // ─── GET /api/drivers/:uid/completed-trips ────────────────────────────────────
 //
-// Dual-read verification endpoint — Phase 2C-1.
+// PG-primary completed-trip history endpoint — Phase 2C-2.
 //
-// Reads the driver's completed (delivered) orders from BOTH Firestore and
-// PostgreSQL in parallel, compares them on six dimensions, logs the result,
-// and always returns Firestore data.  PG is verification-only at this stage.
+// Strategy:
+//   1. Read PostgreSQL first (sequential, awaited).
+//   2. PG returns ≥1 row → log [PG_TRIPS_PRIMARY_HIT], map rows, return immediately.
+//      Fire non-blocking Firestore read in background for comparison;
+//      logs [PG_TRIPS_MATCH] or [PG_TRIPS_DIFF].
+//   3. PG returns 0 rows OR throws → log [PG_TRIPS_PRIMARY_FALLBACK],
+//      await Firestore, return Firestore data.
 //
 // Log tags:
-//   [PG_TRIPS_MATCH] — all comparison dimensions agree
-//   [PG_TRIPS_DIFF]  — at least one dimension diverges (diffs logged as structured data)
+//   [PG_TRIPS_PRIMARY_HIT]      — PG returned ≥1 row; PG data served
+//   [PG_TRIPS_PRIMARY_FALLBACK] — PG empty or threw; Firestore data served
+//   [PG_TRIPS_MATCH]            — background comparison: all dimensions agree
+//   [PG_TRIPS_DIFF]             — background comparison: at least one dimension diverges
 //
-// Comparison dimensions (per matched order):
+// Comparison dimensions (background, non-blocking):
 //   count        — total number of delivered orders
 //   ids          — set equality
 //   status       — string equality ("delivered" on both sides)
@@ -659,7 +665,7 @@ router.get("/drivers/:uid/active-orders", async (req, res) => {
 //   delivered_at — ±1 s tolerance (PG: JS Date; FS: Timestamp or number)
 //
 // Auth: Bearer token uid must match :uid param.
-// PG failure is non-blocking — Firestore result is always returned.
+// Firestore fallback guaranteed on any PG failure.
 
 function compareCompletedTrips(
   pgRows: Awaited<ReturnType<typeof pgGetCompletedTrips>>,
@@ -750,6 +756,31 @@ function compareCompletedTrips(
   }
 }
 
+function mapPgTripsToResponse(
+  pgRows: Awaited<ReturnType<typeof pgGetCompletedTrips>>,
+): Record<string, unknown>[] {
+  return pgRows.map((pg) => {
+    const rawMode = (pg.paymentMode ?? "").toLowerCase();
+    const paymentMode =
+      rawMode === "upi"  ? "UPI"  :
+      rawMode === "card" ? "Card" :
+      "Cash";
+
+    return {
+      id:            pg.id,
+      orderId:       pg.id,
+      status:        pg.status ?? "delivered",
+      customerName:  pg.customerName  ?? "",
+      pickupAddress: pg.pickup        ?? "Pickup location not available",
+      dropAddress:   pg.drop          ?? "Drop location not available",
+      fareEstimate:  pg.fareEstimate  != null ? parseFloat(pg.fareEstimate) : 0,
+      distanceKm:    pg.distanceKm    != null ? parseFloat(pg.distanceKm)  : undefined,
+      paymentMode,
+      deliveredAt:   pg.deliveredAt instanceof Date ? pg.deliveredAt.getTime() : null,
+    };
+  });
+}
+
 router.get("/drivers/:uid/completed-trips", async (req, res) => {
   const { uid } = req.params as { uid: string };
 
@@ -767,37 +798,65 @@ router.get("/drivers/:uid/completed-trips", async (req, res) => {
 
   const firestoreDb = await adminFirestore();
 
-  // ── Parallel reads ────────────────────────────────────────────────────────────
-  const [pgResult, fsResult] = await Promise.allSettled([
-    pgGetCompletedTrips(uid, limitCount),
-    firestoreDb
+  // ── 1. PG primary read ────────────────────────────────────────────────────────
+  let pgRows: Awaited<ReturnType<typeof pgGetCompletedTrips>> = [];
+  let pgFailed = false;
+
+  try {
+    pgRows = await pgGetCompletedTrips(uid, limitCount);
+  } catch (err) {
+    req.log.error({ err, uid }, "[PG_TRIPS_PRIMARY_FALLBACK] PG read threw");
+    pgFailed = true;
+  }
+
+  // ── 2. PG hit — return PG data; compare Firestore in background ───────────────
+  if (!pgFailed && pgRows.length > 0) {
+    req.log.info({ uid, count: pgRows.length }, "[PG_TRIPS_PRIMARY_HIT]");
+
+    void firestoreDb
       .collection("orders")
       .where("driverUid", "==", uid)
       .where("status", "==", "delivered")
       .orderBy("deliveredAt", "desc")
       .limit(limitCount)
-      .get(),
-  ]);
+      .get()
+      .then((snap) => {
+        const fsDocs = snap.docs.map(
+          (d) => ({ id: d.id, ...d.data() } as Record<string, unknown>),
+        );
+        compareCompletedTrips(pgRows, fsDocs, uid, req.log);
+      })
+      .catch((err) => {
+        req.log.error({ err, uid }, "completed-trips: background Firestore compare failed");
+      });
 
-  // ── Firestore is always returned ──────────────────────────────────────────────
-  if (fsResult.status === "rejected") {
-    req.log.error({ err: fsResult.reason, uid }, "completed-trips: Firestore read failed");
-    res.status(500).json({ ok: false, error: "firestore_error" });
+    res.json({ ok: true, trips: mapPgTripsToResponse(pgRows) });
     return;
   }
 
-  const fsDocs = fsResult.value.docs.map(
-    (d) => ({ id: d.id, ...d.data() } as Record<string, unknown>),
-  );
-
-  // ── PG comparison (non-blocking on failure) ───────────────────────────────────
-  if (pgResult.status === "rejected") {
-    req.log.error({ err: pgResult.reason, uid }, "[PG_TRIPS_DIFF] PG read threw — skipping compare");
-  } else {
-    compareCompletedTrips(pgResult.value, fsDocs, uid, req.log);
+  // ── 3. Firestore fallback — PG empty or threw ─────────────────────────────────
+  if (!pgFailed) {
+    req.log.info({ uid }, "[PG_TRIPS_PRIMARY_FALLBACK] PG returned 0 rows");
   }
 
-  res.json({ ok: true, trips: fsDocs });
+  try {
+    const snap = await firestoreDb
+      .collection("orders")
+      .where("driverUid", "==", uid)
+      .where("status", "==", "delivered")
+      .orderBy("deliveredAt", "desc")
+      .limit(limitCount)
+      .get();
+
+    const fsDocs = snap.docs.map(
+      (d) => ({ id: d.id, ...d.data() } as Record<string, unknown>),
+    );
+
+    res.json({ ok: true, trips: fsDocs });
+  } catch (err) {
+    req.log.error({ err, uid }, "completed-trips: Firestore fallback read failed");
+    res.status(500).json({ ok: false, error: "firestore_error" });
+  }
 });
 
 export default router;
