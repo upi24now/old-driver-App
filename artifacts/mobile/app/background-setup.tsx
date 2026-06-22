@@ -422,11 +422,11 @@ export default function PermissionCenterScreen() {
             CARD 4 — Battery Optimization
         ══════════════════════════════════════════════════ */}
         <PermCard
-          icon="battery"
+          icon="battery-charging"
           iconColor="#16A34A"
           iconBg="#DCFCE7"
           title="Battery Optimization"
-          description="Improve order reliability and background tracking."
+          description="Allow BikeCourier to run reliably in background and receive delivery requests without interruption."
           required={false}
           granted={batteryGranted}
           canAskAgain={!batteryGranted}
@@ -502,7 +502,7 @@ const cs = StyleSheet.create({
   scroll: {
     paddingHorizontal: 20,
     gap: 10,
-    paddingBottom: 16,
+    paddingBottom: 140,
   },
 
   // ── Hero ────────────────────────────────────────────────────────────────────
