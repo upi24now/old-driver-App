@@ -84,6 +84,10 @@ const r = {
   scrollable:   WIN_H < 620,
 } as const;
 
+// Cell width: explicit pixels so Android flex doesn't collapse inside Pressable
+const WIN_W  = Dimensions.get("window").width;
+const CELL_W = Math.floor((WIN_W - 40 - 40) / 6); // 40 = paddingH×2, 40 = 5 gaps×8
+
 // ─── Hero illustration ─────────────────────────────────────────────────────────
 function HeroIllustration({
   h, scooterW, scooterH, mt, mb,
@@ -871,13 +875,14 @@ const ss = StyleSheet.create({
     color:      D.navy,
   },
   cellsRow: {
-    flexDirection: "row",
-    gap:           8,
-    alignSelf:     "stretch",
-    alignItems:    "center",
+    flexDirection:  "row",
+    gap:            8,
+    width:          "100%",
+    justifyContent: "center",
+    alignItems:     "center",
   },
   cellShell: {
-    flex:           1,
+    width:          CELL_W,
     height:         54,
     borderRadius:   14,
     alignItems:     "center",
@@ -918,7 +923,7 @@ const ss = StyleSheet.create({
     flex:       1,
   },
   verifyBtn: {
-    alignSelf:       "stretch",
+    width:           "100%",
     height:          56,
     borderRadius:    16,
     backgroundColor: D.primary,
