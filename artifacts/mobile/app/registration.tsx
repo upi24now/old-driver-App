@@ -83,14 +83,20 @@ const CITIES = [
 
 const GENDERS = ["Male", "Female", "Other"] as const;
 
-type VehicleOption = { id: string; name: string };
+type VehicleOption = {
+  id:       string;
+  name:     string;
+  capacity: string;
+  image:    number;
+};
 const VEHICLES: VehicleOption[] = [
-  { id: "two_wheeler",         name: "Two Wheeler"          },
-  { id: "loader_three_wheeler",name: "Loader Three Wheeler" },
-  { id: "tata_ace",            name: "Tata Ace"             },
-  { id: "mahindra_pickup",     name: "Mahindra Pickup"      },
-  { id: "tata_407",            name: "Tata 407"             },
-  { id: "canter",              name: "Canter"               },
+  { id: "two_wheeler",          name: "Two Wheeler",          capacity: "Up to 20 KG",    image: require("@/assets/images/vehicles/bike-delivery.png")   },
+  { id: "loader_three_wheeler", name: "Loader Three Wheeler", capacity: "Up to 500 KG",   image: require("@/assets/images/vehicles/auto-cargo.png")      },
+  { id: "tata_ace",             name: "Tata Ace",             capacity: "Up to 750 KG",   image: require("@/assets/images/vehicles/tata-ace.png")        },
+  { id: "mini_truck",           name: "Mini Truck",           capacity: "Up to 1200 KG",  image: require("@/assets/images/vehicles/mini-truck.png")      },
+  { id: "mahindra_pickup",      name: "Mahindra Pickup",      capacity: "Up to 1700 KG",  image: require("@/assets/images/vehicles/pickup-truck.png")    },
+  { id: "tata_407",             name: "Tata 407",             capacity: "Up to 2250 KG",  image: require("@/assets/images/vehicles/eicher-truck.png")    },
+  { id: "canter",               name: "Canter",               capacity: "Up to 5000 KG",  image: require("@/assets/images/vehicles/14-feet-truck.png")   },
 ];
 
 // ─── Validators ───────────────────────────────────────────────────────────────
@@ -180,7 +186,7 @@ const pm = StyleSheet.create({
     borderTopRightRadius: 24,
     paddingHorizontal: 20,
     paddingBottom: 40,
-    maxHeight: "70%",
+    maxHeight: "75%",
   },
   handle: {
     width: 36, height: 4, borderRadius: 2,
@@ -198,6 +204,81 @@ const pm = StyleSheet.create({
   },
   optionText: { fontSize: 15, color: D.textDark },
   sep: { height: 1, backgroundColor: D.divider },
+});
+
+// ─── VehiclePickerModal ───────────────────────────────────────────────────────
+function VehiclePickerModal({
+  visible, onSelect, onClose,
+}: {
+  visible:  boolean;
+  onSelect: (item: VehicleOption) => void;
+  onClose:  () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="slide">
+      <Pressable style={pm.backdrop} onPress={onClose} />
+      <View style={pm.sheet}>
+        <View style={pm.handle} />
+        <Text style={pm.title}>Select Vehicle Type</Text>
+        <FlatList
+          data={VEHICLES}
+          keyExtractor={(v) => v.id}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={vpm.row}
+              onPress={() => { onSelect(item); onClose(); }}
+              activeOpacity={0.72}
+            >
+              <View style={vpm.iconWrap}>
+                <Image source={item.image} style={vpm.icon} contentFit="contain" />
+              </View>
+              <View style={vpm.textCol}>
+                <Text style={vpm.name}>{item.name}</Text>
+                <Text style={vpm.cap}>{item.capacity}</Text>
+              </View>
+              <Feather name="chevron-right" size={16} color={D.textMuted} />
+            </TouchableOpacity>
+          )}
+          ItemSeparatorComponent={() => <View style={pm.sep} />}
+          showsVerticalScrollIndicator={false}
+        />
+      </View>
+    </Modal>
+  );
+}
+const vpm = StyleSheet.create({
+  row: {
+    flexDirection:  "row",
+    alignItems:     "center",
+    gap:            12,
+    minHeight:      72,
+    paddingVertical: 10,
+  },
+  iconWrap: {
+    width:           60,
+    height:          52,
+    borderRadius:    10,
+    backgroundColor: "#F3F4F6",
+    alignItems:      "center",
+    justifyContent:  "center",
+    overflow:        "hidden",
+  },
+  icon: {
+    width:  54,
+    height: 46,
+  },
+  textCol: { flex: 1 },
+  name: {
+    fontSize:   15,
+    fontWeight: "700",
+    color:      D.textDark,
+  },
+  cap: {
+    fontSize:   12,
+    color:      D.textMuted,
+    marginTop:  3,
+    fontWeight: "500",
+  },
 });
 
 // ─── DocUploadBox ─────────────────────────────────────────────────────────────
@@ -1021,10 +1102,8 @@ export default function RegistrationScreen() {
       />
 
       {/* ── Vehicle picker ── */}
-      <PickerModal
+      <VehiclePickerModal
         visible={vehicleOpen}
-        title="Select Vehicle Type"
-        options={VEHICLES}
         onSelect={(item) => { setVehicleId(item.id); setVehicleName(item.name); }}
         onClose={() => setVehicleOpen(false)}
       />

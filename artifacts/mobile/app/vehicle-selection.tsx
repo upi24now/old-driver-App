@@ -58,9 +58,10 @@ const V_IMG = {
   bike:         require("@/assets/images/vehicles/bike-delivery.png"),
   autoCargo:    require("@/assets/images/vehicles/auto-cargo.png"),
   tataAce:      require("@/assets/images/vehicles/tata-ace.png"),
-  pickupTruck:  require("@/assets/images/vehicles/pickup-truck.png"),
   miniTruck:    require("@/assets/images/vehicles/mini-truck.png"),
+  pickupTruck:  require("@/assets/images/vehicles/pickup-truck.png"),
   eicherTruck:  require("@/assets/images/vehicles/eicher-truck.png"),
+  truck14ft:    require("@/assets/images/vehicles/14-feet-truck.png"),
 };
 
 const VEHICLES: VehicleOption[] = [
@@ -83,6 +84,12 @@ const VEHICLES: VehicleOption[] = [
     gradStart: "#4ADE80",       gradEnd: "#16A34A",
   },
   {
+    id: "mini_truck",           name: "Mini Truck",            tagline: "Compact cargo delivery",
+    capacity: "Up to 1200 KG", artType: "truck",               category: "Truck",
+    image: V_IMG.miniTruck,
+    gradStart: "#22D3EE",       gradEnd: "#0EA5E9",
+  },
+  {
     id: "mahindra_pickup",      name: "Mahindra Pickup",       tagline: "Heavy parcel delivery",
     capacity: "Up to 1700 KG", artType: "truck",               category: "Truck",
     image: V_IMG.pickupTruck,
@@ -91,13 +98,13 @@ const VEHICLES: VehicleOption[] = [
   {
     id: "tata_407",             name: "Tata 407",              tagline: "Bulk goods transport",
     capacity: "Up to 2250 KG", artType: "truck",               category: "Truck",
-    image: V_IMG.miniTruck,
-    gradStart: "#22D3EE",       gradEnd: "#0EA5E9",
+    image: V_IMG.eicherTruck,
+    gradStart: "#F59E0B",       gradEnd: "#D97706",
   },
   {
     id: "canter",               name: "Canter",                tagline: "Commercial transport",
     capacity: "Up to 5000 KG", artType: "truck",               category: "Truck",
-    image: V_IMG.eicherTruck,
+    image: V_IMG.truck14ft,
     gradStart: "#94A3B8",       gradEnd: "#3B82F6",
   },
 ];
