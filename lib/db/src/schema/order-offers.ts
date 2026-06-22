@@ -9,7 +9,6 @@ import {
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-import { driversTable } from "./drivers";
 import { ordersTable } from "./orders";
 
 // ── order_offers ──────────────────────────────────────────────────────────────
@@ -41,9 +40,9 @@ export const orderOffersTable = pgTable(
     orderId:  text("order_id")
       .notNull()
       .references(() => ordersTable.id, { onDelete: "cascade" }),
-    driverUid: text("driver_uid")
-      .notNull()
-      .references(() => driversTable.uid),
+    // No FK reference to driversTable — driver rows may not exist in PG yet
+    // during the dual-write shadow migration period (Phase 1B).
+    driverUid: text("driver_uid").notNull(),
 
     // pending | accepted | rejected | timed_out
     status: text("status").notNull().default("pending"),

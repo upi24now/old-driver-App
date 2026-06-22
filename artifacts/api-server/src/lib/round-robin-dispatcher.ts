@@ -28,6 +28,13 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { adminFirestore } from "./firebase-admin";
 import { logger } from "./logger";
+import {
+  pgCreateOffer,
+  pgRejectOffer,
+  pgShadowSetStatus,
+  pgTimeoutOffer,
+  pgUpsertOrder,
+} from "./order-pg-service";
 
 const DISPATCH_TIMEOUT_SECONDS = 60;
 const POLL_INTERVAL_MS         = 30_000; // 30 s — was 2 s; keeps daily poll reads ≤ 2 880
@@ -145,6 +152,17 @@ async function assignNextDriver(
           updatedAt:  FieldValue.serverTimestamp(),
         });
         logger.info({ orderId }, "[RR dispatcher] All drivers exhausted — resetting rejection list");
+
+        // ── PG shadow: mark every driver in the cycle as rejected ─────────────
+        const cycleDrivers = [...rejectedBy]; // snapshot before reset
+        void (async () => {
+          for (const uid of cycleDrivers) {
+            const r = await pgRejectOffer(orderId, uid);
+            logger.info({ orderId, driverUid: uid, ok: r.ok }, "[PG_SHADOW_REJECT]");
+          }
+        })().catch((e) =>
+          logger.error({ err: e, orderId }, "[PG_SHADOW_REJECT] cycle shadow write error — continuing"),
+        );
       } catch (err) {
         logger.warn({ err, orderId }, "[RR dispatcher] Failed to reset rejectedBy");
       }
@@ -204,6 +222,26 @@ async function assignNextDriver(
       lastDispatchAt = Date.now(); // extend the idle-guard window
       logger.info({ orderId, driverUid: chosen.uid, timeoutSec: DISPATCH_TIMEOUT_SECONDS },
         "[RR dispatcher] Order assigned to driver");
+
+      // ── PG shadow writes (non-blocking; never throw) ─────────────────────────
+      const timeoutAt = new Date(Date.now() + DISPATCH_TIMEOUT_SECONDS * 1000);
+      void (async () => {
+        // Mirror the order row into PG (upsert — may be a returning order).
+        await pgUpsertOrder(orderId, data, "dispatched");
+        logger.info({ orderId, driverUid: chosen.uid }, "[PG_SHADOW_STATUS] dispatched");
+
+        // Create the offer row for this driver.
+        const offerResult = await pgCreateOffer(orderId, chosen.uid, timeoutAt);
+        if (offerResult.ok) {
+          logger.info({ orderId, driverUid: chosen.uid }, "[PG_SHADOW_OFFER]");
+        } else {
+          logger.warn({ orderId, driverUid: chosen.uid, reason: offerResult.reason },
+            "[PG_SHADOW_OFFER] create returned non-ok (non-blocking)");
+        }
+      })().catch((e) =>
+        logger.error({ err: e, orderId, driverUid: chosen.uid },
+          "[PG_SHADOW] dispatch shadow write error — continuing"),
+      );
     }
   } catch (err) {
     logger.error({ err, orderId, driverUid: chosen.uid }, "[RR dispatcher] Assignment transaction failed");
@@ -266,6 +304,7 @@ async function returnToPool(
   orderDoc: FirebaseFirestore.QueryDocumentSnapshot,
 ): Promise<void> {
   const orderId = orderDoc.id;
+  let timedOutDriverUid: string | null = null; // captured inside tx before reset
 
   try {
     const orderRef = db.doc(`orders/${orderId}`);
@@ -282,6 +321,9 @@ async function returnToPool(
       const timeoutAt = d["dispatchTimeoutAt"];
       if (timeoutAt && (timeoutAt as FirebaseFirestore.Timestamp).toDate() > new Date()) return;
 
+      // Capture the driver UID before we null it out.
+      timedOutDriverUid = typeof d["driverUid"] === "string" ? d["driverUid"] : null;
+
       tx.update(orderRef, {
         status:               "searching",
         driverUid:            null,
@@ -295,7 +337,19 @@ async function returnToPool(
       });
     });
 
-    logger.info({ orderId }, "[RR dispatcher] Driver timeout — order returned to pool");
+    logger.info({ orderId, timedOutDriverUid }, "[RR dispatcher] Driver timeout — order returned to pool");
+
+    // ── PG shadow writes (non-blocking; never throw) ─────────────────────────
+    void (async () => {
+      if (timedOutDriverUid) {
+        const r = await pgTimeoutOffer(orderId, timedOutDriverUid);
+        logger.info({ orderId, driverUid: timedOutDriverUid, ok: r.ok }, "[PG_SHADOW_TIMEOUT]");
+      }
+      await pgShadowSetStatus(orderId, "searching");
+      logger.info({ orderId }, "[PG_SHADOW_STATUS] searching (timeout)");
+    })().catch((e) =>
+      logger.error({ err: e, orderId }, "[PG_SHADOW] returnToPool shadow write error — continuing"),
+    );
   } catch (err) {
     logger.error({ err, orderId }, "[RR dispatcher] returnToPool transaction failed");
   }

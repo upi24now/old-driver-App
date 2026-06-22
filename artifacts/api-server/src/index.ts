@@ -16,6 +16,7 @@ import app, { initStaticUploads } from "./app";
 import { logger } from "./lib/logger";
 import { startFcmDispatcher } from "./lib/fcm-dispatcher";
 import { startRoundRobinDispatcher } from "./lib/round-robin-dispatcher";
+import { startPgShadowWriter } from "./lib/pg-shadow-writer";
 
 // ── Resolve runtime config (env vars now available from dotenv) ──────────────
 const uploadsDir   = process.env["UPLOADS_DIR"]    ?? resolve(bundleDir, "../uploads");
@@ -104,5 +105,10 @@ app.listen(port, (err) => {
   // Start the round-robin driver dispatch loop (fire-and-forget; errors logged internally)
   startRoundRobinDispatcher().catch((e) =>
     logger.error({ err: e }, "Round-robin dispatcher startup failed"),
+  );
+
+  // Start the PG shadow writer — mirrors mobile-initiated Firestore events into PG
+  startPgShadowWriter().catch((e) =>
+    logger.error({ err: e }, "PG shadow writer startup failed"),
   );
 });

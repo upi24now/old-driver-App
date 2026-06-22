@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { Router, type Request, type Response } from "express";
 import { adminFirestore } from "../lib/firebase-admin";
 import { requireAuth } from "../lib/require-auth";
+import { pgShadowSetStatus } from "../lib/order-pg-service";
 
 const router = Router();
 
@@ -174,6 +175,12 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
       { orderId, driverUid, isLegacyOtp },
       "complete-order: delivery completed and wallet credited",
     );
+
+    // ── PG shadow write: mirror delivered status (non-blocking) ──────────────
+    void pgShadowSetStatus(orderId, "delivered")
+      .then(() => req.log.info({ orderId, driverUid }, "[PG_SHADOW_STATUS] delivered"))
+      .catch((e) => req.log.error({ err: e, orderId }, "[PG_SHADOW_STATUS] delivered error — continuing"));
+
     res.json({ ok: true, newBalance, todayEarnings: newToday, tripsToday: newTrips, todayDate: today });
 
   } catch (err: unknown) {

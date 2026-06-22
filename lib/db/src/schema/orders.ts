@@ -10,8 +10,6 @@ import {
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-import { driversTable } from "./drivers";
-
 // ── orders ────────────────────────────────────────────────────────────────────
 //
 // One row per customer delivery order.
@@ -72,7 +70,9 @@ export const ordersTable = pgTable(
     parcelWeight: text("parcel_weight"),
 
     // ── Assigned driver ────────────────────────────────────────────────────────
-    driverUid:    text("driver_uid").references(() => driversTable.uid),
+    // No FK reference to driversTable — driver rows may not exist in PG yet
+    // during the dual-write shadow migration period (Phase 1B).
+    driverUid:    text("driver_uid"),
     driverName:   text("driver_name"),
     driverRating: text("driver_rating"),
     driverTrips:  integer("driver_trips"),

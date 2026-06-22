@@ -393,3 +393,208 @@ export async function pgTimeoutOffer(
     return { ok: false, reason: "unknown" };
   }
 }
+
+// ── Phase 1B shadow-write helpers ─────────────────────────────────────────────
+//
+// The functions below are called by the round-robin dispatcher and the
+// pg-shadow-writer Firestore listener.  They are best-effort: all errors are
+// caught internally and logged; none of these functions ever throws.
+
+// ── pgUpsertOrder ─────────────────────────────────────────────────────────────
+
+/**
+ * Upsert an order row from Firestore document data.
+ *
+ * Called by the dispatcher immediately after a successful Firestore assign
+ * transaction, giving PG a mirrored row with all the metadata the customer app
+ * wrote when it created the order.
+ *
+ * On conflict (order already exists in PG from a previous dispatch cycle) only
+ * dispatch-cycle fields are updated; customer info, route, and fare columns are
+ * left unchanged to avoid clobbering richer data from a prior sync.
+ *
+ * The driverUid column has no FK constraint during Phase 1B (drivers may not be
+ * in PG yet), so FK violations cannot occur here.
+ */
+export async function pgUpsertOrder(
+  orderId:        string,
+  data:           Record<string, unknown>,
+  overrideStatus?: string,
+): Promise<void> {
+  const str = (k: string): string | null => {
+    const v = data[k];
+    return typeof v === "string" ? v : null;
+  };
+  const numStr = (k: string): string | null => {
+    const v = data[k];
+    if (typeof v === "number") return String(v);
+    if (typeof v === "string" && v !== "") return v;
+    return null;
+  };
+  const intVal = (k: string): number | null => {
+    const v = data[k];
+    return typeof v === "number" ? Math.round(v) : null;
+  };
+  const boolVal = (k: string): boolean => {
+    const v = data[k];
+    return typeof v === "boolean" ? v : false;
+  };
+  const arrStr = (k: string): string[] => {
+    const v = data[k];
+    return Array.isArray(v)
+      ? (v as unknown[]).filter((x): x is string => typeof x === "string")
+      : [];
+  };
+  const tsDate = (k: string): Date | null => {
+    const v = data[k];
+    if (v instanceof Date) return v;
+    if (v && typeof (v as { toDate?: unknown }).toDate === "function") {
+      return (v as { toDate(): Date }).toDate();
+    }
+    return null;
+  };
+
+  const status           = overrideStatus ?? str("status") ?? "searching";
+  const rejectedBy       = arrStr("rejectedBy");
+  const lastDispatchedUid = str("lastDispatchedDriverUid") ?? str("lastDispatchedUid");
+  const dispatchTimeoutAt = tsDate("dispatchTimeoutAt");
+  const dispatchedAt      = tsDate("dispatchedAt");
+
+  try {
+    await db
+      .insert(ordersTable)
+      .values({
+        id:             orderId,
+        status,
+        customerName:   str("customerName"),
+        customerPhone:  str("customerPhone"),
+        pickup:         str("pickup"),
+        pickupCity:     str("pickupCity"),
+        drop:           str("drop"),
+        dropCity:       str("dropCity"),
+        distanceKm:     numStr("distanceKm"),
+        durationMin:    intVal("durationMin"),
+        fareEstimate:   numStr("fareEstimate"),
+        paymentMode:    str("paymentMode"),
+        surge:          boolVal("surge"),
+        surgeMultiplier: numStr("surgeMultiplier") ?? "1",
+        parcelType:     str("parcelType"),
+        parcelEmoji:    str("parcelEmoji"),
+        parcelWeight:   str("parcelWeight"),
+        driverUid:      str("driverUid"),
+        driverName:     str("driverName"),
+        rejectedBy,
+        lastDispatchedUid,
+        dispatchTimeoutAt,
+        dispatchedAt,
+      })
+      .onConflictDoUpdate({
+        target: ordersTable.id,
+        set: {
+          status,
+          driverUid:        str("driverUid"),
+          driverName:       str("driverName"),
+          rejectedBy,
+          lastDispatchedUid,
+          dispatchTimeoutAt,
+          dispatchedAt:     dispatchedAt ?? sql`${ordersTable.dispatchedAt}`,
+          updatedAt:        sql`now()`,
+        },
+      });
+  } catch (err) {
+    logger.error({ err, orderId, status }, "[pgUpsertOrder] error (non-blocking)");
+  }
+}
+
+// ── pgShadowSetStatus ─────────────────────────────────────────────────────────
+
+/**
+ * Best-effort status field update for shadow writer listeners.
+ *
+ * Maps each delivery status to its corresponding stage-timestamp column and
+ * writes both atomically.  Called from the Firestore listeners in
+ * pg-shadow-writer.ts and from POST /complete for the delivered status.
+ *
+ * Never throws; errors are logged for monitoring.
+ */
+export async function pgShadowSetStatus(
+  orderId: string,
+  status:  string,
+  extra:   Partial<typeof ordersTable.$inferInsert> = {},
+): Promise<void> {
+  const now = new Date();
+
+  const tsFields: Partial<typeof ordersTable.$inferInsert> = {};
+  switch (status) {
+    case "driver_assigned": tsFields.acceptedAt  = now; break;
+    case "to_pickup":       tsFields.toPickupAt  = now; break;
+    case "at_pickup":       tsFields.atPickupAt  = now; break;
+    case "to_drop":         tsFields.toDropAt    = now; break;
+    case "at_drop":         tsFields.atDropAt    = now; break;
+    case "delivered":       tsFields.deliveredAt = now; break;
+    case "cancelled":       tsFields.cancelledAt = now; break;
+    default: break;
+  }
+
+  try {
+    await db
+      .update(ordersTable)
+      .set({ status, updatedAt: now, ...tsFields, ...extra })
+      .where(eq(ordersTable.id, orderId));
+  } catch (err) {
+    logger.error({ err, orderId, status }, "[pgShadowSetStatus] error (non-blocking)");
+  }
+}
+
+// ── pgShadowMarkAccept ────────────────────────────────────────────────────────
+
+/**
+ * Lenient accept mirror for the Firestore shadow listener.
+ *
+ * Unlike pgAcceptOffer (which uses a guarded transaction for the live path),
+ * this function applies both writes unconditionally — if no offer row exists
+ * yet (e.g. the dispatcher write race), the offer update silently matches
+ * 0 rows, which is acceptable in shadow mode.
+ *
+ * Writes:
+ *   order_offers  SET status='accepted', responded_at=now()
+ *                 WHERE order_id=? AND driver_uid=? AND status='pending'
+ *   orders        SET status='driver_assigned', driver_uid=?, driver_name=?,
+ *                     accepted_at=now(), updated_at=now()
+ *                 WHERE id=?
+ *
+ * Never throws.
+ */
+export async function pgShadowMarkAccept(
+  orderId:    string,
+  driverUid:  string,
+  driverName: string | null = null,
+): Promise<void> {
+  const now = new Date();
+
+  try {
+    await db
+      .update(orderOffersTable)
+      .set({ status: "accepted", respondedAt: now })
+      .where(
+        and(
+          eq(orderOffersTable.orderId,   orderId),
+          eq(orderOffersTable.driverUid, driverUid),
+          eq(orderOffersTable.status,    "pending"),
+        ),
+      );
+
+    await db
+      .update(ordersTable)
+      .set({
+        status:     "driver_assigned",
+        driverUid,
+        driverName: driverName ?? null,
+        acceptedAt: now,
+        updatedAt:  now,
+      })
+      .where(eq(ordersTable.id, orderId));
+  } catch (err) {
+    logger.error({ err, orderId, driverUid }, "[pgShadowMarkAccept] error (non-blocking)");
+  }
+}
