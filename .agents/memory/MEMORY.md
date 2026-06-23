@@ -10,6 +10,8 @@
 - [Expo Router typed routes](expo-router-typed-routes.md) — new screen files require manual update to .expo/types/router.d.ts (hrefInputParams, hrefOutputParams, href) until dev server regenerates.
 - [Firebase-to-PG migration patterns](firebase-to-pg-migration.md) — RoutingDoc structural type, setKycDocuments cast, subscription remaining-dep pattern for Step 1.
 - [PG FCM claim shadow (5C-C)](pg-claim-shadow.md) — claim-result fields not live-mirrored; reproduce decision from order_offers + token; normalizeForLive only when no prior claim.
+- [Drizzle tx.rollback() pitfall](drizzle-tx-rollback.md) — tx.rollback() throws → masks reason as "unknown"; on a guarded 0-row miss return directly to commit a no-op tx.
+- [PG dispatch write services (5E-A)](pg-dispatch-service.md) — atomic guarded assign/claim/return + read-only eligible/expired; NOT live-wired; no Firestore/FCM.
 - [PG timeout shadow](pg-timeout-shadow.md) — Phase 5C-B: gate eligibility on dispatch_timeout_at; normalize returnToPool race in live path only; driver uid first-class.
 - [PG assignment shadow](pg-assign-shadow.md) — validate reproduced PG assignment LOGIC from stable inputs, not the racey pre-assignment order mirror (stale cursor/timeout).
 - [Dispatch shadow data](dispatch-shadow-data.md) — dispatcher reads subscriptionExpiresAt/rating/tripsTotal|trips; rating+trips_total have NO writer (don't mirror tripsToday→trips_total); shadow-write + backfill mechanics.
