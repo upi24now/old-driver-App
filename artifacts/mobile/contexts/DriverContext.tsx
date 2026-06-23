@@ -29,7 +29,6 @@ import {
   acceptOrder,
   rejectOrder,
   timeoutOrder,
-  getDriverTransactions,
   getWalletDoc,
   PERMISSION_SETUP_VERSION,
   type DriverDoc,
@@ -47,7 +46,7 @@ import {
   ensureDriverSignup,
   type PgDriverProfile,
 } from "@/utils/profile-api";
-import { requestPayout } from "@/utils/wallet-api";
+import { requestPayout, getWalletTransactions } from "@/utils/wallet-api";
 export type { AcceptOrderResult };
 import { verifyOtpApi } from "@/utils/auth-api";
 import { patchDriverStatus, postDriverLocation } from "@/utils/driver-api";
@@ -1754,33 +1753,43 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         getDriverDoc(driverUid),
         getWalletDoc(driverUid),
       ]);
-      if (!d) return;
-      const today   = new Date().toISOString().slice(0, 10);
-      const sameDay = d.todayDate === today;
-      setBalance(w?.balance ?? 0);
-      setLifetimeEarnings(w?.totalEarnings ?? 0);
-      setTotalPaid(w?.totalPaid ?? 0);
-      setTodayEarnings(sameDay ? (d.todayEarnings ?? 0) : 0);
-      setTripsToday   (sameDay ? (d.tripsToday    ?? 0) : 0);
+      // Apply wallet totals independently — a missing/unreachable driver doc
+      // must not prevent the balance from being updated (e.g. after a payout).
+      if (!d && !w) return;
+      if (w) {
+        setBalance(w.balance ?? 0);
+        setLifetimeEarnings(w.totalEarnings ?? 0);
+        setTotalPaid(w.totalPaid ?? 0);
+      }
+      if (d) {
+        const today   = new Date().toISOString().slice(0, 10);
+        const sameDay = d.todayDate === today;
+        setTodayEarnings(sameDay ? (d.todayEarnings ?? 0) : 0);
+        setTripsToday   (sameDay ? (d.tripsToday    ?? 0) : 0);
+      }
     } catch {
       // silent — optimistic values remain until next successful refresh
     }
   };
 
   /**
-   * Load the driver's transaction ledger from Firestore and map to Txn shape.
+   * Load the driver's transaction ledger via REST and map to Txn shape.
+   *
+   * Calls GET /api/wallet/:uid/transactions (PG-primary, Firestore-fallback on
+   * the server).  The mobile app no longer reads the Firestore "transactions"
+   * collection directly (R5 migration — Phase 5J-Tier-2).
    *
    * Called on auth, after OTP login, and after each withdrawal — ensures the
    * wallet screen always shows real data with no fake seeds.
    *
-   * Token mapping:  Firestore "credit"    → Txn "earning"   (delivery completed)
-   *                 Firestore "payout"    → Txn "withdraw"  (withdrawal request)
-   *                 Firestore "adjustment"→ Txn "bonus"     (manual credit/debit)
-   *                 Firestore amount is already negative for debits
+   * Token mapping:  REST "credit"     → Txn "earning"   (delivery completed)
+   *                 REST "payout"     → Txn "withdraw"  (withdrawal request)
+   *                 REST "adjustment" → Txn "bonus"     (manual credit/debit)
+   *                 payout amounts are already normalised negative by the server
    */
   const loadDriverTransactions = async (uid: string): Promise<void> => {
     try {
-      const raw      = await getDriverTransactions(uid);
+      const raw      = await getWalletTransactions(uid);
       const todayStr = new Date().toISOString().slice(0, 10);
       const yestStr  = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
@@ -1794,8 +1803,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true }).toUpperCase();
 
       const txns: Txn[] = raw.map((r) => {
-        const ts      = r.createdAt as { toDate?: () => Date } | null;
-        const dt      = ts?.toDate?.();
+        // createdAt is an ISO 8601 string from the REST endpoint.
+        const dt      = r.createdAt ? new Date(r.createdAt) : null;
         const txnDate = dt ? fmtDate(dt) : "";
         const txnTime = dt ? fmtTime(dt) : "";
 
@@ -1804,10 +1813,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             id:       r.id,
             type:     "earning" as const,
             title:    r.orderId
-              ? `Delivery #${(r.orderId as string).slice(-6).toUpperCase()}`
+              ? `Delivery #${r.orderId.slice(-6).toUpperCase()}`
               : "Delivery earning",
-            subtitle: (r.paymentMode as string | undefined) ?? "UPI",
-            amount:   r.amount as number,
+            subtitle: "UPI",
+            amount:   r.amount,
             status:   "completed" as const,
             time:     txnTime,
             date:     txnDate,
@@ -1818,9 +1827,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             id:       r.id,
             type:     "withdraw" as const,
             title:    "Withdrawal via UPI",
-            subtitle: (r.description as string | undefined) ?? "Payout",
-            amount:   r.amount as number,   // already negative in Firestore
-            status:   (r.status as string) === "completed"
+            subtitle: r.description ?? "Payout",
+            amount:   r.amount,   // normalised negative by the server
+            status:   r.status === "completed"
               ? ("completed" as const)
               : ("pending"   as const),
             time:     txnTime,
@@ -1831,9 +1840,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         return {
           id:       r.id,
           type:     "bonus" as const,
-          title:    (r.description as string | undefined) ?? "Adjustment",
+          title:    r.description ?? "Adjustment",
           subtitle: "",
-          amount:   r.amount as number,
+          amount:   r.amount,
           status:   "completed" as const,
           time:     txnTime,
           date:     txnDate,

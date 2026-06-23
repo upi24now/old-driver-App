@@ -264,7 +264,21 @@ router.get("/wallet/:uid/transactions", async (req: Request, res: Response) => {
       .limit(pageSize)
       .get();
 
-    const transactions = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const transactions = snap.docs.map((d) => {
+      const data = d.data() as Record<string, unknown>;
+      // Normalise createdAt: Firestore Admin SDK returns Timestamp objects which
+      // JSON-serialise to { _seconds, _nanoseconds } — not a valid Date string.
+      // Always return an ISO string so the mobile contract is consistent with
+      // the PG-primary path.
+      const rawCa = data["createdAt"];
+      const createdAt =
+        rawCa != null && typeof rawCa === "object" && "toDate" in rawCa
+          ? (rawCa as { toDate(): Date }).toDate().toISOString()
+          : rawCa instanceof Date
+          ? rawCa.toISOString()
+          : rawCa;
+      return { id: d.id, ...data, createdAt };
+    });
     res.json({ ok: true, transactions });
   } catch (err) {
     req.log.error({ err, uid }, "GET /wallet/:uid/transactions failed");

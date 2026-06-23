@@ -18,6 +18,49 @@ export type RequestPayoutResult =
   | { ok: false; error: string };
 
 /**
+ * Shape of a single wallet transaction returned by
+ * GET /api/wallet/:uid/transactions.
+ *
+ * createdAt is always an ISO 8601 string (the server normalises Dates with
+ * .toISOString() before responding).  paymentMode is not included in the PG
+ * path; callers should fall back to "UPI" when it is absent.
+ */
+export interface WalletTransaction {
+  id:          string;
+  driverUid:   string;
+  orderId:     string | null;
+  type:        string;
+  amount:      number;
+  status:      string | null;
+  description: string | null;
+  createdAt:   string | null;
+}
+
+/**
+ * GET /api/wallet/:uid/transactions
+ *
+ * PG-primary, Firestore-fallback on the server side — the mobile app no longer
+ * reads the Firestore "transactions" collection directly.
+ *
+ * Returns an empty array on any network/auth error so callers are
+ * fire-and-forget safe.
+ */
+export async function getWalletTransactions(uid: string): Promise<WalletTransaction[]> {
+  const idToken = await getIdToken();
+  if (!idToken) return [];
+  try {
+    const res = await fetch(`${BASE_URL}/wallet/${uid}/transactions`, {
+      headers: { Authorization: `Bearer ${idToken}` },
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { ok?: boolean; transactions?: WalletTransaction[] };
+    return json.ok && Array.isArray(json.transactions) ? json.transactions : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
  * POST /api/payouts/request
  *
  * Routes a driver withdrawal through the backend so it:
