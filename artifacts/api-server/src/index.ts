@@ -17,6 +17,7 @@ import { logger } from "./lib/logger";
 import { startFcmDispatcher } from "./lib/fcm-dispatcher";
 import { startRoundRobinDispatcher } from "./lib/round-robin-dispatcher";
 import { startPgShadowWriter } from "./lib/pg-shadow-writer";
+import { logDispatchSource } from "./lib/dispatch-source";
 
 // ── Resolve runtime config (env vars now available from dotenv) ──────────────
 const uploadsDir   = process.env["UPLOADS_DIR"]    ?? resolve(bundleDir, "../uploads");
@@ -76,6 +77,11 @@ logger.info(
   },
   "[STARTUP_FIREBASE_CONFIG]",
 );
+
+// ── Dispatch source feature flag (Phase 5E-B) ───────────────────────────────
+// Logging only. NOTHING routes on this yet — the Firestore dispatcher below
+// still starts exactly as before regardless of the resolved value.
+logDispatchSource();
 
 if (!rawPort) {
   throw new Error(
