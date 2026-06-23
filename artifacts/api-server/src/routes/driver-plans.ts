@@ -223,11 +223,12 @@ router.post("/driver-plans/verify-payment", async (req, res) => {
         await db
           .update(driversTable)
           .set({
+            subscriptionPlan:      plan,
             subscriptionExpiresAt: new Date(planExpiryAt),
             updatedAt:             new Date(),
           })
           .where(eq(driversTable.uid, driverUid));
-        req.log.info({ driverUid, planExpiryAt }, "[PG_DRIVER_META_SAVE]");
+        req.log.info({ driverUid, plan, planExpiryAt }, "[PG_DRIVER_META_SAVE]");
       } catch (err) {
         req.log.warn({ err, driverUid }, "[PG_DRIVER_META_FALLBACK]");
       }

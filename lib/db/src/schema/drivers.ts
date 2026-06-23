@@ -114,6 +114,20 @@ export const driversTable = pgTable(
     rating:                doublePrecision("rating"),
     tripsTotal:            integer("trips_total"),
 
+    // ── Subscription plan (Phase 5J-Tier-3) ──────────────────────────────────
+    // Mirrors Firestore subscriptionPlan ("daily" | "weekly" | "monthly").
+    // Written by POST /api/driver-plans/verify-payment on successful payment.
+    // subscriptionExpiresAt (epoch-ms→timestamp) already exists above (Phase 5A.3).
+    subscriptionPlan: text("subscription_plan"),
+
+    // ── Daily stats (Phase 5J-Tier-3) ─────────────────────────────────────────
+    // Mirrors Firestore todayDate + todayEarnings + tripsToday.
+    // Written by POST /api/orders/:orderId/complete after each delivery.
+    // Reset on date rollover — server resets when todayDate ≠ today.
+    todayDate:     text("today_date"),        // "YYYY-MM-DD"
+    todayEarnings: doublePrecision("today_earnings"),
+    tripsToday:    integer("trips_today"),
+
     // ── Timestamps ───────────────────────────────────────────────────────────
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),

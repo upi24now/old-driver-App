@@ -25,6 +25,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import {
   db,
+  driversTable,
   driverWalletsTable,
   payoutRequestsTable,
   walletTransactionsTable,
@@ -282,4 +283,25 @@ export async function pgMarkPayoutProcessed(
     logger.error({ err, requestId }, "[pgMarkPayoutProcessed] failed");
     throw err;
   }
+}
+
+// ── pgUpdateDriverDailyStats ──────────────────────────────────────────────────
+
+/**
+ * Shadow-write driver daily stats to PG after each order completion.
+ *
+ * Values are the server-computed results from the Firestore transaction
+ * (todayDate already accounts for same-day accumulation vs. day rollover).
+ * Firestore remains authoritative; this is a non-blocking mirror.
+ */
+export async function pgUpdateDriverDailyStats(
+  driverUid:    string,
+  todayDate:    string,  // "YYYY-MM-DD"
+  todayEarnings: number,
+  tripsToday:   number,
+): Promise<void> {
+  await db
+    .update(driversTable)
+    .set({ todayDate, todayEarnings, tripsToday, updatedAt: new Date() })
+    .where(eq(driversTable.uid, driverUid));
 }

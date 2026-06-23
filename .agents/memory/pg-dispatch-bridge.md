@@ -48,6 +48,18 @@ All Bridge-2 gating items resolved, still additive and Firestore-authoritative (
 - **Offer-set drift needs its own listener.** Driver reject/timeout = mobile `arrayRemove` on `activeOfferDriverUids` with status unchanged (`status=='dispatched'` `modified` events) — no other listener saw it. A dedicated dispatch-cycle listener mirrors it with an opt-in `mirrorOfferSet` flag; the dispatcher's dispatch-time upsert deliberately leaves the offer column untouched. **Why it matters:** `pg-claim-shadow.ts` validates against PG's `active_offer_driver_uids`, so drift would corrupt claim validation once PG is authoritative.
 - **Verification approach that worked:** drive the REAL service functions (not re-implemented SQL) against live PG from a temp tsx harness under `artifacts/api-server/src/scripts/`, run via `pnpm --filter @workspace/scripts exec tsx <ABSOLUTE path>` (relative paths resolve against the scripts package dir and fail). Use a `TEST_PG_DISPATCH_` id prefix + sentinel driverUid, assert real-row count unchanged, delete the harness after. 14/14 covering every cancel/pool interleaving, claimed/delivered precedence, and offer-set mirror.
 
+## Phase 5J-Tier-3 Subscription + Daily Stats PG Migration — DONE, verdict READY_FOR_PHASE_5J_TIER_4
+R4 getDriverDoc fully removed from DriverContext.tsx (import deleted; 5 call sites replaced). Key patterns:
+- **4 new PG columns**: `subscription_plan` (text), `today_date` (text, "YYYY-MM-DD"), `today_earnings` (doublePrecision), `trips_today` (integer) — added to driversTable, pushed via `pnpm --filter @workspace/db run push`.
+- **Subscription writer** in `driver-plans/verify-payment`: PG shadow UPDATE now writes both `subscriptionPlan: plan` AND `subscriptionExpiresAt: new Date(planExpiryAt)` atomically. Firestore stays authoritative.
+- **Daily stats writer** `pgUpdateDriverDailyStats(uid, todayDate, todayEarnings, tripsToday)` in `wallet-pg-service.ts`: called non-blocking from `orders/:orderId/complete` after Firestore txn commits, using server-computed values (`today/newToday/newTrips`) — never client-supplied.
+- **GET /drivers/me** extended with 6 fields: `subscriptionPlan` (string|null), `subscriptionExpiresAt` (epoch ms number|null — matches Firestore format via `.getTime()`), `todayDate`, `todayEarnings`, `tripsToday`, `rating`.
+- **PgDriverProfile type** updated with 6 new optional fields in `profile-api.ts`.
+- **3 hydration paths in DriverContext** (cold-start pgProfile, new-driver OTP pg2, existing-driver OTP pgProfile): unconditional sets (`setSubPlan(... ?? null)`, `setSubExp(... ?? null)`) so PG null always clears stale AsyncStorage cache. pg2 path guarded on `if (pg2)` first since API can return null.
+- **refreshSubscription**: replaced `getDriverDoc` with `getDriverProfile()`.
+- **refreshWallet**: replaced `getDriverDoc` with `getDriverProfile()` for daily stats arm.
+- **Lib rebuild required** after schema changes: `pnpm run typecheck:libs` before artifact typechecks (stale declarations cause TS2339/TS2353 on new columns).
+
 ## Phase 5J-Tier-2 Wallet Transaction REST Migration — DONE, verdict READY_FOR_PHASE_5J_TIER_3
 R5 (getDriverTransactions) removed from mobile. Pattern, not changelog:
 - `getWalletTransactions(uid)` added to `utils/wallet-api.ts` — fetches `GET /api/wallet/:uid/transactions` with Bearer token; returns `WalletTransaction[]` (typed: id/driverUid/orderId/type/amount/status/description/createdAt as ISO string). Returns `[]` on any error.

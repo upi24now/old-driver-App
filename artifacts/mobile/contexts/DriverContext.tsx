@@ -19,7 +19,6 @@ import {
 
 import { firebaseAuth } from "@/utils/firebase";
 import {
-  getDriverDoc,
   updateDriverOnlineStatus,
   updateDriverSubscription,
   getActiveOrderForDriver,
@@ -662,21 +661,21 @@ export function DriverProvider({ children }: { children: ReactNode }) {
                 console.log("[SESSION_RESTORE_SUB] plan restored from cache —", sub.plan, "exp", sub.expiresAt);
               }
             } catch {}
-            // Subscription + daily stats: background Firestore fetch (remaining dep until PG migration).
-            void getDriverDoc(user.uid).then((fsDoc) => {
-              if (!fsDoc) return;
-              if (fsDoc.subscriptionPlan)      setSubPlan(fsDoc.subscriptionPlan as SubPlan);
-              if (fsDoc.subscriptionExpiresAt) setSubExp(fsDoc.subscriptionExpiresAt);
-              persistSubscriptionCache(
-                (fsDoc.subscriptionPlan as SubPlan) ?? null,
-                fsDoc.subscriptionExpiresAt ?? null,
-              );
+            // Subscription + daily stats: PG-sourced from pgProfile (Phase 5J-Tier-3).
+            // Unconditional — a PG null must clear stale AsyncStorage cache.
+            setSubPlan((pgProfile.subscriptionPlan as SubPlan) ?? null);
+            setSubExp(pgProfile.subscriptionExpiresAt ?? null);
+            persistSubscriptionCache(
+              (pgProfile.subscriptionPlan as SubPlan) ?? null,
+              pgProfile.subscriptionExpiresAt ?? null,
+            );
+            {
               const today   = new Date().toISOString().slice(0, 10);
-              const sameDay = fsDoc.todayDate === today;
-              setTodayEarnings(sameDay ? (fsDoc.todayEarnings ?? 0) : 0);
-              setTripsToday   (sameDay ? (fsDoc.tripsToday    ?? 0) : 0);
-              setDriverRating(fsDoc.rating ?? "5.0");
-            }).catch(console.error);
+              const sameDay = pgProfile.todayDate === today;
+              setTodayEarnings(sameDay ? (pgProfile.todayEarnings ?? 0) : 0);
+              setTripsToday   (sameDay ? (pgProfile.tripsToday    ?? 0) : 0);
+              setDriverRating(String(pgProfile.rating ?? 5.0));
+            }
             // Wallet doc — fire-and-forget (Firestore cold-start must NOT block navigation)
             console.log("[PERF] wallet_fetch_start");
             void getWalletDoc(user.uid).then((walletDoc) => {
@@ -1293,21 +1292,23 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         setSuspendReason(pg2?.suspendReason ?? null);
         setBlacklistReason(pg2?.blacklistReason ?? null);
         setOnlineState(false); // isOnline not stored in PG; always start offline
-        // Subscription + daily stats: background Firestore fetch (remaining dep until PG migration).
-        void getDriverDoc(uid).then((fsDoc) => {
-          if (!fsDoc) return;
-          if (fsDoc.subscriptionPlan)      setSubPlan(fsDoc.subscriptionPlan as SubPlan);
-          if (fsDoc.subscriptionExpiresAt) setSubExp(fsDoc.subscriptionExpiresAt);
+        // Subscription + daily stats: PG-sourced from pg2 (Phase 5J-Tier-3).
+        // Guard on pg2 presence; then unconditional — PG null clears stale cache.
+        if (pg2) {
+          setSubPlan((pg2.subscriptionPlan as SubPlan) ?? null);
+          setSubExp(pg2.subscriptionExpiresAt ?? null);
           persistSubscriptionCache(
-            (fsDoc.subscriptionPlan as SubPlan) ?? null,
-            fsDoc.subscriptionExpiresAt ?? null,
+            (pg2.subscriptionPlan as SubPlan) ?? null,
+            pg2.subscriptionExpiresAt ?? null,
           );
+        }
+        {
           const today   = new Date().toISOString().slice(0, 10);
-          const sameDay = fsDoc.todayDate === today;
-          setTodayEarnings(sameDay ? (fsDoc.todayEarnings ?? 0) : 0);
-          setTripsToday   (sameDay ? (fsDoc.tripsToday    ?? 0) : 0);
-          setDriverRating(fsDoc.rating ?? "5.0");
-        }).catch(console.error);
+          const sameDay = pg2?.todayDate === today;
+          setTodayEarnings(sameDay ? (pg2?.todayEarnings ?? 0) : 0);
+          setTripsToday   (sameDay ? (pg2?.tripsToday    ?? 0) : 0);
+          setDriverRating(String(pg2?.rating ?? 5.0));
+        }
         // Wallet — fire-and-forget (must NOT block OTP→next-screen routing)
         void getWalletDoc(uid).then((walletDoc) => {
           if (!walletDoc) return;
@@ -1372,21 +1373,21 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             pgProfile.accountStatus === "blocked";
           setOnlineState(isSuspended ? false : false); // isOnline not stored in PG
         }
-        // Subscription + daily stats: background Firestore fetch (remaining dep until PG migration).
-        void getDriverDoc(uid).then((fsDoc) => {
-          if (!fsDoc) return;
-          if (fsDoc.subscriptionPlan)      setSubPlan(fsDoc.subscriptionPlan as SubPlan);
-          if (fsDoc.subscriptionExpiresAt) setSubExp(fsDoc.subscriptionExpiresAt);
-          persistSubscriptionCache(
-            (fsDoc.subscriptionPlan as SubPlan) ?? null,
-            fsDoc.subscriptionExpiresAt ?? null,
-          );
+        // Subscription + daily stats: PG-sourced from pgProfile (Phase 5J-Tier-3).
+        // Unconditional — a PG null must clear stale AsyncStorage cache.
+        setSubPlan((pgProfile.subscriptionPlan as SubPlan) ?? null);
+        setSubExp(pgProfile.subscriptionExpiresAt ?? null);
+        persistSubscriptionCache(
+          (pgProfile.subscriptionPlan as SubPlan) ?? null,
+          pgProfile.subscriptionExpiresAt ?? null,
+        );
+        {
           const today   = new Date().toISOString().slice(0, 10);
-          const sameDay = fsDoc.todayDate === today;
-          setTodayEarnings(sameDay ? (fsDoc.todayEarnings ?? 0) : 0);
-          setTripsToday   (sameDay ? (fsDoc.tripsToday    ?? 0) : 0);
-          setDriverRating(fsDoc.rating ?? "5.0");
-        }).catch(console.error);
+          const sameDay = pgProfile.todayDate === today;
+          setTodayEarnings(sameDay ? (pgProfile.todayEarnings ?? 0) : 0);
+          setTripsToday   (sameDay ? (pgProfile.tripsToday    ?? 0) : 0);
+          setDriverRating(String(pgProfile.rating ?? 5.0));
+        }
         // Wallet — fire-and-forget (Firestore must NOT block OTP→next-screen routing)
         console.log("[PERF] wallet_fetch_start confirmOtp_pg");
         void getWalletDoc(uid).then((walletDoc) => {
@@ -1698,11 +1699,11 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const refreshSubscription = async (): Promise<void> => {
     if (!driverUid) return;
     try {
-      const doc = await getDriverDoc(driverUid);
-      if (!doc) return;
+      const pgDoc = await getDriverProfile();
+      if (!pgDoc) return;
       // Unconditional updates so an expired/removed plan is always cleared locally.
-      const plan      = (doc.subscriptionPlan as SubPlan) ?? null;
-      const expiresAt = doc.subscriptionExpiresAt ?? null;
+      const plan      = (pgDoc.subscriptionPlan as SubPlan) ?? null;
+      const expiresAt = pgDoc.subscriptionExpiresAt ?? null;
       setSubPlan(plan);
       setSubExp(expiresAt);
       persistSubscriptionCache(plan, expiresAt);
@@ -1749,23 +1750,23 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const refreshWallet = async (): Promise<void> => {
     if (!driverUid) return;
     try {
-      const [d, w] = await Promise.all([
-        getDriverDoc(driverUid),
+      const [pgDoc, w] = await Promise.all([
+        getDriverProfile(),
         getWalletDoc(driverUid),
       ]);
       // Apply wallet totals independently — a missing/unreachable driver doc
       // must not prevent the balance from being updated (e.g. after a payout).
-      if (!d && !w) return;
+      if (!pgDoc && !w) return;
       if (w) {
         setBalance(w.balance ?? 0);
         setLifetimeEarnings(w.totalEarnings ?? 0);
         setTotalPaid(w.totalPaid ?? 0);
       }
-      if (d) {
+      if (pgDoc) {
         const today   = new Date().toISOString().slice(0, 10);
-        const sameDay = d.todayDate === today;
-        setTodayEarnings(sameDay ? (d.todayEarnings ?? 0) : 0);
-        setTripsToday   (sameDay ? (d.tripsToday    ?? 0) : 0);
+        const sameDay = pgDoc.todayDate === today;
+        setTodayEarnings(sameDay ? (pgDoc.todayEarnings ?? 0) : 0);
+        setTripsToday   (sameDay ? (pgDoc.tripsToday    ?? 0) : 0);
       }
     } catch {
       // silent — optimistic values remain until next successful refresh

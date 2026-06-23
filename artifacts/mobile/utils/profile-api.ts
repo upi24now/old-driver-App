@@ -52,9 +52,12 @@ export type PgDocEntry = {
 /**
  * Full driver profile as returned by GET /api/drivers/me.
  *
- * Fields NOT present (still Firestore-sourced after Step 1):
- *   isOnline, subscriptionPlan, subscriptionExpiresAt,
- *   todayEarnings, tripsToday, todayDate, rating, totalTrips
+ * Fields NOT present (still Firestore-sourced):
+ *   isOnline
+ *
+ * Phase 5J-Tier-3 additions (now PG-sourced):
+ *   subscriptionPlan, subscriptionExpiresAt,
+ *   todayDate, todayEarnings, tripsToday, rating
  */
 export type PgDriverProfile = {
   uid:                        string;
@@ -81,6 +84,13 @@ export type PgDriverProfile = {
   onboardingFeeStatus:        string | null;
   onboardingFeeAmount:        number | null;
   onboardingFeeCurrency:      string | null;
+  // Phase 5J-Tier-3: subscription + daily stats now PG-sourced
+  subscriptionPlan:           string | null;
+  subscriptionExpiresAt:      number | null;  // epoch ms, matches Firestore format
+  todayDate:                  string | null;  // "YYYY-MM-DD"
+  todayEarnings:              number | null;
+  tripsToday:                 number | null;
+  rating:                     number | null;
   createdAt:                  string;
   updatedAt:                  string;
   documents:                  Record<string, PgDocEntry>;

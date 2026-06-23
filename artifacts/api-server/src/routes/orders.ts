@@ -3,7 +3,7 @@ import { Router, type Request, type Response } from "express";
 import { adminFirestore } from "../lib/firebase-admin";
 import { requireAuth } from "../lib/require-auth";
 import { pgGetOrder, pgShadowSetStatus } from "../lib/order-pg-service";
-import { pgCreditOrderEarning } from "../lib/wallet-pg-service";
+import { pgCreditOrderEarning, pgUpdateDriverDailyStats } from "../lib/wallet-pg-service";
 import { db, ordersTable } from "@workspace/db";
 import { inArray, gte, and } from "drizzle-orm";
 
@@ -194,6 +194,11 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
     )
       .then(() => req.log.info({ orderId, driverUid, fareAmount }, "[PG_WALLET_CREDIT]"))
       .catch((e) => req.log.error({ err: e, orderId, driverUid }, "[PG_WALLET_CREDIT] shadow write failed — non-blocking"));
+
+    // ── PG shadow write: driver daily stats (non-blocking) ────────────────────
+    void pgUpdateDriverDailyStats(driverUid, today, newToday, newTrips)
+      .then(() => req.log.info({ driverUid, today, todayEarnings: newToday, tripsToday: newTrips }, "[PG_DRIVER_STATS]"))
+      .catch((e) => req.log.error({ err: e, driverUid }, "[PG_DRIVER_STATS] shadow write failed — non-blocking"));
 
     res.json({ ok: true, newBalance, todayEarnings: newToday, tripsToday: newTrips, todayDate: today });
 

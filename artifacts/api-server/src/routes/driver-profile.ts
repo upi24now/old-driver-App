@@ -237,6 +237,12 @@ function buildDocumentsMap(
  *     verificationStatus, kycRejectionReason, rejectedDocuments,
  *     backgroundSetupShown, permissionSetupVersion, permissionSetupCompletedAt,
  *     onboardingFeeApplies, onboardingFeeStatus, onboardingFeeAmount, onboardingFeeCurrency,
+ *     subscriptionPlan,       — "daily"|"weekly"|"monthly"|null (Phase 5J-Tier-3)
+ *     subscriptionExpiresAt,  — epoch ms number | null             (Phase 5J-Tier-3)
+ *     todayDate,              — "YYYY-MM-DD" | null                (Phase 5J-Tier-3)
+ *     todayEarnings,          — number | null                      (Phase 5J-Tier-3)
+ *     tripsToday,             — number | null                      (Phase 5J-Tier-3)
+ *     rating,                 — number | null                      (Phase 5J-Tier-3)
  *     createdAt, updatedAt,
  *     documents: {
  *       [docType]: {
@@ -303,6 +309,13 @@ router.get("/drivers/me", async (req, res) => {
         onboardingFeeStatus:        driver.onboardingFeeStatus        ?? null,
         onboardingFeeAmount:        driver.onboardingFeeAmount        ?? null,
         onboardingFeeCurrency:      driver.onboardingFeeCurrency      ?? null,
+        subscriptionPlan:           driver.subscriptionPlan       ?? null,
+        subscriptionExpiresAt:      driver.subscriptionExpiresAt
+          ? driver.subscriptionExpiresAt.getTime() : null,
+        todayDate:                  driver.todayDate               ?? null,
+        todayEarnings:              driver.todayEarnings           ?? null,
+        tripsToday:                 driver.tripsToday              ?? null,
+        rating:                     driver.rating                  ?? null,
         createdAt:                  driver.createdAt.toISOString(),
         updatedAt:                  driver.updatedAt.toISOString(),
         documents:                  buildDocumentsMap(docRows),
