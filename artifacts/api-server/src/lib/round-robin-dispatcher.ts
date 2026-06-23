@@ -294,7 +294,7 @@ async function assignNextDriver(
             driverRating: chosen.rating,
             driverTrips:  chosen.trips,
           },
-          "dispatched",
+          { overrideStatus: "dispatched" },
         );
         logger.info(
           { orderId, driverUid: chosen.uid, driverName: chosen.name },

@@ -26,7 +26,7 @@
  * try/catch gymnastics.
  */
 
-import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import {
   db,
   orderOffersTable,
@@ -429,7 +429,45 @@ export async function pgTimeoutOffer(
 // pg-shadow-writer Firestore listener.  They are best-effort: all errors are
 // caught internally and logged; none of these functions ever throws.
 
+// ── status precedence (Phase 5H-BRIDGE-2) ─────────────────────────────────────
+
+/**
+ * Statuses from which a pool/dispatch-cycle ingress mirror may still move an
+ * order. `returnToPool` legitimately resets a "dispatched" order back to
+ * "searching", so "dispatched" is included. Once an order is claimed
+ * ("driver_assigned"), in a delivery stage, or terminal ("delivered" /
+ * "cancelled"), a stale or replayed pool/cycle ingress event must NEVER
+ * resurrect it back toward the pool. The guard is applied as a `setWhere` on the
+ * conflict update so a blocked write is a silent no-op (the existing row wins).
+ */
+const POOL_MIRRORABLE_STATUSES = ["searching", "pending", "dispatched"] as const;
+
 // ── pgUpsertOrder ─────────────────────────────────────────────────────────────
+
+/**
+ * Options controlling pgUpsertOrder's conflict behaviour.
+ *
+ * Defaults reproduce the original dispatcher behaviour exactly (no guard, no
+ * offer-set mirror, status from data) so existing callers are unaffected.
+ */
+export interface PgUpsertOrderOpts {
+  /** Force the written status instead of reading data.status. */
+  overrideStatus?: string;
+  /**
+   * Phase 5H-BRIDGE-2: only apply the conflict UPDATE when the EXISTING row is
+   * still pool-mirrorable (searching/pending/dispatched). Prevents a delayed or
+   * replayed pool/cycle ingress event from resurrecting a claimed/terminal
+   * order. Used by the Firestore→PG ingress listeners; left off for the
+   * dispatcher's own authoritative shadow write.
+   */
+  guardRegression?: boolean;
+  /**
+   * Phase 5H-BRIDGE-2: also mirror active_offer_driver_uids from the Firestore
+   * doc (the driver-reject / offer-set field). Off by default so the
+   * dispatcher's dispatch-time upsert leaves the column untouched as before.
+   */
+  mirrorOfferSet?: boolean;
+}
 
 /**
  * Upsert an order row from Firestore document data.
@@ -448,8 +486,9 @@ export async function pgTimeoutOffer(
 export async function pgUpsertOrder(
   orderId:        string,
   data:           Record<string, unknown>,
-  overrideStatus?: string,
+  opts:           PgUpsertOrderOpts = {},
 ): Promise<void> {
+  const { overrideStatus, guardRegression = false, mirrorOfferSet = false } = opts;
   const str = (k: string): string | null => {
     const v = data[k];
     return typeof v === "string" ? v : null;
@@ -488,6 +527,11 @@ export async function pgUpsertOrder(
   const lastDispatchedUid = str("lastDispatchedDriverUid") ?? str("lastDispatchedUid");
   const dispatchTimeoutAt = tsDate("dispatchTimeoutAt");
   const dispatchedAt      = tsDate("dispatchedAt");
+  // Only mirror the offer set when explicitly requested (Phase 5H-BRIDGE-2);
+  // otherwise leave the column untouched so the dispatcher's upsert is unchanged.
+  const offerSetField     = mirrorOfferSet
+    ? { activeOfferDriverUids: arrStr("activeOfferDriverUids") }
+    : {};
 
   try {
     await db
@@ -518,6 +562,7 @@ export async function pgUpsertOrder(
         lastDispatchedUid,
         dispatchTimeoutAt,
         dispatchedAt,
+        ...offerSetField,
       })
       .onConflictDoUpdate({
         target: ordersTable.id,
@@ -532,10 +577,58 @@ export async function pgUpsertOrder(
           dispatchTimeoutAt,
           dispatchedAt:     dispatchedAt ?? sql`${ordersTable.dispatchedAt}`,
           updatedAt:        sql`now()`,
+          ...offerSetField,
         },
+        // Phase 5H-BRIDGE-2: when guarding, only update if the EXISTING row is
+        // still pool-mirrorable — never resurrect a claimed/terminal order.
+        ...(guardRegression
+          ? { setWhere: inArray(ordersTable.status, [...POOL_MIRRORABLE_STATUSES]) }
+          : {}),
       });
   } catch (err) {
     logger.error({ err, orderId, status }, "[pgUpsertOrder] error (non-blocking)");
+  }
+}
+
+// ── pgShadowCancelOrder ───────────────────────────────────────────────────────
+
+/**
+ * Terminal cancellation mirror (Phase 5H-BRIDGE-2).
+ *
+ * Cancellation must ALWAYS win and must never be lost to a race with pool
+ * ingress. Unlike pgShadowSetStatus (UPDATE-only — a no-op when the order was
+ * never mirrored), this is an UPSERT:
+ *
+ *   - row missing → INSERT a minimal cancelled row (id + status + cancelled_at).
+ *     The order is thereby out of the pool query immediately, so a later/delayed
+ *     pool ingress upsert (guardRegression) finds a terminal row and skips.
+ *   - row present → force status='cancelled', preserving the original
+ *     cancelled_at via COALESCE so a snapshot replay on restart never re-stamps
+ *     the timestamp.
+ *
+ * The only status it will not overwrite is "delivered" (a completed order is
+ * also terminal and must not be flipped). Firestore never has an order be both,
+ * so this is purely defensive against a stale replayed event.
+ *
+ * Never throws.
+ */
+export async function pgShadowCancelOrder(orderId: string): Promise<void> {
+  const now = new Date();
+  try {
+    await db
+      .insert(ordersTable)
+      .values({ id: orderId, status: "cancelled", cancelledAt: now })
+      .onConflictDoUpdate({
+        target: ordersTable.id,
+        set: {
+          status:      "cancelled",
+          cancelledAt: sql`coalesce(${ordersTable.cancelledAt}, ${now})`,
+          updatedAt:   now,
+        },
+        setWhere: ne(ordersTable.status, "delivered"),
+      });
+  } catch (err) {
+    logger.error({ err, orderId }, "[pgShadowCancelOrder] error (non-blocking)");
   }
 }
 

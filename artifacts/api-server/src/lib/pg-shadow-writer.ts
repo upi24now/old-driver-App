@@ -37,6 +37,7 @@
 import { adminFirestore } from "./firebase-admin";
 import { logger } from "./logger";
 import {
+  pgShadowCancelOrder,
   pgShadowMarkAccept,
   pgShadowSetStatus,
   pgUpsertOrder,
@@ -191,8 +192,11 @@ export async function startPgShadowWriter(): Promise<void> {
           const status  = typeof data["status"] === "string" ? data["status"] : null;
 
           void (async () => {
-            // No overrideStatus — mirror the order's own pool status as-is.
-            await pgUpsertOrder(orderId, data);
+            // Mirror the order's own pool status as-is, but guard against
+            // resurrecting a claimed/terminal order: a delayed/replayed pool
+            // "added" event must never overwrite a row that has progressed past
+            // the pool (driver_assigned … delivered) or been cancelled.
+            await pgUpsertOrder(orderId, data, { guardRegression: true });
             logger.info({ orderId, status }, "[PG_INGRESS_POOL]");
           })().catch((e) =>
             logger.error({ err: e, orderId, status }, "[PG_INGRESS_POOL] unexpected error — continuing"),
@@ -204,13 +208,18 @@ export async function startPgShadowWriter(): Promise<void> {
       },
     );
 
-  // ── Listener 5: cancellation ingress (Phase 5H-BRIDGE-1) ──────────────────
+  // ── Listener 5: cancellation ingress (Phase 5H-BRIDGE-1/2) ────────────────
   // Mirror cancellations so a cancelled order is removed from PG's dispatch
   // pool. Customers/system may cancel while the order is still "searching"
-  // (before any dispatch), a transition no existing listener covered. Uses
-  // pgShadowSetStatus (UPDATE-only): if the order was never mirrored into PG it
-  // matches 0 rows and is a harmless no-op — an order that never reached PG has
-  // nothing to remove from the pool.
+  // (before any dispatch), a transition no existing listener covered.
+  //
+  // Phase 5H-BRIDGE-2 (cancel-vs-pool race fix): uses pgShadowCancelOrder
+  // (UPSERT), not pgShadowSetStatus (UPDATE-only). The old UPDATE no-opped when
+  // the cancel was processed before the order's first pool ingress, leaving the
+  // row to be later INSERTed as "searching" by a delayed pool event — a
+  // cancelled order resurrected into the pool. The upsert INSERTs a terminal
+  // cancelled row if missing, so the order can never re-enter the pool, and the
+  // guarded pool ingress (Listener 4) skips any terminal row on conflict.
   db.collection("orders")
     .where("status", "==", "cancelled")
     .onSnapshot(
@@ -221,7 +230,7 @@ export async function startPgShadowWriter(): Promise<void> {
           const orderId = change.doc.id;
 
           void (async () => {
-            await pgShadowSetStatus(orderId, "cancelled");
+            await pgShadowCancelOrder(orderId);
             logger.info({ orderId }, "[PG_INGRESS_CANCELLED]");
           })().catch((e) =>
             logger.error({ err: e, orderId }, "[PG_INGRESS_CANCELLED] unexpected error — continuing"),
@@ -233,7 +242,50 @@ export async function startPgShadowWriter(): Promise<void> {
       },
     );
 
+  // ── Listener 6: dispatch-cycle mirror (Phase 5H-BRIDGE-2) ─────────────────
+  // The offer set lives at status="dispatched" (fcm-dispatcher.ts and
+  // pg-claim-shadow.ts both key off status==="dispatched" + activeOfferDriverUids).
+  // A driver reject / timeout is a mobile-initiated `arrayRemove(driverUid)` on
+  // activeOfferDriverUids that leaves status unchanged — a "modified" event no
+  // other listener captured, so PG's active_offer_driver_uids (read by the claim
+  // shadow validator) drifted from Firestore. This listener mirrors those in-place
+  // dispatch-cycle field changes while an order is dispatched.
+  //
+  // Only "modified" is handled: "added" (status→dispatched) is already mirrored
+  // by the dispatcher's own pgUpsertOrder, and "removed" (left "dispatched", e.g.
+  // accept→driver_assigned or cancel) is handled by the accept/cancel listeners.
+  // guardRegression keeps a stale event from resurrecting a claimed/terminal row;
+  // mirrorOfferSet writes the active_offer_driver_uids column.
+  db.collection("orders")
+    .where("status", "==", "dispatched")
+    .onSnapshot(
+      (snapshot) => {
+        for (const change of snapshot.docChanges()) {
+          if (change.type !== "modified") continue;
+
+          const orderId = change.doc.id;
+          const data    = change.doc.data() as Record<string, unknown>;
+          const offerSize = Array.isArray(data["activeOfferDriverUids"])
+            ? (data["activeOfferDriverUids"] as unknown[]).length
+            : null;
+
+          void (async () => {
+            await pgUpsertOrder(orderId, data, {
+              guardRegression: true,
+              mirrorOfferSet:  true,
+            });
+            logger.info({ orderId, offerSize }, "[PG_INGRESS_CYCLE]");
+          })().catch((e) =>
+            logger.error({ err: e, orderId }, "[PG_INGRESS_CYCLE] unexpected error — continuing"),
+          );
+        }
+      },
+      (err) => {
+        logger.error({ err }, "[PG shadow writer] dispatch-cycle listener error");
+      },
+    );
+
   logger.info(
-    "[PG shadow writer] Running — listening for driver_assigned, delivery stages, OTP, pool ingress, and cancellations",
+    "[PG shadow writer] Running — listening for driver_assigned, delivery stages, OTP, pool ingress, cancellations, and dispatch-cycle changes",
   );
 }
