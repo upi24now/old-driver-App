@@ -28,6 +28,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { adminFirestore } from "./firebase-admin";
 import { logger } from "./logger";
+import { resolveDispatchSource } from "./dispatch-source";
 import {
   pgCreateOffer,
   pgRejectOffer,
@@ -110,6 +111,16 @@ async function assignNextDriver(
   orderId: string,
   data:    Record<string, unknown>,
 ): Promise<void> {
+  // Phase 5H-CUTOVER: when PG is the dispatch authority, the PG dispatcher owns
+  // all assignment decisions and projects them to Firestore via the projector.
+  // The RR dispatcher must NOT write Firestore assignments in pg mode — dual
+  // writers would race and corrupt single-authority semantics. FCM dispatcher
+  // and shadow-writer listeners remain unaffected (only this write path is gated).
+  if (resolveDispatchSource().value === "pg") {
+    logger.info({ orderId }, "[RR dispatcher] pg mode — skipping Firestore assignment (PG authority)");
+    return;
+  }
+
   const rejectedBy = Array.isArray(data["rejectedBy"])
     ? (data["rejectedBy"] as string[])
     : [];
@@ -397,6 +408,16 @@ async function returnToPool(
   orderDoc: FirebaseFirestore.QueryDocumentSnapshot,
 ): Promise<void> {
   const orderId = orderDoc.id;
+
+  // Phase 5H-CUTOVER: when PG is the dispatch authority, the PG dispatcher owns
+  // return-to-pool via pgReturnOrderToPool + the outbox projector. The RR
+  // dispatcher must not also write Firestore timeouts or it becomes a second
+  // authority. FCM dispatcher and shadow listeners remain unaffected.
+  if (resolveDispatchSource().value === "pg") {
+    logger.info({ orderId }, "[RR dispatcher] pg mode — skipping Firestore timeout (PG authority)");
+    return;
+  }
+
   let timedOutDriverUid: string | null = null; // captured inside tx before reset
   let fsTimeoutAtMs: number | null = null;     // dispatchTimeoutAt before delete
 
