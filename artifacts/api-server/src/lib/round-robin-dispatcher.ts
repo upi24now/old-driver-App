@@ -40,6 +40,7 @@ import {
   pgShadowCompareDispatch,
   pgShadowCompareTimeout,
 } from "./pg-dispatch-shadow";
+import { pgShadowCompareAssignment } from "./pg-assign-shadow";
 
 const DISPATCH_TIMEOUT_SECONDS = 60;
 const POLL_INTERVAL_MS         = 30_000; // 30 s — was 2 s; keeps daily poll reads ≤ 2 880
@@ -210,6 +211,8 @@ async function assignNextDriver(
   try {
     const orderRef = db.doc(`orders/${orderId}`);
     let assigned = false;
+    // Captured for the read-only PG assignment shadow comparison (Phase 5C-A).
+    let fsTimeoutAt: Date | null = null;
 
     await db.runTransaction(async (tx) => {
       assigned = false;
@@ -223,6 +226,7 @@ async function assignNextDriver(
       if (d["driverUid"]) return;
 
       const timeoutAt = new Date(Date.now() + DISPATCH_TIMEOUT_SECONDS * 1000);
+      fsTimeoutAt = timeoutAt;
 
       tx.update(orderRef, {
         status:                  "dispatched",
@@ -257,6 +261,22 @@ async function assignNextDriver(
         rejectedBy,
         lastUid,
         onlineCount:     fsOnlineCount,
+      });
+
+      // ── PG ASSIGNMENT shadow validation (READ-ONLY; never throw) ─────────────
+      // Reproduces the guarded PG assignment logic a future PG dispatcher would
+      // run and compares the resulting assignment (driver, rejected, cursor,
+      // status, timeout) against this Firestore assignment. Cannot modify
+      // Firestore, order state, FCM, or assignments.
+      void pgShadowCompareAssignment(orderId, {
+        orderId,
+        driverUid:   chosen.uid,
+        rejectedBy,
+        cursor:      chosen.uid, // Firestore set lastDispatchedDriverUid = chosen.uid
+        status:      "dispatched",
+        timeoutAtMs: (fsTimeoutAt ?? new Date()).getTime(),
+        lastUid,
+        onlineCount: fsOnlineCount,
       });
 
       // ── PG shadow writes (non-blocking; never throw) ─────────────────────────
