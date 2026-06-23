@@ -655,47 +655,6 @@ export function listenToDispatchedOrder(
 }
 
 /**
- * Listen for ALL orders currently offered to this driver simultaneously.
- * Phase 2: the customer app writes activeOfferDriverUids instead of a single
- * driverUid, so multiple drivers can hold the same offer concurrently.
- * Returns the full array so the UI can render a multi-order slider.
- * Returns an unsubscribe function; call it on cleanup.
- *
- * Query: activeOfferDriverUids array-contains uid
- * No composite index required — single array-contains uses the auto-index.
- */
-export function listenToAllDispatchedOrders(
-  uid:      string,
-  onOrders: (orders: OrderDoc[]) => void,
-): () => void {
-  const q = query(
-    collection(db, "orders"),
-    where("activeOfferDriverUids", "array-contains", uid),
-  );
-  return onSnapshot(q, (snap) => {
-    onOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrderDoc)));
-  });
-}
-
-/**
- * Subscribe to a single order document.
- * Calls back with the live status string, or null if the doc no longer exists.
- * Returns an unsubscribe function; call it on cleanup.
- */
-export function listenToActiveOrder(
-  orderId:  string,
-  onChange: (status: OrderStatus | null) => void,
-): () => void {
-  return onSnapshot(doc(db, "orders", orderId), (snap) => {
-    if (!snap.exists()) {
-      onChange(null);
-      return;
-    }
-    onChange((snap.data() as OrderDoc).status);
-  });
-}
-
-/**
  * Active statuses used for both Firestore-level filtering and any local guards.
  * Stored as an array so it can be passed directly to Firestore's `where("status","in",…)`.
  * Previously this was a Set used for client-side filtering; the filter is now
