@@ -27,7 +27,7 @@ async function main(): Promise<void> {
       effective: dispatchSource.effective,
       startFirestore: dispatchPlan.startFirestore,
       startPgDryRun: dispatchPlan.startPgDryRun,
-      warnPgPrimaryNotImplemented: dispatchPlan.warnPgPrimaryNotImplemented,
+      startPgDispatcher: dispatchPlan.startPgDispatcher,
     },
     "[PG_SHADOW_RUNTIME] startup plan (Firestore dispatcher remains authoritative in the live workflow; this harness runs the dry-run only)",
   );
@@ -35,8 +35,8 @@ async function main(): Promise<void> {
   if (!dispatchPlan.startFirestore) {
     throw new Error("INVARIANT VIOLATION: startFirestore must be true in pg_shadow");
   }
-  if (dispatchPlan.warnPgPrimaryNotImplemented) {
-    throw new Error("INVARIANT VIOLATION: pg_shadow must not request PG primary");
+  if (dispatchPlan.startPgDispatcher) {
+    throw new Error("INVARIANT VIOLATION: pg_shadow must not start the PG dispatcher");
   }
 
   if (dispatchPlan.startPgDryRun) {

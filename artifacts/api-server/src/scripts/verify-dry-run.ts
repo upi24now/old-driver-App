@@ -33,18 +33,18 @@ async function main(): Promise<void> {
   // ── A. Startup plan mapping ────────────────────────────────────────────────
   console.log("[A] planDispatchStartup mapping");
   const fs = planDispatchStartup("firestore");
-  check("firestore: Firestore on, no dry-run, no warn",
-    fs.startFirestore === true && fs.startPgDryRun === false && fs.warnPgPrimaryNotImplemented === false,
+  check("firestore: Firestore on, no dry-run, no PG dispatcher",
+    fs.startFirestore === true && fs.startPgDryRun === false && fs.startPgDispatcher === false,
     JSON.stringify(fs));
 
   const shadow = planDispatchStartup("pg_shadow");
-  check("pg_shadow: Firestore on + dry-run on, no warn",
-    shadow.startFirestore === true && shadow.startPgDryRun === true && shadow.warnPgPrimaryNotImplemented === false,
+  check("pg_shadow: Firestore on + dry-run on, no PG dispatcher",
+    shadow.startFirestore === true && shadow.startPgDryRun === true && shadow.startPgDispatcher === false,
     JSON.stringify(shadow));
 
   const pg = planDispatchStartup("pg");
-  check("pg: Firestore on, no dry-run, warn only",
-    pg.startFirestore === true && pg.startPgDryRun === false && pg.warnPgPrimaryNotImplemented === true,
+  check("pg: Firestore on, no dry-run, PG dispatcher on (verify-only)",
+    pg.startFirestore === true && pg.startPgDryRun === false && pg.startPgDispatcher === true && pg.pgDispatcherVerifyOnly === true,
     JSON.stringify(pg));
 
   // ── B. Round-robin cursor (pure) ──────────────────────────────────────────

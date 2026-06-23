@@ -19,6 +19,7 @@ import { startRoundRobinDispatcher } from "./lib/round-robin-dispatcher";
 import { startPgShadowWriter } from "./lib/pg-shadow-writer";
 import { logDispatchSource, planDispatchStartup } from "./lib/dispatch-source";
 import { startPgDispatcherDryRun } from "./lib/pg-dispatcher-dry-run";
+import { startPgDispatcher } from "./lib/pg-dispatcher";
 
 // ── Resolve runtime config (env vars now available from dotenv) ──────────────
 const uploadsDir   = process.env["UPLOADS_DIR"]    ?? resolve(bundleDir, "../uploads");
@@ -121,18 +122,19 @@ app.listen(port, (err) => {
     logger.error({ err: e }, "PG shadow writer startup failed"),
   );
 
-  // ── DISPATCH_SOURCE gate (Phase 5E-C) ──────────────────────────────────────
-  // Firestore dispatcher above is authoritative in every mode. This only adds a
-  // READ-ONLY PG dry-run (pg_shadow) or a warning (pg). Nothing here assigns
-  // drivers, updates orders, sends FCM, or writes Firestore.
+  // ── DISPATCH_SOURCE gate (Phase 5E-C / 5F) ─────────────────────────────────
+  // Firestore dispatcher above is authoritative in EVERY mode. This adds a
+  // READ-ONLY PG dry-run (pg_shadow) or the PG dispatcher (pg). In Phase 5F the
+  // PG dispatcher always runs in VERIFY_ONLY mode: it executes the full decision
+  // path and logs intended writes ([PG_VERIFY_*]) but commits nothing and sends
+  // no FCM. No authority cutover yet.
   if (dispatchPlan.startPgDryRun) {
     startPgDispatcherDryRun().catch((e) =>
       logger.error({ err: e }, "[PG_DRY_RUN_ERROR] dry-run startup failed"),
     );
-  } else if (dispatchPlan.warnPgPrimaryNotImplemented) {
-    logger.warn(
-      { dispatchSource: dispatchSource.value },
-      "[DISPATCH_SOURCE] pg mode requested — PG primary dispatcher is not implemented yet; Firestore remains authoritative and no PG dry-run was started",
+  } else if (dispatchPlan.startPgDispatcher) {
+    startPgDispatcher(dispatchPlan.pgDispatcherVerifyOnly).catch((e) =>
+      logger.error({ err: e }, "[PG_VERIFY_ERROR] PG dispatcher startup failed"),
     );
   }
 });

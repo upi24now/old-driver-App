@@ -63,27 +63,42 @@ export function resolveDispatchSource(): DispatchSourceConfig {
 
 /**
  * The dispatcher startup plan derived from the resolved source. The Firestore
- * dispatcher ALWAYS starts (it is authoritative in every mode this phase); the
- * plan only adds the read-only PG dry-run (pg_shadow) or a warning (pg).
+ * dispatcher ALWAYS starts (it is authoritative in every mode this phase). The
+ * plan adds the read-only PG dry-run (pg_shadow) or the PG dispatcher (pg). In
+ * Phase 5F the PG dispatcher always runs in VERIFY_ONLY mode (commits nothing,
+ * sends no FCM), so Firestore stays authoritative even in `pg`.
+ *
+ * Startup matrix:
+ *   firestore → Firestore dispatcher only
+ *   pg_shadow → Firestore dispatcher + PG dry-run (read-only)
+ *   pg        → Firestore dispatcher + PG dispatcher (VERIFY_ONLY)
  */
 export interface DispatchStartupPlan {
   /** Always true — the Firestore dispatcher starts in every mode. */
   startFirestore: true;
   /** Start the read-only PG dispatcher dry-run loop. Only in pg_shadow. */
   startPgDryRun: boolean;
-  /** pg mode requested but the PG primary dispatcher is not implemented yet. */
-  warnPgPrimaryNotImplemented: boolean;
+  /** Start the PG dispatcher. Only in pg. */
+  startPgDispatcher: boolean;
+  /**
+   * Whether the PG dispatcher runs in VERIFY_ONLY mode (logs intended writes,
+   * commits nothing, sends no FCM). Always true in Phase 5F — no cutover yet.
+   */
+  pgDispatcherVerifyOnly: boolean;
 }
 
 /**
  * Pure mapping from the resolved dispatch source to what should start at boot.
- * Firestore always starts. Only pg_shadow starts the dry-run; pg only warns.
+ * Firestore always starts. pg_shadow adds the read-only dry-run; pg adds the PG
+ * dispatcher pinned to VERIFY_ONLY mode.
  */
 export function planDispatchStartup(value: DispatchSource): DispatchStartupPlan {
   return {
     startFirestore: true,
     startPgDryRun: value === "pg_shadow",
-    warnPgPrimaryNotImplemented: value === "pg",
+    startPgDispatcher: value === "pg",
+    // Phase 5F: PG dispatcher is always verify-only. No authority cutover yet.
+    pgDispatcherVerifyOnly: true,
   };
 }
 
