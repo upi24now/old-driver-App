@@ -9,6 +9,8 @@
 - [Wallet Firestore schema](wallet-firestore-schema.md) — authoritative schema: wallets/{uid}, transactions sub-collection; type "credit"/"payout"/"adjustment"; payouts via server route only.
 - [Expo Router typed routes](expo-router-typed-routes.md) — new screen files require manual update to .expo/types/router.d.ts (hrefInputParams, hrefOutputParams, href) until dev server regenerates.
 - [Firebase-to-PG migration patterns](firebase-to-pg-migration.md) — RoutingDoc structural type, setKycDocuments cast, subscription remaining-dep pattern for Step 1.
+- [Dispatch shadow data](dispatch-shadow-data.md) — dispatcher reads subscriptionExpiresAt/rating/tripsTotal|trips; rating+trips_total have NO writer (don't mirror tripsToday→trips_total); shadow-write + backfill mechanics.
+- [PG parameterized casts](pg-param-casts.md) — raw pg params used inside CASE/COALESCE need explicit ::type casts or "could not determine data type of parameter $N".
 - [FCM token PG migration](fcm-token-pg-migration.md) — Phase 4A write + 4B dispatcher read: tokens dual-written (PG primary + FS shadow); dispatcher reads PG-first via resolveDriverFcmToken, FS fallback; PG read errors never block push.
 - [Driver online-status & location PG migration](online-status-pg-migration.md) — Phase 4C/4D: online/offline + latest GPS mirrored to PG drivers table via PATCH /status & POST /location (fire-and-forget); FS source of truth; auto-offline paths don't mirror (accepted shadow-lag).
 - [Wallet PG migration constraints](wallet-pg-migration.md) — payout sign divergence (FS neg/PG pos), credit shadow not idempotent, FS→PG-only comparator; resolve before PG-primary cutover.

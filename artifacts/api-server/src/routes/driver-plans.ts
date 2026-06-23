@@ -214,6 +214,25 @@ router.post("/driver-plans/verify-payment", async (req, res) => {
       "Driver plan activated",
     );
 
+    // ── PG shadow write (Phase 5A.3; non-blocking, never throws) ───────────────
+    // Mirror the new subscription expiry into the PG drivers row so a future
+    // PG dispatcher can reproduce the eligibility filter. Firestore above stays
+    // the source of truth; a PG failure must NEVER affect plan activation.
+    void (async () => {
+      try {
+        await db
+          .update(driversTable)
+          .set({
+            subscriptionExpiresAt: new Date(planExpiryAt),
+            updatedAt:             new Date(),
+          })
+          .where(eq(driversTable.uid, driverUid));
+        req.log.info({ driverUid, planExpiryAt }, "[PG_DRIVER_META_SAVE]");
+      } catch (err) {
+        req.log.warn({ err, driverUid }, "[PG_DRIVER_META_FALLBACK]");
+      }
+    })();
+
     res.json({ ok: true, planStartAt, planExpiryAt });
   } catch (err) {
     req.log.error({ err }, "Firestore plan write failed");

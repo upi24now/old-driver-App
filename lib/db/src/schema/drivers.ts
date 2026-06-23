@@ -101,6 +101,19 @@ export const driversTable = pgTable(
     longitude: doublePrecision("longitude"),
     accuracy:  doublePrecision("accuracy"),   // metres; null when platform omits it
 
+    // ── Dispatch metadata (Phase 5A.3) ───────────────────────────────────────
+    // PG shadow of the driver fields the round-robin dispatcher reads from
+    // Firestore. Firestore drivers/{uid} remains the source of truth; nothing
+    // reads these yet (no dispatcher switch).
+    //   - subscription_expires_at mirrors the epoch-ms subscriptionExpiresAt
+    //     (stored here as a timestamp); written by the verify-payment route.
+    //   - rating / trips_total have no current writer (rating defaults to 5.0
+    //     when absent; trips_total is unused) — present for shadow parity and
+    //     future dispatcher reproduction; null where Firestore lacks them.
+    subscriptionExpiresAt: timestamp("subscription_expires_at", { withTimezone: true }),
+    rating:                doublePrecision("rating"),
+    tripsTotal:            integer("trips_total"),
+
     // ── Timestamps ───────────────────────────────────────────────────────────
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),

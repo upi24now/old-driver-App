@@ -108,6 +108,18 @@ export const ordersTable = pgTable(
     // Can be dropped once Firestore FCM dispatcher is fully replaced.
     fcmDispatchedAt: timestamp("fcm_dispatched_at", { withTimezone: true }),
 
+    // ── FCM dispatch claim + offer set (Phase 5A.3 shadow) ─────────────────────
+    // PG shadow of the Firestore FCM coordination fields the dispatchers use.
+    // Firestore orders/{id} remains the source of truth; nothing reads these yet
+    // (no dispatcher / FCM switch).
+    //   - active_offer_driver_uids: Phase-2 authoritative multi-offer target set
+    //   - fcm_dispatch_claimed_at / _by: atomic-claim guard (duplicate-push guard)
+    //   - fcm_message_id: last successful FCM message id
+    activeOfferDriverUids: text("active_offer_driver_uids").array(),
+    fcmDispatchClaimedAt:  timestamp("fcm_dispatch_claimed_at", { withTimezone: true }),
+    fcmDispatchClaimedBy:  text("fcm_dispatch_claimed_by"),
+    fcmMessageId:          text("fcm_message_id"),
+
     // ── Record timestamps ──────────────────────────────────────────────────────
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
