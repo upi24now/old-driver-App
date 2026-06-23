@@ -316,22 +316,6 @@ export async function updateDriverVehicle(uid: string, v: Vehicle): Promise<void
 }
 
 /**
- * Persist the driver's active subscription so it survives app restarts.
- * Called by activatePlan() in DriverContext.
- */
-export async function updateDriverSubscription(
-  uid:                  string,
-  plan:                 string,
-  subscriptionExpiresAt: number,
-): Promise<void> {
-  await setDoc(doc(db, "drivers", uid), {
-    subscriptionPlan:      plan,
-    subscriptionExpiresAt,
-    updatedAt:             serverTimestamp(),
-  }, { merge: true });
-}
-
-/**
  * Mark the driver's document submission in Firestore and persist each doc's
  * download URL alongside a "pending" status.
  *

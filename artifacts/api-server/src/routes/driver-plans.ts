@@ -189,56 +189,71 @@ router.post("/driver-plans/verify-payment", async (req, res) => {
   const planStartAt  = Date.now();
   const planExpiryAt = planStartAt + PLAN_DAYS[plan] * MS_PER_DAY;
 
+  // ── Authority model (Phase 5J-Tier-9A) ──────────────────────────────────────
+  //   PostgreSQL is AUTHORITATIVE for subscription_plan + subscription_expires_at.
+  //   - PG UPDATE (drivers table) is awaited before the HTTP response is sent;
+  //     a PG failure returns 500 so the client never believes a plan activated
+  //     when PG did not record it.
+  //   - Firestore (driver doc mirror) is fire-and-forget after the response. It
+  //     is kept for the admin panel + backward compat but is NOT in the critical
+  //     path. The richer plan fields (planStatus/planExpiryAt/...) live only in
+  //     Firestore — PG holds the two dispatcher-relevant columns.
+
+  // ── PostgreSQL write (AUTHORITATIVE) ─────────────────────────────────────
   try {
-    const { FieldValue } = await import("firebase-admin/firestore");
-    const fsDb = await adminFirestore();
-
-    await fsDb.doc(`drivers/${driverUid}`).set(
-      {
+    const result = await db
+      .update(driversTable)
+      .set({
         subscriptionPlan:      plan,
-        subscriptionExpiresAt: planExpiryAt,
-        planType:              plan,
-        planStatus:            "active",
-        planStartAt,
-        planExpiryAt,
-        lastPlanAmount:        PLAN_AMOUNT_RUPEES[plan],
-        razorpayOrderId,
-        razorpayPaymentId,
-        updatedAt:             FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    );
+        subscriptionExpiresAt: new Date(planExpiryAt),
+        updatedAt:             new Date(),
+      })
+      .where(eq(driversTable.uid, driverUid))
+      .returning({ uid: driversTable.uid });
 
-    req.log.info(
-      { driverUid, plan, planExpiryAt, razorpayPaymentId },
-      "Driver plan activated",
-    );
-
-    // ── PG shadow write (Phase 5A.3; non-blocking, never throws) ───────────────
-    // Mirror the new subscription expiry into the PG drivers row so a future
-    // PG dispatcher can reproduce the eligibility filter. Firestore above stays
-    // the source of truth; a PG failure must NEVER affect plan activation.
-    void (async () => {
-      try {
-        await db
-          .update(driversTable)
-          .set({
-            subscriptionPlan:      plan,
-            subscriptionExpiresAt: new Date(planExpiryAt),
-            updatedAt:             new Date(),
-          })
-          .where(eq(driversTable.uid, driverUid));
-        req.log.info({ driverUid, plan, planExpiryAt }, "[PG_DRIVER_META_SAVE]");
-      } catch (err) {
-        req.log.warn({ err, driverUid }, "[PG_DRIVER_META_FALLBACK]");
-      }
-    })();
-
-    res.json({ ok: true, planStartAt, planExpiryAt });
-  } catch (err) {
-    req.log.error({ err }, "Firestore plan write failed");
+    if (result.length === 0) {
+      // Driver has no PG row — old Firestore-only driver. Log and continue so the
+      // Firestore mirror still records the plan; the app reads Firestore fallback.
+      req.log.warn({ driverUid }, "verify-payment: no PG row — old driver, Firestore mirror will record plan");
+    } else {
+      req.log.info({ driverUid, plan, planExpiryAt, razorpayPaymentId }, "[PG_DRIVER_SUBSCRIPTION_SAVE] plan activated (authoritative)");
+    }
+  } catch (pgErr) {
+    req.log.error({ pgErr, driverUid }, "verify-payment: PG subscription update failed");
     res.status(500).json({ error: "Plan activation failed — please contact support" });
+    return;
   }
+
+  // ── Response sent before Firestore (Firestore is fire-and-forget mirror) ──
+  res.json({ ok: true, planStartAt, planExpiryAt });
+
+  // ── Firestore (fire-and-forget — admin panel + customer mirror) ───────────
+  void (async () => {
+    try {
+      const { FieldValue } = await import("firebase-admin/firestore");
+      const fsDb = await adminFirestore();
+
+      await fsDb.doc(`drivers/${driverUid}`).set(
+        {
+          subscriptionPlan:      plan,
+          subscriptionExpiresAt: planExpiryAt,
+          planType:              plan,
+          planStatus:            "active",
+          planStartAt,
+          planExpiryAt,
+          lastPlanAmount:        PLAN_AMOUNT_RUPEES[plan],
+          razorpayOrderId,
+          razorpayPaymentId,
+          updatedAt:             FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+
+      req.log.info({ driverUid, plan, planExpiryAt }, "verify-payment: Firestore mirror updated");
+    } catch (fsErr) {
+      req.log.error({ fsErr, driverUid }, "verify-payment: Firestore mirror failed — PG remains authoritative");
+    }
+  })();
 });
 
 // ── Registration fee floor ────────────────────────────────────────────────────

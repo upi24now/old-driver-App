@@ -19,7 +19,6 @@ import {
 
 import { firebaseAuth } from "@/utils/firebase";
 import {
-  updateDriverSubscription,
   getActiveOrderForDriver,
   getActiveOrdersForDriver,
   rejectOrder,
@@ -1688,9 +1687,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       },
       ...t,
     ]);
-    if (driverUid) {
-      updateDriverSubscription(driverUid, id, expiresAt).catch(console.error);
-    }
+    // Phase 5J-Tier-9A: subscription persistence is now PG-authoritative via the
+    // server (POST /api/driver-plans/verify-payment writes PG + mirrors Firestore).
+    // No client-side Firestore subscription write is performed here.
     return { ok: true };
   };
 
