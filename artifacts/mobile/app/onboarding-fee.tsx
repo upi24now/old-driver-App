@@ -37,7 +37,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { RazorpayWebCheckout, type RazorpayCheckoutParams } from "@/components/RazorpayWebCheckout";
 import { useDriver } from "@/contexts/DriverContext";
 import { firebaseAuth } from "@/utils/firebase";
-import { getOnboardingFeeConfig, type OnboardingFeeConfig } from "@/utils/firestore";
+import { getOnboardingFeeConfig, type OnboardingFeeConfig } from "@/utils/config-api";
 
 // ── Premium brand constants (screen-specific, outside token system) ──────────
 const PINK        = "#F59E0B";

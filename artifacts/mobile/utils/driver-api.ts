@@ -262,3 +262,37 @@ export async function registerDriverKeys(params: {
     };
   }
 }
+
+// ─── GET /api/drivers/me/trips ────────────────────────────────────────────────
+//
+// Phase 5J-Tier-1: PG-backed trip history — replaces getDriverCompletedTrips
+// Firestore read in the trips screen.  uid is derived from the Bearer token.
+// Returns an empty array on any failure so the screen shows "No trips yet".
+//
+export type TripRecord = {
+  orderId:       string;
+  customerName:  string;
+  pickupAddress: string;
+  dropAddress:   string;
+  fareEstimate:  number;
+  distanceKm?:   number;
+  paymentMode:   string;
+  status:        string;
+  deliveredAt:   number | null;
+};
+
+export async function getDriverTrips(limit = 20): Promise<TripRecord[]> {
+  const idToken = await getIdToken();
+  if (!idToken) return [];
+  try {
+    const res  = await fetch(`${BASE_URL}/drivers/me/trips?limit=${limit}`, {
+      headers: { Authorization: `Bearer ${idToken}` },
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { ok?: boolean; trips?: TripRecord[] };
+    if (!json.ok || !Array.isArray(json.trips)) return [];
+    return json.trips;
+  } catch {
+    return [];
+  }
+}

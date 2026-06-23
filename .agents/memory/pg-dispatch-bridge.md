@@ -48,6 +48,19 @@ All Bridge-2 gating items resolved, still additive and Firestore-authoritative (
 - **Offer-set drift needs its own listener.** Driver reject/timeout = mobile `arrayRemove` on `activeOfferDriverUids` with status unchanged (`status=='dispatched'` `modified` events) — no other listener saw it. A dedicated dispatch-cycle listener mirrors it with an opt-in `mirrorOfferSet` flag; the dispatcher's dispatch-time upsert deliberately leaves the offer column untouched. **Why it matters:** `pg-claim-shadow.ts` validates against PG's `active_offer_driver_uids`, so drift would corrupt claim validation once PG is authoritative.
 - **Verification approach that worked:** drive the REAL service functions (not re-implemented SQL) against live PG from a temp tsx harness under `artifacts/api-server/src/scripts/`, run via `pnpm --filter @workspace/scripts exec tsx <ABSOLUTE path>` (relative paths resolve against the scripts package dir and fail). Use a `TEST_PG_DISPATCH_` id prefix + sentinel driverUid, assert real-row count unchanged, delete the harness after. 14/14 covering every cancel/pool interleaving, claimed/delivered precedence, and offer-set mirror.
 
+## Phase 5J-Tier-1 REST Gap Fill — DONE, verdict READY_FOR_PHASE_5J_TIER_2
+Three PG-backed REST endpoints added; three mobile Firestore one-time reads removed:
+- `GET /api/drivers/me/trips` (PG-only, uid from Bearer token) → replaces `getDriverCompletedTrips` in trips.tsx
+- `GET /api/orders/hotzone` (auth required; status IN searching|pending, created_at > now-30min, grouped by pickupCity/first-pickup-segment, top 10) → replaces `fetchZones` Firestore query in LiveMap.tsx
+- `GET /api/config/onboarding-fee` (no auth; env/static, default 10 INR) → replaces `getOnboardingFeeConfig` Firestore read in onboarding-fee.tsx
+- New mobile utils: `utils/driver-api.ts` (getDriverTrips + TripRecord), `utils/config-api.ts` (getOnboardingFeeConfig REST wrapper)
+- Orphaned LiveMap helpers removed (getPickupCoords, getZoneName, parseCreatedAt, MAX_ORDERS, STALE_ORDER_MS). haversineKm + relativeTime kept (still used for GPS cache-invalidation check and UI label).
+- R4 (getDriverDoc): active sub/daily-stats dep — no PG equivalent — not migrated.
+- R5 (getDriverTransactions): REST endpoint /api/wallet/:uid/transactions exists; mobile blocked by Firestore Timestamp vs ISO createdAt mismatch in loadDriverTransactions — not migrated, Tier-2 work.
+- R6 (fetchOrderById): already REST-primary with intentional Firestore fallback — confirmed.
+- Dispatch DISPATCH_SOURCE=pg, ALLOW_PG_DISPATCH_WRITES=true, PG_FCM_SEND_ENABLED=false unchanged; both typechecks + build clean; architect: READY_FOR_PHASE_5J_TIER_2.
+**Tier-2 prep notes (from architect):** add ISO/Timestamp normalizer in loadDriverTransactions before wiring R5; no min-clamp on limit param for /drivers/me/trips; stale Firestore-index UI copy in trips.tsx can be cleaned up.
+
 ## Phase 5I Production Cutover — DONE, verdict READY_FOR_PHASE_5J
 Executed live cutover (DISPATCH_SOURCE=pg, ALLOW_PG_DISPATCH_WRITES=true, PG_PROJECTION_ENABLED=true; PG_FCM_SEND_ENABLED=false). All required startup markers confirmed. PG dispatcher processed 5 expired dispatched orders (timeout+reassign), projector applied 10 projections (5 timeout + 5 assignment), FCM delivered via Firestore path ×5. RR pg-mode guards fired as expected. No projector failures. Typecheck + build clean. Architect: READY_FOR_PHASE_5J.
 - **PG_CLAIM_DIFF WARN is expected noise on restart**: fires when old PG claim instance diverges from new Firestore claim instance across server restarts. guardReason="already claimed" + pgClaimEligible=false = no duplicate send. Safe to ignore unless accompanied by PG_PROJECT_FAILED or rising backlog.

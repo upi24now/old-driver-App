@@ -4,6 +4,8 @@ import { adminFirestore } from "../lib/firebase-admin";
 import { requireAuth } from "../lib/require-auth";
 import { pgGetOrder, pgShadowSetStatus } from "../lib/order-pg-service";
 import { pgCreditOrderEarning } from "../lib/wallet-pg-service";
+import { db, ordersTable } from "@workspace/db";
+import { inArray, gte, and } from "drizzle-orm";
 
 const router = Router();
 
@@ -359,6 +361,59 @@ router.get("/orders/:orderId", async (req: Request, res: Response) => {
     req.log.error({ err, orderId }, "GET /orders/:orderId Firestore fallback read failed");
     res.status(500).json({ ok: false, error: "firestore_error" });
   }
+});
+
+// ─── GET /api/orders/hotzone ──────────────────────────────────────────────────
+//
+// Phase 5J-Tier-1: PG-backed hot-zone endpoint — replaces LiveMap Firestore read.
+//
+// Returns orders (status: searching|pending, created in last 30 min) grouped by
+// pickup area, sorted by orderCount DESC, top 10 zones.
+// Zone name: pickupCity → first comma-segment of pickup → "Nearby Zone".
+// lat/lng/distanceKm are not stored in PG — callers receive null for those fields.
+//
+// Auth: Bearer token required.
+//
+router.get("/orders/hotzone", async (req: Request, res: Response) => {
+  const tokenUid = await requireAuth(req, res);
+  if (!tokenUid) return;
+
+  const cutoff = new Date(Date.now() - 30 * 60 * 1000);
+
+  let rows: Array<{ pickup: string | null; pickupCity: string | null }> = [];
+  try {
+    rows = await db
+      .select({ pickup: ordersTable.pickup, pickupCity: ordersTable.pickupCity })
+      .from(ordersTable)
+      .where(
+        and(
+          inArray(ordersTable.status, ["searching", "pending"]),
+          gte(ordersTable.createdAt, cutoff),
+        ),
+      )
+      .limit(60);
+  } catch (err) {
+    req.log.error({ err }, "[HOTZONE_PG_ERROR]");
+    res.status(500).json({ ok: false, error: "db_error" });
+    return;
+  }
+
+  const zoneMap = new Map<string, number>();
+  for (const row of rows) {
+    const zoneName =
+      row.pickupCity?.trim() ||
+      (row.pickup ? (row.pickup.split(",")[0]?.trim() ?? null) : null) ||
+      "Nearby Zone";
+    zoneMap.set(zoneName, (zoneMap.get(zoneName) ?? 0) + 1);
+  }
+
+  const zones = [...zoneMap.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([name, orderCount]) => ({ name, orderCount }));
+
+  req.log.info({ total: rows.length, zones: zones.length }, "[HOTZONE_HIT]");
+  res.json({ ok: true, zones });
 });
 
 export default router;

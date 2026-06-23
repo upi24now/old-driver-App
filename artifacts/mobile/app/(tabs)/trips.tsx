@@ -13,7 +13,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
-import { getDriverCompletedTrips, type CompletedTrip } from "@/utils/firestore";
+import { type CompletedTrip } from "@/utils/firestore";
+import { getDriverTrips } from "@/utils/driver-api";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatDeliveredAt(ms: number | null): string {
@@ -135,7 +136,7 @@ export default function TripsScreen() {
     setError(null);
     setIndexMissing(false);
     try {
-      const data = await getDriverCompletedTrips(driverUid, 20);
+      const data = await getDriverTrips(20);
       setTrips(data);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

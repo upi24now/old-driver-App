@@ -900,6 +900,30 @@ function mapPgTripsToResponse(
   });
 }
 
+// ─── GET /api/drivers/me/trips ───────────────────────────────────────────────
+//
+// PG-only trips endpoint — Phase 5J-Tier-1.
+// uid is derived from the Bearer token; no uid in the URL.
+// Returns the same shape as /drivers/:uid/completed-trips.
+// No Firestore fallback by design — this endpoint is the migration target.
+//
+router.get("/drivers/me/trips", async (req, res) => {
+  const tokenUid = await requireAuth(req, res);
+  if (!tokenUid) return;
+
+  const rawLimit   = req.query["limit"];
+  const limitCount = typeof rawLimit === "string" ? Math.min(parseInt(rawLimit, 10) || 20, 50) : 20;
+
+  try {
+    const pgRows = await pgGetCompletedTrips(tokenUid, limitCount);
+    req.log.info({ uid: tokenUid, count: pgRows.length }, "[PG_TRIPS_ME_HIT]");
+    res.json({ ok: true, trips: mapPgTripsToResponse(pgRows) });
+  } catch (err) {
+    req.log.error({ err, uid: tokenUid }, "[PG_TRIPS_ME_ERROR] PG read threw");
+    res.status(500).json({ ok: false, error: "db_error" });
+  }
+});
+
 router.get("/drivers/:uid/completed-trips", async (req, res) => {
   const { uid } = req.params as { uid: string };
 
