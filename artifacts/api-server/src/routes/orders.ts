@@ -2,7 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { Router, type Request, type Response } from "express";
 import { adminFirestore } from "../lib/firebase-admin";
 import { requireAuth } from "../lib/require-auth";
-import { pgGetOrder, pgShadowSetStatus, pgAcceptOffer, pgRejectOffer, pgTimeoutOffer, pgRemoveFromOfferSet, pgSetOrderStage, pgSetOrderLocation, type DeliveryStage } from "../lib/order-pg-service";
+import { pgGetOrder, pgShadowSetStatus, pgAcceptOffer, pgRejectOffer, pgTimeoutOffer, pgRemoveFromOfferSet, pgDriverCancelOrder, pgSetOrderStage, pgSetOrderLocation, type DeliveryStage } from "../lib/order-pg-service";
 import { pgCreditOrderEarning, pgUpdateDriverDailyStats } from "../lib/wallet-pg-service";
 import { db, ordersTable } from "@workspace/db";
 import { inArray, gte, and } from "drizzle-orm";
@@ -405,6 +405,49 @@ router.post("/orders/:orderId/timeout", async (req: Request, res: Response) => {
   }
 
   req.log.info({ orderId, driverUid, removed: rm.removed }, "[PG_TIMEOUT] timed out");
+  res.json({ ok: true });
+});
+
+// ─── POST /api/orders/:orderId/driver-cancel ───────────────────────────────────
+//
+// Phase 5J-Tier-9C: PG-authoritative driver pre-pickup cancellation — replaces
+// the Driver App's direct Firestore write (status="pending" + driverUid=null).
+// The order RETURNS TO THE POOL (it is NOT terminally cancelled) so the PG
+// dispatcher re-offers it to another driver.
+//
+//   1. pgDriverCancelOrder atomically returns the order to the pool in
+//      PostgreSQL (status=pending, driver cleared, offer set cleared, cancel
+//      metadata stamped) AND enqueues the durable driver_cancel projection in
+//      the SAME transaction — so the canonical state and the projection commit
+//      together (no separate read-model step that can silently drift).
+//   2. The projector mirrors the return-to-pool into the Firestore order doc for
+//      the customer app / FCM read-model.
+//
+// Allowed only pre-pickup (status driver_assigned / to_pickup). Idempotent: a
+// repeat call by the same driver after the order is back in the pool returns ok.
+// Security: driverUid comes from the verified ID token only — never the body.
+router.post("/orders/:orderId/driver-cancel", async (req: Request, res: Response) => {
+  const { orderId } = req.params as { orderId: string };
+
+  const driverUid = await requireAuth(req, res);
+  if (!driverUid) return;
+
+  const body   = (req.body ?? {}) as { reason?: unknown };
+  const reason = typeof body.reason === "string" ? body.reason.slice(0, 500) : "";
+
+  const r = await pgDriverCancelOrder(orderId, driverUid, reason);
+  if (!r.ok) {
+    const code =
+      r.reason === "not_found" ? 404 :
+      r.reason === "forbidden" ? 403 :
+      r.reason === "too_late"  ? 409 :
+      500;
+    req.log.info({ orderId, driverUid, reason: r.reason }, "[PG_DRIVER_CANCEL] rejected");
+    res.status(code).json({ ok: false, error: r.reason });
+    return;
+  }
+
+  req.log.info({ orderId, driverUid }, "[PG_DRIVER_CANCEL] cancelled (returned to pool)");
   res.json({ ok: true });
 });
 

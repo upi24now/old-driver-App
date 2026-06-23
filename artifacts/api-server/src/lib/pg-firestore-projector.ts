@@ -253,6 +253,71 @@ async function applyOfferRemoval(
   return outcome;
 }
 
+/**
+ * Project a driver-initiated pre-pickup cancellation (return-to-pool) onto
+ * orders/{orderId} — Phase 5J-Tier-9C.
+ *
+ * Mirrors the Driver App's former Firestore write (status="pending",
+ * driverUid=null + cancel metadata) and additionally clears the offer set + FCM
+ * guard fields so the re-dispatch fires cleanly.
+ *
+ * Guards (idempotent + non-destructive):
+ *   - Absent doc                  → skip.
+ *   - delivered / cancelled       → skip (never resurrect a terminal order).
+ *   - driverUid !== the canceller → skip: a NEWER authoritative state has
+ *     already moved the doc on (e.g. the PG dispatcher re-dispatched it to
+ *     another driver, or it was already returned to the pool), so the cancel is
+ *     obsolete and must not clobber it.
+ */
+async function applyDriverCancel(
+  fs:      FirebaseFirestore.Firestore,
+  orderId: string,
+  payload: DispatchProjectionPayload,
+): Promise<ApplyOutcome> {
+  const { FieldValue } = await import("firebase-admin/firestore");
+  const ref = fs.doc(`${resolveProjectionCollection()}/${orderId}`);
+
+  const driverUid = payload.driverUid;
+  if (!driverUid) {
+    // Malformed payload — nothing to project. Permanent skip.
+    return "skipped";
+  }
+  const reason = payload.driverCancelReason ?? "";
+
+  let outcome: ApplyOutcome = "skipped";
+  await fs.runTransaction(async (tx) => {
+    outcome = "skipped";
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+
+    const d = snap.data() as Record<string, unknown>;
+    // No terminal resurrection.
+    if (d["status"] === "delivered" || d["status"] === "cancelled") return;
+    // Only retract THIS driver's assignment — a newer state (re-dispatch /
+    // already-pooled) that no longer names this driver wins.
+    if (d["driverUid"] !== driverUid) return;
+
+    tx.update(ref, {
+      status:                "pending",
+      driverUid:             null,
+      driverName:            "",
+      driverCancelledBy:     driverUid,
+      driverCancelReason:    reason,
+      driverCancelledAt:     FieldValue.serverTimestamp(),
+      activeOfferDriverUids: FieldValue.delete(),
+      dispatchTimeoutAt:     FieldValue.delete(),
+      fcmDispatchedAt:       FieldValue.delete(),
+      fcmDispatchClaimedAt:  FieldValue.delete(),
+      fcmDispatchClaimedBy:  FieldValue.delete(),
+      fcmMessageId:          FieldValue.delete(),
+      updatedAt:             FieldValue.serverTimestamp(),
+    });
+    outcome = "applied";
+  });
+
+  return outcome;
+}
+
 async function applyProjection(
   fs:  FirebaseFirestore.Firestore,
   row: DispatchProjection,
@@ -264,6 +329,8 @@ async function applyProjection(
       return applyTimeout(fs, row.orderId);
     case "offer_removal":
       return applyOfferRemoval(fs, row.orderId, row.payload);
+    case "driver_cancel":
+      return applyDriverCancel(fs, row.orderId, row.payload);
     default:
       // Unknown event type — never auto-retry; surface and skip.
       logger.warn(

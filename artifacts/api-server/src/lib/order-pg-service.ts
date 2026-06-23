@@ -536,6 +536,140 @@ export async function pgRemoveFromOfferSet(
   }
 }
 
+// ── pgDriverCancelOrder ───────────────────────────────────────────────────────
+
+export type PgDriverCancelResult =
+  | { ok: true }
+  | { ok: false; reason: "not_found" | "forbidden" | "too_late" | "unknown" };
+
+/**
+ * Statuses from which the ASSIGNED driver may still cancel (pre-pickup only).
+ * After accept the PG status is "driver_assigned"; if the driver advanced the
+ * first stage it is "to_pickup". Once the parcel is picked up (at_pickup and
+ * beyond) cancellation is no longer allowed — that is `too_late`.
+ */
+const DRIVER_CANCELLABLE_STATUSES = ["driver_assigned", "to_pickup"] as const;
+
+/**
+ * Phase 5J-Tier-9C: PG-authoritative driver-initiated pre-pickup cancellation —
+ * replaces the Driver App's direct Firestore write that set status="pending" +
+ * driverUid=null. The order RETURNS TO THE POOL (it is NOT terminally cancelled),
+ * so the PG dispatcher re-offers it to another driver.
+ *
+ * Single atomic transaction:
+ *   1. Guarded UPDATE: id = orderId AND driver_uid = driverUid AND status IN
+ *      ('driver_assigned','to_pickup'). Sets status='pending' (a POOL_STATUS the
+ *      PG dispatcher's assign guard accepts), clears driver_uid/driver_name and
+ *      active_offer_driver_uids, and stamps driver_cancelled_by/reason/at.
+ *   2. In the SAME transaction, enqueues a durable `driver_cancel` projection so
+ *      the PG → Firestore projector mirrors the return-to-pool into the Firestore
+ *      order doc (customer app / FCM read-model). Atomic enqueue = the projection
+ *      exists iff the canonical return-to-pool committed, so there is no
+ *      separate read-model step that can silently drift.
+ *
+ * Idempotency & authz (0 rows updated → classify from the current row):
+ *   - no row                                            → not_found
+ *   - already in pool AND driver_cancelled_by === me    → ok:true (idempotent
+ *                                                          re-cancel; NOT re-enqueued)
+ *   - row owned by a different driver                   → forbidden
+ *   - delivered / cancelled / past-pickup stage         → too_late
+ *   - otherwise (e.g. pooled but not cancelled by me)   → forbidden
+ *
+ * driverUid is the verified token subject (never the body). Never throws; an
+ * infra error returns reason:"unknown" so the route can surface 500 for retry.
+ */
+export async function pgDriverCancelOrder(
+  orderId:   string,
+  driverUid: string,
+  reason:    string,
+): Promise<PgDriverCancelResult> {
+  const now = new Date();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const updated = await tx
+        .update(ordersTable)
+        .set({
+          status:                "pending",
+          driverUid:             null,
+          driverName:            null,
+          activeOfferDriverUids: sql`'{}'::text[]`,
+          driverCancelledBy:     driverUid,
+          driverCancelReason:    reason,
+          driverCancelledAt:     now,
+          updatedAt:             now,
+        })
+        .where(
+          and(
+            eq(ordersTable.id, orderId),
+            eq(ordersTable.driverUid, driverUid),
+            inArray(ordersTable.status, [...DRIVER_CANCELLABLE_STATUSES]),
+          ),
+        )
+        .returning({ id: ordersTable.id });
+
+      if (updated.length > 0) {
+        await tx.insert(dispatchProjectionsTable).values({
+          orderId,
+          eventType: "driver_cancel",
+          payload:   { driverUid, driverCancelReason: reason },
+        });
+        logger.info({ orderId, driverUid }, "[pgDriverCancelOrder] returned to pool + projection enqueued");
+        return { ok: true } as const;
+      }
+
+      // 0 rows — classify why (read-only; commit a no-op tx, never tx.rollback()).
+      const existing = await tx
+        .select({
+          status:            ordersTable.status,
+          driverUid:         ordersTable.driverUid,
+          driverCancelledBy: ordersTable.driverCancelledBy,
+        })
+        .from(ordersTable)
+        .where(eq(ordersTable.id, orderId))
+        .limit(1);
+
+      if (existing.length === 0) {
+        logger.info({ orderId, driverUid }, "[pgDriverCancelOrder] order not found");
+        return { ok: false, reason: "not_found" } as const;
+      }
+
+      const row = existing[0]!;
+
+      // Idempotent re-cancel: order is back in the pool AND I am the canceller.
+      if (
+        (row.status === "pending" || row.status === "searching") &&
+        row.driverCancelledBy === driverUid
+      ) {
+        logger.info({ orderId, driverUid }, "[pgDriverCancelOrder] idempotent re-cancel by same driver");
+        return { ok: true } as const;
+      }
+
+      if (row.driverUid && row.driverUid !== driverUid) {
+        logger.info({ orderId, driverUid, owner: row.driverUid }, "[pgDriverCancelOrder] driver mismatch");
+        return { ok: false, reason: "forbidden" } as const;
+      }
+
+      if (
+        row.status === "delivered" ||
+        row.status === "cancelled" ||
+        row.status === "at_pickup" ||
+        row.status === "to_drop" ||
+        row.status === "at_drop"
+      ) {
+        logger.info({ orderId, driverUid, status: row.status }, "[pgDriverCancelOrder] too late to cancel");
+        return { ok: false, reason: "too_late" } as const;
+      }
+
+      logger.info({ orderId, driverUid, status: row.status }, "[pgDriverCancelOrder] not cancellable by this driver");
+      return { ok: false, reason: "forbidden" } as const;
+    });
+  } catch (err) {
+    logger.error({ err, orderId, driverUid }, "[pgDriverCancelOrder] transaction error");
+    return { ok: false, reason: "unknown" };
+  }
+}
+
 // ── pgSetOrderStage ───────────────────────────────────────────────────────────
 
 /** Driver-advanceable delivery stages (delivered runs through POST /complete). */

@@ -38,6 +38,13 @@ import { ordersTable } from "./orders";
 //                project arrayRemove(driverUid) on Firestore activeOfferDriverUids.
 //                Status is left untouched (no resurrection) and the FCM guard
 //                fields are NOT cleared (never re-triggers the FCM dispatcher).
+//   driver_cancel — (Phase 5J-Tier-9C) the assigned driver cancelled pre-pickup;
+//                project the return-to-pool: status=pending, driverUid cleared,
+//                driverCancelledBy/Reason/At stamped, activeOfferDriverUids + FCM
+//                guard fields cleared so the order re-dispatches cleanly. Guarded
+//                on driverUid match so it never clobbers a newer authoritative
+//                state (a re-dispatch that already moved the doc on) and never
+//                resurrects a delivered/cancelled order.
 // (The PG FCM claim is intentionally NOT projected — doing so would pre-claim
 //  the order and block the authoritative Firestore FCM dispatcher. See the
 //  projector for the documented decision.)
@@ -64,6 +71,8 @@ export interface DispatchProjectionPayload {
   dispatchTimeoutAtMs?: number;
   /** Phase-2 authoritative offer target set (assignment events). */
   activeOfferDriverUids?: string[];
+  /** Driver-supplied cancellation reason (driver_cancel events). */
+  driverCancelReason?: string;
 }
 
 export const dispatchProjectionsTable = pgTable(

@@ -1109,25 +1109,33 @@ export async function getDriverTransactions(
 /**
  * Driver-initiated pre-pickup cancellation.
  *
- * Sets status back to "pending" so the order re-enters the dispatch pool
- * and can be assigned to another driver.  Does NOT write "cancelled" so
- * the customer never sees a permanent cancellation.
+ * Phase 5J-Tier-9C: PG-authoritative via POST /api/orders/:orderId/driver-cancel.
+ * The server returns the order to the dispatch pool in PostgreSQL (status back to
+ * "pending", driver cleared, offer set cleared, cancel metadata stamped) and
+ * projects the return-to-pool to Firestore so the customer app keeps live state.
+ * The order is NOT terminally cancelled, so the customer never sees a permanent
+ * cancellation and the PG dispatcher re-offers it to another driver.
  *
- * Allowed only at stage "to_pickup" (Firestore status "accepted" or "to_pickup").
- * The caller (active-delivery.tsx) is responsible for the stage guard.
+ * driverUid is derived server-side from the verified ID token (param ignored).
+ * Allowed only pre-pickup; the caller (active-delivery.tsx) still guards on stage.
  */
 export async function driverCancelOrder(
-  orderId:   string,
-  driverUid: string,
-  reason:    string,
+  orderId:    string,
+  _driverUid: string,
+  reason:     string,
 ): Promise<void> {
-  await updateDoc(doc(db, "orders", orderId), {
-    status:             "pending",
-    driverUid:          null,
-    driverName:         "",
-    driverCancelledBy:  driverUid,
-    driverCancelReason: reason,
-    driverCancelledAt:  serverTimestamp(),
-    updatedAt:          serverTimestamp(),
+  const user = firebaseAuth.currentUser;
+  if (!user) throw new Error("not authenticated");
+  const token = await user.getIdToken();
+  const res = await fetch(`${_BASE_URL}/orders/${orderId}/driver-cancel`, {
+    method:  "POST",
+    headers: {
+      Authorization:  `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ reason }),
   });
+  if (!res.ok) {
+    throw new Error(`driver-cancel failed (${res.status})`);
+  }
 }
