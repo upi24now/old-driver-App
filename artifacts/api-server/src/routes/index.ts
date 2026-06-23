@@ -15,6 +15,7 @@ import kycAdminRouter      from "./kyc-admin";
 import adminAuthRouter     from "./admin-auth";
 import adminUsersRouter    from "./admin-users";
 import adminDataRouter     from "./admin-data";
+import sseRouter           from "./sse";
 
 const router: IRouter = Router();
 
@@ -34,5 +35,6 @@ router.use(kycAdminRouter);
 router.use(adminAuthRouter);
 router.use(adminUsersRouter);
 router.use(adminDataRouter);
+router.use(sseRouter);
 
 export default router;

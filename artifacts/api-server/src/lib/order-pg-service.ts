@@ -102,6 +102,31 @@ export async function pgGetActiveOrders(
   return rows;
 }
 
+// ── pgGetOffersForDriver ──────────────────────────────────────────────────────
+
+/**
+ * Return every order that currently lists this driver in its
+ * active_offer_driver_uids set — the exact PG equivalent of the Firestore L1
+ * query `orders WHERE activeOfferDriverUids array-contains uid`.
+ *
+ * This column is the FS-mirrored offer set (kept in sync for dispatch, reject,
+ * and timeout by the PG dispatcher projection + the shadow-writer's
+ * mirrorOfferSet listener), so it tracks the live offered-driver set 1:1 with
+ * what the Firestore listener returned. Used by the SSE offer-stream snapshot.
+ *
+ * No status filter — matches Firestore L1 exactly; the mobile client applies the
+ * same stale-dispatch filter it always has.
+ */
+export async function pgGetOffersForDriver(driverUid: string): Promise<Order[]> {
+  const rows = await db
+    .select()
+    .from(ordersTable)
+    .where(sql`${driverUid} = ANY(${ordersTable.activeOfferDriverUids})`)
+    .orderBy(sql`${ordersTable.dispatchedAt} DESC NULLS LAST`);
+
+  return rows;
+}
+
 // ── pgGetCompletedTrips ───────────────────────────────────────────────────────
 
 /**

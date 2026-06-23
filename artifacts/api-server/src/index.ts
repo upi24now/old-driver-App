@@ -26,6 +26,8 @@ import {
 import { startPgDispatcherDryRun } from "./lib/pg-dispatcher-dry-run";
 import { startPgDispatcher } from "./lib/pg-dispatcher";
 import { startDispatchProjector } from "./lib/pg-firestore-projector";
+import { ensureSseTrigger } from "./lib/sse-trigger";
+import { startSseHub } from "./lib/sse-hub";
 
 // ── Resolve runtime config (env vars now available from dotenv) ──────────────
 const uploadsDir   = process.env["UPLOADS_DIR"]    ?? resolve(bundleDir, "../uploads");
@@ -139,6 +141,13 @@ app.listen(port, (err) => {
   startDispatchProjector().catch((e) =>
     logger.error({ err: e }, "[PG_PROJECTOR_START] startup failed"),
   );
+
+  // Install the orders → sse_events trigger, then open the LISTEN hub that
+  // drives the Driver App SSE streams (Phase 5J-Tier-6). Read-only realtime
+  // projection of PG order state; no authority, FCM, or app-write changes.
+  ensureSseTrigger()
+    .then(() => startSseHub())
+    .catch((e) => logger.error({ err: e }, "[SSE_START] startup failed"));
 
   // ── DISPATCH_SOURCE gate (Phase 5E-C / 5F) ─────────────────────────────────
   // Firestore dispatcher above is authoritative in EVERY mode. This adds a

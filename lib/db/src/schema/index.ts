@@ -5,3 +5,4 @@ export * from "./order-offers";
 export * from "./order-otps";
 export * from "./wallet";
 export * from "./dispatch-projections";
+export * from "./sse-events";

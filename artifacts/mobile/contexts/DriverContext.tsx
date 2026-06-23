@@ -22,8 +22,6 @@ import {
   updateDriverSubscription,
   getActiveOrderForDriver,
   getActiveOrdersForDriver,
-  listenToAllDispatchedOrders,
-  listenToActiveOrder,
   rejectOrder,
   timeoutOrder,
   PERMISSION_SETUP_VERSION,
@@ -32,6 +30,10 @@ import {
   type OrderStatus,
   type AcceptOrderResult,
 } from "@/utils/firestore";
+import {
+  listenToAllDispatchedOrders,
+  listenToActiveOrder,
+} from "@/utils/order-stream";
 import {
   getDriverProfile,
   getDriverVerificationStatus,
