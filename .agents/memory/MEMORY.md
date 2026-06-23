@@ -31,3 +31,4 @@
 - [Order completion PG migration](order-completion-pg.md) — PG-authoritative; PG infra throw → 500 (NOT FS fallback); atomic CASE WHEN for driver daily stats; wallet_txn unique index idempotency.
 - [Support + Payout PG migration](support-payout-pg-migration.md) — UUID guard before PG, sender-authoritative on message routes, try/catch per call site, FOR UPDATE payout lock, FS projection as void IIFE.
 - [Firestore retirement audit](firestore-retirement-audit.md) — support + payouts now PG-authoritative (retired); KEEP forever Auth/FCM; RR dispatcher = kill switch.
+- [KYC admin read-path migration](kyc-admin-pg-read.md) — GET /api/kyc/drivers was Firestore-only; POST /api/drivers/documents is PG-only → admin invisibility gap; fixed by switching read to PG + Firestore projection on submit.

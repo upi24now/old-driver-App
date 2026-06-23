@@ -32,7 +32,7 @@ import { adminFirestore } from "../lib/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { requireAdminJwt } from "../lib/require-admin-jwt";
 import { db, driversTable, driverDocumentsTable } from "@workspace/db";
-import { eq, and, inArray, isNotNull, sql } from "drizzle-orm";
+import { eq, and, inArray, isNotNull, sql, desc } from "drizzle-orm";
 import type { Logger } from "pino";
 
 const router = Router();
@@ -49,40 +49,69 @@ const DOC_IDS = [
 
 // ─── GET /api/kyc/drivers ─────────────────────────────────────────────────────
 //
-// READ PATH: Firestore only (admin panel uses this; no change).
+// READ PATH: PostgreSQL (authoritative). Replaces the previous Firestore-only
+// read, which missed any driver whose documents were submitted via the
+// PG-primary POST /api/drivers/documents route (no Firestore mirror existed).
+//
+// Response shape is identical to the previous Firestore version so the admin
+// panel requires no changes.
 
 router.get("/kyc/drivers", requireAdminJwt, async (req, res) => {
   const statusFilter = req.query["status"];
 
   try {
-    const fsDb = await adminFirestore();
-    let q: FirebaseFirestore.Query = fsDb.collection("drivers")
-      .where("documentsSubmitted", "==", true);
+    const whereClause =
+      typeof statusFilter === "string" && statusFilter.length > 0
+        ? and(
+            eq(driversTable.documentsSubmitted, true),
+            eq(driversTable.verificationStatus, statusFilter),
+          )
+        : eq(driversTable.documentsSubmitted, true);
 
-    if (typeof statusFilter === "string" && statusFilter.length > 0) {
-      q = q.where("verificationStatus", "==", statusFilter);
+    const driverRows = await db
+      .select()
+      .from(driversTable)
+      .where(whereClause)
+      .orderBy(desc(driversTable.documentsSubmittedAt));
+
+    const uids = driverRows.map((d) => d.uid);
+    const docRows =
+      uids.length > 0
+        ? await db
+            .select()
+            .from(driverDocumentsTable)
+            .where(inArray(driverDocumentsTable.driverUid, uids))
+        : [];
+
+    const docsByUid: Record<string, Record<string, unknown>> = {};
+    for (const doc of docRows) {
+      if (!docsByUid[doc.driverUid]) docsByUid[doc.driverUid] = {};
+      docsByUid[doc.driverUid]![doc.docType] = {
+        url:                doc.url               ?? null,
+        status:             doc.status            ?? null,
+        uploadedAt:         doc.uploadedAt        ? doc.uploadedAt.toISOString() : null,
+        rejectionReason:    doc.rejectionReason   ?? null,
+        documentNumber:     doc.documentNumber    ?? null,
+        documentNumberType: doc.documentNumberType ?? null,
+      };
     }
 
-    const snap = await q.orderBy("documentsSubmittedAt", "desc").get();
-
-    const drivers = snap.docs.map((doc) => {
-      const d = doc.data();
-      return {
-        uid:                  doc.id,
-        name:                 d["name"]           ?? null,
-        phone:                d["phone"]          ?? null,
-        city:                 d["city"]           ?? null,
-        vehicleId:            d["vehicleId"]      ?? null,
-        vehicleNumber:        d["vehicleNumber"]  ?? null,
-        licenseNumber:        d["licenseNumber"]  ?? null,
-        verificationStatus:   d["verificationStatus"] ?? "pending",
-        accountStatus:        d["accountStatus"]  ?? null,
-        documentsSubmittedAt: d["documentsSubmittedAt"]
-          ? (d["documentsSubmittedAt"] as import("firebase-admin/firestore").Timestamp).toDate().toISOString()
-          : null,
-        documents:            d["documents"] ?? {},
-      };
-    });
+    const drivers = driverRows.map((d) => ({
+      uid:                  d.uid,
+      name:                 d.name              ?? null,
+      phone:                d.phone             ?? null,
+      city:                 d.city              ?? null,
+      vehicleId:            d.vehicleId         ?? null,
+      vehicleName:          d.vehicleName       ?? null,
+      vehicleNumber:        d.vehicleNumber     ?? null,
+      licenseNumber:        d.licenseNumber     ?? null,
+      verificationStatus:   d.verificationStatus ?? "pending",
+      accountStatus:        d.accountStatus     ?? null,
+      documentsSubmittedAt: d.documentsSubmittedAt
+        ? d.documentsSubmittedAt.toISOString()
+        : null,
+      documents:            docsByUid[d.uid]    ?? {},
+    }));
 
     req.log.info({ count: drivers.length, statusFilter }, "kyc-admin: listed drivers");
     res.json({ ok: true, drivers });

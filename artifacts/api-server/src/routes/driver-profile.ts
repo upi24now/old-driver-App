@@ -30,6 +30,7 @@ import { Router } from "express";
 import { requireAuth } from "../lib/require-auth";
 import { db, driversTable, driverDocumentsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { adminFirestore } from "../lib/firebase-admin";
 
 const router = Router();
 
@@ -582,6 +583,64 @@ router.post("/drivers/documents", async (req, res) => {
       "driver-profile: POST /drivers/documents",
     );
     res.json({ ok: true, count: validEntries.length });
+
+    // ── Fire-and-forget Firestore projection ─────────────────────────────────
+    // The admin panel's GET /api/kyc/drivers now reads PG directly, but approve
+    // and reject still fire-and-forget mirror writes to Firestore. We project
+    // the submission here so those writes have an existing Firestore doc to
+    // target (merge: true means no doc is fine, but having it avoids a cold
+    // create path on approve).
+    void (async () => {
+      try {
+        const fsDb = await adminFirestore();
+        const driverRef = fsDb.collection("drivers").doc(uid);
+
+        const [driverRow] = await db
+          .select()
+          .from(driversTable)
+          .where(eq(driversTable.uid, uid))
+          .limit(1);
+
+        const fsDocMap: Record<string, { url: string; status: string }> = {};
+        for (const { docType, url } of validEntries) {
+          fsDocMap[`documents.${docType}`] = { url, status: "pending" };
+        }
+
+        await driverRef.set(
+          {
+            documentsSubmitted:   true,
+            documentsSubmittedAt: now,
+            verificationStatus:   "pending",
+            kycRejectionReason:   null,
+            rejectedDocuments:    null,
+            ...(driverRow
+              ? {
+                  name:          driverRow.name          ?? null,
+                  phone:         driverRow.phone         ?? null,
+                  city:          driverRow.city          ?? null,
+                  vehicleId:     driverRow.vehicleId     ?? null,
+                  vehicleName:   driverRow.vehicleName   ?? null,
+                  vehicleNumber: driverRow.vehicleNumber ?? null,
+                  licenseNumber: driverRow.licenseNumber ?? null,
+                  accountStatus: driverRow.accountStatus ?? null,
+                }
+              : {}),
+            ...fsDocMap,
+          },
+          { merge: true },
+        );
+
+        req.log.info(
+          { uid, count: validEntries.length },
+          "driver-profile: Firestore KYC projection written",
+        );
+      } catch (projErr) {
+        req.log.warn(
+          { err: projErr, uid },
+          "driver-profile: Firestore KYC projection failed (non-fatal)",
+        );
+      }
+    })();
   } catch (err: unknown) {
     const pgErr = err as { code?: string; cause?: { code?: string } };
     if (pgErr?.code === "23503" || pgErr?.cause?.code === "23503") {
