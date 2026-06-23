@@ -9,6 +9,7 @@
 - [Wallet Firestore schema](wallet-firestore-schema.md) — authoritative schema: wallets/{uid}, transactions sub-collection; type "credit"/"payout"/"adjustment"; payouts via server route only.
 - [Expo Router typed routes](expo-router-typed-routes.md) — new screen files require manual update to .expo/types/router.d.ts (hrefInputParams, hrefOutputParams, href) until dev server regenerates.
 - [Firebase-to-PG migration patterns](firebase-to-pg-migration.md) — RoutingDoc structural type, setKycDocuments cast, subscription remaining-dep pattern for Step 1.
+- [PG timeout shadow](pg-timeout-shadow.md) — Phase 5C-B: gate eligibility on dispatch_timeout_at; normalize returnToPool race in live path only; driver uid first-class.
 - [PG assignment shadow](pg-assign-shadow.md) — validate reproduced PG assignment LOGIC from stable inputs, not the racey pre-assignment order mirror (stale cursor/timeout).
 - [Dispatch shadow data](dispatch-shadow-data.md) — dispatcher reads subscriptionExpiresAt/rating/tripsTotal|trips; rating+trips_total have NO writer (don't mirror tripsToday→trips_total); shadow-write + backfill mechanics.
 - [PG parameterized casts](pg-param-casts.md) — raw pg params used inside CASE/COALESCE need explicit ::type casts or "could not determine data type of parameter $N".

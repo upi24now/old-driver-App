@@ -41,6 +41,7 @@ import {
   pgShadowCompareTimeout,
 } from "./pg-dispatch-shadow";
 import { pgShadowCompareAssignment } from "./pg-assign-shadow";
+import { pgTimeoutShadowValidate } from "./pg-timeout-shadow";
 
 const DISPATCH_TIMEOUT_SECONDS = 60;
 const POLL_INTERVAL_MS         = 30_000; // 30 s — was 2 s; keeps daily poll reads ≤ 2 880
@@ -397,6 +398,7 @@ async function returnToPool(
 ): Promise<void> {
   const orderId = orderDoc.id;
   let timedOutDriverUid: string | null = null; // captured inside tx before reset
+  let fsTimeoutAtMs: number | null = null;     // dispatchTimeoutAt before delete
 
   try {
     const orderRef = db.doc(`orders/${orderId}`);
@@ -413,8 +415,11 @@ async function returnToPool(
       const timeoutAt = d["dispatchTimeoutAt"];
       if (timeoutAt && (timeoutAt as FirebaseFirestore.Timestamp).toDate() > new Date()) return;
 
-      // Capture the driver UID before we null it out.
+      // Capture the driver UID + timeout value before we null/delete them.
       timedOutDriverUid = typeof d["driverUid"] === "string" ? d["driverUid"] : null;
+      fsTimeoutAtMs = timeoutAt
+        ? (timeoutAt as FirebaseFirestore.Timestamp).toDate().getTime()
+        : null;
 
       tx.update(orderRef, {
         status:               "searching",
@@ -433,6 +438,28 @@ async function returnToPool(
 
     // ── PG timeout SHADOW comparison (READ-ONLY; never throw) ─────────────────
     void pgShadowCompareTimeout(orderId, timedOutDriverUid);
+
+    // ── Phase 5C-B: PG timeout LOGIC validator (READ-ONLY; never throw) ───────
+    // Reproduces the guarded PG timeout decision and compares it against this
+    // authoritative Firestore timeout. Read-only; cannot modify orders/offers,
+    // send FCM, return to pool, or affect dispatcher behaviour.
+    if (timedOutDriverUid && fsTimeoutAtMs !== null) {
+      // fsTimeoutAtMs is the authoritative Firestore dispatchTimeoutAt captured
+      // inside the transaction. No now() fallback: without it there is nothing
+      // authoritative to compare, so we skip rather than fabricate a deadline.
+      void pgTimeoutShadowValidate(orderId, {
+        orderId,
+        driverUid:           timedOutDriverUid,
+        dispatchTimeoutAtMs: fsTimeoutAtMs,
+        eligible:            true,  // Firestore decided the dispatch elapsed
+        returnedToPool:      true,  // Firestore reset the order to "searching"
+      });
+    } else if (timedOutDriverUid) {
+      logger.warn(
+        { orderId, driverUid: timedOutDriverUid },
+        "[PG_TIMEOUT_ERROR] missing FS dispatchTimeoutAt — skipping shadow validation",
+      );
+    }
 
     // ── PG shadow writes (non-blocking; never throw) ─────────────────────────
     void (async () => {
