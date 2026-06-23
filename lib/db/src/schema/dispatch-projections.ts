@@ -34,6 +34,10 @@ import { ordersTable } from "./orders";
 //                Firestore FCM dispatcher claims + sends unchanged.
 //   timeout    — PG returned an expired dispatch to the pool; project
 //                status=searching, driver cleared.
+//   offer_removal — (Phase 5J-Tier-9B) a driver rejected/timed out an offer;
+//                project arrayRemove(driverUid) on Firestore activeOfferDriverUids.
+//                Status is left untouched (no resurrection) and the FCM guard
+//                fields are NOT cleared (never re-triggers the FCM dispatcher).
 // (The PG FCM claim is intentionally NOT projected — doing so would pre-claim
 //  the order and block the authoritative Firestore FCM dispatcher. See the
 //  projector for the documented decision.)

@@ -29,6 +29,7 @@
 import { and, eq, gt, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import {
   db,
+  dispatchProjectionsTable,
   orderOffersTable,
   orderOtpsTable,
   ordersTable,
@@ -380,8 +381,9 @@ export async function pgRejectOffer(
 
   try {
     await db.transaction(async (tx) => {
-      // Mark the offer row
-      await tx
+      // Mark the offer row — pending → rejected. RETURNING tells us whether an
+      // actual offer transition happened.
+      const rejected = await tx
         .update(orderOffersTable)
         .set({ status: "rejected", respondedAt: now })
         .where(
@@ -390,17 +392,27 @@ export async function pgRejectOffer(
             eq(orderOffersTable.driverUid, driverUid),
             eq(orderOffersTable.status,    "pending"),
           ),
-        );
+        )
+        .returning({ id: orderOffersTable.id });
 
-      // Append to rejected_by[] on the orders row so the dispatcher skips
-      // this driver in the current cycle.  Uses array_append for atomicity.
-      await tx
-        .update(ordersTable)
-        .set({
-          rejectedBy: sql`array_append(COALESCE(${ordersTable.rejectedBy}, '{}'), ${driverUid})`,
-          updatedAt:  now,
-        })
-        .where(eq(ordersTable.id, orderId));
+      // Only touch canonical rejected_by[] when a real pending offer was
+      // transitioned. This keeps the whole call idempotent (a repeat reject
+      // finds no pending row and no-ops) AND prevents an authenticated driver
+      // from poisoning rejected_by for an order they were never offered.
+      // Set-union (array_append only when absent) mirrors Firestore arrayUnion.
+      if (rejected.length > 0) {
+        await tx
+          .update(ordersTable)
+          .set({
+            rejectedBy: sql`CASE
+              WHEN ${driverUid}::text = ANY(COALESCE(${ordersTable.rejectedBy}, '{}'::text[]))
+              THEN ${ordersTable.rejectedBy}
+              ELSE array_append(COALESCE(${ordersTable.rejectedBy}, '{}'::text[]), ${driverUid}::text)
+            END`,
+            updatedAt:  now,
+          })
+          .where(eq(ordersTable.id, orderId));
+      }
     });
 
     logger.info({ orderId, driverUid }, "[pgRejectOffer] offer rejected");
@@ -445,6 +457,82 @@ export async function pgTimeoutOffer(
   } catch (err) {
     logger.error({ err, orderId, driverUid }, "[pgTimeoutOffer] error");
     return { ok: false, reason: "unknown" };
+  }
+}
+
+// ── pgRemoveFromOfferSet ──────────────────────────────────────────────────────
+
+/**
+ * Phase 5J-Tier-9B: read-model removal + durable Firestore projection enqueue
+ * for a driver who rejected or timed out an offer.
+ *
+ * The CANONICAL dispatch state (order_offers + orders.rejected_by) is owned by
+ * pgRejectOffer / pgTimeoutOffer and is NOT touched here. This function only
+ * maintains the `active_offer_driver_uids` PROJECTION/read-model:
+ *
+ *   1. array_remove(driverUid) from orders.active_offer_driver_uids — the column
+ *      the PG-backed offer SSE stream (pgGetOffersForDriver) reads, so the offer
+ *      drops from the driver's live view instantly. The orders AFTER-UPDATE
+ *      trigger fires pg_notify so the stream pushes the new snapshot.
+ *   2. Enqueues a durable `offer_removal` projection row IN THE SAME transaction,
+ *      so the PG → Firestore projector mirrors the same arrayRemove into the
+ *      Firestore order doc (customer app / FCM read-model) — durable + retryable.
+ *
+ * Idempotent: the UPDATE is guarded by `driverUid = ANY(active_offer_driver_uids)`
+ * so a repeat call (driver already removed) affects 0 rows and enqueues nothing.
+ * Guarded against terminal/cancelled orders so it can never resurrect a
+ * completed order.
+ *
+ * Never throws, but DISTINGUISHES outcomes for the caller:
+ *   ok:true,  removed:true  — driver removed + offer_removal projection enqueued
+ *   ok:true,  removed:false — legitimate idempotent no-op (already removed / terminal)
+ *   ok:false                — infra error; the read-model removal and projection
+ *                             did NOT happen. Because this runs in its own
+ *                             transaction AFTER the canonical reject/timeout has
+ *                             already committed, the caller MUST surface this as a
+ *                             non-2xx so the (idempotent) call can be retried —
+ *                             otherwise active_offer_driver_uids + Firestore drift
+ *                             from canonical state permanently.
+ */
+export async function pgRemoveFromOfferSet(
+  orderId:   string,
+  driverUid: string,
+): Promise<{ ok: boolean; removed: boolean }> {
+  try {
+    return await db.transaction(async (tx) => {
+      const updated = await tx
+        .update(ordersTable)
+        .set({
+          activeOfferDriverUids: sql`array_remove(${ordersTable.activeOfferDriverUids}, ${driverUid})`,
+          updatedAt:             new Date(),
+        })
+        .where(
+          and(
+            eq(ordersTable.id, orderId),
+            sql`${driverUid} = ANY(${ordersTable.activeOfferDriverUids})`,
+            notInArray(ordersTable.status, ["delivered", "cancelled"]),
+          ),
+        )
+        .returning({ id: ordersTable.id });
+
+      if (updated.length === 0) {
+        // Driver already removed, order terminal, or order missing — nothing to
+        // project. Idempotent no-op.
+        return { ok: true, removed: false };
+      }
+
+      await tx.insert(dispatchProjectionsTable).values({
+        orderId,
+        eventType: "offer_removal",
+        payload:   { driverUid },
+      });
+
+      logger.info({ orderId, driverUid }, "[pgRemoveFromOfferSet] removed + projection enqueued");
+      return { ok: true, removed: true };
+    });
+  } catch (err) {
+    logger.error({ err, orderId, driverUid }, "[pgRemoveFromOfferSet] error");
+    return { ok: false, removed: false };
   }
 }
 

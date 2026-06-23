@@ -1,5 +1,4 @@
 import {
-  arrayRemove,
   arrayUnion,
   collection,
   deleteField,
@@ -795,21 +794,30 @@ export async function acceptOrder(
 /**
  * Reject an offered order — removes this driver from the offer list.
  *
- * Phase 2: uses arrayRemove so only this driver's UID is removed from
- * activeOfferDriverUids; all other drivers in the offer are unaffected.
- * No transaction needed — arrayRemove is an atomic Firestore field transform.
+ * Phase 5J-Tier-9B: PG-authoritative via POST /api/orders/:orderId/reject. The
+ * server records the rejection in PostgreSQL (order_offers + orders.rejected_by,
+ * the canonical dispatch state), drops the driver from the active_offer_driver_uids
+ * read-model the PG offer stream reads, and projects the arrayRemove to Firestore.
+ * driverUid is derived server-side from the verified ID token (param ignored).
  *
  * The customer order is NOT cancelled — it stays alive for the remaining
  * drivers in the offer list (or until the customer explicitly cancels).
  */
-export async function rejectOrder(orderId: string, driverUid: string): Promise<AcceptOrderResult> {
+export async function rejectOrder(orderId: string, _driverUid: string): Promise<AcceptOrderResult> {
   try {
-    await updateDoc(doc(db, "orders", orderId), {
-      activeOfferDriverUids: arrayRemove(driverUid),
-      updatedAt:             serverTimestamp(),
+    const user = firebaseAuth.currentUser;
+    if (!user) return { ok: false, reason: "unknown" };
+    const token = await user.getIdToken();
+    const res   = await fetch(`${_BASE_URL}/orders/${orderId}/reject`, {
+      method:  "POST",
+      headers: { Authorization: `Bearer ${token}` },
     });
-    return { ok: true };
-  } catch (e: unknown) {
+    if (res.ok) {
+      const json = await res.json() as { ok?: boolean };
+      if (json.ok) return { ok: true };
+    }
+    return { ok: false, reason: "unknown" };
+  } catch {
     return { ok: false, reason: "unknown" };
   }
 }
@@ -817,19 +825,23 @@ export async function rejectOrder(orderId: string, driverUid: string): Promise<A
 /**
  * Handle a dispatch timeout — driver ignored the order for the full timer duration.
  *
- * Phase 2: unlike rejectOrder, timeout does NOT record the driver in any
- * blacklist, so they may receive the same order again if re-offered.
- * Uses arrayRemove to remove only this driver from activeOfferDriverUids;
- * other drivers in the offer are unaffected.
+ * Phase 5J-Tier-9B: PG-authoritative via POST /api/orders/:orderId/timeout.
+ * Unlike rejectOrder, timeout does NOT add the driver to orders.rejected_by, so
+ * they may receive the same order again if re-offered. The server marks the
+ * offer timed_out, drops the driver from the active_offer_driver_uids read-model,
+ * and projects the arrayRemove to Firestore. driverUid is derived server-side.
  *
  * The server-side poller handles timeouts independently via offerStartedAt,
  * but this client-side call provides an immediate response when the timer fires.
  */
-export async function timeoutOrder(orderId: string, driverUid: string): Promise<void> {
+export async function timeoutOrder(orderId: string, _driverUid: string): Promise<void> {
   try {
-    await updateDoc(doc(db, "orders", orderId), {
-      activeOfferDriverUids: arrayRemove(driverUid),
-      updatedAt:             serverTimestamp(),
+    const user = firebaseAuth.currentUser;
+    if (!user) return;
+    const token = await user.getIdToken();
+    await fetch(`${_BASE_URL}/orders/${orderId}/timeout`, {
+      method:  "POST",
+      headers: { Authorization: `Bearer ${token}` },
     });
   } catch {
     // Fire-and-forget: the server-side poller will catch it if this fails.

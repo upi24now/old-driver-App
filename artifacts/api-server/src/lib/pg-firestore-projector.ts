@@ -209,6 +209,50 @@ async function applyTimeout(
   return outcome;
 }
 
+/**
+ * Project an offer-set removal onto orders/{orderId} — Phase 5J-Tier-9B.
+ *
+ * Mirrors the Driver App's former Firestore arrayRemove(activeOfferDriverUids)
+ * write when a driver rejects or times out an offer. Idempotent (arrayRemove of
+ * an absent value is a no-op). Guarded against terminal/cancelled docs so it can
+ * NEVER resurrect a completed order. Crucially, it does NOT touch the FCM guard
+ * fields, so it can never re-trigger the Firestore FCM dispatcher (which fires
+ * only on assignment). Returns "skipped" when the doc is absent or terminal.
+ */
+async function applyOfferRemoval(
+  fs:      FirebaseFirestore.Firestore,
+  orderId: string,
+  payload: DispatchProjectionPayload,
+): Promise<ApplyOutcome> {
+  const { FieldValue } = await import("firebase-admin/firestore");
+  const ref = fs.doc(`${resolveProjectionCollection()}/${orderId}`);
+
+  const driverUid = payload.driverUid;
+  if (!driverUid) {
+    // Malformed payload — nothing to remove. Permanent skip.
+    return "skipped";
+  }
+
+  let outcome: ApplyOutcome = "skipped";
+  await fs.runTransaction(async (tx) => {
+    outcome = "skipped";
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+
+    const d = snap.data() as Record<string, unknown>;
+    // No terminal/cancelled resurrection — never write a completed order.
+    if (d["status"] === "delivered" || d["status"] === "cancelled") return;
+
+    tx.update(ref, {
+      activeOfferDriverUids: FieldValue.arrayRemove(driverUid),
+      updatedAt:             FieldValue.serverTimestamp(),
+    });
+    outcome = "applied";
+  });
+
+  return outcome;
+}
+
 async function applyProjection(
   fs:  FirebaseFirestore.Firestore,
   row: DispatchProjection,
@@ -218,6 +262,8 @@ async function applyProjection(
       return applyAssignment(fs, row.orderId, row.payload);
     case "timeout":
       return applyTimeout(fs, row.orderId);
+    case "offer_removal":
+      return applyOfferRemoval(fs, row.orderId, row.payload);
     default:
       // Unknown event type — never auto-retry; surface and skip.
       logger.warn(

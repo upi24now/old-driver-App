@@ -2,7 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { Router, type Request, type Response } from "express";
 import { adminFirestore } from "../lib/firebase-admin";
 import { requireAuth } from "../lib/require-auth";
-import { pgGetOrder, pgShadowSetStatus, pgAcceptOffer, pgSetOrderStage, pgSetOrderLocation, type DeliveryStage } from "../lib/order-pg-service";
+import { pgGetOrder, pgShadowSetStatus, pgAcceptOffer, pgRejectOffer, pgTimeoutOffer, pgRemoveFromOfferSet, pgSetOrderStage, pgSetOrderLocation, type DeliveryStage } from "../lib/order-pg-service";
 import { pgCreditOrderEarning, pgUpdateDriverDailyStats } from "../lib/wallet-pg-service";
 import { db, ordersTable } from "@workspace/db";
 import { inArray, gte, and } from "drizzle-orm";
@@ -317,6 +317,94 @@ router.post("/orders/:orderId/accept", async (req: Request, res: Response) => {
   await projectAcceptToFirestore(orderId, driverUid, driverName, driverRating, driverTrips, req.log);
 
   req.log.info({ orderId, driverUid }, "[PG_ACCEPT] accepted");
+  res.json({ ok: true });
+});
+
+// ─── POST /api/orders/:orderId/reject ──────────────────────────────────────────
+//
+// Phase 5J-Tier-9B: PG-authoritative offer reject — replaces the Driver App's
+// direct Firestore arrayRemove(activeOfferDriverUids) write.
+//
+//   1. pgRejectOffer authoritatively records the rejection in PostgreSQL
+//      (order_offers.status=rejected + orders.rejected_by append) so the PG
+//      dispatcher skips this driver for the current cycle. CANONICAL state.
+//   2. pgRemoveFromOfferSet drops the driver from the active_offer_driver_uids
+//      read-model (so the PG-backed offer SSE stream removes the offer instantly)
+//      and enqueues a durable offer_removal projection that mirrors the
+//      arrayRemove into Firestore for the customer app / FCM read-model.
+//
+// Idempotent: pgRejectOffer only acts on a still-pending offer row, and
+// pgRemoveFromOfferSet only acts while the driver is still in the offer set, so a
+// repeat call is a safe no-op. Security: driverUid comes from the verified ID
+// token only — never from the body.
+router.post("/orders/:orderId/reject", async (req: Request, res: Response) => {
+  const { orderId } = req.params as { orderId: string };
+
+  const driverUid = await requireAuth(req, res);
+  if (!driverUid) return;
+
+  // ── 1. PG-authoritative reject (canonical) ───────────────────────────────────
+  const pgRes = await pgRejectOffer(orderId, driverUid);
+  if (!pgRes.ok) {
+    req.log.error({ orderId, driverUid, reason: pgRes.reason }, "[PG_REJECT] failed");
+    res.status(500).json({ ok: false, error: pgRes.reason });
+    return;
+  }
+
+  // ── 2. Read-model removal + durable Firestore projection enqueue ─────────────
+  // Runs in its own transaction AFTER the canonical reject committed. If it hits
+  // an infra error the read-model + projection were skipped; surface a 500 so the
+  // (idempotent) client retry can heal the drift instead of leaving it silent.
+  const rm = await pgRemoveFromOfferSet(orderId, driverUid);
+  if (!rm.ok) {
+    req.log.error({ orderId, driverUid }, "[PG_REJECT] read-model/projection step failed after canonical commit");
+    res.status(500).json({ ok: false, error: "projection_failed" });
+    return;
+  }
+
+  req.log.info({ orderId, driverUid, removed: rm.removed }, "[PG_REJECT] rejected");
+  res.json({ ok: true });
+});
+
+// ─── POST /api/orders/:orderId/timeout ─────────────────────────────────────────
+//
+// Phase 5J-Tier-9B: PG-authoritative offer timeout — replaces the Driver App's
+// direct Firestore arrayRemove(activeOfferDriverUids) write.
+//
+// Unlike reject, timeout does NOT add the driver to orders.rejected_by, so the
+// dispatcher MAY re-offer the same order to this driver in a later cycle.
+//
+//   1. pgTimeoutOffer marks the offer row timed_out in PostgreSQL (canonical).
+//   2. pgRemoveFromOfferSet drops the driver from the active_offer_driver_uids
+//      read-model + enqueues the durable Firestore offer_removal projection.
+//
+// Idempotent + token-derived driverUid, exactly like reject.
+router.post("/orders/:orderId/timeout", async (req: Request, res: Response) => {
+  const { orderId } = req.params as { orderId: string };
+
+  const driverUid = await requireAuth(req, res);
+  if (!driverUid) return;
+
+  // ── 1. PG-authoritative timeout (canonical) ──────────────────────────────────
+  const pgRes = await pgTimeoutOffer(orderId, driverUid);
+  if (!pgRes.ok) {
+    req.log.error({ orderId, driverUid, reason: pgRes.reason }, "[PG_TIMEOUT] failed");
+    res.status(500).json({ ok: false, error: pgRes.reason });
+    return;
+  }
+
+  // ── 2. Read-model removal + durable Firestore projection enqueue ─────────────
+  // Runs in its own transaction AFTER the canonical timeout committed. If it hits
+  // an infra error the read-model + projection were skipped; surface a 500 so the
+  // (idempotent) client retry / server-side poller can heal the drift.
+  const rm = await pgRemoveFromOfferSet(orderId, driverUid);
+  if (!rm.ok) {
+    req.log.error({ orderId, driverUid }, "[PG_TIMEOUT] read-model/projection step failed after canonical commit");
+    res.status(500).json({ ok: false, error: "projection_failed" });
+    return;
+  }
+
+  req.log.info({ orderId, driverUid, removed: rm.removed }, "[PG_TIMEOUT] timed out");
   res.json({ ok: true });
 });
 
