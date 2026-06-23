@@ -26,7 +26,7 @@
  * try/catch gymnastics.
  */
 
-import { and, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import {
   db,
   orderOffersTable,
@@ -419,6 +419,100 @@ export async function pgTimeoutOffer(
     return { ok: true };
   } catch (err) {
     logger.error({ err, orderId, driverUid }, "[pgTimeoutOffer] error");
+    return { ok: false, reason: "unknown" };
+  }
+}
+
+// ── pgSetOrderStage ───────────────────────────────────────────────────────────
+
+/** Driver-advanceable delivery stages (delivered runs through POST /complete). */
+export type DeliveryStage = "to_pickup" | "at_pickup" | "to_drop" | "at_drop";
+
+export type PgStageResult =
+  | { ok: true }
+  | { ok: false; reason: "not_found" | "forbidden" | "terminal" | "unknown" };
+
+/**
+ * Maps each driver-advanceable stage to its PG stage-timestamp column property
+ * key.  "delivered" is intentionally absent — completion runs through
+ * POST /orders/:orderId/complete (server OTP verification), never here.
+ */
+const STAGE_TIMESTAMP_KEY = {
+  to_pickup: "toPickupAt",
+  at_pickup: "atPickupAt",
+  to_drop:   "toDropAt",
+  at_drop:   "atDropAt",
+} as const satisfies Record<DeliveryStage, keyof typeof ordersTable.$inferInsert>;
+
+/**
+ * Authoritatively advance an order's delivery stage in PostgreSQL.
+ *
+ * Phase 5J-Tier-4: replaces the Driver App's direct Firestore updateOrderStage
+ * write.  PG becomes the source of truth; the route handler then mirrors the
+ * result to Firestore so the customer app keeps live tracking.
+ *
+ * Single atomic UPDATE guarded by:
+ *   • id = orderId
+ *   • driver_uid = driverUid                 — only the assigned driver may advance
+ *   • status NOT IN ('delivered','cancelled')— never resurrect a terminal order
+ *
+ * 0 rows affected → read the current row to classify the failure:
+ *   not_found — no such order
+ *   forbidden — order belongs to a different driver
+ *   terminal  — order already delivered/cancelled
+ *
+ * Idempotent: re-writing the current stage simply re-stamps its timestamp.
+ */
+export async function pgSetOrderStage(
+  orderId:   string,
+  driverUid: string,
+  stage:     DeliveryStage,
+): Promise<PgStageResult> {
+  const now = new Date();
+
+  const setValues = {
+    status:                       stage,
+    [STAGE_TIMESTAMP_KEY[stage]]: now,
+    updatedAt:                    now,
+  } as Partial<typeof ordersTable.$inferInsert>;
+
+  try {
+    const updated = await db
+      .update(ordersTable)
+      .set(setValues)
+      .where(
+        and(
+          eq(ordersTable.id, orderId),
+          eq(ordersTable.driverUid, driverUid),
+          notInArray(ordersTable.status, ["delivered", "cancelled"]),
+        ),
+      )
+      .returning({ id: ordersTable.id });
+
+    if (updated.length === 0) {
+      const existing = await db
+        .select({ driverUid: ordersTable.driverUid, status: ordersTable.status })
+        .from(ordersTable)
+        .where(eq(ordersTable.id, orderId))
+        .limit(1);
+
+      if (existing.length === 0) {
+        logger.info({ orderId, driverUid, stage }, "[pgSetOrderStage] order not found");
+        return { ok: false, reason: "not_found" };
+      }
+      const row = existing[0]!;
+      if (row.driverUid !== driverUid) {
+        logger.info({ orderId, driverUid, stage, owner: row.driverUid }, "[pgSetOrderStage] driver mismatch");
+        return { ok: false, reason: "forbidden" };
+      }
+      logger.info({ orderId, driverUid, stage, status: row.status }, "[pgSetOrderStage] order terminal");
+      return { ok: false, reason: "terminal" };
+    }
+
+    logger.info({ orderId, driverUid, stage }, "[pgSetOrderStage] stage advanced");
+    return { ok: true };
+  } catch (err) {
+    logger.error({ err, orderId, driverUid, stage }, "[pgSetOrderStage] error");
     return { ok: false, reason: "unknown" };
   }
 }

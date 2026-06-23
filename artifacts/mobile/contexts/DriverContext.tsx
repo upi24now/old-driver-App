@@ -25,7 +25,6 @@ import {
   getActiveOrdersForDriver,
   listenToAllDispatchedOrders,
   listenToActiveOrder,
-  acceptOrder,
   rejectOrder,
   timeoutOrder,
   PERMISSION_SETUP_VERSION,
@@ -44,6 +43,7 @@ import {
   type PgDriverProfile,
 } from "@/utils/profile-api";
 import { requestPayout, getWalletTransactions, getWallet } from "@/utils/wallet-api";
+import { acceptOrderViaApi } from "@/utils/delivery-api";
 export type { AcceptOrderResult };
 import { verifyOtpApi } from "@/utils/auth-api";
 import { patchDriverStatus, postDriverLocation } from "@/utils/driver-api";
@@ -1897,7 +1897,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     //    Phase 2: verifies uid is still in activeOfferDriverUids and status !== "driver_assigned",
     //    then writes status="driver_assigned", driverUid, acceptedAt, activeOfferDriverUids=[]
     //    in one atomic operation.  If another driver won the race, returns ok:false.
-    const result = await acceptOrder(ride.id, uid, profile?.name ?? null, driverRating, driverTrips);
+    const result = await acceptOrderViaApi(ride.id, profile?.name ?? null, driverRating, driverTrips);
 
     if (!result.ok) {
       // Transaction failed — do not enter active-delivery.
@@ -2166,7 +2166,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           if (activeOrdersRef.current.some((o) => o.id === ride.id)) return;
 
           // Atomic Firestore transaction — same guard as in-app acceptRide().
-          const result = await acceptOrder(ride.id, uid, profileRef.current?.name ?? null, driverRatingRef.current, driverTripsRef.current);
+          const result = await acceptOrderViaApi(ride.id, profileRef.current?.name ?? null, driverRatingRef.current, driverTripsRef.current);
 
           if (!result.ok) {
             // Another path beat us — clear the incoming ride and bail.

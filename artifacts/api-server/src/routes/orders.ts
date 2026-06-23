@@ -2,7 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { Router, type Request, type Response } from "express";
 import { adminFirestore } from "../lib/firebase-admin";
 import { requireAuth } from "../lib/require-auth";
-import { pgGetOrder, pgShadowSetStatus } from "../lib/order-pg-service";
+import { pgGetOrder, pgShadowSetStatus, pgAcceptOffer, pgSetOrderStage, type DeliveryStage } from "../lib/order-pg-service";
 import { pgCreditOrderEarning, pgUpdateDriverDailyStats } from "../lib/wallet-pg-service";
 import { db, ordersTable } from "@workspace/db";
 import { inArray, gte, and } from "drizzle-orm";
@@ -212,6 +212,192 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
     req.log.error({ err, orderId, driverUid }, "complete-order: transaction failed unexpectedly");
     res.status(500).json({ ok: false, error: "server_error" });
   }
+});
+
+// ─── POST /api/orders/:orderId/accept ──────────────────────────────────────────
+//
+// Phase 5J-Tier-4: PG-authoritative driver accept — replaces the Driver App's
+// direct Firestore acceptOrder transaction.
+//
+//   1. pgAcceptOffer atomically claims the offer + order in PostgreSQL (the new
+//      source of truth).  PostgreSQL MVCC guarantees exactly one driver wins the
+//      race; concurrent claims fail the guarded WHERE and return already_claimed.
+//   2. The result is projected to Firestore (status=driver_assigned + driver
+//      fields + activeOfferDriverUids=[]) so the Firestore FCM dispatcher stops
+//      offering the order and the customer app shows the assigned driver.
+//
+// Security: driverUid comes from the verified ID token ONLY.  driverName/Rating/
+// Trips are display-only fields echoed to the customer; they are accepted from
+// the body (non-authoritative — the same values the client previously wrote to
+// Firestore directly).
+//
+// Duplicate accept: a second call from the SAME driver for an order already
+// assigned to them returns { ok: true } (idempotent) instead of already_claimed.
+
+const ACCEPT_ACTIVE_STATUSES = new Set([
+  "driver_assigned", "accepted", "to_pickup", "at_pickup", "to_drop", "at_drop",
+]);
+
+async function projectAcceptToFirestore(
+  orderId:      string,
+  driverUid:    string,
+  driverName:   string | null,
+  driverRating: string | number,
+  driverTrips:  number,
+  log:          Request["log"],
+): Promise<void> {
+  try {
+    const fdb = await adminFirestore();
+    const ref = fdb.doc(`orders/${orderId}`);
+    await fdb.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) {
+        log.warn({ orderId }, "[PG_ACCEPT_PROJECTION] Firestore doc missing — skip mirror");
+        return;
+      }
+      const status = (snap.data() as Record<string, unknown>)["status"];
+      // Never clobber a terminal/cancelled order — cancel stays Firestore-authoritative.
+      if (status === "cancelled" || status === "delivered") {
+        log.warn({ orderId, status }, "[PG_ACCEPT_PROJECTION] terminal status — skip mirror");
+        return;
+      }
+      tx.update(ref, {
+        status:                "driver_assigned",
+        driverUid,
+        driverName:            driverName ?? "",
+        driverRating:          driverRating ?? "5.0",
+        driverTrips:           driverTrips ?? 0,
+        acceptedAt:            FieldValue.serverTimestamp(),
+        activeOfferDriverUids: [],
+        updatedAt:             FieldValue.serverTimestamp(),
+      });
+    });
+    log.info({ orderId, driverUid }, "[PG_ACCEPT_PROJECTION] mirrored to Firestore");
+  } catch (err) {
+    log.error({ err, orderId, driverUid }, "[PG_ACCEPT_PROJECTION] mirror failed — PG authoritative, continuing");
+  }
+}
+
+router.post("/orders/:orderId/accept", async (req: Request, res: Response) => {
+  const { orderId } = req.params as { orderId: string };
+
+  const driverUid = await requireAuth(req, res);
+  if (!driverUid) return;
+
+  const body         = (req.body ?? {}) as { driverName?: unknown; driverRating?: unknown; driverTrips?: unknown };
+  const driverName   = typeof body.driverName === "string" ? body.driverName : null;
+  const driverRating =
+    typeof body.driverRating === "number" || typeof body.driverRating === "string"
+      ? body.driverRating
+      : "5.0";
+  const driverTrips  = typeof body.driverTrips === "number" ? body.driverTrips : 0;
+
+  // ── 1. PG-authoritative claim ────────────────────────────────────────────────
+  const pgRes = await pgAcceptOffer(orderId, driverUid, driverName);
+
+  let accepted = pgRes.ok;
+
+  // Duplicate accept by the SAME driver → idempotent success.
+  if (!pgRes.ok && pgRes.reason === "already_claimed") {
+    const existing = await pgGetOrder(orderId);
+    if (existing && existing.driverUid === driverUid && ACCEPT_ACTIVE_STATUSES.has(existing.status)) {
+      req.log.info({ orderId, driverUid }, "[PG_ACCEPT] idempotent re-accept by same driver");
+      accepted = true;
+    }
+  }
+
+  if (!accepted) {
+    const reason = pgRes.ok ? "unknown" : pgRes.reason;
+    req.log.info({ orderId, driverUid, reason }, "[PG_ACCEPT] rejected");
+    res.json({ ok: false, reason });
+    return;
+  }
+
+  // ── 2. Firestore projection (best-effort; PG already committed) ──────────────
+  await projectAcceptToFirestore(orderId, driverUid, driverName, driverRating, driverTrips, req.log);
+
+  req.log.info({ orderId, driverUid }, "[PG_ACCEPT] accepted");
+  res.json({ ok: true });
+});
+
+// ─── PATCH /api/orders/:orderId/stage ──────────────────────────────────────────
+//
+// Phase 5J-Tier-4: PG-authoritative delivery-stage advance — replaces the
+// Driver App's direct Firestore updateOrderStage write.
+//
+//   1. pgSetOrderStage authoritatively advances the order in PostgreSQL, guarded
+//      by driver ownership and a non-terminal status check.
+//   2. The new stage is mirrored to Firestore (status + <stage>At timestamp) so
+//      the customer app's real-time tracking keeps working.
+//
+// Allowed stages: to_pickup, at_pickup, to_drop, at_drop.  "delivered" is NOT
+// accepted here — completion runs through POST /orders/:orderId/complete.
+// Security: driverUid comes from the verified ID token only.
+
+const ADVANCE_STAGES = new Set<string>(["to_pickup", "at_pickup", "to_drop", "at_drop"]);
+
+async function projectStageToFirestore(
+  orderId:   string,
+  driverUid: string,
+  stage:     string,
+  log:       Request["log"],
+): Promise<void> {
+  try {
+    const fdb = await adminFirestore();
+    const ref = fdb.doc(`orders/${orderId}`);
+    await fdb.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) {
+        log.warn({ orderId, stage }, "[PG_STAGE_PROJECTION] Firestore doc missing — skip mirror");
+        return;
+      }
+      const data = snap.data() as Record<string, unknown>;
+      if (data["driverUid"] !== driverUid) {
+        log.warn({ orderId, stage }, "[PG_STAGE_PROJECTION] driver mismatch — skip mirror");
+        return;
+      }
+      const status = data["status"];
+      if (status === "cancelled" || status === "delivered") {
+        log.warn({ orderId, stage, status }, "[PG_STAGE_PROJECTION] terminal status — skip mirror");
+        return;
+      }
+      tx.update(ref, {
+        status:         stage,
+        [`${stage}At`]: FieldValue.serverTimestamp(),
+        updatedAt:      FieldValue.serverTimestamp(),
+      });
+    });
+    log.info({ orderId, driverUid, stage }, "[PG_STAGE_PROJECTION] mirrored to Firestore");
+  } catch (err) {
+    log.error({ err, orderId, driverUid, stage }, "[PG_STAGE_PROJECTION] mirror failed — PG authoritative, continuing");
+  }
+}
+
+router.patch("/orders/:orderId/stage", async (req: Request, res: Response) => {
+  const { orderId } = req.params as { orderId: string };
+
+  const driverUid = await requireAuth(req, res);
+  if (!driverUid) return;
+
+  const { stage } = (req.body ?? {}) as { stage?: unknown };
+  if (typeof stage !== "string" || !ADVANCE_STAGES.has(stage)) {
+    res.status(400).json({ ok: false, error: "invalid_stage" });
+    return;
+  }
+
+  // ── 1. PG-authoritative stage advance ────────────────────────────────────────
+  const pgRes = await pgSetOrderStage(orderId, driverUid, stage as DeliveryStage);
+  if (!pgRes.ok) {
+    req.log.info({ orderId, driverUid, stage, reason: pgRes.reason }, "[PG_STAGE] rejected");
+    res.json({ ok: false, error: pgRes.reason });
+    return;
+  }
+
+  // ── 2. Firestore mirror (best-effort; PG already committed) ──────────────────
+  await projectStageToFirestore(orderId, driverUid, stage, req.log);
+
+  req.log.info({ orderId, driverUid, stage }, "[PG_STAGE] advanced");
+  res.json({ ok: true });
 });
 
 // ─── GET /api/orders/:orderId ──────────────────────────────────────────────────

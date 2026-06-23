@@ -20,8 +20,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useDriver } from "@/contexts/DriverContext";
 import { useEffect, useRef, useState } from "react";
-import { driverCancelOrder, updateDriverLocation, updateOrderStage, type DeliveryStage } from "@/utils/firestore";
-import { completeDelivery } from "@/utils/delivery-api";
+import { driverCancelOrder, updateDriverLocation, type DeliveryStage } from "@/utils/firestore";
+import { completeDelivery, updateOrderStageViaApi } from "@/utils/delivery-api";
 import { callSupport } from "@/utils/support";
 import {
   Alert,
@@ -701,7 +701,7 @@ export default function ActiveDeliveryScreen() {
       restored === "accepted" ||
       restored === "driver_assigned";
     if (isFreshAccept) {
-      updateOrderStage(orderId, "to_pickup").catch(console.error);
+      updateOrderStageViaApi(orderId, "to_pickup").catch(console.error);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -890,7 +890,7 @@ export default function ActiveDeliveryScreen() {
     // Write the incoming stage to Firestore before updating local state.
     // Customer app listens to orders/{orderId}.status for real-time tracking.
     if (orderId) {
-      updateOrderStage(orderId, next as DeliveryStage).catch(console.error);
+      updateOrderStageViaApi(orderId, next as DeliveryStage).catch(console.error);
     }
     setStage(next);
   }
