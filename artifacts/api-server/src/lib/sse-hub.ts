@@ -47,10 +47,12 @@ let starting = false;
 export async function startSseHub(): Promise<void> {
   if (listenClient || starting) return;
   starting = true;
+  let client: DedicatedClient | null = null;
   try {
-    const client = (await pool.connect()) as unknown as DedicatedClient;
-    listenClient = client;
+    client = (await pool.connect()) as unknown as DedicatedClient;
 
+    // Register event handlers and issue LISTEN before committing the client
+    // reference — if either step throws the finally block releases the connection.
     client.on("notification", (msg) => {
       if (!msg.payload) return;
       try {
@@ -63,15 +65,22 @@ export async function startSseHub(): Promise<void> {
 
     client.on("error", (err) => {
       logger.error({ err }, "[SSE_HUB] listen client error; reconnecting");
-      try { client.release(err); } catch { /* already released */ }
+      try { client!.release(err); } catch { /* already released */ }
       if (listenClient === client) listenClient = null;
       scheduleReconnect();
     });
 
     await client.query("LISTEN sse_event");
+
+    // Only assign to module-level reference once fully set up.
+    listenClient = client;
     logger.info("[SSE_HUB] listening on sse_event channel");
   } catch (err) {
     logger.error({ err }, "[SSE_HUB] failed to start; will retry");
+    // Release the pool connection if we acquired one but setup failed.
+    if (client && listenClient !== client) {
+      try { client.release(true); } catch { /* ignore */ }
+    }
     listenClient = null;
     scheduleReconnect();
   } finally {

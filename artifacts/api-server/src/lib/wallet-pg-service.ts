@@ -27,6 +27,7 @@ import {
   db,
   driversTable,
   driverWalletsTable,
+  ordersTable,
   payoutRequestsTable,
   walletTransactionsTable,
   type DriverWallet,
@@ -304,4 +305,183 @@ export async function pgUpdateDriverDailyStats(
     .update(driversTable)
     .set({ todayDate, todayEarnings, tripsToday, updatedAt: new Date() })
     .where(eq(driversTable.uid, driverUid));
+}
+
+// ── pgCompleteDelivery ────────────────────────────────────────────────────────
+
+/**
+ * PG-authoritative delivery completion.  Phase completion-PG-migration.
+ *
+ * Atomically within a single Drizzle transaction:
+ *   1. Reads the order row (ownership + stage validation).
+ *   2. Guard-updates orders SET status='delivered', delivered_at=now
+ *      WHERE id=? AND status='at_drop' AND driver_uid=?.
+ *      Zero rows affected → another concurrent call won the race → already_completed.
+ *   3. Reads the driver row for daily-stats accumulation / date-rollover.
+ *   4. Upserts driver_wallets: creates on first credit, increments on subsequent.
+ *      Returns the post-credit balance via RETURNING.
+ *   5. Inserts wallet_transactions credit row (idempotent via unique index
+ *      wallet_txn_order_id_type_idx — ON CONFLICT DO NOTHING).
+ *   6. Updates drivers daily stats (todayDate, todayEarnings, tripsToday).
+ *
+ * Returns:
+ *   ok:true  — all six steps committed; callers should project to Firestore.
+ *   no_pg_row — order row not found in PG; caller should fall back to Firestore.
+ *   already_completed — order is already delivered; caller returns the error.
+ *   forbidden / invalid_stage — business rule violation; caller returns the error.
+ *
+ * Never returns ok:false for infrastructure errors — those are re-thrown so the
+ * caller can surface a 500.  Business-logic failures never throw.
+ *
+ * Note on tx.rollback():  Do NOT call it.  Early returns inside the callback
+ * commit a no-op transaction (nothing was written).  Calling rollback() throws
+ * an exception that masks the real reason — see drizzle-tx-rollback memory note.
+ */
+export type PgCompleteDeliveryResult =
+  | {
+      ok:           true;
+      fareAmount:   number;
+      paymentMode:  string;
+      newBalance:   number;
+      todayEarnings: number;
+      tripsToday:   number;
+      todayDate:    string;
+    }
+  | { ok: false; reason: "already_completed" | "forbidden" | "invalid_stage" | "no_pg_row" };
+
+export async function pgCompleteDelivery(
+  orderId:   string,
+  driverUid: string,
+): Promise<PgCompleteDeliveryResult> {
+  const now   = new Date();
+  const today = now.toISOString().slice(0, 10);  // "YYYY-MM-DD"
+
+  try {
+    return await db.transaction(async (tx) => {
+      // ── 1. Read order row ─────────────────────────────────────────────────────
+      const [order] = await tx
+        .select({
+          status:      ordersTable.status,
+          driverUid:   ordersTable.driverUid,
+          fareEstimate: ordersTable.fareEstimate,
+          paymentMode: ordersTable.paymentMode,
+        })
+        .from(ordersTable)
+        .where(eq(ordersTable.id, orderId))
+        .limit(1);
+
+      if (!order) {
+        return { ok: false as const, reason: "no_pg_row" as const };
+      }
+
+      // ── 2. Pre-guard checks (fast-path meaningful errors) ─────────────────────
+      if (order.driverUid !== driverUid) {
+        return { ok: false as const, reason: "forbidden" as const };
+      }
+      if (order.status === "delivered") {
+        return { ok: false as const, reason: "already_completed" as const };
+      }
+      if (order.status !== "at_drop") {
+        return { ok: false as const, reason: "invalid_stage" as const };
+      }
+
+      // ── 3. Atomic guard update ─────────────────────────────────────────────────
+      // Only one concurrent call can succeed — the others see 0 rows affected.
+      const updated = await tx
+        .update(ordersTable)
+        .set({ status: "delivered", deliveredAt: now, updatedAt: now })
+        .where(
+          and(
+            eq(ordersTable.id,        orderId),
+            eq(ordersTable.status,    "at_drop"),
+            eq(ordersTable.driverUid, driverUid),
+          ),
+        )
+        .returning({ id: ordersTable.id });
+
+      if (updated.length === 0) {
+        // Race: a concurrent call committed delivered between our read and write.
+        return { ok: false as const, reason: "already_completed" as const };
+      }
+
+      const fareAmount   = order.fareEstimate != null ? parseFloat(order.fareEstimate) : 0;
+      const paymentMode  = order.paymentMode ?? "Cash";
+      const amountStr    = fareAmount.toFixed(2);
+      const description  = `Delivery #${orderId.slice(-6).toUpperCase()}`;
+
+      // ── 4. Upsert driver_wallets (create-or-increment) ────────────────────────
+      // Uses SQL-level arithmetic — no app-level read required.
+      const [wallet] = await tx
+        .insert(driverWalletsTable)
+        .values({
+          driverUid,
+          balance:             amountStr,
+          totalEarnings:       amountStr,
+          totalPaid:           "0",
+          completedDeliveries: 1,
+        })
+        .onConflictDoUpdate({
+          target: driverWalletsTable.driverUid,
+          set: {
+            balance:             sql`${driverWalletsTable.balance}             + ${amountStr}::numeric`,
+            totalEarnings:       sql`${driverWalletsTable.totalEarnings}       + ${amountStr}::numeric`,
+            completedDeliveries: sql`${driverWalletsTable.completedDeliveries} + 1`,
+            updatedAt:           sql`now()`,
+          },
+        })
+        .returning({ balance: driverWalletsTable.balance });
+
+      const newBalance = wallet ? parseFloat(wallet.balance) : fareAmount;
+
+      // ── 5. Insert wallet_transactions credit row (idempotent) ─────────────────
+      // The unique index wallet_txn_order_id_type_idx on (order_id, type) means a
+      // duplicate insert is silently ignored via ON CONFLICT DO NOTHING.
+      await tx
+        .insert(walletTransactionsTable)
+        .values({
+          driverUid,
+          orderId,
+          type:        "credit",
+          amount:      amountStr,
+          status:      "completed",
+          description,
+        })
+        .onConflictDoNothing();
+
+      // ── 6. Atomic driver daily-stats update ───────────────────────────────────
+      // CASE WHEN eliminates the read-modify-write race (two concurrent completions
+      // for the same driver can no longer overwrite each other under READ COMMITTED
+      // because the increment/reset is decided entirely inside the DB).
+      const [driverStats] = await tx
+        .update(driversTable)
+        .set({
+          todayEarnings: sql`CASE WHEN ${driversTable.todayDate} = ${today} THEN COALESCE(${driversTable.todayEarnings}, 0) + ${fareAmount} ELSE ${fareAmount} END`,
+          tripsToday:    sql`CASE WHEN ${driversTable.todayDate} = ${today} THEN COALESCE(${driversTable.tripsToday},    0) + 1               ELSE 1             END`,
+          todayDate:     today,
+          updatedAt:     now,
+        })
+        .where(eq(driversTable.uid, driverUid))
+        .returning({
+          todayEarnings: driversTable.todayEarnings,
+          tripsToday:    driversTable.tripsToday,
+        });
+
+      // driverStats is undefined when the driver has no PG row yet — use safe defaults.
+      const newTodayEarnings = driverStats?.todayEarnings ?? fareAmount;
+      const newTripsToday    = driverStats?.tripsToday    ?? 1;
+
+      return {
+        ok:            true as const,
+        fareAmount,
+        paymentMode,
+        newBalance,
+        todayEarnings: newTodayEarnings,
+        tripsToday:    newTripsToday,
+        todayDate:     today,
+      };
+    });
+  } catch (err) {
+    logger.error({ err, orderId, driverUid }, "[pgCompleteDelivery] transaction failed — re-throwing");
+    throw err;
+  }
 }

@@ -3,7 +3,7 @@ import { Router, type Request, type Response } from "express";
 import { adminFirestore } from "../lib/firebase-admin";
 import { requireAuth } from "../lib/require-auth";
 import { pgGetOrder, pgShadowSetStatus, pgAcceptOffer, pgRejectOffer, pgTimeoutOffer, pgRemoveFromOfferSet, pgDriverCancelOrder, pgSetOrderStage, pgSetOrderLocation, type DeliveryStage } from "../lib/order-pg-service";
-import { pgCreditOrderEarning, pgUpdateDriverDailyStats } from "../lib/wallet-pg-service";
+import { pgCreditOrderEarning, pgUpdateDriverDailyStats, pgCompleteDelivery } from "../lib/wallet-pg-service";
 import { db, ordersTable } from "@workspace/db";
 import { inArray, gte, and } from "drizzle-orm";
 
@@ -12,17 +12,109 @@ const router = Router();
 // ─── POST /api/orders/:orderId/complete ────────────────────────────────────────
 //
 // Server-side delivery completion.
-// Verifies the delivery OTP, then atomically:
-//   • marks the order status = "delivered"
-//   • creates driver_transactions/{orderId}_earn  (idempotency doc)
-//   • credits the driver wallet
+//
+// PG-AUTHORITATIVE (completion-PG-migration):
+//   The PostgreSQL transaction is now the source of truth for all business data.
+//   Firestore is written afterwards as a best-effort projection so the customer
+//   app and the FCM dispatcher keep seeing live order status.
 //
 // Security model:
 //   • driverUid comes from the verified Firebase ID token — never trusted from body
-//   • fareAmount and paymentMode come from the order document — never trusted from body
-//   • OTP is read server-side and never returned to the client
-//   • Admin SDK bypasses Firestore client rules, so the private OTP subcollection
+//   • fareAmount and paymentMode come from the PG order row — never from body
+//   • OTP is still read from the Firestore private subcollection (written by the
+//     customer app; no PG OTP store exists yet)
+//   • Admin SDK bypasses Firestore client rules so the private OTP subcollection
 //     is accessible here even when denied to the driver client SDK
+//
+// Fallback:
+//   If the order has no PG row (legacy order pre-dating PG dispatch), the handler
+//   falls back to the original Firestore transaction to guarantee no regression.
+
+// ── Firestore projection helpers (best-effort, non-blocking) ─────────────────
+//
+// Called AFTER the PG transaction commits.  All helpers swallow their own errors
+// so a Firestore outage never rolls back an already-committed PG completion.
+
+async function projectOrderDeliveredToFirestore(
+  fsDb:      FirebaseFirestore.Firestore,
+  orderId:   string,
+  driverUid: string,
+  log:       Request["log"],
+): Promise<void> {
+  try {
+    await fsDb.doc(`orders/${orderId}`).update({
+      status:      "delivered",
+      deliveredAt: FieldValue.serverTimestamp(),
+      updatedAt:   FieldValue.serverTimestamp(),
+    });
+    log.info({ orderId, driverUid }, "[PG_COMPLETE_PROJ] order delivered projected to Firestore");
+  } catch (err) {
+    log.error({ err, orderId, driverUid }, "[PG_COMPLETE_PROJ] order projection failed — PG authoritative, continuing");
+  }
+}
+
+async function projectWalletCreditToFirestore(
+  fsDb:        FirebaseFirestore.Firestore,
+  driverUid:   string,
+  orderId:     string,
+  fareAmount:  number,
+  paymentMode: string,
+  newBalance:  number,
+  log:         Request["log"],
+): Promise<void> {
+  try {
+    const walletRef = fsDb.doc(`wallets/${driverUid}`);
+    const txnRef    = fsDb.doc(`transactions/${orderId}_earn`);
+    const prevBalance = newBalance - fareAmount;
+
+    // Use FieldValue.increment so this is safe even if FS wallet diverged
+    // from PG (e.g. due to a FS-authoritative payout not yet mirrored to PG).
+    await walletRef.set({
+      balance:             FieldValue.increment(fareAmount),
+      totalEarnings:       FieldValue.increment(fareAmount),
+      completedDeliveries: FieldValue.increment(1),
+      lastUpdatedAt:       FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    // Legacy ledger entry — customer-facing wallet history; no longer authoritative.
+    await txnRef.set({
+      driverUid,
+      orderId,
+      type:          "credit",
+      amount:        fareAmount,
+      description:   `Delivery #${orderId.slice(-6).toUpperCase()}`,
+      paymentMode,
+      balanceBefore: prevBalance,
+      balanceAfter:  newBalance,
+      createdAt:     FieldValue.serverTimestamp(),
+    });
+
+    log.info({ driverUid, orderId, fareAmount }, "[PG_COMPLETE_PROJ] wallet + ledger projected to Firestore");
+  } catch (err) {
+    log.error({ err, driverUid, orderId }, "[PG_COMPLETE_PROJ] wallet projection failed — PG authoritative, continuing");
+  }
+}
+
+async function projectDriverStatsToFirestore(
+  fsDb:          FirebaseFirestore.Firestore,
+  driverUid:     string,
+  todayEarnings: number,
+  tripsToday:    number,
+  todayDate:     string,
+  log:           Request["log"],
+): Promise<void> {
+  try {
+    await fsDb.doc(`drivers/${driverUid}`).set({
+      todayEarnings,
+      tripsToday,
+      todayDate,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    log.info({ driverUid, todayEarnings, tripsToday, todayDate }, "[PG_COMPLETE_PROJ] driver stats projected to Firestore");
+  } catch (err) {
+    log.error({ err, driverUid }, "[PG_COMPLETE_PROJ] driver stats projection failed — PG authoritative, continuing");
+  }
+}
 
 router.post("/orders/:orderId/complete", async (req: Request, res: Response) => {
   const { orderId } = req.params as { orderId: string };
@@ -40,21 +132,20 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
     return;
   }
 
-  const db = await adminFirestore();
+  const fsDb = await adminFirestore();
 
-  const orderRef      = db.doc(`orders/${orderId}`);
-  const privateOtpRef = db.doc(`orders/${orderId}/private/otp`);
-  const txnRef        = db.doc(`transactions/${orderId}_earn`);        // idempotency doc
+  const orderRef      = fsDb.doc(`orders/${orderId}`);
+  const privateOtpRef = fsDb.doc(`orders/${orderId}/private/otp`);
 
-  // ── 3. Read and verify OTP before entering the transaction ───────────────────
-  // The private/otp document is immutable after creation, so reading it outside
-  // the transaction is safe and keeps the transaction's read-set smaller.
+  // ── 3. Read and verify OTP from Firestore ────────────────────────────────────
+  // OTP is written by the customer app to the Firestore private subcollection
+  // (invisible to the driver client SDK).  No PG OTP store exists yet — this
+  // read stays Firestore for now and does not affect PG authority.
   let expectedOtp: string | null = null;
   let isLegacyOtp = false;
 
   const privateOtpSnap = await privateOtpRef.get();
   if (privateOtpSnap.exists) {
-    // Phase-1 path: OTP stored in private subcollection, invisible to driver SDK
     const d = privateOtpSnap.data() as Record<string, unknown>;
     expectedOtp = typeof d["value"] === "string" ? d["value"] : null;
   } else {
@@ -75,31 +166,77 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
     return;
   }
 
-  // OTP comparison — no logging of the actual value
   if (otpEntered !== expectedOtp) {
     req.log.info({ orderId, driverUid }, "complete-order: OTP mismatch");
     res.json({ ok: false, error: "incorrect_otp" });
     return;
   }
 
-  // ── 4. Firestore transaction ──────────────────────────────────────────────────
-  const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+  // ── 4. PG-authoritative completion ────────────────────────────────────────────
+  let pgResult: Awaited<ReturnType<typeof pgCompleteDelivery>>;
+
+  try {
+    pgResult = await pgCompleteDelivery(orderId, driverUid);
+  } catch (err) {
+    // PG infra error — do NOT fall back to Firestore (that would breach PG
+    // authority: FS could mark delivered while PG remains at_drop).
+    req.log.error({ err, orderId, driverUid }, "complete-order: pgCompleteDelivery infra error — returning 500");
+    res.status(500).json({ ok: false, error: "server_error" });
+    return;
+  }
+
+  // ── 4a. PG business-logic rejection ──────────────────────────────────────────
+  if (!pgResult.ok && pgResult.reason !== "no_pg_row") {
+    req.log.info({ orderId, driverUid, reason: pgResult.reason }, "complete-order: PG rejected");
+    res.json({ ok: false, error: pgResult.reason });
+    return;
+  }
+
+  // ── 4b. PG succeeded — project to Firestore + respond ────────────────────────
+  if (pgResult.ok) {
+    req.log.info({ orderId, driverUid, isLegacyOtp }, "complete-order: PG-authoritative delivery completed");
+
+    // Best-effort Firestore projections — non-blocking, errors swallowed inside helpers.
+    void projectOrderDeliveredToFirestore(fsDb, orderId, driverUid, req.log);
+    void projectWalletCreditToFirestore(fsDb, driverUid, orderId, pgResult.fareAmount, pgResult.paymentMode, pgResult.newBalance, req.log);
+    void projectDriverStatsToFirestore(fsDb, driverUid, pgResult.todayEarnings, pgResult.tripsToday, pgResult.todayDate, req.log);
+
+    res.json({
+      ok:            true,
+      newBalance:    pgResult.newBalance,
+      todayEarnings: pgResult.todayEarnings,
+      tripsToday:    pgResult.tripsToday,
+      todayDate:     pgResult.todayDate,
+    });
+    return;
+  }
+
+  // ── 5. Firestore fallback — legacy order only (no_pg_row) ─────────────────────
+  //
+  // Only reached when pgResult.reason === "no_pg_row" (order predates PG dispatch).
+  // PG infra errors are caught above and return 500 — they do NOT reach this path.
+  req.log.info(
+    { orderId, driverUid, reason: pgResult.reason },
+    "complete-order: no PG row — falling back to Firestore transaction",
+  );
+
+  const txnRef   = fsDb.doc(`transactions/${orderId}_earn`);
+  const today    = new Date().toISOString().slice(0, 10);
 
   type TxError = Error & { code: string };
-
   function txError(code: string): TxError {
     return Object.assign(new Error(code), { code }) as TxError;
   }
 
-  let fareAmount    = 0;
-  let newBalance    = 0;
-  let newToday      = 0;
-  let newTrips      = 0;
+  let fareAmount = 0;
+  let newBalance = 0;
+  let newToday   = 0;
+  let newTrips   = 0;
 
   try {
-    await db.runTransaction(async (tx) => {
-      const driverRef = db.doc(`drivers/${driverUid}`);
-      const walletRef = db.doc(`wallets/${driverUid}`);
+    await fsDb.runTransaction(async (tx) => {
+      const driverRef = fsDb.doc(`drivers/${driverUid}`);
+      const walletRef = fsDb.doc(`wallets/${driverUid}`);
 
       const [orderSnap, txnSnap, driverSnap, walletSnap] = await Promise.all([
         tx.get(orderRef),
@@ -108,44 +245,34 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
         tx.get(walletRef),
       ]);
 
-      // ── Idempotency guard ─────────────────────────────────────────────────────
       if (txnSnap.exists) throw txError("already_completed");
-
-      // ── Order existence + ownership ───────────────────────────────────────────
       if (!orderSnap.exists) throw txError("forbidden");
 
       const order = orderSnap.data() as Record<string, unknown>;
-
       if (order["driverUid"] !== driverUid) throw txError("forbidden");
 
-      // ── Stage guard ───────────────────────────────────────────────────────────
-      req.log.info({ orderId, driverUid, orderStatus: order["status"] }, "complete-order: stage check");
+      req.log.info({ orderId, driverUid, orderStatus: order["status"] }, "complete-order: FS stage check");
       if (order["status"] !== "at_drop") throw txError("invalid_stage");
 
-      // ── Fare and payment from order doc — never from client ───────────────────
       fareAmount        = typeof order["fareEstimate"] === "number" ? order["fareEstimate"] : 0;
       const paymentMode = typeof order["paymentMode"]  === "string"  ? order["paymentMode"]  : "Cash";
 
-      // ── Wallet arithmetic (wallets/{uid} is the authoritative balance) ─────────
       const w                 = walletSnap.exists ? (walletSnap.data() as Record<string, unknown>) : {};
       const prevBalance       = (w["balance"]             as number | undefined) ?? 0;
       const prevTotalEarnings = (w["totalEarnings"]       as number | undefined) ?? 0;
       const prevCompleted     = (w["completedDeliveries"] as number | undefined) ?? 0;
       newBalance = prevBalance + fareAmount;
 
-      // ── Daily stats arithmetic (driver doc — reset if date rolled over) ────────
       const d         = driverSnap.exists ? (driverSnap.data() as Record<string, unknown>) : {};
       const isSameDay = d["todayDate"] === today;
       newToday = ((isSameDay ? (d["todayEarnings"] as number | undefined) : undefined) ?? 0) + fareAmount;
       newTrips = ((isSameDay ? (d["tripsToday"]    as number | undefined) : undefined) ?? 0) + 1;
 
-      // ── Writes ────────────────────────────────────────────────────────────────
       tx.update(orderRef, {
         status:      "delivered",
         deliveredAt: FieldValue.serverTimestamp(),
       });
 
-      // Wallet document — balance, totalEarnings, completedDeliveries
       tx.set(walletRef, {
         balance:             newBalance,
         totalEarnings:       prevTotalEarnings + fareAmount,
@@ -153,7 +280,6 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
         lastUpdatedAt:       FieldValue.serverTimestamp(),
       }, { merge: true });
 
-      // Driver document — daily stats only (no balance fields)
       tx.set(driverRef, {
         todayEarnings: newToday,
         tripsToday:    newTrips,
@@ -161,7 +287,6 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
         updatedAt:     FieldValue.serverTimestamp(),
       }, { merge: true });
 
-      // Transaction ledger entry
       tx.set(txnRef, {
         driverUid,
         orderId,
@@ -175,27 +300,17 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
       });
     });
 
-    req.log.info(
-      { orderId, driverUid, isLegacyOtp },
-      "complete-order: delivery completed and wallet credited",
-    );
+    req.log.info({ orderId, driverUid, isLegacyOtp }, "complete-order: FS delivery completed (fallback path)");
 
-    // ── PG shadow write: mirror delivered status (non-blocking) ──────────────
+    // PG shadow writes (non-blocking) — mirror the FS result into PG
     void pgShadowSetStatus(orderId, "delivered")
       .then(() => req.log.info({ orderId, driverUid }, "[PG_SHADOW_STATUS] delivered"))
       .catch((e) => req.log.error({ err: e, orderId }, "[PG_SHADOW_STATUS] delivered error — continuing"));
 
-    // ── PG shadow write: wallet credit (non-blocking) ─────────────────────────
-    void pgCreditOrderEarning(
-      driverUid,
-      orderId,
-      fareAmount,
-      `Delivery #${orderId.slice(-6).toUpperCase()}`,
-    )
+    void pgCreditOrderEarning(driverUid, orderId, fareAmount, `Delivery #${orderId.slice(-6).toUpperCase()}`)
       .then(() => req.log.info({ orderId, driverUid, fareAmount }, "[PG_WALLET_CREDIT]"))
       .catch((e) => req.log.error({ err: e, orderId, driverUid }, "[PG_WALLET_CREDIT] shadow write failed — non-blocking"));
 
-    // ── PG shadow write: driver daily stats (non-blocking) ────────────────────
     void pgUpdateDriverDailyStats(driverUid, today, newToday, newTrips)
       .then(() => req.log.info({ driverUid, today, todayEarnings: newToday, tripsToday: newTrips }, "[PG_DRIVER_STATS]"))
       .catch((e) => req.log.error({ err: e, driverUid }, "[PG_DRIVER_STATS] shadow write failed — non-blocking"));

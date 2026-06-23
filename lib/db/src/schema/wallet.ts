@@ -5,6 +5,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
@@ -73,6 +74,12 @@ export const walletTransactionsTable = pgTable(
   (t) => [
     index("wallet_transactions_driver_uid_idx").on(t.driverUid),
     index("wallet_transactions_created_at_idx").on(t.createdAt),
+    // Idempotency guard for order credit rows.  NULL order_id rows (payouts,
+    // adjustments) are excluded from this constraint because PostgreSQL treats
+    // NULL != NULL in unique indexes — multiple NULL-orderId rows are fine.
+    // uniqueIndex uses the Drizzle/PG unique-index path; ON CONFLICT DO NOTHING
+    // in pgCompleteDelivery references this implicitly.
+    uniqueIndex("wallet_txn_order_id_type_idx").on(t.orderId, t.type),
   ],
 );
 
