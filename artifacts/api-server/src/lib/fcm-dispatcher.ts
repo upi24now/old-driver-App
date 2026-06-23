@@ -46,6 +46,7 @@ import { eq } from "drizzle-orm";
 import { db as pgDb, driversTable } from "@workspace/db";
 import { adminFirestore, adminMessaging } from "./firebase-admin";
 import { logger } from "./logger";
+import { pgClaimShadowValidate } from "./pg-claim-shadow";
 
 const CHANNEL_ORDERS = "incoming_orders_v2";
 
@@ -261,6 +262,8 @@ async function sendOrderFcm(
     logger.info({ orderId, instanceId: INSTANCE_ID }, "[FCM dispatcher] Order already claimed or dispatched — skipping");
     return;
   }
+  // Claim moment, captured for the read-only PG claim shadow validator below.
+  const claimedAtMs = Date.now();
 
   const notifBody = order.earning !== "0" && order.distanceKm !== "0"
     ? `₹${order.earning} • ${order.distanceKm} km — ${order.customer || "New order"}`
@@ -440,6 +443,27 @@ async function sendOrderFcm(
     // server restart where the fast-path guard reads snapshot data; the claim
     // transaction provides the true safety net.
     logger.warn({ err, orderId }, "[FCM dispatcher] Failed to write fcmDispatchedAt after successful send");
+  }
+
+  // ── Phase 5C-C: read-only PG claim shadow validation (additive) ──────────────
+  // Fire-and-forget, never throws, never writes/sends — purely compares the
+  // Firestore claim/send decision against the reproduced PG claim logic and logs
+  // the verdict. Does NOT affect the claim, the send, or the dispatcher.
+  const successById = new Map(successes.map((s) => [s.uid, s.messageId]));
+  for (const driverUid of targetUids) {
+    const messageId = successById.get(driverUid) ?? null;
+    // Token resolved iff the send did not fail with the "No fcmToken" sentinel.
+    const tokenPresent = !failures.some((f) => f.uid === driverUid && f.error === "No fcmToken");
+    void pgClaimShadowValidate(orderId, {
+      orderId,
+      claimed:               true,
+      claimedBy:             INSTANCE_ID,
+      claimedAtMs,
+      messageId,
+      activeOfferDriverUids: targetUids,
+      targetDriverUid:       driverUid,
+      tokenPresent,
+    });
   }
 }
 
