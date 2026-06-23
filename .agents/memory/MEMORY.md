@@ -10,6 +10,7 @@
 - [Expo Router typed routes](expo-router-typed-routes.md) — new screen files require manual update to .expo/types/router.d.ts (hrefInputParams, hrefOutputParams, href) until dev server regenerates.
 - [Firebase-to-PG migration patterns](firebase-to-pg-migration.md) — RoutingDoc structural type, setKycDocuments cast, subscription remaining-dep pattern for Step 1.
 - [PG dispatcher dry-run](pg-dispatcher-dry-run.md) — pg_shadow read-only loop; never write/FCM; Firestore authoritative all modes; chooseNextDriver round-robin parity contract.
+- [Artifact workflow env injection](artifact-workflow-env-injection.md) — can't override artifact-managed workflow command/env; use split-process harness to runtime-test env-gated modes (never 2nd full server).
 - [PG FCM claim shadow (5C-C)](pg-claim-shadow.md) — claim-result fields not live-mirrored; reproduce decision from order_offers + token; normalizeForLive only when no prior claim.
 - [Drizzle tx.rollback() pitfall](drizzle-tx-rollback.md) — tx.rollback() throws → masks reason as "unknown"; on a guarded 0-row miss return directly to commit a no-op tx.
 - [PG dispatch write services (5E-A)](pg-dispatch-service.md) — atomic guarded assign/claim/return + read-only eligible/expired; NOT live-wired; no Firestore/FCM.
