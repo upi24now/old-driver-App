@@ -459,7 +459,10 @@ router.patch("/drivers/:uid/status", async (req, res) => {
 /**
  * POST /api/drivers/:uid/location
  *
- * Records the driver's current GPS coordinates in Firestore.
+ * Phase 5J-Final: PG-authoritative driver location update.
+ * Records the driver's current GPS coordinates in PostgreSQL (canonical).
+ * Firestore driver-doc update is a best-effort projection for customer
+ * live tracking — it never affects the response.
  * Called every ~15 s while the driver is online (foreground only).
  *
  * Authentication:
@@ -522,50 +525,50 @@ router.post("/drivers/:uid/location", async (req, res) => {
     return;
   }
 
+  // ── Phase 5J-Final: PG-authoritative write — gates the 200 response ─────────
   try {
-    const fsDb = await adminFirestore();
-    const update: Record<string, unknown> = {
-      latitude,
-      longitude,
-      isOnline,
-      lastSeenAt: Date.now(),
-    };
-    if (typeof accuracy === "number") update["accuracy"] = accuracy;
+    const updated = await db
+      .update(driversTable)
+      .set({
+        latitude,
+        longitude,
+        ...(typeof accuracy === "number" ? { accuracy } : {}),
+        isOnline,
+        lastSeenAt: new Date(),
+        updatedAt:  new Date(),
+      })
+      .where(eq(driversTable.uid, uid))
+      .returning({ uid: driversTable.uid });
 
-    await fsDb.collection("drivers").doc(uid).update(update);
-    req.log.info({ uid, latitude, longitude, isOnline }, "driver location updated");
+    if (updated.length === 0) {
+      req.log.warn({ uid }, "[PG_DRIVER_LOCATION] no drivers row — location not saved to PG");
+    } else {
+      req.log.info({ uid, latitude, longitude, isOnline }, "[PG_DRIVER_LOCATION] saved");
+    }
   } catch (err) {
-    req.log.error({ err, uid }, "location: Firestore update failed");
+    req.log.error({ err, uid }, "location: PG update failed");
     res.status(500).json({ ok: false, error: "server_error" });
     return;
   }
 
-  // ── Phase 4D — mirror the latest location into PostgreSQL (shadow) ─────────
-  // Firestore stays the source of truth for customer live tracking. Fully
-  // non-blocking: a PG failure must never affect the Firestore result or the
-  // response, and nothing reads these columns yet.
+  // ── Firestore projection (best-effort; PG already committed) ─────────────
+  // Mirrors the location into the Firestore driver doc so the customer app's
+  // live-tracking pin stays current. A projection failure must never affect
+  // the PG result or the response.
   void (async () => {
     try {
-      const mirrored = await db
-        .update(driversTable)
-        .set({
-          latitude,
-          longitude,
-          ...(typeof accuracy === "number" ? { accuracy } : {}),
-          isOnline,
-          lastSeenAt: new Date(),
-          updatedAt:  new Date(),
-        })
-        .where(eq(driversTable.uid, uid))
-        .returning({ uid: driversTable.uid });
-
-      if (mirrored.length === 0) {
-        req.log.warn({ uid }, "[PG_DRIVER_LOCATION_FALLBACK] no drivers row — location not mirrored to PG");
-      } else {
-        req.log.info({ uid, latitude, longitude, isOnline }, "[PG_DRIVER_LOCATION_SAVE]");
-      }
+      const fsDb = await adminFirestore();
+      const fsUpdate: Record<string, unknown> = {
+        latitude,
+        longitude,
+        isOnline,
+        lastSeenAt: Date.now(),
+      };
+      if (typeof accuracy === "number") fsUpdate["accuracy"] = accuracy;
+      await fsDb.collection("drivers").doc(uid).update(fsUpdate);
+      req.log.info({ uid }, "[FS_PROJECTION] driver location projected");
     } catch (err) {
-      req.log.warn({ err, uid }, "[PG_DRIVER_LOCATION_FALLBACK] PG mirror failed");
+      req.log.warn({ err, uid }, "[FS_PROJECTION] driver location — non-blocking");
     }
   })();
 
