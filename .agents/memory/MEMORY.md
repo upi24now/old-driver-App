@@ -14,6 +14,7 @@
 - [PG dispatcher verify-only (5F)](pg-dispatcher-verify-only.md) — pg-mode dispatcher; verifyOnly gate logs intended writes vs commits; startup matrix; seed isolated PG-only rows for deterministic counts.
 - [PG dispatch write/FCM gates (5G-A)](pg-dispatch-write-gates.md) — DISPATCH_SOURCE=pg + ALLOW_PG_DISPATCH_WRITES + PG_FCM_SEND_ENABLED (strict "true"); runtime forces verify-only (no throw); shadow-writer independent of rollback.
 - [PG test-only write authority (5G-B)](pg-test-write-authority.md) — prove real commits by calling services directly on TEST_PG_DISPATCH_ ids (never runPgDispatcherPass); non-test checksum can false-FAIL under live shadow-writer, never false-PASS.
+- [PG dispatch authority bridge (5H)](pg-dispatch-bridge.md) — PG-authoritative flip needs a bridge (Firestore is live read/notify; customer app external). Recommended: PG decides + projects to Firestore. Blockers: PG ingress, full cycle feedback, durable projector.
 - [PG FCM claim shadow (5C-C)](pg-claim-shadow.md) — claim-result fields not live-mirrored; reproduce decision from order_offers + token; normalizeForLive only when no prior claim.
 - [Drizzle tx.rollback() pitfall](drizzle-tx-rollback.md) — tx.rollback() throws → masks reason as "unknown"; on a guarded 0-row miss return directly to commit a no-op tx.
 - [PG dispatch write services (5E-A)](pg-dispatch-service.md) — atomic guarded assign/claim/return + read-only eligible/expired; NOT live-wired; no Firestore/FCM.
