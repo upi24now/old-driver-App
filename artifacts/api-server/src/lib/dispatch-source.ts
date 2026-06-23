@@ -32,6 +32,63 @@ function isDispatchSource(v: string): v is DispatchSource {
   return (DISPATCH_SOURCES as readonly string[]).includes(v);
 }
 
+// ── PG write/FCM safety gates (Phase 5G-A) ───────────────────────────────────
+// Two independent boolean env guards that must BOTH be opened, on top of
+// DISPATCH_SOURCE=pg, before the PG dispatcher can commit writes or send FCM.
+// Strict parsing: a gate is open ONLY when the trimmed, lowercased value is
+// exactly "true". Anything else (missing, "1", "yes", "false", typo) ⇒ closed.
+// Closed-by-default is the safe state.
+
+/** Resolved state of the PG write/FCM safety gates. */
+export interface PgWriteGates {
+  /** ALLOW_PG_DISPATCH_WRITES === "true" — permits PG assign/timeout/claim commits. */
+  allowPgDispatchWrites: boolean;
+  /** PG_FCM_SEND_ENABLED === "true" — permits PG-originated FCM sends (only meaningful when writes are allowed). */
+  pgFcmSendEnabled: boolean;
+}
+
+/** Default — both gates CLOSED. Used wherever gates are not explicitly supplied. */
+export const CLOSED_PG_WRITE_GATES: PgWriteGates = {
+  allowPgDispatchWrites: false,
+  pgFcmSendEnabled: false,
+};
+
+function isFlagTrue(name: string): boolean {
+  return (process.env[name]?.trim().toLowerCase() ?? "") === "true";
+}
+
+/**
+ * Read the PG write/FCM safety gates from the environment. Pure read — no side
+ * effects. Both default to false (closed) when unset/invalid.
+ */
+export function resolvePgWriteGates(): PgWriteGates {
+  return {
+    allowPgDispatchWrites: isFlagTrue("ALLOW_PG_DISPATCH_WRITES"),
+    pgFcmSendEnabled: isFlagTrue("PG_FCM_SEND_ENABLED"),
+  };
+}
+
+/**
+ * Defense-in-depth gate for the write path. Given the requested verify-only flag
+ * and the resolved gates, decide the EFFECTIVE verify-only state.
+ *
+ * Safer-option policy (documented choice for Phase 5G-A): if a caller requests
+ * writes (verifyOnly=false) but ALLOW_PG_DISPATCH_WRITES is not "true", we DO
+ * NOT crash — we FORCE verifyOnly=true and report `forced`. Crashing would take
+ * down the process that also runs the always-authoritative Firestore dispatcher;
+ * silently degrading to verify-only keeps Firestore serving while guaranteeing
+ * no PG writes ever escape an un-gated environment.
+ */
+export function resolveEffectiveVerifyOnly(
+  requestedVerifyOnly: boolean,
+  gates: PgWriteGates,
+): { verifyOnly: boolean; forced: boolean } {
+  if (!requestedVerifyOnly && !gates.allowPgDispatchWrites) {
+    return { verifyOnly: true, forced: true };
+  }
+  return { verifyOnly: requestedVerifyOnly, forced: false };
+}
+
 /**
  * Reports whether the runtime prerequisites for the PG dispatch write services
  * are present. The service functions themselves are statically compiled into the
@@ -82,24 +139,56 @@ export interface DispatchStartupPlan {
   startPgDispatcher: boolean;
   /**
    * Whether the PG dispatcher runs in VERIFY_ONLY mode (logs intended writes,
-   * commits nothing, sends no FCM). Always true in Phase 5F — no cutover yet.
+   * commits nothing, sends no FCM). True unless DISPATCH_SOURCE=pg AND the
+   * ALLOW_PG_DISPATCH_WRITES gate is open. Default config ⇒ always true.
    */
   pgDispatcherVerifyOnly: boolean;
+  /**
+   * Whether PG-originated FCM sends are permitted (PG_FCM_SEND_ENABLED gate).
+   * Only meaningful when writes are allowed; the dispatcher still never sends
+   * FCM while verify-only.
+   */
+  pgFcmSendEnabled: boolean;
 }
 
 /**
- * Pure mapping from the resolved dispatch source to what should start at boot.
- * Firestore always starts. pg_shadow adds the read-only dry-run; pg adds the PG
- * dispatcher pinned to VERIFY_ONLY mode.
+ * Pure mapping from the resolved dispatch source + safety gates to what should
+ * start at boot. Firestore ALWAYS starts. pg_shadow adds the read-only dry-run.
+ * pg adds the PG dispatcher, which stays VERIFY_ONLY unless the
+ * ALLOW_PG_DISPATCH_WRITES gate is open (closed-by-default).
  */
-export function planDispatchStartup(value: DispatchSource): DispatchStartupPlan {
+export function planDispatchStartup(
+  value: DispatchSource,
+  gates: PgWriteGates = CLOSED_PG_WRITE_GATES,
+): DispatchStartupPlan {
+  const startPgDispatcher = value === "pg";
+  // Verify-only unless we are in pg mode AND writes are explicitly allowed.
+  const pgDispatcherVerifyOnly = !(startPgDispatcher && gates.allowPgDispatchWrites);
   return {
     startFirestore: true,
     startPgDryRun: value === "pg_shadow",
-    startPgDispatcher: value === "pg",
-    // Phase 5F: PG dispatcher is always verify-only. No authority cutover yet.
-    pgDispatcherVerifyOnly: true,
+    startPgDispatcher,
+    pgDispatcherVerifyOnly,
+    pgFcmSendEnabled: gates.pgFcmSendEnabled,
   };
+}
+
+/**
+ * Emit the startup write-guard log. Logging only — does not change behavior.
+ * `writesAllowed` is the inverse of the effective verify-only state.
+ */
+export function logPgWriteGuard(plan: DispatchStartupPlan): void {
+  const writesAllowed = plan.startPgDispatcher && !plan.pgDispatcherVerifyOnly;
+  const log = writesAllowed ? logger.warn.bind(logger) : logger.info.bind(logger);
+  log(
+    {
+      writesAllowed,
+      startPgDispatcher: plan.startPgDispatcher,
+      pgDispatcherVerifyOnly: plan.pgDispatcherVerifyOnly,
+      pgFcmSendEnabled: plan.pgFcmSendEnabled,
+    },
+    `[PG_DISPATCH_WRITE_GUARD] writesAllowed=${writesAllowed}`,
+  );
 }
 
 /**

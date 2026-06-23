@@ -39,6 +39,7 @@ import {
   pgReturnOrderToPool,
 } from "./pg-dispatch-service";
 import { chooseNextDriver } from "./pg-dispatcher-dry-run";
+import { resolvePgWriteGates, resolveEffectiveVerifyOnly } from "./dispatch-source";
 
 // Mirrors POOL_STATUSES in round-robin-dispatcher.ts / pg-dispatch-service.ts.
 const POOL_STATUSES = ["searching", "pending"] as const;
@@ -70,8 +71,22 @@ export interface PgDispatcherPassResult {
  * logged as [PG_VERIFY_ERROR] and the pass continues.
  */
 export async function runPgDispatcherPass(
-  verifyOnly: boolean,
+  requestedVerifyOnly: boolean,
 ): Promise<PgDispatcherPassResult> {
+  // ── Hard safety gate (Phase 5G-A) ──────────────────────────────────────────
+  // Re-resolve the env gates every pass so the write path can never run unless
+  // ALLOW_PG_DISPATCH_WRITES is open — even if a caller passed verifyOnly=false
+  // directly. Safer option: force verify-only rather than throw (keeps the
+  // co-hosted Firestore dispatcher alive). FCM is independently gated below.
+  const gates = resolvePgWriteGates();
+  const { verifyOnly, forced } = resolveEffectiveVerifyOnly(requestedVerifyOnly, gates);
+  if (forced) {
+    logger.warn(
+      { requestedVerifyOnly, allowPgDispatchWrites: gates.allowPgDispatchWrites },
+      "[PG_DISPATCH_WRITE_GUARD] writes requested but ALLOW_PG_DISPATCH_WRITES is not true — forcing verifyOnly=true (no PG writes)",
+    );
+  }
+
   const result: PgDispatcherPassResult = {
     assign: 0,
     timeout: 0,
@@ -200,9 +215,21 @@ export async function runPgDispatcherPass(
       const claimed = await pgClaimFcmDispatch(order.id, INSTANCE_ID);
       if (claimed.ok) {
         result.claim += 1;
-        // FCM push wiring is intentionally deferred to a later phase — the
-        // claim/send separation mirrors the Firestore flow and Phase 5F does
-        // not send any FCM from PG.
+        // Second hard gate (Phase 5G-A): even with writes allowed, FCM is only
+        // permitted when PG_FCM_SEND_ENABLED is open. FCM push wiring is itself
+        // deferred to a later phase, so nothing is sent here regardless — but the
+        // gate is enforced now so the send path can never open by accident.
+        if (gates.pgFcmSendEnabled) {
+          logger.info(
+            { orderId: order.id, driverUid: chosen.uid },
+            "[PG_DISPATCH_WRITE_GUARD] FCM send permitted by PG_FCM_SEND_ENABLED — send wiring deferred, nothing sent",
+          );
+        } else {
+          logger.warn(
+            { orderId: order.id, driverUid: chosen.uid },
+            "[PG_DISPATCH_WRITE_GUARD] FCM send blocked — PG_FCM_SEND_ENABLED is not true",
+          );
+        }
       } else {
         logger.warn(
           { orderId: order.id, reason: claimed.reason },
@@ -224,9 +251,11 @@ export async function runPgDispatcherPass(
 let dispatcherTimer: ReturnType<typeof setInterval> | null = null;
 
 /**
- * Start the PG dispatcher loop. Called ONLY when DISPATCH_SOURCE=pg. In Phase 5F
- * verifyOnly is always true, so this commits nothing and sends no FCM — it only
- * logs intended writes. Runs one pass immediately, then polls on an interval.
+ * Start the PG dispatcher loop. Called ONLY when DISPATCH_SOURCE=pg. `verifyOnly`
+ * comes from the startup plan (true unless ALLOW_PG_DISPATCH_WRITES is open).
+ * Each pass additionally re-checks the env gate and forces verify-only if writes
+ * are not explicitly allowed, so this can never commit/send by accident. Runs one
+ * pass immediately, then polls on an interval.
  */
 export async function startPgDispatcher(verifyOnly: boolean): Promise<void> {
   if (dispatcherTimer) {

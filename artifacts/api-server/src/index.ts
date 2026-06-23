@@ -17,7 +17,12 @@ import { logger } from "./lib/logger";
 import { startFcmDispatcher } from "./lib/fcm-dispatcher";
 import { startRoundRobinDispatcher } from "./lib/round-robin-dispatcher";
 import { startPgShadowWriter } from "./lib/pg-shadow-writer";
-import { logDispatchSource, planDispatchStartup } from "./lib/dispatch-source";
+import {
+  logDispatchSource,
+  planDispatchStartup,
+  resolvePgWriteGates,
+  logPgWriteGuard,
+} from "./lib/dispatch-source";
 import { startPgDispatcherDryRun } from "./lib/pg-dispatcher-dry-run";
 import { startPgDispatcher } from "./lib/pg-dispatcher";
 
@@ -85,7 +90,11 @@ logger.info(
 // starts and remains authoritative; pg_shadow additionally runs a read-only PG
 // dry-run, and pg only logs a warning (PG primary not implemented yet).
 const dispatchSource = logDispatchSource();
-const dispatchPlan = planDispatchStartup(dispatchSource.value);
+const pgWriteGates = resolvePgWriteGates();
+const dispatchPlan = planDispatchStartup(dispatchSource.value, pgWriteGates);
+// Phase 5G-A: surface the resolved write-guard state at startup. Logging only —
+// no PG writes/FCM can occur unless the gates below are explicitly opened.
+logPgWriteGuard(dispatchPlan);
 
 if (!rawPort) {
   throw new Error(

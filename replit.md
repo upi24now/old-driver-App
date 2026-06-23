@@ -40,6 +40,12 @@ A driver-facing mobile app for bike, auto, and truck courier delivery partners i
 - **FCM via custom Express server** — Firebase Admin SDK in `api-server`; channel ID `incoming_orders_v2` is fixed and must not change.
 - **Ringtone/vibration pattern** `[0, 1200, 200, 1200, 200, 1200, 500]` appears in 5 locations — never alter without updating all.
 - **Map destination marker** stays `#FF3B30` (Apple/Google Maps red) — universal convention, intentionally outside the token system.
+- **Dispatch source migration (Firestore → PG)** — `DISPATCH_SOURCE` selects the dispatcher: `firestore` (default), `pg_shadow` (Firestore authoritative + read-only PG dry-run), `pg` (Firestore authoritative + PG dispatcher). The Firestore dispatcher ALWAYS runs and stays authoritative in every mode.
+  - **Rollback switch** — setting `DISPATCH_SOURCE=firestore` (or unsetting it) instantly reverts to Firestore-only dispatcher behavior on next restart; no PG dispatcher starts and no PG dispatcher writes/FCM can occur. This is the documented kill switch. Note: the **PG shadow-writer** (mirrors mobile-initiated Firestore events into PG) runs independently in ALL modes and is NOT a dispatcher; the rollback controls dispatcher authority only, not shadow mirroring.
+  - **Two hard write/FCM safety gates** (Phase 5G-A, both closed-by-default, strict — only exact `"true"` opens):
+    - `ALLOW_PG_DISPATCH_WRITES=true` — required for the PG dispatcher to commit any assign/timeout/claim write. Without it, `DISPATCH_SOURCE=pg` still runs VERIFY_ONLY (logs intended writes, commits nothing, sends no FCM).
+    - `PG_FCM_SEND_ENABLED=true` — required for the PG dispatcher to send FCM, even when writes are allowed.
+  - **Safer-option policy** — if the dispatcher is ever asked to write (`verifyOnly=false`) while `ALLOW_PG_DISPATCH_WRITES` is not `"true"`, it FORCES verify-only and logs `[PG_DISPATCH_WRITE_GUARD]` rather than throwing. Crashing would also kill the co-hosted authoritative Firestore dispatcher; degrading to verify-only keeps Firestore serving while guaranteeing no un-gated PG writes. Startup logs `[PG_DISPATCH_WRITE_GUARD] writesAllowed=false|true`.
 
 ## Product
 
