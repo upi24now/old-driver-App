@@ -635,25 +635,6 @@ export async function fetchOrderById(orderId: string): Promise<OrderDoc | null> 
   }
 }
 
-export function listenToDispatchedOrder(
-  uid:     string,
-  onOrder: (order: OrderDoc | null) => void,
-): () => void {
-  // Phase 2: query by activeOfferDriverUids membership, not driverUid assignment.
-  const q = query(
-    collection(db, "orders"),
-    where("activeOfferDriverUids", "array-contains", uid),
-  );
-  return onSnapshot(q, (snap) => {
-    if (snap.empty) {
-      onOrder(null);
-    } else {
-      const docSnap = snap.docs[0]!;
-      onOrder({ id: docSnap.id, ...docSnap.data() } as OrderDoc);
-    }
-  });
-}
-
 /**
  * Active statuses used for both Firestore-level filtering and any local guards.
  * Stored as an array so it can be passed directly to Firestore's `where("status","in",…)`.

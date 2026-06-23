@@ -383,9 +383,9 @@ export default function RideRequestScreen() {
   }, [seconds]);
 
   // Auto-dismiss if the order is cancelled before the driver accepts.
-  // listenToDispatchedOrder sets incomingRide → null when the order disappears
-  // from the dispatched query (status changed externally). Only dismiss if we
-  // actually had a ride to avoid triggering on initial mount.
+  // DriverContext's offer stream (PG-backed SSE) sets incomingRide → null when
+  // the order leaves this driver's offer set (status changed externally). Only
+  // dismiss if we actually had a ride to avoid triggering on initial mount.
   //
   // didAcceptRef guards against a race: acceptRide() sets incomingRide → null
   // synchronously, which would also trigger this dismiss — navigating back to

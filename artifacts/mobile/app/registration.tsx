@@ -19,7 +19,7 @@ import { RazorpayWebCheckout, type RazorpayCheckoutParams } from "@/components/R
 import { useDriver } from "@/contexts/DriverContext";
 import { registerDriverKeys, submitDocumentsToPostgres } from "@/utils/driver-api";
 import { firebaseAuth } from "@/utils/firebase";
-import { getOnboardingFeeConfig } from "@/utils/firestore";
+import { getOnboardingFeeConfig } from "@/utils/config-api";
 import { patchDriverProfile, patchDriverVehicle } from "@/utils/profile-api";
 import { uploadDocumentImage, isRemoteUrl } from "@/utils/storage";
 import { Feather } from "@expo/vector-icons";
