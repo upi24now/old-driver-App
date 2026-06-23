@@ -28,10 +28,8 @@ import {
   acceptOrder,
   rejectOrder,
   timeoutOrder,
-  getWalletDoc,
   PERMISSION_SETUP_VERSION,
   type DriverDoc,
-  type WalletDoc,
   type OrderDoc,
   type OrderStatus,
   type AcceptOrderResult,
@@ -45,7 +43,7 @@ import {
   ensureDriverSignup,
   type PgDriverProfile,
 } from "@/utils/profile-api";
-import { requestPayout, getWalletTransactions } from "@/utils/wallet-api";
+import { requestPayout, getWalletTransactions, getWallet } from "@/utils/wallet-api";
 export type { AcceptOrderResult };
 import { verifyOtpApi } from "@/utils/auth-api";
 import { patchDriverStatus, postDriverLocation } from "@/utils/driver-api";
@@ -676,9 +674,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
               setTripsToday   (sameDay ? (pgProfile.tripsToday    ?? 0) : 0);
               setDriverRating(String(pgProfile.rating ?? 5.0));
             }
-            // Wallet doc — fire-and-forget (Firestore cold-start must NOT block navigation)
+            // Wallet — fire-and-forget REST read (must NOT block navigation)
             console.log("[PERF] wallet_fetch_start");
-            void getWalletDoc(user.uid).then((walletDoc) => {
+            void getWallet(user.uid).then((walletDoc) => {
               console.log("[PERF] wallet_fetch_end");
               if (!walletDoc) return;
               setBalance(walletDoc.balance ?? 0);
@@ -1309,8 +1307,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           setTripsToday   (sameDay ? (pg2?.tripsToday    ?? 0) : 0);
           setDriverRating(String(pg2?.rating ?? 5.0));
         }
-        // Wallet — fire-and-forget (must NOT block OTP→next-screen routing)
-        void getWalletDoc(uid).then((walletDoc) => {
+        // Wallet — fire-and-forget REST read (must NOT block OTP→next-screen routing)
+        void getWallet(uid).then((walletDoc) => {
           if (!walletDoc) return;
           setBalance(walletDoc.balance ?? 0);
           setLifetimeEarnings(walletDoc.totalEarnings ?? 0);
@@ -1388,9 +1386,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           setTripsToday   (sameDay ? (pgProfile.tripsToday    ?? 0) : 0);
           setDriverRating(String(pgProfile.rating ?? 5.0));
         }
-        // Wallet — fire-and-forget (Firestore must NOT block OTP→next-screen routing)
+        // Wallet — fire-and-forget REST read (must NOT block OTP→next-screen routing)
         console.log("[PERF] wallet_fetch_start confirmOtp_pg");
-        void getWalletDoc(uid).then((walletDoc) => {
+        void getWallet(uid).then((walletDoc) => {
           console.log("[PERF] wallet_fetch_end confirmOtp_pg");
           if (!walletDoc) return;
           setBalance(walletDoc.balance ?? 0);
@@ -1744,7 +1742,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   };
 
   /**
-   * Reconcile local wallet state with Firestore (called after the server
+   * Reconcile local wallet state via REST (called after the server
    * transaction confirms).  Silently no-ops on network errors.
    */
   const refreshWallet = async (): Promise<void> => {
@@ -1752,7 +1750,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     try {
       const [pgDoc, w] = await Promise.all([
         getDriverProfile(),
-        getWalletDoc(driverUid),
+        getWallet(driverUid),
       ]);
       // Apply wallet totals independently — a missing/unreachable driver doc
       // must not prevent the balance from being updated (e.g. after a payout).

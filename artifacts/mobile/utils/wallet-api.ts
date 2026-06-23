@@ -18,6 +18,49 @@ export type RequestPayoutResult =
   | { ok: false; error: string };
 
 /**
+ * Wallet summary as returned by GET /api/wallet/:uid.
+ *
+ * Field names mirror the legacy Firestore WalletDoc so call sites can swap the
+ * data source without reshaping. lastUpdatedAt is intentionally omitted — the
+ * mobile app never consumed it.
+ */
+export interface WalletSummary {
+  balance:             number;
+  totalEarnings:       number;
+  totalPaid:           number;
+  completedDeliveries: number;
+}
+
+/**
+ * GET /api/wallet/:uid  (PostgreSQL primary, Firestore fallback server-side).
+ *
+ * Replaces the direct Firestore wallets/{uid} read (getWalletDoc). Returns null
+ * on missing wallet or any network/auth error so callers stay fire-and-forget
+ * safe and keep their existing optimistic values.
+ */
+export async function getWallet(uid: string): Promise<WalletSummary | null> {
+  const idToken = await getIdToken();
+  if (!idToken) return null;
+  try {
+    const res = await fetch(`${BASE_URL}/wallet/${uid}`, {
+      headers: { Authorization: `Bearer ${idToken}` },
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { ok?: boolean; wallet?: Partial<WalletSummary> };
+    if (!json.ok || !json.wallet) return null;
+    const w = json.wallet;
+    return {
+      balance:             w.balance             ?? 0,
+      totalEarnings:       w.totalEarnings       ?? 0,
+      totalPaid:           w.totalPaid           ?? 0,
+      completedDeliveries: w.completedDeliveries ?? 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Shape of a single wallet transaction returned by
  * GET /api/wallet/:uid/transactions.
  *
