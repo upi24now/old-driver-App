@@ -36,6 +36,10 @@ import {
   pgUpsertOrder,
   pgUpsertOrderOtp,
 } from "./order-pg-service";
+import {
+  pgShadowCompareDispatch,
+  pgShadowCompareTimeout,
+} from "./pg-dispatch-shadow";
 
 const DISPATCH_TIMEOUT_SECONDS = 60;
 const POLL_INTERVAL_MS         = 30_000; // 30 s — was 2 s; keeps daily poll reads ≤ 2 880
@@ -119,11 +123,14 @@ async function assignNextDriver(
     rating: string | null;
     trips:  number | null;
   }[] = [];
+  // Captured for the read-only PG dispatch shadow comparison (Phase 5B).
+  let fsOnlineCount = 0;
   try {
     const snap = await db.collection("drivers")
       .where("isOnline", "==", true)
       .get();
 
+    fsOnlineCount = snap.docs.length;
     const now = Date.now();
     drivers = snap.docs
       .map((d) => {
@@ -239,6 +246,18 @@ async function assignNextDriver(
       lastDispatchAt = Date.now(); // extend the idle-guard window
       logger.info({ orderId, driverUid: chosen.uid, timeoutSec: DISPATCH_TIMEOUT_SECONDS },
         "[RR dispatcher] Order assigned to driver");
+
+      // ── PG dispatch SHADOW comparison (READ-ONLY; never throw) ────────────────
+      // Recomputes the decision from PG and logs MATCH/DIFF/ERROR. Cannot modify
+      // Firestore, order state, FCM, or assignments. Uses the pre-dispatch
+      // round-robin cursor (lastUid) captured before this transaction advanced it.
+      void pgShadowCompareDispatch(orderId, {
+        firestoreDriver: chosen.uid,
+        pool:            drivers.map((d) => d.uid),
+        rejectedBy,
+        lastUid,
+        onlineCount:     fsOnlineCount,
+      });
 
       // ── PG shadow writes (non-blocking; never throw) ─────────────────────────
       const timeoutAt = new Date(Date.now() + DISPATCH_TIMEOUT_SECONDS * 1000);
@@ -391,6 +410,9 @@ async function returnToPool(
     });
 
     logger.info({ orderId, timedOutDriverUid }, "[RR dispatcher] Driver timeout — order returned to pool");
+
+    // ── PG timeout SHADOW comparison (READ-ONLY; never throw) ─────────────────
+    void pgShadowCompareTimeout(orderId, timedOutDriverUid);
 
     // ── PG shadow writes (non-blocking; never throw) ─────────────────────────
     void (async () => {

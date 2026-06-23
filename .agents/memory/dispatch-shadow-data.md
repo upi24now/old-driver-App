@@ -39,3 +39,21 @@ on failure.
   so existing rows keep their canonical phone. Missing-phone drivers use a `missing:<uid>`
   sentinel (never a real-phone-looking value) only on brand-new inserts.
 - Order FCM/offer backfill UPDATEs existing PG order rows only (`WHERE id=$1`); never inserts.
+
+# Shadow comparator parity rules (Phase 5B)
+
+- **Legacy subscription passthrough is mandatory.** The Firestore dispatcher allows a
+  driver when `expiry === 0 || expiry > now`. Backfill coerces a Firestore
+  `subscriptionExpiresAt` of `0` (and any non-numeric/missing value) via `toDateOrNull`,
+  so PG stores it as `Date(0)` (0 ms) or NULL. The PG comparator MUST treat BOTH
+  `null` and `0` as legacy-allowed (`expiryMs === null || expiryMs === 0 || expiryMs > now`),
+  or it produces false subscription DIFFs. Keep the rule in ONE shared helper used by
+  both `selectPgCandidate` and the eligibility set in `compareDispatchDecision`.
+  **Why:** without the `=== 0` branch, every legacy/no-subscription driver shadows as a DIFF.
+- **Round-robin cursor: use the PRE-dispatch value.** Pass the Firestore `lastDispatchedUid`
+  captured BEFORE assignment into the comparator. Do not read PG `last_dispatched_uid`
+  post-assignment — the assignment tx and the PG order mirror both advance it, so a
+  post-read races and reports phantom cursor diffs.
+- **Timeout shadow compare must be gated on an actual reset.** `returnToPool`'s tx can bail
+  without resetting; in that case `timedOutDriverUid` is null and there is nothing to
+  compare — return silently, never log a MATCH (it pollutes timeout telemetry).
