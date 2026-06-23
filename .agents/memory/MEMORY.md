@@ -28,3 +28,4 @@
 - [PG dispatch bridge → Tier-5 status+location](pg-dispatch-bridge.md) — driver status flipped PG-primary (4 call sites→patchDriverStatus) + new PATCH /orders/:id/location PG-auth+FS projection; reject/timeout/cancel deferred.
 - [Wallet PG migration constraints](wallet-pg-migration.md) — payout sign divergence (FS neg/PG pos), credit shadow not idempotent, FS→PG-only comparator; resolve before PG-primary cutover.
 - [PG SSE realtime (Tier-6)](pg-dispatch-bridge.md) — L1/L2 Firestore listeners→SSE; durable sse_events tail + Last-Event-ID/heartbeat catch-up; fresh idToken per reconnect; order-stream must suppress non-owner frames (cadence side channel).
+- [Firestore retirement audit](firestore-retirement-audit.md) — driver-app side retirement-ready; full business-data retirement BLOCKED by order completion + support + payouts (FS-authoritative) + external customer app; KEEP forever Auth/FCM; RR dispatcher = kill switch.

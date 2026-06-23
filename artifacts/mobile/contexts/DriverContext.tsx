@@ -19,7 +19,6 @@ import {
 
 import { firebaseAuth } from "@/utils/firebase";
 import {
-  getActiveOrderForDriver,
   getActiveOrdersForDriver,
   rejectOrder,
   timeoutOrder,
