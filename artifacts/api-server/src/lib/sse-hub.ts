@@ -152,3 +152,32 @@ export function writeSseEvent(res: Response, id: number, data: unknown): void {
 export function writeSseHeartbeat(res: Response): void {
   res.write(`: ping\n\n`);
 }
+
+// ── Retention cleanup ─────────────────────────────────────────────────────────
+
+const CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const RETAIN_DAYS = 7;
+
+/**
+ * Start a background job that deletes sse_events rows older than RETAIN_DAYS.
+ * The tail is an append-only audit/wakeup mechanism; the app always re-queries
+ * current state, so old rows carry no correctness value and can be pruned freely.
+ * Runs immediately on startup, then every 6 hours. Errors are logged and swallowed.
+ */
+export function startSseEventsCleanup(): void {
+  const run = async () => {
+    try {
+      const { rowCount } = await pool.query(
+        `DELETE FROM sse_events WHERE created_at < NOW() - INTERVAL '${RETAIN_DAYS} days'`,
+      );
+      if ((rowCount ?? 0) > 0) {
+        logger.info({ deleted: rowCount }, "[SSE_CLEANUP] pruned old sse_events rows");
+      }
+    } catch (err) {
+      logger.error({ err }, "[SSE_CLEANUP] pruning failed (non-fatal)");
+    }
+  };
+
+  void run();
+  setInterval(() => { void run(); }, CLEANUP_INTERVAL_MS);
+}

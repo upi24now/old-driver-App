@@ -28,6 +28,19 @@ import { pool } from "@workspace/db";
 import { logger } from "./logger";
 
 const INSTALL_SQL = `
+-- ── Data-quality check constraints (idempotent) ───────────────────────────────
+ALTER TABLE sse_events DROP CONSTRAINT IF EXISTS sse_events_topic_chk;
+ALTER TABLE sse_events ADD CONSTRAINT sse_events_topic_chk
+  CHECK (topic IN ('offer', 'order'));
+
+ALTER TABLE sse_events DROP CONSTRAINT IF EXISTS sse_events_offer_uid_chk;
+ALTER TABLE sse_events ADD CONSTRAINT sse_events_offer_uid_chk
+  CHECK (topic != 'offer' OR driver_uid IS NOT NULL);
+
+ALTER TABLE sse_events DROP CONSTRAINT IF EXISTS sse_events_order_oid_chk;
+ALTER TABLE sse_events ADD CONSTRAINT sse_events_order_oid_chk
+  CHECK (topic != 'order' OR order_id IS NOT NULL);
+
 CREATE OR REPLACE FUNCTION sse_orders_emit() RETURNS trigger AS $$
 DECLARE
   old_arr   text[] := COALESCE(OLD.active_offer_driver_uids, '{}');

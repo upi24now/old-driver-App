@@ -25,7 +25,16 @@ The LISTEN client is stored in a local `client` variable first; `listenClient` (
 ### Mobile reconnect
 `react-native-sse` with `pollingInterval: 0` (manual reconnect disabled built-in). Fresh `firebaseAuth.currentUser.getIdToken()` on every (re)connect. `Last-Event-ID` header carries the last seen event id as the resume cursor.
 
+### Check constraints (idempotent, in sse-trigger.ts INSTALL_SQL)
+Three CHECK constraints are installed at server startup alongside the trigger (DROP IF EXISTS + ADD CONSTRAINT so they're always in sync):
+- `sse_events_topic_chk` — topic IN ('offer', 'order')
+- `sse_events_offer_uid_chk` — topic != 'offer' OR driver_uid IS NOT NULL
+- `sse_events_order_oid_chk` — topic != 'order' OR order_id IS NOT NULL
+
+### Retention cleanup
+`startSseEventsCleanup()` in `sse-hub.ts` — called from `index.ts` after `startSseHub()`. Deletes rows older than 7 days, runs immediately on startup then every 6 hours. Errors are swallowed; log line `[SSE_CLEANUP]` only emits when `rowCount > 0` (silent when table is fresh).
+
 ## How to apply
 - Any new realtime feature for the driver app should use this SSE pattern, not new Firestore listeners.
-- Before pruning `sse_events`, confirm the oldest active client cursor is within the retention window.
 - The heartbeat interval (20s) is the worst-case stale window for missed-NOTIFY scenarios.
+- `sse_events` rows older than 7 days are automatically pruned; no manual cleanup needed.

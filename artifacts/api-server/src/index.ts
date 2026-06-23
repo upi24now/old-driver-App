@@ -27,7 +27,7 @@ import { startPgDispatcherDryRun } from "./lib/pg-dispatcher-dry-run";
 import { startPgDispatcher } from "./lib/pg-dispatcher";
 import { startDispatchProjector } from "./lib/pg-firestore-projector";
 import { ensureSseTrigger } from "./lib/sse-trigger";
-import { startSseHub } from "./lib/sse-hub";
+import { startSseHub, startSseEventsCleanup } from "./lib/sse-hub";
 
 // ── Resolve runtime config (env vars now available from dotenv) ──────────────
 const uploadsDir   = process.env["UPLOADS_DIR"]    ?? resolve(bundleDir, "../uploads");
@@ -148,6 +148,9 @@ app.listen(port, (err) => {
   ensureSseTrigger()
     .then(() => startSseHub())
     .catch((e) => logger.error({ err: e }, "[SSE_START] startup failed"));
+
+  // Prune sse_events rows older than 7 days every 6 hours (retention policy).
+  startSseEventsCleanup();
 
   // ── DISPATCH_SOURCE gate (Phase 5E-C / 5F) ─────────────────────────────────
   // Firestore dispatcher above is authoritative in EVERY mode. This adds a
