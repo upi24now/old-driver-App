@@ -27,3 +27,15 @@ Keep Firestore as the read/notify surface; make PG the sole *decider*.
 4. **Mode-switch invariant**: in pg mode, no RR assignment writes (no dual authority) + no duplicate FCM; cover with tests.
 
 **Verdict at audit time:** NOT_READY_FOR_PHASE_5H_BRIDGE_IMPLEMENTATION until 1–4 exist and the projection-vs-PG-native-FCM design is ratified.
+
+## Phase 5H-BRIDGE-1 (blocker #1: ingress) — DONE, verdict READY_FOR_PHASE_5H_BRIDGE_2
+Two additive Firestore listeners in `pg-shadow-writer.ts` feed PG the live pool BEFORE any dispatch, with dispatch authority untouched (`DISPATCH_SOURCE=firestore`, write/FCM gates closed):
+- Pool ingress `[PG_INGRESS_POOL]`: `where status in (searching,pending)`, on `added` → `pgUpsertOrder` (mirrors order's own pool status, no override). Fires both on customer-create and on returnToPool reset.
+- Cancellation ingress `[PG_INGRESS_CANCELLED]`: `where status=="cancelled"`, on `added` → `pgShadowSetStatus(id,"cancelled")` (UPDATE-only; sets cancelled_at).
+E2E verified (sentinel `driverUid` makes RR skip → no assignment/FCM): searching mirrored, idempotent re-write stays 1 row, cancel→cancelled with cancelled_at, real-order count unchanged, full cleanup.
+
+**GATING PREREQUISITE for Bridge-2 (must fix BEFORE the PG pool query becomes authoritative):**
+- **Cancel-vs-pool ingress race** — the two listeners are independent snapshots; their async PG writes can interleave. If a cancel is processed before the initial pool insert, the UPDATE-only cancel is a no-op, then a delayed pool upsert INSERTs stale `searching` → a cancelled order leaks into the PG pool. Inert in Bridge-1 (nothing authoritative reads the PG pool yet) but a correctness bug the moment Bridge-2 reads it.
+  - **Why not fixed in Bridge-1:** a complete fix changes the shared `pgUpsertOrder` conflict-update to refuse downgrading a terminal status (cancelled/delivered) AND makes the cancel path upsert-capable — that touches the dispatcher-critical shadow path, out of scope for a safety-frozen additive ingress phase.
+  - **How to apply in Bridge-2:** (a) make cancel land a row even when missing (upsert-cancelled), and (b) give the pool-ingress upsert a guarded conflict-update (`setWhere status NOT IN ('cancelled','delivered')`, behind an opt-in param so existing `pgUpsertOrder` callers are unaffected). Add a race test: create `searching` then immediate `cancelled` under induced delay; final PG status must be `cancelled` regardless of callback order.
+- **Minor data-quality (Bridge-2):** cancellation listener replays the full Firestore snapshot on every restart, re-stamping `cancelled_at` for already-cancelled orders. Guard against resetting an existing `cancelled_at`.

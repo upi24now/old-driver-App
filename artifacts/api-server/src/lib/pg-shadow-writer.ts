@@ -9,8 +9,10 @@
  * logging; a PG write failure never blocks or alters dispatch behaviour.
  *
  * Shadow write tags (searchable in logs):
- *   [PG_SHADOW_ACCEPT]  — order accepted by driver (driver_assigned)
- *   [PG_SHADOW_STATUS]  — delivery stage transition (to_pickup … at_drop)
+ *   [PG_SHADOW_ACCEPT]    — order accepted by driver (driver_assigned)
+ *   [PG_SHADOW_STATUS]    — delivery stage transition (to_pickup … at_drop)
+ *   [PG_INGRESS_POOL]     — Phase 5H-BRIDGE-1: new/returned pool order mirrored
+ *   [PG_INGRESS_CANCELLED]— Phase 5H-BRIDGE-1: cancelled order removed from pool
  *
  * Dispatch-initiated shadow tags are emitted from round-robin-dispatcher.ts:
  *   [PG_SHADOW_OFFER]   — offer row created
@@ -19,11 +21,31 @@
  *   [PG_SHADOW_STATUS]  — dispatched / searching status mirrors
  *
  * Delivered status is mirrored directly from the POST /complete route.
+ *
+ * ── Phase 5H-BRIDGE-1: Firestore → PG order ingress ──────────────────────────
+ * Listeners 4 and 5 give PostgreSQL the LIVE dispatch pool so a future
+ * PG-authoritative dispatcher has orders to act on. Before this phase the only
+ * path that created an orders row was the round-robin dispatcher AFTER it had
+ * already assigned a driver (status="dispatched") — so a brand-new "searching"
+ * order with driver_uid IS NULL never reached PG, leaving the PG dispatcher's
+ * pool query (status IN (searching,pending) AND driver_uid IS NULL) permanently
+ * empty for fresh orders. These listeners are entirely additive, never read PG,
+ * never write Firestore, never send FCM, and never alter dispatch behaviour.
+ * Firestore stays fully authoritative.
  */
 
 import { adminFirestore } from "./firebase-admin";
 import { logger } from "./logger";
-import { pgShadowMarkAccept, pgShadowSetStatus, pgUpsertOrderOtp } from "./order-pg-service";
+import {
+  pgShadowMarkAccept,
+  pgShadowSetStatus,
+  pgUpsertOrder,
+  pgUpsertOrderOtp,
+} from "./order-pg-service";
+
+// Statuses that mean "this order is in the pool, awaiting a driver".
+// Mirrors POOL_STATUSES in round-robin-dispatcher.ts / pg-dispatcher.ts.
+const POOL_STATUSES = ["searching", "pending"] as const;
 
 // Delivery stages that the mobile transitions through after accept.
 // "delivered" is excluded — it is mirrored from POST /complete server-side.
@@ -150,5 +172,68 @@ export async function startPgShadowWriter(): Promise<void> {
       },
     );
 
-  logger.info("[PG shadow writer] Running — listening for driver_assigned, delivery stages, and OTP");
+  // ── Listener 4: pool ingress (Phase 5H-BRIDGE-1) ──────────────────────────
+  // Mirror new and returned-to-pool orders into PG the moment they enter the
+  // "searching"/"pending" pool — BEFORE any dispatch — so the PG dispatcher has
+  // a live pool to act on. A doc enters this filtered query (an "added" change)
+  // both when the customer first creates it and when returnToPool resets a timed
+  // out dispatch back to "searching". pgUpsertOrder is idempotent: a fresh INSERT
+  // for new orders, an UPDATE of dispatch-cycle fields for ones already mirrored.
+  db.collection("orders")
+    .where("status", "in", [...POOL_STATUSES])
+    .onSnapshot(
+      (snapshot) => {
+        for (const change of snapshot.docChanges()) {
+          if (change.type !== "added") continue;
+
+          const orderId = change.doc.id;
+          const data    = change.doc.data() as Record<string, unknown>;
+          const status  = typeof data["status"] === "string" ? data["status"] : null;
+
+          void (async () => {
+            // No overrideStatus — mirror the order's own pool status as-is.
+            await pgUpsertOrder(orderId, data);
+            logger.info({ orderId, status }, "[PG_INGRESS_POOL]");
+          })().catch((e) =>
+            logger.error({ err: e, orderId, status }, "[PG_INGRESS_POOL] unexpected error — continuing"),
+          );
+        }
+      },
+      (err) => {
+        logger.error({ err }, "[PG shadow writer] pool ingress listener error");
+      },
+    );
+
+  // ── Listener 5: cancellation ingress (Phase 5H-BRIDGE-1) ──────────────────
+  // Mirror cancellations so a cancelled order is removed from PG's dispatch
+  // pool. Customers/system may cancel while the order is still "searching"
+  // (before any dispatch), a transition no existing listener covered. Uses
+  // pgShadowSetStatus (UPDATE-only): if the order was never mirrored into PG it
+  // matches 0 rows and is a harmless no-op — an order that never reached PG has
+  // nothing to remove from the pool.
+  db.collection("orders")
+    .where("status", "==", "cancelled")
+    .onSnapshot(
+      (snapshot) => {
+        for (const change of snapshot.docChanges()) {
+          if (change.type !== "added") continue;
+
+          const orderId = change.doc.id;
+
+          void (async () => {
+            await pgShadowSetStatus(orderId, "cancelled");
+            logger.info({ orderId }, "[PG_INGRESS_CANCELLED]");
+          })().catch((e) =>
+            logger.error({ err: e, orderId }, "[PG_INGRESS_CANCELLED] unexpected error — continuing"),
+          );
+        }
+      },
+      (err) => {
+        logger.error({ err }, "[PG shadow writer] cancellation ingress listener error");
+      },
+    );
+
+  logger.info(
+    "[PG shadow writer] Running — listening for driver_assigned, delivery stages, OTP, pool ingress, and cancellations",
+  );
 }
