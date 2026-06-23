@@ -62,6 +62,32 @@ export function resolveDispatchSource(): DispatchSourceConfig {
 }
 
 /**
+ * The dispatcher startup plan derived from the resolved source. The Firestore
+ * dispatcher ALWAYS starts (it is authoritative in every mode this phase); the
+ * plan only adds the read-only PG dry-run (pg_shadow) or a warning (pg).
+ */
+export interface DispatchStartupPlan {
+  /** Always true — the Firestore dispatcher starts in every mode. */
+  startFirestore: true;
+  /** Start the read-only PG dispatcher dry-run loop. Only in pg_shadow. */
+  startPgDryRun: boolean;
+  /** pg mode requested but the PG primary dispatcher is not implemented yet. */
+  warnPgPrimaryNotImplemented: boolean;
+}
+
+/**
+ * Pure mapping from the resolved dispatch source to what should start at boot.
+ * Firestore always starts. Only pg_shadow starts the dry-run; pg only warns.
+ */
+export function planDispatchStartup(value: DispatchSource): DispatchStartupPlan {
+  return {
+    startFirestore: true,
+    startPgDryRun: value === "pg_shadow",
+    warnPgPrimaryNotImplemented: value === "pg",
+  };
+}
+
+/**
  * Log the resolved dispatch source at startup. Logging only — does NOT change
  * any runtime behavior. Emits a warning when the configured env value was
  * invalid, or when PG was requested but its prerequisites are missing.

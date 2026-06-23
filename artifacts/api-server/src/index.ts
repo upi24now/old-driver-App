@@ -17,7 +17,8 @@ import { logger } from "./lib/logger";
 import { startFcmDispatcher } from "./lib/fcm-dispatcher";
 import { startRoundRobinDispatcher } from "./lib/round-robin-dispatcher";
 import { startPgShadowWriter } from "./lib/pg-shadow-writer";
-import { logDispatchSource } from "./lib/dispatch-source";
+import { logDispatchSource, planDispatchStartup } from "./lib/dispatch-source";
+import { startPgDispatcherDryRun } from "./lib/pg-dispatcher-dry-run";
 
 // ── Resolve runtime config (env vars now available from dotenv) ──────────────
 const uploadsDir   = process.env["UPLOADS_DIR"]    ?? resolve(bundleDir, "../uploads");
@@ -78,10 +79,12 @@ logger.info(
   "[STARTUP_FIREBASE_CONFIG]",
 );
 
-// ── Dispatch source feature flag (Phase 5E-B) ───────────────────────────────
-// Logging only. NOTHING routes on this yet — the Firestore dispatcher below
-// still starts exactly as before regardless of the resolved value.
-logDispatchSource();
+// ── Dispatch source feature flag (Phase 5E-B / 5E-C) ────────────────────────
+// Logging + a read-only PG dry-run gate. The Firestore dispatcher below ALWAYS
+// starts and remains authoritative; pg_shadow additionally runs a read-only PG
+// dry-run, and pg only logs a warning (PG primary not implemented yet).
+const dispatchSource = logDispatchSource();
+const dispatchPlan = planDispatchStartup(dispatchSource.value);
 
 if (!rawPort) {
   throw new Error(
@@ -117,4 +120,19 @@ app.listen(port, (err) => {
   startPgShadowWriter().catch((e) =>
     logger.error({ err: e }, "PG shadow writer startup failed"),
   );
+
+  // ── DISPATCH_SOURCE gate (Phase 5E-C) ──────────────────────────────────────
+  // Firestore dispatcher above is authoritative in every mode. This only adds a
+  // READ-ONLY PG dry-run (pg_shadow) or a warning (pg). Nothing here assigns
+  // drivers, updates orders, sends FCM, or writes Firestore.
+  if (dispatchPlan.startPgDryRun) {
+    startPgDispatcherDryRun().catch((e) =>
+      logger.error({ err: e }, "[PG_DRY_RUN_ERROR] dry-run startup failed"),
+    );
+  } else if (dispatchPlan.warnPgPrimaryNotImplemented) {
+    logger.warn(
+      { dispatchSource: dispatchSource.value },
+      "[DISPATCH_SOURCE] pg mode requested — PG primary dispatcher is not implemented yet; Firestore remains authoritative and no PG dry-run was started",
+    );
+  }
 });
