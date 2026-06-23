@@ -1,8 +1,16 @@
-const DOMAIN   = process.env["EXPO_PUBLIC_DOMAIN"] ?? "";
-const BASE_URL = DOMAIN ? `https://${DOMAIN}/api` : "/api";
+const _rawDomain = process.env["EXPO_PUBLIC_DOMAIN"] ?? "";
+// Strip any accidental protocol prefix or trailing /api so we never produce
+// https://https://... or .../api/api regardless of how the env var is set.
+const _cleanDomain = _rawDomain
+  .replace(/^https?:\/\//i, "")   // remove leading protocol
+  .replace(/\/api\/?$/, "")        // remove trailing /api
+  .replace(/\/$/, "");             // remove trailing slash
 
-// Log base URL once at module load so it's visible immediately in the console
-console.log("[auth-api] BASE_URL =", BASE_URL || "(empty — EXPO_PUBLIC_DOMAIN not set, relative /api)");
+const BASE_URL = _cleanDomain ? `https://${_cleanDomain}/api` : "/api";
+
+// Log both the raw env var and the constructed URL on module load
+console.log("[auth-api] EXPO_PUBLIC_DOMAIN (raw)  =", _rawDomain || "(not set)");
+console.log("[auth-api] BASE_URL (constructed)     =", BASE_URL);
 
 export type SendOtpResult =
   | { ok: true;  devOtp?: string }
@@ -23,12 +31,12 @@ export async function sendOtp(phone: string): Promise<SendOtpResult> {
   console.log("[sendOtp] headers :", JSON.stringify(headers));
   console.log("[sendOtp] body    :", body);
 
-  if (!DOMAIN) {
+  if (!_cleanDomain) {
     console.warn(
       "[sendOtp] WARNING: EXPO_PUBLIC_DOMAIN is not set. " +
       "BASE_URL is a relative path (\"/api\") which only works in a browser/web context. " +
       "On a real Android/iOS device this will fail with a network error. " +
-      "Set EXPO_PUBLIC_DOMAIN to your Replit dev domain (e.g. abc123.repl.co)."
+      "Set EXPO_PUBLIC_DOMAIN to the API server domain (e.g. api.bikecourierservice.com)."
     );
   }
 
@@ -45,7 +53,7 @@ export async function sendOtp(phone: string): Promise<SendOtpResult> {
     return {
       ok:    false,
       error: `Could not connect to server (${e?.message ?? String(err)}). ` +
-             (DOMAIN ? "Check your network." : "EXPO_PUBLIC_DOMAIN is not configured — contact support."),
+             (_cleanDomain ? "Check your network." : "EXPO_PUBLIC_DOMAIN is not configured — contact support."),
     };
   }
 
