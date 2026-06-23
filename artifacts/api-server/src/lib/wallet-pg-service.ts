@@ -286,6 +286,95 @@ export async function pgMarkPayoutProcessed(
   }
 }
 
+// ── pgRequestPayout ───────────────────────────────────────────────────────────
+
+const WALLET_LOCK_AMOUNT = 50;
+
+export type PgPayoutRequestResult =
+  | { ok: true;  requestId: string; newBalance: number }
+  | { ok: false; reason: "no_wallet" | "insufficient_balance" | "exceeds_withdrawable" };
+
+/**
+ * PG-authoritative driver payout request.
+ *
+ * Atomically within a single transaction (with row-level lock):
+ *   1. SELECT … FOR UPDATE on driver_wallets — prevents concurrent payout races.
+ *   2. Validate: balance − WALLET_LOCK_AMOUNT (₹50) ≥ amount.
+ *   3. Debit driver_wallets (balance, totalPaid).
+ *   4. Insert payout_requests row (with upiId).
+ *   5. Insert wallet_transactions "payout" ledger row (status=pending).
+ *
+ * Business-logic failures return { ok: false }.
+ * Infrastructure errors are logged + re-thrown so the caller surfaces 500.
+ */
+export async function pgRequestPayout(
+  driverUid: string,
+  amount:    number,
+  upiId:     string,
+): Promise<PgPayoutRequestResult> {
+  const amountStr = amount.toFixed(2);
+  const now       = new Date();
+
+  try {
+    return await db.transaction(async (tx) => {
+      // 1. Lock and read wallet balance (FOR UPDATE prevents double-spend races).
+      const [wallet] = await tx
+        .select({ balance: driverWalletsTable.balance })
+        .from(driverWalletsTable)
+        .where(eq(driverWalletsTable.driverUid, driverUid))
+        .for("update");
+
+      if (!wallet) {
+        return { ok: false as const, reason: "no_wallet" as const };
+      }
+
+      const balance         = parseFloat(wallet.balance);
+      const maxWithdrawable = balance - WALLET_LOCK_AMOUNT;
+
+      if (maxWithdrawable <= 0) {
+        return { ok: false as const, reason: "insufficient_balance" as const };
+      }
+      if (amount > maxWithdrawable) {
+        return { ok: false as const, reason: "exceeds_withdrawable" as const };
+      }
+
+      // 2. Debit wallet.
+      await tx
+        .update(driverWalletsTable)
+        .set({
+          balance:   sql`${driverWalletsTable.balance}   - ${amountStr}::numeric`,
+          totalPaid: sql`${driverWalletsTable.totalPaid} + ${amountStr}::numeric`,
+          updatedAt: now,
+        })
+        .where(eq(driverWalletsTable.driverUid, driverUid));
+
+      const newBalance = balance - amount;
+
+      // 3. Insert payout request.
+      const [request] = await tx
+        .insert(payoutRequestsTable)
+        .values({ driverUid, amount: amountStr, upiId, status: "pending" })
+        .returning({ id: payoutRequestsTable.id });
+
+      if (!request) throw new Error("payout_requests insert returned no row");
+
+      // 4. Insert pending ledger row (mirrors what admin approval will later settle).
+      await tx.insert(walletTransactionsTable).values({
+        driverUid,
+        type:        "payout",
+        amount:      amountStr,
+        status:      "pending",
+        description: "UPI withdrawal request",
+      });
+
+      return { ok: true as const, requestId: request.id, newBalance };
+    });
+  } catch (err) {
+    logger.error({ err, driverUid, amount }, "[pgRequestPayout] failed");
+    throw err;
+  }
+}
+
 // ── pgUpdateDriverDailyStats ──────────────────────────────────────────────────
 
 /**

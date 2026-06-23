@@ -2,24 +2,28 @@ import { FieldValue } from "firebase-admin/firestore";
 import { Router, type Request, type Response } from "express";
 import { adminFirestore } from "../lib/firebase-admin";
 import { requireAuth } from "../lib/require-auth";
-import { pgCreatePayoutRequest, pgShadowPayoutTransaction } from "../lib/wallet-pg-service";
+import { pgRequestPayout } from "../lib/wallet-pg-service";
 
 const router = Router();
 
-// Minimum balance that must remain in the wallet at all times (₹50 lock).
-const WALLET_LOCK_AMOUNT = 50;
-
 // ─── POST /api/payouts/request ─────────────────────────────────────────────────
 //
-// Driver-initiated withdrawal request.
+// Driver-initiated withdrawal request (PG-authoritative).
 //
-// Atomically in a single Firestore transaction:
-//   1. Validates withdrawable balance (balance − WALLET_LOCK_AMOUNT ≥ amount)
-//   2. Debits  wallets/{driverUid}           — balance, totalPaid
-//   3. Creates withdrawalRequests/{autoId}   — pending payout record (admin sees this)
-//   4. Creates transactions/{autoId}         — ledger entry, type = "payout"
+// Atomically in a single PG transaction (with FOR UPDATE lock):
+//   1. Reads driver_wallets.balance with row-level lock (prevents concurrent races).
+//   2. Validates withdrawable balance (balance − ₹50_lock ≥ amount).
+//   3. Debits  driver_wallets           — balance, totalPaid.
+//   4. Inserts payout_requests          — pending cash-out record.
+//   5. Inserts wallet_transactions      — pending ledger debit row.
+//
+// After PG commit: best-effort Firestore projection for admin-panel visibility:
+//   - wallets/{driverUid}              — balance/totalPaid update.
+//   - withdrawalRequests/{requestId}   — pending payout record (admin sees this).
+//   - transactions/{txnId}             — payout ledger entry.
 //
 // driverUid is taken from the verified Firebase ID token — never from body.
+//
 router.post("/payouts/request", async (req: Request, res: Response) => {
   const driverUid = await requireAuth(req, res);
   if (!driverUid) return;
@@ -35,80 +39,69 @@ router.post("/payouts/request", async (req: Request, res: Response) => {
     return;
   }
 
-  const db        = await adminFirestore();
-  const walletRef = db.doc(`wallets/${driverUid}`);
-  const payoutRef = db.collection("withdrawalRequests").doc();
-  const txnRef    = db.collection("transactions").doc();
-
-  type TxErr = Error & { code: string };
-  const txErr = (code: string): TxErr =>
-    Object.assign(new Error(code), { code }) as TxErr;
-
+  let pgResult: Awaited<ReturnType<typeof pgRequestPayout>>;
   try {
-    await db.runTransaction(async (tx) => {
-      const walletSnap      = await tx.get(walletRef);
-      const w               = walletSnap.exists ? (walletSnap.data() as Record<string, unknown>) : {};
-      const balance         = (w["balance"] as number | undefined) ?? 0;
-      const maxWithdrawable = balance - WALLET_LOCK_AMOUNT;
+    pgResult = await pgRequestPayout(driverUid, amount, upiId.trim());
+  } catch (err) {
+    req.log.error({ err, driverUid }, "payouts/request: PG transaction failed");
+    res.status(500).json({ ok: false, error: "server_error" });
+    return;
+  }
 
-      if (maxWithdrawable <= 0) throw txErr("insufficient_balance");
-      if (amount > maxWithdrawable) throw txErr("exceeds_withdrawable");
+  if (!pgResult.ok) {
+    const code = pgResult.reason === "no_wallet" ? "insufficient_balance" : pgResult.reason;
+    req.log.warn({ driverUid, amount, reason: pgResult.reason }, "payouts/request: guard rejected");
+    res.status(400).json({ ok: false, error: code });
+    return;
+  }
 
-      const newBalance = balance - amount;
+  req.log.info(
+    { driverUid, amount, requestId: pgResult.requestId, newBalance: pgResult.newBalance },
+    "payouts/request: PG withdrawal committed",
+  );
 
-      // 1. Debit wallet
-      tx.set(walletRef, {
-        balance:       newBalance,
+  // ── Best-effort Firestore projection (admin-panel visibility) ─────────────
+  void (async () => {
+    try {
+      const db        = await adminFirestore();
+      const walletRef = db.doc(`wallets/${driverUid}`);
+      const payoutRef = db.collection("withdrawalRequests").doc(pgResult.requestId);
+      const txnRef    = db.collection("transactions").doc();
+      const batch     = db.batch();
+
+      batch.set(walletRef, {
+        balance:       FieldValue.increment(-amount),
         totalPaid:     FieldValue.increment(amount),
         lastUpdatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
 
-      // 2. Payout request (admin panel reads this)
-      tx.set(payoutRef, {
+      batch.set(payoutRef, {
         driverUid,
         amount,
         upiId:       upiId.trim(),
         status:      "pending",
+        pgRequestId: pgResult.requestId,
         requestedAt: FieldValue.serverTimestamp(),
         createdAt:   FieldValue.serverTimestamp(),
       });
 
-      // 3. Ledger entry
-      tx.set(txnRef, {
+      batch.set(txnRef, {
         driverUid,
         type:          "payout",
         amount:        -amount,
         description:   "UPI withdrawal request",
-        balanceBefore: balance,
-        balanceAfter:  newBalance,
+        pgRequestId:   pgResult.requestId,
         createdAt:     FieldValue.serverTimestamp(),
       });
-    });
 
-    req.log.info({ driverUid, amount }, "payouts/request: withdrawal request created");
-
-    // ── PG shadow write: payout request (non-blocking) ────────────────────────
-    void pgCreatePayoutRequest(driverUid, amount)
-      .then(() => req.log.info({ driverUid, amount }, "[PG_PAYOUT_SHADOW]"))
-      .catch((e) => req.log.error({ err: e, driverUid, amount }, "[PG_PAYOUT_SHADOW] shadow write failed — non-blocking"));
-
-    // ── PG shadow write: payout ledger row (non-blocking) ─────────────────────
-    // Mirrors the Firestore "payout" transaction into wallet_transactions so the
-    // ledger stays count-consistent. Does NOT debit driver_wallets.
-    void pgShadowPayoutTransaction(driverUid, amount, "pending")
-      .then(() => req.log.info({ driverUid, amount }, "[PG_PAYOUT_LEDGER_SHADOW]"))
-      .catch((e) => req.log.error({ err: e, driverUid, amount }, "[PG_PAYOUT_LEDGER_SHADOW] shadow write failed — non-blocking"));
-
-    res.json({ ok: true, requestId: payoutRef.id });
-  } catch (err: unknown) {
-    const code = (err as Partial<TxErr>).code;
-    if (code === "insufficient_balance" || code === "exceeds_withdrawable") {
-      res.status(400).json({ ok: false, error: code });
-      return;
+      await batch.commit();
+      req.log.info({ driverUid, requestId: pgResult.requestId }, "[FS_PROJECTION] payout projected");
+    } catch (e) {
+      req.log.warn({ err: e, driverUid, requestId: pgResult.requestId }, "[FS_PROJECTION] payout — non-blocking");
     }
-    req.log.error({ err, driverUid }, "payouts/request: transaction failed");
-    res.status(500).json({ ok: false, error: "server_error" });
-  }
+  })();
+
+  res.json({ ok: true, requestId: pgResult.requestId });
 });
 
 export default router;

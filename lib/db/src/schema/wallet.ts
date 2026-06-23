@@ -98,6 +98,7 @@ export const payoutRequestsTable = pgTable(
     id:          uuid("id").defaultRandom().primaryKey(),
     driverUid:   text("driver_uid").notNull(),
     amount:      numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    upiId:       text("upi_id"),
     status:      text("status").notNull().default("pending"),
     requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
     processedAt: timestamp("processed_at", { withTimezone: true }),

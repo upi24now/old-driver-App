@@ -29,4 +29,5 @@
 - [Wallet PG migration constraints](wallet-pg-migration.md) — payout sign divergence (FS neg/PG pos), credit shadow not idempotent, FS→PG-only comparator; resolve before PG-primary cutover.
 - [PG SSE realtime (Tier-6)](pg-sse-realtime.md) — L1/L2 Firestore→SSE; snapshot-driven; pool-leak fix in startSseHub; non-owner frame suppression; fresh idToken per reconnect.
 - [Order completion PG migration](order-completion-pg.md) — PG-authoritative; PG infra throw → 500 (NOT FS fallback); atomic CASE WHEN for driver daily stats; wallet_txn unique index idempotency.
-- [Firestore retirement audit](firestore-retirement-audit.md) — driver-app side retirement-ready; support + payouts remain FS-authoritative; KEEP forever Auth/FCM; RR dispatcher = kill switch.
+- [Support + Payout PG migration](support-payout-pg-migration.md) — UUID guard before PG, sender-authoritative on message routes, try/catch per call site, FOR UPDATE payout lock, FS projection as void IIFE.
+- [Firestore retirement audit](firestore-retirement-audit.md) — support + payouts now PG-authoritative (retired); KEEP forever Auth/FCM; RR dispatcher = kill switch.
