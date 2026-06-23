@@ -25,6 +25,7 @@ import {
 } from "./lib/dispatch-source";
 import { startPgDispatcherDryRun } from "./lib/pg-dispatcher-dry-run";
 import { startPgDispatcher } from "./lib/pg-dispatcher";
+import { startDispatchProjector } from "./lib/pg-firestore-projector";
 
 // ── Resolve runtime config (env vars now available from dotenv) ──────────────
 const uploadsDir   = process.env["UPLOADS_DIR"]    ?? resolve(bundleDir, "../uploads");
@@ -129,6 +130,14 @@ app.listen(port, (err) => {
   // Start the PG shadow writer — mirrors mobile-initiated Firestore events into PG
   startPgShadowWriter().catch((e) =>
     logger.error({ err: e }, "PG shadow writer startup failed"),
+  );
+
+  // Start the PG → Firestore projector (Phase 5H-BRIDGE-3). Started in every
+  // mode but inert until PG_PROJECTION_ENABLED=true AND DISPATCH_SOURCE=pg.
+  // Drains the durable dispatch_projections outbox to the Firestore order docs
+  // the apps + Firestore FCM dispatcher read. No PG-native FCM, no app changes.
+  startDispatchProjector().catch((e) =>
+    logger.error({ err: e }, "[PG_PROJECTOR_START] startup failed"),
   );
 
   // ── DISPATCH_SOURCE gate (Phase 5E-C / 5F) ─────────────────────────────────

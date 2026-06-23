@@ -69,6 +69,19 @@ export function resolvePgWriteGates(): PgWriteGates {
 }
 
 /**
+ * Phase 5H-BRIDGE-3 projector gate. Strict — open ONLY when
+ * PG_PROJECTION_ENABLED is exactly "true". This is the third independent,
+ * closed-by-default safety gate (alongside ALLOW_PG_DISPATCH_WRITES and
+ * PG_FCM_SEND_ENABLED): it permits the PG → Firestore projector to commit
+ * Firestore writes. The projector additionally requires DISPATCH_SOURCE=pg, so a
+ * projection can never write Firestore while the Firestore dispatcher is
+ * authoritative. Pure read — no side effects.
+ */
+export function resolvePgProjectionEnabled(): boolean {
+  return isFlagTrue("PG_PROJECTION_ENABLED");
+}
+
+/**
  * Defense-in-depth gate for the write path. Given the requested verify-only flag
  * and the resolved gates, decide the EFFECTIVE verify-only state.
  *

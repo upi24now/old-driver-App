@@ -36,6 +36,7 @@
 
 import { adminFirestore } from "./firebase-admin";
 import { logger } from "./logger";
+import { resolveDispatchSource } from "./dispatch-source";
 import {
   pgShadowCancelOrder,
   pgShadowMarkAccept,
@@ -196,7 +197,18 @@ export async function startPgShadowWriter(): Promise<void> {
             // resurrecting a claimed/terminal order: a delayed/replayed pool
             // "added" event must never overwrite a row that has progressed past
             // the pool (driver_assigned … delivered) or been cancelled.
-            await pgUpsertOrder(orderId, data, { guardRegression: true });
+            //
+            // Phase 5H-BRIDGE-3 (mode-aware guard): in pg-authoritative mode the
+            // PG dispatcher owns the dispatched→searching transition (it returns
+            // to pool in PG and projects outward), so a Firestore pool "added"
+            // event must NEVER regress a PG-authoritative "dispatched" row — narrow
+            // the guard to [searching, pending]. In firestore mode the
+            // returnToPool originates in Firestore and MUST mirror back, so keep
+            // "dispatched" in the set (the default).
+            const guardStatuses = resolveDispatchSource().value === "pg"
+              ? ["searching", "pending"]
+              : ["searching", "pending", "dispatched"];
+            await pgUpsertOrder(orderId, data, { guardRegression: true, guardStatuses });
             logger.info({ orderId, status }, "[PG_INGRESS_POOL]");
           })().catch((e) =>
             logger.error({ err: e, orderId, status }, "[PG_INGRESS_POOL] unexpected error — continuing"),

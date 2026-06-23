@@ -467,6 +467,18 @@ export interface PgUpsertOrderOpts {
    * dispatcher's dispatch-time upsert leaves the column untouched as before.
    */
   mirrorOfferSet?: boolean;
+  /**
+   * Phase 5H-BRIDGE-3: the exact set of EXISTING statuses from which a guarded
+   * conflict UPDATE may proceed. Defaults to POOL_MIRRORABLE_STATUSES
+   * (searching/pending/dispatched) — the firestore-authoritative behaviour, where
+   * a returnToPool (dispatched→searching) originates in Firestore and MUST mirror
+   * to PG. In pg-authoritative mode the pool-ingress listener narrows this to
+   * [searching, pending] so a stale/replayed pool "added" event can never regress
+   * a PG-authoritative "dispatched" row back into the pool (in pg mode the
+   * dispatched→searching transition originates in PG and is projected outward, so
+   * no Firestore→PG mirror of it is needed). Only meaningful when guardRegression.
+   */
+  guardStatuses?: readonly string[];
 }
 
 /**
@@ -488,7 +500,12 @@ export async function pgUpsertOrder(
   data:           Record<string, unknown>,
   opts:           PgUpsertOrderOpts = {},
 ): Promise<void> {
-  const { overrideStatus, guardRegression = false, mirrorOfferSet = false } = opts;
+  const {
+    overrideStatus,
+    guardRegression = false,
+    mirrorOfferSet = false,
+    guardStatuses = POOL_MIRRORABLE_STATUSES,
+  } = opts;
   const str = (k: string): string | null => {
     const v = data[k];
     return typeof v === "string" ? v : null;
@@ -579,10 +596,12 @@ export async function pgUpsertOrder(
           updatedAt:        sql`now()`,
           ...offerSetField,
         },
-        // Phase 5H-BRIDGE-2: when guarding, only update if the EXISTING row is
-        // still pool-mirrorable — never resurrect a claimed/terminal order.
+        // Phase 5H-BRIDGE-2/3: when guarding, only update if the EXISTING row is
+        // still in the caller-supplied mirrorable set — never resurrect a
+        // claimed/terminal order, and (pg mode) never regress a PG-authoritative
+        // dispatched row from a stale pool event.
         ...(guardRegression
-          ? { setWhere: inArray(ordersTable.status, [...POOL_MIRRORABLE_STATUSES]) }
+          ? { setWhere: inArray(ordersTable.status, [...guardStatuses]) }
           : {}),
       });
   } catch (err) {

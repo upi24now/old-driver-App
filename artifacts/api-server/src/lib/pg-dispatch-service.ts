@@ -27,12 +27,36 @@
 import { and, eq, inArray, isNull, lte, or, gt, sql } from "drizzle-orm";
 import {
   db,
+  dispatchProjectionsTable,
   driversTable,
   orderOffersTable,
   ordersTable,
+  type DispatchProjectionPayload,
   type Order,
 } from "@workspace/db";
 import { logger } from "./logger";
+
+// A drizzle transaction handle (the argument the db.transaction callback gets).
+type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Phase 5H-BRIDGE-3 — durable transactional outbox enqueue.
+ *
+ * Insert a PG → Firestore projection row INSIDE the caller's write transaction
+ * so the projection commits atomically with the state change it describes. This
+ * is what makes the projector durable: a projection can never be lost (it lands
+ * with the write) and can never leak (nothing is enqueued unless the gated PG
+ * write actually commits). The projector worker (pg-firestore-projector.ts)
+ * later drains these rows to Firestore in FIFO order.
+ */
+async function enqueueDispatchProjection(
+  tx:        DbTx,
+  orderId:   string,
+  eventType: "assignment" | "timeout",
+  payload:   DispatchProjectionPayload,
+): Promise<void> {
+  await tx.insert(dispatchProjectionsTable).values({ orderId, eventType, payload });
+}
 
 // Mirrors DISPATCH_TIMEOUT_SECONDS in round-robin-dispatcher.ts.
 const DISPATCH_TIMEOUT_SECONDS = 60;
@@ -221,6 +245,19 @@ export async function pgAssignDriverToOrder(
           },
         });
 
+      // ── Step 3: durable PG → Firestore projection (Phase 5H-BRIDGE-3) ───────
+      // Enqueued INSIDE this transaction so it commits atomically with the
+      // assignment — only when the gated write above actually lands. The
+      // projector mirrors this decision into the Firestore order doc the apps +
+      // Firestore FCM dispatcher read. activeOfferDriverUids is the Phase-2
+      // explicit offer set (== the fcm-dispatcher driverUid fallback target).
+      await enqueueDispatchProjection(tx, orderId, "assignment", {
+        driverUid,
+        dispatchedAtMs:        now.getTime(),
+        dispatchTimeoutAtMs:   timeoutAt.getTime(),
+        activeOfferDriverUids: [driverUid],
+      });
+
       logger.info(
         { orderId, driverUid, timeoutAt },
         "[PG_DISPATCH_SERVICE_ASSIGN] assigned",
@@ -391,6 +428,11 @@ export async function pgReturnOrderToPool(
             eq(orderOffersTable.status, "pending"),
           ),
         );
+
+      // Durable PG → Firestore projection (Phase 5H-BRIDGE-3): enqueued inside
+      // the transaction so it commits atomically with the return-to-pool. The
+      // projector resets the Firestore order doc to "searching" (driver cleared).
+      await enqueueDispatchProjection(tx, orderId, "timeout", {});
 
       logger.info({ orderId }, "[PG_DISPATCH_SERVICE_RETURN_TO_POOL] returned to pool");
       return { ok: true } as const;
