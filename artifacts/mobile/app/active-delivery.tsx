@@ -20,8 +20,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useDriver } from "@/contexts/DriverContext";
 import { useEffect, useRef, useState } from "react";
-import { driverCancelOrder, updateDriverLocation, type DeliveryStage } from "@/utils/firestore";
-import { completeDelivery, updateOrderStageViaApi } from "@/utils/delivery-api";
+import { driverCancelOrder, type DeliveryStage } from "@/utils/firestore";
+import { completeDelivery, updateOrderStageViaApi, updateOrderLocationViaApi } from "@/utils/delivery-api";
 import { callSupport } from "@/utils/support";
 import {
   Alert,
@@ -709,10 +709,11 @@ export default function ActiveDeliveryScreen() {
   // ─── Foreground location watcher ───────────────────────────────────────────
   //
   // Starts when the screen mounts with a valid orderId. Writes driverLat/driverLng
-  // to orders/{orderId} via updateDriverLocation on each GPS event so the customer
-  // app can power a live map via onSnapshot.
+  // via updateOrderLocationViaApi (PG-authoritative PATCH /orders/:id/location,
+  // mirrored to Firestore server-side) on each GPS event so the customer app can
+  // power a live map via onSnapshot.
   //
-  // Config: 10 s / 30 m — balances freshness against Firestore write cost.
+  // Config: 10 s / 30 m — balances freshness against write cost.
   //
   // Safety rules:
   //   • Checks foreground permission before starting; skips silently if denied.
@@ -742,9 +743,9 @@ export default function ActiveDeliveryScreen() {
           (position) => {
             const { latitude, longitude, accuracy } = position.coords;
             console.log("[Location] GPS callback — lat:", latitude.toFixed(5), "lng:", longitude.toFixed(5), "accuracy:", accuracy, "m");
-            updateDriverLocation(orderId, position)
-              .then(() => console.log("[Location] Firestore write OK — orders/", orderId))
-              .catch((err: unknown) => console.error("[Location] Firestore write FAILED — orders/", orderId, err));
+            updateOrderLocationViaApi(orderId, position)
+              .then(() => console.log("[Location] PG-authoritative write sent — orders/", orderId))
+              .catch((err: unknown) => console.error("[Location] location write FAILED — orders/", orderId, err));
           },
         );
         if (removed) {

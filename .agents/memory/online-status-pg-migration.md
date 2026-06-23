@@ -19,6 +19,8 @@ Pattern in both routes: Firestore write runs FIRST and unchanged (still 500 + ea
 
 Logs: `[PG_ONLINE_STATUS_SAVE]`/`[PG_ONLINE_STATUS_FALLBACK]` (4C), `[PG_DRIVER_LOCATION_SAVE]`/`[PG_DRIVER_LOCATION_FALLBACK]` (4D). FALLBACK = no matching drivers row OR PG threw.
 
-## Known shadow-lag (accepted)
+## SUPERSEDED for status by Phase 5J-Tier-5 (online/offline now PG-PRIMARY)
 
-Auto-offline edge paths in DriverContext (subscription-expiry, block-enforcement, some cleanup) call only `updateDriverOnlineStatus` (Firestore), **not** `patchDriverStatus`, so they do NOT mirror to PG. PG `is_online` can briefly lag after those — acceptable because PG is a non-consumed shadow and the next toggle/location update corrects it. Do not add `patchDriverStatus` calls there without a reason (would be a mobile change).
+The 4C description above (Firestore source-of-truth + PG shadow on `PATCH /drivers/:uid/status`) was INVERTED in Tier-5: PG is now authoritative (write first, 404/500 on PG failure) and Firestore is a best-effort projection. All mobile auto-offline edge paths now call `patchDriverStatus` (no more direct `updateDriverOnlineStatus`), so the "accepted shadow-lag" below NO LONGER applies to status. See pg-dispatch-bridge.md → Phase 5J-Tier-5.
+
+**Still accurate (location, Phase 4D, UNCHANGED):** `POST /api/drivers/:uid/location` — the ~15s while-online driver-doc GPS ping — remains Firestore-primary + fire-and-forget PG shadow. (The separate per-order customer-live-map location write WAS migrated to PG-authoritative `PATCH /orders/:orderId/location` in Tier-5 — that's a different code path.)

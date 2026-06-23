@@ -19,7 +19,6 @@ import {
 
 import { firebaseAuth } from "@/utils/firebase";
 import {
-  updateDriverOnlineStatus,
   updateDriverSubscription,
   getActiveOrderForDriver,
   getActiveOrdersForDriver,
@@ -899,7 +898,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     if (!subscriptionActive && isOnline && activeOrders.length === 0) {
       setOnlineState(false);
       if (driverUid) {
-        updateDriverOnlineStatus(driverUid, false).catch(console.error);
+        patchDriverStatus(driverUid, false).catch(console.error);
       }
     }
   }, [subscriptionActive, isOnline, activeOrders.length]);
@@ -909,9 +908,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // Polls GET /api/drivers/me every 30 s to detect admin account-status changes
   // (suspend / blacklist / block) while the app is open.
   //
-  // LOOP GUARD: enforcing a block sets isOnline=false via updateDriverOnlineStatus.
+  // LOOP GUARD: enforcing a block sets isOnline=false via patchDriverStatus.
   // Unlike the Firestore listener, an HTTP poll is not re-triggered by our own
-  // Firestore write — no infinite loop is possible. The guard is kept for safety.
+  // write — no infinite loop is possible. The guard is kept for safety.
   useEffect(() => {
     if (!driverUid) return;
 
@@ -949,7 +948,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         hasEnforcedBlock = true;
         console.log("[ACCOUNT_STATUS_POLL] blocked — accountStatus =", profile.accountStatus, "→ enforcing ONCE");
         setOnlineState(false);
-        updateDriverOnlineStatus(driverUid, false).catch(console.error);
+        patchDriverStatus(driverUid, false).catch(console.error);
         if (locationIntervalRef.current !== null) {
           clearInterval(locationIntervalRef.current);
           locationIntervalRef.current = null;
@@ -1528,7 +1527,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       // Await so the offline status is written before the Firebase session is
       // cleared. Best-effort — logout continues even if the write fails.
       try {
-        await updateDriverOnlineStatus(driverUid, false);
+        await patchDriverStatus(driverUid, false);
       } catch {
         // intentionally ignored
       }
@@ -1639,7 +1638,6 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     }
     setOnlineState(v);
     if (driverUid) {
-      updateDriverOnlineStatus(driverUid, v).catch(console.error);
       patchDriverStatus(driverUid, v).catch(console.error);
     }
     if (v) {

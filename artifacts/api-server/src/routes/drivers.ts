@@ -410,44 +410,46 @@ router.patch("/drivers/:uid/status", async (req, res) => {
     return;
   }
 
-  // ── Firestore write — source of truth, unchanged ──────────────────────────
+  // ── Phase 5J-Tier-5 — PG-authoritative write ──────────────────────────────
+  // PostgreSQL is now the source of truth for driver online status. A PG failure
+  // fails the request; the Firestore mirror below is best-effort.
   try {
-    const fsDb = await adminFirestore();
-    await fsDb.collection("drivers").doc(uid).update({
-      isOnline,
-      lastSeenAt: Date.now(),
-    });
-    req.log.info({ uid, isOnline }, "driver status updated");
+    const updated = await db
+      .update(driversTable)
+      .set({
+        isOnline,
+        onlineStatus: isOnline ? "online" : "offline",
+        lastSeenAt:   new Date(),
+        updatedAt:    new Date(),
+      })
+      .where(eq(driversTable.uid, uid))
+      .returning({ uid: driversTable.uid });
+
+    if (updated.length === 0) {
+      req.log.warn({ uid }, "[PG_ONLINE_STATUS] no drivers row — status not written");
+      res.status(404).json({ ok: false, error: "driver_not_found" });
+      return;
+    }
+    req.log.info({ uid, isOnline }, "[PG_ONLINE_STATUS] saved (authoritative)");
   } catch (err) {
-    req.log.error({ err, uid }, "status: Firestore update failed");
+    req.log.error({ err, uid }, "[PG_ONLINE_STATUS] PG write failed");
     res.status(500).json({ ok: false, error: "server_error" });
     return;
   }
 
-  // ── Phase 4C — mirror the same state into PostgreSQL (shadow) ──────────────
-  // Firestore stays the source of truth. This is fully non-blocking: a PG
-  // failure must never affect the Firestore result or the response, and no
-  // dispatcher reads these columns yet.
+  // ── Firestore projection (best-effort; PG already committed) ───────────────
+  // Mirrors status into Firestore so legacy/fallback readers stay consistent.
+  // A projection failure must never affect the PG result or the response.
   void (async () => {
     try {
-      const mirrored = await db
-        .update(driversTable)
-        .set({
-          isOnline,
-          onlineStatus: isOnline ? "online" : "offline",
-          lastSeenAt:   new Date(),
-          updatedAt:    new Date(),
-        })
-        .where(eq(driversTable.uid, uid))
-        .returning({ uid: driversTable.uid });
-
-      if (mirrored.length === 0) {
-        req.log.warn({ uid }, "[PG_ONLINE_STATUS_FALLBACK] no drivers row — status not mirrored to PG");
-      } else {
-        req.log.info({ uid, isOnline }, "[PG_ONLINE_STATUS_SAVE]");
-      }
+      const fsDb = await adminFirestore();
+      await fsDb.collection("drivers").doc(uid).update({
+        isOnline,
+        lastSeenAt: Date.now(),
+      });
+      req.log.info({ uid, isOnline }, "[PG_STATUS_PROJECTION] mirrored to Firestore");
     } catch (err) {
-      req.log.warn({ err, uid }, "[PG_ONLINE_STATUS_FALLBACK] PG mirror failed");
+      req.log.error({ err, uid }, "[PG_STATUS_PROJECTION_FAILED] Firestore mirror failed — PG authoritative, continuing");
     }
   })();
 

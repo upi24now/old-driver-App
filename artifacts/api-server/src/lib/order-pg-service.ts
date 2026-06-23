@@ -517,6 +517,87 @@ export async function pgSetOrderStage(
   }
 }
 
+// ── pgSetOrderLocation ────────────────────────────────────────────────────────
+
+export type PgLocationResult =
+  | { ok: true }
+  | { ok: false; reason: "not_found" | "forbidden" | "terminal" | "unknown" };
+
+/**
+ * Authoritatively record the assigned driver's live GPS position on an order in
+ * PostgreSQL.
+ *
+ * Phase 5J-Tier-5: replaces the Driver App's direct Firestore updateDriverLocation
+ * write.  PG becomes the source of truth; the route handler then mirrors the
+ * coordinates to Firestore so the customer app's live driver map keeps working.
+ *
+ * Single atomic UPDATE guarded by:
+ *   • id = orderId
+ *   • driver_uid = driverUid                  — only the assigned driver may write
+ *   • status NOT IN ('delivered','cancelled') — never touch a terminal order
+ *
+ * numeric columns are written as strings (Drizzle numeric maps to string).
+ *
+ * 0 rows affected → read the current row to classify the failure
+ * (not_found / forbidden / terminal), matching pgSetOrderStage semantics.
+ */
+export async function pgSetOrderLocation(
+  orderId:   string,
+  driverUid: string,
+  latitude:  number,
+  longitude: number,
+  accuracy?: number,
+): Promise<PgLocationResult> {
+  const now = new Date();
+
+  const setValues = {
+    driverLat:         latitude.toString(),
+    driverLng:         longitude.toString(),
+    locationUpdatedAt: now,
+    ...(typeof accuracy === "number" ? { locationAccuracy: accuracy.toString() } : {}),
+    updatedAt:         now,
+  } as Partial<typeof ordersTable.$inferInsert>;
+
+  try {
+    const updated = await db
+      .update(ordersTable)
+      .set(setValues)
+      .where(
+        and(
+          eq(ordersTable.id, orderId),
+          eq(ordersTable.driverUid, driverUid),
+          notInArray(ordersTable.status, ["delivered", "cancelled"]),
+        ),
+      )
+      .returning({ id: ordersTable.id });
+
+    if (updated.length === 0) {
+      const existing = await db
+        .select({ driverUid: ordersTable.driverUid, status: ordersTable.status })
+        .from(ordersTable)
+        .where(eq(ordersTable.id, orderId))
+        .limit(1);
+
+      if (existing.length === 0) {
+        logger.info({ orderId, driverUid }, "[pgSetOrderLocation] order not found");
+        return { ok: false, reason: "not_found" };
+      }
+      const row = existing[0]!;
+      if (row.driverUid !== driverUid) {
+        logger.info({ orderId, driverUid, owner: row.driverUid }, "[pgSetOrderLocation] driver mismatch");
+        return { ok: false, reason: "forbidden" };
+      }
+      logger.info({ orderId, driverUid, status: row.status }, "[pgSetOrderLocation] order terminal");
+      return { ok: false, reason: "terminal" };
+    }
+
+    return { ok: true };
+  } catch (err) {
+    logger.error({ err, orderId, driverUid }, "[pgSetOrderLocation] error");
+    return { ok: false, reason: "unknown" };
+  }
+}
+
 // ── Phase 1B shadow-write helpers ─────────────────────────────────────────────
 //
 // The functions below are called by the round-robin dispatcher and the

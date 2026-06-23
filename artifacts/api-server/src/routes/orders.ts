@@ -2,7 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { Router, type Request, type Response } from "express";
 import { adminFirestore } from "../lib/firebase-admin";
 import { requireAuth } from "../lib/require-auth";
-import { pgGetOrder, pgShadowSetStatus, pgAcceptOffer, pgSetOrderStage, type DeliveryStage } from "../lib/order-pg-service";
+import { pgGetOrder, pgShadowSetStatus, pgAcceptOffer, pgSetOrderStage, pgSetOrderLocation, type DeliveryStage } from "../lib/order-pg-service";
 import { pgCreditOrderEarning, pgUpdateDriverDailyStats } from "../lib/wallet-pg-service";
 import { db, ordersTable } from "@workspace/db";
 import { inArray, gte, and } from "drizzle-orm";
@@ -397,6 +397,92 @@ router.patch("/orders/:orderId/stage", async (req: Request, res: Response) => {
   await projectStageToFirestore(orderId, driverUid, stage, req.log);
 
   req.log.info({ orderId, driverUid, stage }, "[PG_STAGE] advanced");
+  res.json({ ok: true });
+});
+
+// ─── PATCH /api/orders/:orderId/location ───────────────────────────────────────
+//
+// Phase 5J-Tier-5: PG-authoritative live-location write — replaces the Driver
+// App's direct Firestore updateDriverLocation write during active delivery.
+//
+//   1. pgSetOrderLocation authoritatively records driverLat/driverLng (+accuracy)
+//      in PostgreSQL, guarded by driver ownership and a non-terminal status check.
+//   2. The coordinates are mirrored to Firestore (driverLat/driverLng/
+//      locationUpdatedAt/locationAccuracy) so the customer app's live driver map
+//      keeps working via onSnapshot.
+//
+// High-frequency endpoint (~1 write / 10 s / active order). A missed Firestore
+// mirror self-heals on the next GPS tick, so projection failures are logged and
+// swallowed — PG stays authoritative. Security: driverUid from the ID token only.
+
+async function projectLocationToFirestore(
+  orderId:   string,
+  driverUid: string,
+  latitude:  number,
+  longitude: number,
+  accuracy:  number | undefined,
+  log:       Request["log"],
+): Promise<void> {
+  try {
+    const fdb = await adminFirestore();
+    const ref = fdb.doc(`orders/${orderId}`);
+    await fdb.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) {
+        log.warn({ orderId }, "[PG_LOCATION_PROJECTION] Firestore doc missing — skip mirror");
+        return;
+      }
+      const data = snap.data() as Record<string, unknown>;
+      if (data["driverUid"] !== driverUid) {
+        log.warn({ orderId }, "[PG_LOCATION_PROJECTION] driver mismatch — skip mirror");
+        return;
+      }
+      const status = data["status"];
+      if (status === "cancelled" || status === "delivered") {
+        log.warn({ orderId, status }, "[PG_LOCATION_PROJECTION] terminal status — skip mirror");
+        return;
+      }
+      const payload: Record<string, unknown> = {
+        driverLat:         latitude,
+        driverLng:         longitude,
+        locationUpdatedAt: FieldValue.serverTimestamp(),
+      };
+      if (typeof accuracy === "number") payload["locationAccuracy"] = accuracy;
+      tx.update(ref, payload);
+    });
+  } catch (err) {
+    log.error({ err, orderId, driverUid }, "[PG_LOCATION_PROJECTION] mirror failed — PG authoritative, continuing");
+  }
+}
+
+router.patch("/orders/:orderId/location", async (req: Request, res: Response) => {
+  const { orderId } = req.params as { orderId: string };
+
+  const driverUid = await requireAuth(req, res);
+  if (!driverUid) return;
+
+  const { latitude, longitude, accuracy } = (req.body ?? {}) as {
+    latitude?:  unknown;
+    longitude?: unknown;
+    accuracy?:  unknown;
+  };
+  if (typeof latitude !== "number" || typeof longitude !== "number") {
+    res.status(400).json({ ok: false, error: "invalid_body" });
+    return;
+  }
+  const acc = typeof accuracy === "number" ? accuracy : undefined;
+
+  // ── 1. PG-authoritative location write ───────────────────────────────────────
+  const pgRes = await pgSetOrderLocation(orderId, driverUid, latitude, longitude, acc);
+  if (!pgRes.ok) {
+    req.log.info({ orderId, driverUid, reason: pgRes.reason }, "[PG_LOCATION] rejected");
+    res.json({ ok: false, error: pgRes.reason });
+    return;
+  }
+
+  // ── 2. Firestore mirror (best-effort; PG already committed) ──────────────────
+  await projectLocationToFirestore(orderId, driverUid, latitude, longitude, acc, req.log);
+
   res.json({ ok: true });
 });
 

@@ -24,5 +24,6 @@
 - [Dispatch shadow data](dispatch-shadow-data.md) — dispatcher reads subscriptionExpiresAt/rating/tripsTotal|trips; rating+trips_total have NO writer (don't mirror tripsToday→trips_total); shadow-write + backfill mechanics.
 - [PG parameterized casts](pg-param-casts.md) — raw pg params used inside CASE/COALESCE need explicit ::type casts or "could not determine data type of parameter $N".
 - [FCM token PG migration](fcm-token-pg-migration.md) — Phase 4A write + 4B dispatcher read: tokens dual-written (PG primary + FS shadow); dispatcher reads PG-first via resolveDriverFcmToken, FS fallback; PG read errors never block push.
-- [Driver online-status & location PG migration](online-status-pg-migration.md) — Phase 4C/4D: online/offline + latest GPS mirrored to PG drivers table via PATCH /status & POST /location (fire-and-forget); FS source of truth; auto-offline paths don't mirror (accepted shadow-lag).
+- [Driver online-status & location PG migration](online-status-pg-migration.md) — 4C/4D shadow; status INVERTED to PG-primary in 5J-Tier-5; driver-doc POST /location still FS-primary shadow.
+- [PG dispatch bridge → Tier-5 status+location](pg-dispatch-bridge.md) — driver status flipped PG-primary (4 call sites→patchDriverStatus) + new PATCH /orders/:id/location PG-auth+FS projection; reject/timeout/cancel deferred.
 - [Wallet PG migration constraints](wallet-pg-migration.md) — payout sign divergence (FS neg/PG pos), credit shadow not idempotent, FS→PG-only comparator; resolve before PG-primary cutover.

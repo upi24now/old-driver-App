@@ -156,3 +156,41 @@ export async function updateOrderStageViaApi(
     // next stage advance or the completion call.
   }
 }
+
+/**
+ * Phase 5J-Tier-5: PG-authoritative live-location write via REST.
+ *
+ * Replaces the Firestore updateDriverLocation write.  Fire-and-forget compatible
+ * — resolves void and never throws.  The server authoritatively records the
+ * driver's GPS position in PostgreSQL and mirrors it to Firestore so the customer
+ * app's live driver map keeps working.  A missed write self-heals on the next
+ * GPS tick (~10 s), so failures are swallowed silently.
+ */
+export async function updateOrderLocationViaApi(
+  orderId:  string,
+  position: { coords: { latitude: number; longitude: number; accuracy: number | null } },
+): Promise<void> {
+  try {
+    const user = firebaseAuth.currentUser;
+    if (!user) return;
+
+    const token = await user.getIdToken();
+    const { latitude, longitude, accuracy } = position.coords;
+
+    await fetch(`${BASE_URL}/orders/${orderId}/location`, {
+      method:  "PATCH",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify(
+        accuracy !== null
+          ? { latitude, longitude, accuracy }
+          : { latitude, longitude },
+      ),
+    });
+  } catch {
+    // Fire-and-forget: PG is authoritative; a missed mirror self-heals on the
+    // next GPS tick.
+  }
+}
