@@ -3,6 +3,7 @@
 - [Bike Courier colour system](bike-courier-colours.md) — semantic token architecture; brand constants pattern used in active-delivery.tsx.
 - [Phase 2 dispatch model](phase2-dispatch.md) — activeOfferDriverUids array-contains replaces driverUid==uid AND status==dispatched; accept writes driver_assigned; reject/timeout use arrayRemove.
 - [api-server rebuild required](api-server-rebuild.md) — restart_workflow does NOT recompile; must run build explicitly before restarting.
+- [Reading secrets for verification](sandbox-env-secrets.md) — code_execution sandbox has no process.env; run secret-backed read scripts via bash/node in /tmp; executeSql prod works in sandbox.
 - [Vite react-vite skill exec fix](vite-react-skill-exec-fix.md) — kind=web + react-vite integratedSkill needs exec vite in dev script or port detection always fails.
 - [Battery optimization — Expo Go limitation](battery-expo-go-limitation.md) — exact battery intent always fails in Expo Go (wrong package); accepted behavior, not a code bug.
 - [Cold-start session restore navigation](cold-start-session-restore.md) — after app kill, Stack always starts at initialRouteName="login"; must navigate BEFORE setAuthLoading(false) to avoid flash of login screen.
