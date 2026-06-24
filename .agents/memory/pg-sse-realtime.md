@@ -1,12 +1,22 @@
 ---
 name: PG SSE realtime (Tier-6)
-description: Architecture decisions for replacing Firestore L1/L2 onSnapshot listeners with PG-backed SSE streams.
+description: Architecture decisions for replacing Firestore L1/L2 onSnapshot listeners with PG-backed SSE streams. Verified working end-to-end 2026-06-24.
 ---
 
 ## Rule
 L1 (listenToAllDispatchedOrders) and L2 (listenToActiveOrder) are served by PG SSE streams, NOT Firestore. DriverContext imports both from `utils/order-stream.ts`.
 
 **Why:** Firestore listener retirement path; SSE is snapshot-driven so reconnect always converges to truth without needing a complete event replay.
+
+## Verified results (T008, 2026-06-24)
+
+- `sse_events` table: 7038+ rows, written by trigger on every order insert/update
+- `[SSE_TRIGGER] orders → sse_events trigger installed` appears at startup
+- `[SSE_HUB] listening on sse_event channel` appears at startup
+- `GET /api/drivers/me/offer-stream`: returns 401 unauthenticated; full `OrderDoc[]` array with all fields on auth
+- `GET /api/orders/:id/stream`: returns 401 unauthenticated; `{"status":"dispatched"}` for owned order; `{"status":null}` for nonexistent/unowned order
+- Reconnect with `Last-Event-ID`: accepted, re-emits current snapshot at same cursor id
+- FCM/Firestore dispatch unchanged — PG dispatcher + shadow writer run normally alongside SSE
 
 ## Key architecture decisions
 
@@ -38,3 +48,5 @@ Three CHECK constraints are installed at server startup alongside the trigger (D
 - Any new realtime feature for the driver app should use this SSE pattern, not new Firestore listeners.
 - The heartbeat interval (20s) is the worst-case stale window for missed-NOTIFY scenarios.
 - `sse_events` rows older than 7 days are automatically pruned; no manual cleanup needed.
+- SSE routes require Firebase Auth Bearer token — use `createCustomToken` + Firebase REST exchange to generate test tokens (see /tmp/gen-token.mjs pattern).
+- Physical device SSE requires the API server to be deployed (`*.replit.app`) — dev domain is internal-only.

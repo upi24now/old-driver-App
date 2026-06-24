@@ -215,6 +215,21 @@ export default function LoginScreen() {
 
   const otpDigits = otp.split("").concat(Array(OTP_LENGTH - otp.length).fill(""));
 
+  // ── Runtime diagnostic — baked at Metro build time ────────────────────────
+  const _diagDomain = process.env["EXPO_PUBLIC_DOMAIN"] ?? "(not set)";
+  const _diagUrl    = _diagDomain && _diagDomain !== "(not set)"
+    ? `https://${_diagDomain}/api`
+    : "/api";
+  const [diagHealthz, setDiagHealthz] = useState<string>("…");
+  useEffect(() => {
+    const url = `${_diagUrl}/healthz`;
+    fetch(url, { method: "GET" })
+      .then((r) => r.json())
+      .then((j: unknown) => setDiagHealthz(`${(j as { status?: string }).status ?? "?"} (${url})`))
+      .catch((e: unknown) => setDiagHealthz(`ERR: ${(e as Error).message} (${url})`));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Resend countdown ──────────────────────────────────────────────────────
   useEffect(() => {
     if (phase !== "otp") return;
@@ -399,6 +414,16 @@ export default function LoginScreen() {
                   <Text style={ss.errorText}>{sendErr}</Text>
                 </View>
               )}
+            </View>
+
+            {/* ── Runtime diagnostic banner (shows baked-in domain + healthz) ── */}
+            <View style={{ backgroundColor: "#1a1a2e", borderRadius: 6, padding: 8, marginBottom: 8 }}>
+              <Text style={{ color: "#aaa", fontSize: 9, fontFamily: "monospace" }}>
+                {"DOMAIN=" + _diagDomain}
+              </Text>
+              <Text style={{ color: "#aaa", fontSize: 9, fontFamily: "monospace" }}>
+                {"HEALTHZ=" + diagHealthz}
+              </Text>
             </View>
 
             {/* ── Trust note ── */}

@@ -1,18 +1,24 @@
 ---
 name: EXPO_PUBLIC_DOMAIN dev vs prod routing bug
-description: Mobile package.json was hardcoding the production domain; physical device called old deployed server missing newer API routes, causing null profile and /registration routing.
+description: sisko.replit.dev is internal-only (private IP 172.24.0.5); physical devices must use the deployed .replit.app domain. $REPLIT_DEV_DOMAIN cannot be used as EXPO_PUBLIC_DOMAIN for physical device testing.
 ---
 
 ## The rule
 
-`EXPO_PUBLIC_DOMAIN` in `artifacts/mobile/package.json` `dev` script must be `$REPLIT_DEV_DOMAIN`, never the hardcoded `.replit.app` production domain.
+`EXPO_PUBLIC_DOMAIN` in `artifacts/mobile/package.json` `dev` script must be the deployed `.replit.app` domain (e.g. `driver-app-upi24now.replit.app`), NOT `$REPLIT_DEV_DOMAIN`.
 
-**Why:** The `.replit.app` domain is a SEPARATELY DEPLOYED production server running a snapshot of old code. Newer API routes (e.g. `/api/drivers/me`) only exist on the dev server. Physical devices using Expo Go load the dev bundle but call the production API → `Cannot GET /api/drivers/me` → null profile → `ensureDriverSignup` path → `/registration` for existing drivers.
+**Why:** `$REPLIT_DEV_DOMAIN` (and `$REPLIT_DOMAINS`) resolves to `172.24.0.5` — a private Replit internal proxy IP. Physical Android/iOS devices on an external network cannot route to this IP. `fetch()` in the Expo Go bundle → `TypeError: Network request failed`. The `.replit.app` domain is the publicly-deployed server, reachable from any device.
 
-**How to apply:** The `.replit` `[userenv.shared]` already sets `EXPO_PUBLIC_DOMAIN` to the dev domain. The package.json dev script was overriding it with the hardcoded prod domain. After the fix, the dev script uses `EXPO_PUBLIC_DOMAIN=$REPLIT_DEV_DOMAIN` and the physical device correctly reaches the dev API server which has the current code.
+**Confirmed 2026-06-24:** `curl -v https://$REPLIT_DEV_DOMAIN/api/healthz` inside the Replit container shows `IPv4: 172.24.0.5` and `CN=Replit internal proxy leaf` — a private mTLS proxy. External devices cannot connect.
 
-## Related hardening added at the same time
+**How to apply:**
+- `package.json` dev script: `EXPO_PUBLIC_DOMAIN=driver-app-upi24now.replit.app` (hardcoded deployed URL)
+- `REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN` is correct — Metro itself runs via Expo tunnel, which IS externally accessible
+- After adding new API routes to the dev server, you MUST redeploy the API server so the deployed URL serves the new routes
+- The diagnostic banner in `login.tsx` shows `DOMAIN=` and `HEALTHZ=` on screen so future bundles can be verified at a glance
 
-- `getDriverProfile` now populates a module-level `_lastProfileFetch` debug accumulator on every code path (success, 404, error, no_token). `getLastProfileFetchDebug()` exports it.
-- `confirmOtp` in DriverContext: if pgProfile is null after retry AND `_lastProfileFetch.source !== "404"` → return error to user instead of calling `ensureDriverSignup` (which would create a spurious PG row for an existing driver with a network/server error).
-- Debug overlay in login.tsx: after OTP success, if `result.debugLog` is populated, show a full-screen dark overlay with 11 runtime items (DOMAIN, BASE_URL, UID, token, /drivers/me URL/status/body, /verification-status ping, nextRoute, AsyncStorage keys) before calling `router.replace`. User taps PROCEED to continue.
+## Old (wrong) rule
+Previously wrote: "use `$REPLIT_DEV_DOMAIN`". That was wrong — it caused "Network request failed" on physical devices. Do not restore it.
+
+## Consequence for Tier-6 SSE routes
+The SSE routes (`/api/drivers/me/offer-stream`, `/api/orders/:id/stream`) are dev-only until the API server is (re)deployed. Physical device SSE will get 404 until deployment. Keep Firestore fallback in DriverContext or deploy before testing SSE on device.
