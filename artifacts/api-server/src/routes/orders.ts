@@ -2,7 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { Router, type Request, type Response } from "express";
 import { adminFirestore } from "../lib/firebase-admin";
 import { requireAuth } from "../lib/require-auth";
-import { pgGetOrder, pgShadowSetStatus, pgAcceptOffer, pgRejectOffer, pgTimeoutOffer, pgRemoveFromOfferSet, pgDriverCancelOrder, pgSetOrderStage, pgSetOrderLocation, type DeliveryStage } from "../lib/order-pg-service";
+import { pgGetOrder, pgShadowSetStatus, pgAcceptOffer, pgRejectOffer, pgTimeoutOffer, pgRemoveFromOfferSet, pgDriverCancelOrder, pgSetOrderStage, pgSetOrderLocation, pgCreateOffer, pgUpsertOrder, type DeliveryStage } from "../lib/order-pg-service";
 import { pgCreditOrderEarning, pgUpdateDriverDailyStats, pgCompleteDelivery } from "../lib/wallet-pg-service";
 import { db, ordersTable } from "@workspace/db";
 import { inArray, gte, and } from "drizzle-orm";
@@ -393,6 +393,93 @@ async function projectAcceptToFirestore(
   }
 }
 
+/**
+ * Self-heal a missing PG offer row from the authoritative live Firestore order.
+ *
+ * In production the actual driver dispatch + FCM are performed outside the
+ * api-server's offer-creating code paths (the order is offered via Firestore by
+ * the customer/dispatch side, and PG_FCM_SEND_ENABLED is off), so no
+ * order_offers row is ever written. pgAcceptOffer then returns not_in_offer even
+ * though the driver WAS legitimately offered the order — the user sees the popup
+ * (driven by the Firestore offer + FCM) but Accept fails.
+ *
+ * This reads the authoritative Firestore order doc and, ONLY if that doc proves
+ * the order is currently being offered to THIS driver (status still offerable,
+ * driver present in activeOfferDriverUids or the single driverUid field, and the
+ * dispatch window not expired), mirrors the parent order into PG and creates the
+ * pending offer row. The caller then retries pgAcceptOffer, which finds the row
+ * and claims it atomically.
+ *
+ * Returns true  → an offer row now exists; caller should retry the claim.
+ * Returns false → Firestore does NOT authorise this driver; caller keeps the
+ *                 original not_in_offer rejection (a driver can never accept an
+ *                 order that was not offered to them).
+ */
+async function selfHealOfferFromFirestore(
+  orderId:   string,
+  driverUid: string,
+  log:       Request["log"],
+): Promise<boolean> {
+  try {
+    const fdb  = await adminFirestore();
+    const snap = await fdb.doc(`orders/${orderId}`).get();
+    if (!snap.exists) {
+      log.info({ orderId, driverUid }, "[PG_ACCEPT_SELFHEAL] Firestore order missing — not authorised");
+      return false;
+    }
+
+    const data   = snap.data() as Record<string, unknown>;
+    const status = typeof data["status"] === "string" ? data["status"] : null;
+
+    // A LIVE offer always sits at status "dispatched" — the dispatch transition
+    // sets status=dispatched + activeOfferDriverUids together. A "searching"/
+    // "pending" order has no active offer yet (and its driver fields may be
+    // stale), so we never self-heal those: only "dispatched" authorises healing.
+    if (status !== "dispatched") {
+      log.info({ orderId, driverUid, status }, "[PG_ACCEPT_SELFHEAL] order not dispatched — not authorised");
+      return false;
+    }
+
+    // Driver must be on the live offer: Phase-2 activeOfferDriverUids array, or
+    // the Phase-1 single driverUid field.
+    const offerUids = Array.isArray(data["activeOfferDriverUids"])
+      ? (data["activeOfferDriverUids"] as unknown[]).filter((u): u is string => typeof u === "string")
+      : [];
+    const singleUid = typeof data["driverUid"] === "string" ? data["driverUid"] : null;
+    if (!offerUids.includes(driverUid) && singleUid !== driverUid) {
+      log.info({ orderId, driverUid }, "[PG_ACCEPT_SELFHEAL] driver not on live offer — not authorised");
+      return false;
+    }
+
+    // Respect the dispatch window if Firestore carries one (Timestamp → millis).
+    let timeoutAt: Date | undefined;
+    const rawTimeout = data["dispatchTimeoutAt"] as { toMillis?: () => number } | undefined;
+    if (rawTimeout && typeof rawTimeout.toMillis === "function") {
+      const ms = rawTimeout.toMillis();
+      if (ms <= Date.now()) {
+        log.info({ orderId, driverUid }, "[PG_ACCEPT_SELFHEAL] dispatch window expired — not authorised");
+        return false;
+      }
+      timeoutAt = new Date(ms);
+    }
+
+    // Authorised. Ensure the parent PG order row exists (so the offer FK holds and
+    // the offer columns are populated), then create the missing pending offer row.
+    await pgUpsertOrder(orderId, data, { guardRegression: true, mirrorOfferSet: true });
+    const created = await pgCreateOffer(orderId, driverUid, timeoutAt);
+    if (!created.ok) {
+      log.warn({ orderId, driverUid }, "[PG_ACCEPT_SELFHEAL] offer create failed");
+      return false;
+    }
+
+    log.info({ orderId, driverUid }, "[PG_ACCEPT_SELFHEAL] offer row created from live Firestore offer");
+    return true;
+  } catch (err) {
+    log.error({ err, orderId, driverUid }, "[PG_ACCEPT_SELFHEAL] error — keeping rejection");
+    return false;
+  }
+}
+
 router.post("/orders/:orderId/accept", async (req: Request, res: Response) => {
   const { orderId } = req.params as { orderId: string };
 
@@ -408,7 +495,19 @@ router.post("/orders/:orderId/accept", async (req: Request, res: Response) => {
   const driverTrips  = typeof body.driverTrips === "number" ? body.driverTrips : 0;
 
   // ── 1. PG-authoritative claim ────────────────────────────────────────────────
-  const pgRes = await pgAcceptOffer(orderId, driverUid, driverName);
+  let pgRes = await pgAcceptOffer(orderId, driverUid, driverName);
+
+  // Self-heal: in production the live offer is created in Firestore (outside the
+  // api-server's offer-creating paths), so no PG order_offers row exists and the
+  // claim above returns not_in_offer even though the driver was legitimately
+  // offered the order. If the authoritative Firestore order confirms this driver
+  // is on the live offer, create the missing offer row and retry the claim once.
+  if (!pgRes.ok && pgRes.reason === "not_in_offer") {
+    const healed = await selfHealOfferFromFirestore(orderId, driverUid, req.log);
+    if (healed) {
+      pgRes = await pgAcceptOffer(orderId, driverUid, driverName);
+    }
+  }
 
   let accepted = pgRes.ok;
 
