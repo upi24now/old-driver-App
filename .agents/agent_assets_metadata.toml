@@ -131,3 +131,9 @@ id = "nQWAk-ujxC9nb0CRaT8dm"
 uri = "file://api-deploy-v2.2-auth.tar.gz"
 type = "unspecified"
 title = "api-deploy-v2.2-auth.tar.gz — API Server with auth routes"
+
+[[outputs]]
+id = "1ZxssgNCFTxAoJ_qShSdz"
+uri = "file://api-deploy-final-6857510.tar.gz"
+type = "unspecified"
+title = "Final frozen API package — commit 6857510"
