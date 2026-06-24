@@ -37,9 +37,25 @@ the onSnapshot didn't fire — vs. an eligibility skip which DOES log "No eligib
 driver poolSize/onlineCount". `PG_DISPATCHER poolSize=0` is the PG shadow, not
 authoritative.
 
+**Rule 5 — read the deployed env, not just the code.** Production boot logs
+(`fetch_deployment_logs` for `[STARTUP_FIREBASE_CONFIG]`, `[DISPATCH_SOURCE]
+value=`, `[PG_DISPATCH_WRITE_GUARD] writesAllowed=`) reveal the actual runtime
+flags. A 2026-06-24 follow-up proved production runs **`DISPATCH_SOURCE=pg`**
+(NOT the assumed `firestore` kill-switch position), with `writesAllowed=true` but
+`pgFcmSendEnabled=false`. In `pg` mode the RR Firestore dispatcher attaches its
+onSnapshot but `assignNextDriver` returns at the top ("pg mode — skipping
+Firestore assignment (PG authority)"), so the proven-working Firestore RR+FCM
+path is bypassed. The PG dispatcher becomes authority but (a) never saw the real
+orders (FS→PG shadow-writer FK failures = order never mirrored), (b) logged
+`poolSize=0` (no eligible PG drivers), and (c) `PG_FCM_SEND_ENABLED=false` means
+it would send no FCM even on success → driver never notified. Documented kill
+switch / minimal safe fix: set `DISPATCH_SOURCE=firestore` to restore the working
+Firestore RR + FCM dispatcher path.
+
 **Why:** a 2026-06-24 audit chased a wallet fix as the cause of dropped order
 popups; the wallet fix touched only the completion path AND wasn't deployed. The
 two failed orders were created in FS, never dispatched (point B), with no RR log
-at all, while production had restarted (pid changed) between the last working
-dispatch and the failures. Lesson: prove deployed-commit + break-point before any
-fix.
+at all, while production had restarted (pid 21→22) between the last working
+dispatch and the failures — and the deployment was running DISPATCH_SOURCE=pg the
+whole time. Lesson: prove deployed-commit + deployed-env flags + break-point
+before any fix.
