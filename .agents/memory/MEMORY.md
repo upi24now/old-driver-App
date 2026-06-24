@@ -35,3 +35,4 @@
 - [Firestore retirement audit](firestore-retirement-audit.md) — support + payouts now PG-authoritative (retired); KEEP forever Auth/FCM; RR dispatcher = kill switch.
 - [KYC admin read-path migration](kyc-admin-pg-read.md) — GET /api/kyc/drivers was Firestore-only; POST /api/drivers/documents is PG-only → admin invisibility gap; fixed by switching read to PG + Firestore projection on submit.
 - [EXPO_PUBLIC_DOMAIN dev vs prod routing bug](expo-domain-routing-bug.md) — mobile package.json hardcoded EXPO_PUBLIC_DOMAIN=driver-app-upi24now.replit.app; production server is a separate deployment missing newer API routes; fix: use $REPLIT_DEV_DOMAIN instead.
+- [FCM cold-start staleness guard](fcm-coldstart-staleness.md) — Android caches last FCM tap indefinitely; must check notification age >2min before calling handleNotificationResponse, or every cold start replays stale order popup.

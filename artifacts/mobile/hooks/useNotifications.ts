@@ -88,17 +88,34 @@ export function useNotifications(): void {
     );
 
     // Cold-start: was the app launched by tapping a notification?
+    //
+    // STALENESS GUARD: offer windows are ≤ 60 s, so any FCM notification older
+    // than 2 minutes cannot correspond to a live order offer.  Without this
+    // guard, Android caches the last notification tap indefinitely — every
+    // subsequent app launch (including after a fresh login) would replay the
+    // same stale notification and navigate to the ride-request screen for an
+    // order that no longer exists.
     Notif.getLastNotificationResponseAsync()
       .then((response) => {
-        if (response) {
-          const data = response.notification.request.content.data as Record<string, unknown> | null;
-          const orderId = (data?.orderId as string | undefined) ?? "(none)";
+        if (!response) return;
+
+        const ageMs = Date.now() - response.notification.date * 1000;
+        if (ageMs > 2 * 60 * 1000) {
           console.log(
-            "[FCM] notification tap orderId:", orderId,
-            "id:", response.notification.request.identifier,
+            "[FCM] ignoring stale cold-start notification age:",
+            Math.round(ageMs / 1000), "s orderId:",
+            (response.notification.request.content.data as Record<string, unknown> | null)?.orderId ?? "(none)",
           );
-          handleNotificationResponse(response);
+          return;
         }
+
+        const data = response.notification.request.content.data as Record<string, unknown> | null;
+        const orderId = (data?.orderId as string | undefined) ?? "(none)";
+        console.log(
+          "[FCM] notification tap orderId:", orderId,
+          "id:", response.notification.request.identifier,
+        );
+        handleNotificationResponse(response);
       })
       .catch((err) =>
         console.error(
