@@ -324,7 +324,7 @@ export default function LoginScreen() {
       lines.push(`12. REASON: routing to ${nextRoute} (no collapse)`);
     }
     setDebugData({ lines, route: nextRoute });
-    // router.replace is called when user taps "Proceed" in the debug panel
+    router.replace(nextRoute as never);
   }
 
   console.log("[SCREEN_MOUNT] login — authLoading =", authLoading, "driverUid =", driverUid);
