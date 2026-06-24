@@ -870,6 +870,12 @@ export async function pgSetOrderLocation(
  */
 const POOL_MIRRORABLE_STATUSES = ["searching", "pending", "dispatched"] as const;
 
+// Synthesized offer-window length for externally-claimed orders whose Firestore
+// doc carries no dispatchTimeoutAt (the production FCM dispatcher sets
+// fcmDispatchedAt + activeOfferDriverUids but never dispatchTimeoutAt). Mirrors
+// round-robin-dispatcher.ts DISPATCH_TIMEOUT_SECONDS — keep in sync.
+const OFFER_WINDOW_SECONDS = 60;
+
 // ── pgUpsertOrder ─────────────────────────────────────────────────────────────
 
 /**
@@ -907,6 +913,17 @@ export interface PgUpsertOrderOpts {
    * no Firestore→PG mirror of it is needed). Only meaningful when guardRegression.
    */
   guardStatuses?: readonly string[];
+  /**
+   * Dispatch-owner sync: when the Firestore doc has no dispatchTimeoutAt (the
+   * production FCM dispatcher claims via fcmDispatchedAt + activeOfferDriverUids
+   * but never writes a dispatch window), synthesize one as
+   * `fcmDispatchedAt + OFFER_WINDOW_SECONDS` so the SSE offer-stream query
+   * (dispatch_timeout_at > now) can surface the offer. Deterministic — based on
+   * the stable claim time, not now() — so every shadow re-mirror computes the
+   * SAME deadline and the window never drifts. Off by default; opted into by the
+   * fcm-dispatcher claim-skip mirror and the shadow-writer dispatch-cycle mirror.
+   */
+  synthesizeDispatchWindow?: boolean;
 }
 
 /**
@@ -933,6 +950,7 @@ export async function pgUpsertOrder(
     guardRegression = false,
     mirrorOfferSet = false,
     guardStatuses = POOL_MIRRORABLE_STATUSES,
+    synthesizeDispatchWindow = false,
   } = opts;
   const str = (k: string): string | null => {
     const v = data[k];
@@ -970,8 +988,24 @@ export async function pgUpsertOrder(
   const status           = overrideStatus ?? str("status") ?? "searching";
   const rejectedBy       = arrStr("rejectedBy");
   const lastDispatchedUid = str("lastDispatchedDriverUid") ?? str("lastDispatchedUid");
-  const dispatchTimeoutAt = tsDate("dispatchTimeoutAt");
-  const dispatchedAt      = tsDate("dispatchedAt");
+  let dispatchTimeoutAt   = tsDate("dispatchTimeoutAt");
+  let dispatchedAt        = tsDate("dispatchedAt");
+
+  // Dispatch-owner sync: the production FCM dispatcher claims an order with
+  // fcmDispatchedAt + activeOfferDriverUids but writes NO dispatchTimeoutAt, so a
+  // plain mirror leaves dispatch_timeout_at NULL and the SSE offer-stream query
+  // (dispatch_timeout_at > now) can never surface the offer. When asked, derive a
+  // window from the stable claim time so the deadline is deterministic across
+  // every re-mirror (never extends): fcmDispatchedAt + OFFER_WINDOW_SECONDS.
+  if (synthesizeDispatchWindow && dispatchTimeoutAt === null) {
+    const base =
+      tsDate("fcmDispatchedAt") ??
+      tsDate("fcmDispatchClaimedAt") ??
+      dispatchedAt ??
+      new Date();
+    dispatchTimeoutAt = new Date(base.getTime() + OFFER_WINDOW_SECONDS * 1000);
+    if (dispatchedAt === null) dispatchedAt = base;
+  }
   // Only mirror the offer set when explicitly requested (Phase 5H-BRIDGE-2);
   // otherwise leave the column untouched so the dispatcher's upsert is unchanged.
   const offerSetField     = mirrorOfferSet

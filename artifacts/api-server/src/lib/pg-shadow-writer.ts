@@ -317,8 +317,9 @@ export async function startPgShadowWriter(): Promise<void> {
 
           void (async () => {
             await pgUpsertOrder(orderId, data, {
-              guardRegression: true,
-              mirrorOfferSet:  true,
+              guardRegression:          true,
+              mirrorOfferSet:           true,
+              synthesizeDispatchWindow: true,
             });
             logger.info({ orderId, offerSize }, "[PG_INGRESS_CYCLE]");
           })().catch((e) =>

@@ -12,6 +12,21 @@ description: Why drivers get FCM but no in-app ride popup after Tier-6 — the d
 > dispatch transition — it MUST keep `mirrorOfferSet:true` or the popup silently breaks
 > again while FCM keeps succeeding. The order_otps FK-race (order_otps→orders) is now
 > retried/log-tagged `[PG_SHADOW_OTP_FK_RACE]` in the shadow-writer OTP listener.
+>
+> **FOLLOW-UP (synthesized dispatch window).** `mirrorOfferSet` alone was not enough
+> in prod: the *external* Firestore dispatcher claims orders (writes `fcmDispatchedAt`
+> + `activeOfferDriverUids`) but NEVER writes `dispatchTimeoutAt` (confirmed 0/52 real
+> prod orders ever had a non-null one). So the SSE query's `dispatch_timeout_at > now()`
+> clause kept excluding every externally-claimed offer → still no popup. Fix: `pgUpsertOrder`
+> gained opt-in `synthesizeDispatchWindow` — when set AND Firestore has no `dispatchTimeoutAt`,
+> it derives `dispatch_timeout_at = (fcmDispatchedAt ?? fcmDispatchClaimedAt ?? dispatchedAt
+> ?? now) + OFFER_WINDOW_SECONDS(60)` (anchored to the stable claim time, so re-mirrors are
+> DETERMINISTIC and never extend the window) and backfills `dispatchedAt`. **Durable rule:**
+> the window MUST be anchored to a stable Firestore timestamp, never `now()`, or the
+> shadow-writer's repeated `PG_INGRESS_CYCLE` re-mirrors would keep pushing the deadline
+> forward and offers would never expire. Opted into at BOTH `mirrorClaimedOrderToPg`
+> (fcm-dispatcher claim-skip) and Listener 6 `PG_INGRESS_CYCLE` (shadow-writer). Strict
+> no-op when Firestore already supplies `dispatchTimeoutAt` (compliant dispatchers unchanged).
 
 # In-app ride popup channel ≠ FCM (post Tier-6)
 

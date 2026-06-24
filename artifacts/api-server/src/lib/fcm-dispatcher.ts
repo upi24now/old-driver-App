@@ -326,7 +326,11 @@ async function mirrorClaimedOrderToPg(
 
   // 1. Mirror the parent order row — active_offer_driver_uids + dispatch window.
   try {
-    await pgUpsertOrder(orderId, orderData, { guardRegression: true, mirrorOfferSet: true });
+    await pgUpsertOrder(orderId, orderData, {
+      guardRegression:          true,
+      mirrorOfferSet:           true,
+      synthesizeDispatchWindow: true,
+    });
   } catch (err) {
     // pgUpsertOrder is non-throwing; guard the await defensively.
     logger.error({ err, orderId }, "[FCM CLAIM SKIP MIRROR] parent upsert failed");
