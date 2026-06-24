@@ -1130,9 +1130,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       case "/account-blocked":
       case "/background-setup":
       case "/verification-pending":
+      case "/onboarding-fee":
         return serverRoute as OnboardingRoute;
       default:
-        // /vehicle-selection, /profile-setup, /document-upload, /onboarding-fee
+        // /vehicle-selection, /profile-setup, /document-upload
         // and any unknown future steps all collapse to /registration.
         return "/registration";
     }
