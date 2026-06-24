@@ -319,20 +319,17 @@ export async function pgAcceptOffer(
 
         if (existing.length === 0) {
           logger.info({ orderId, driverUid }, "[pgAcceptOffer] offer row not found");
-          tx.rollback();
           return { ok: false, reason: "not_in_offer" } as const;
         }
 
         const row = existing[0]!;
         if (row.status !== "pending") {
           logger.info({ orderId, driverUid, status: row.status }, "[pgAcceptOffer] offer already responded");
-          tx.rollback();
           return { ok: false, reason: "already_claimed" } as const;
         }
 
         // Status is pending but expires_at check failed → expired
         logger.info({ orderId, driverUid, expiresAt: row.expiresAt }, "[pgAcceptOffer] offer expired");
-        tx.rollback();
         return { ok: false, reason: "expired" } as const;
       }
 
@@ -357,7 +354,6 @@ export async function pgAcceptOffer(
       if (orderUpdate.length === 0) {
         // Order no longer in an assignable state — another driver won the race.
         logger.info({ orderId, driverUid }, "[pgAcceptOffer] order already claimed by another driver");
-        tx.rollback();
         return { ok: false, reason: "already_claimed" } as const;
       }
 

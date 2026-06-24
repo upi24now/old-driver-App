@@ -47,6 +47,7 @@ import { db as pgDb, driversTable } from "@workspace/db";
 import { adminFirestore, adminMessaging } from "./firebase-admin";
 import { logger } from "./logger";
 import { pgClaimShadowValidate } from "./pg-claim-shadow";
+import { pgCreateOffer } from "./order-pg-service";
 
 const CHANNEL_ORDERS = "incoming_orders_v2";
 
@@ -264,6 +265,20 @@ async function sendOrderFcm(
   }
   // Claim moment, captured for the read-only PG claim shadow validator below.
   const claimedAtMs = Date.now();
+
+  // ── 1b. Create PG offer rows ────────────────────────────────────────────────
+  // The accept endpoint (POST /orders/:orderId/accept) requires a row in the
+  // order_offers table for the accepting driver.  In Firestore-dispatch mode the
+  // round-robin PG dispatcher never runs, so no offer rows are created — we
+  // create them here, once, in the single instance that won the FCM claim.
+  // pgCreateOffer is idempotent (ON CONFLICT DO NOTHING) so replays are safe.
+  await Promise.all(
+    targetUids.map((uid) =>
+      pgCreateOffer(orderId, uid).catch((err) =>
+        logger.warn({ err, orderId, uid }, "[FCM dispatcher] pgCreateOffer failed — accept may fail"),
+      ),
+    ),
+  );
 
   const notifBody = order.earning !== "0" && order.distanceKm !== "0"
     ? `₹${order.earning} • ${order.distanceKm} km — ${order.customer || "New order"}`

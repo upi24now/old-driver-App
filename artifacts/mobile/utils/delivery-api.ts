@@ -104,11 +104,25 @@ export async function acceptOrderViaApi(
 ): Promise<AcceptOrderResult> {
   try {
     const user = firebaseAuth.currentUser;
-    if (!user) return { ok: false, reason: "unknown" };
+    if (!user) {
+      console.log("[DRIVER ACCEPT SOURCE] api");
+      console.log("[DRIVER ACCEPT ORDER ID]", orderId);
+      console.log("[DRIVER ACCEPT DRIVER UID] (not authenticated)");
+      console.log("[DRIVER ACCEPT RESULT] fail — not authenticated");
+      return { ok: false, reason: "unknown" };
+    }
+
+    const driverUid = user.uid;
+    const apiUrl    = `${BASE_URL}/orders/${orderId}/accept`;
+
+    console.log("[DRIVER ACCEPT SOURCE] api");
+    console.log("[DRIVER ACCEPT ORDER ID]", orderId);
+    console.log("[DRIVER ACCEPT DRIVER UID]", driverUid);
+    console.log("[DRIVER ACCEPT API URL]", apiUrl);
 
     const token = await user.getIdToken();
 
-    const res = await fetch(`${BASE_URL}/orders/${orderId}/accept`, {
+    const res = await fetch(apiUrl, {
       method:  "POST",
       headers: {
         "Content-Type":  "application/json",
@@ -118,9 +132,16 @@ export async function acceptOrderViaApi(
     });
 
     const json = (await res.json()) as { ok?: boolean; reason?: string };
-    if (json.ok === true) return { ok: true };
+
+    if (json.ok === true) {
+      console.log("[DRIVER ACCEPT RESULT] ok — order", orderId, "accepted");
+      return { ok: true };
+    }
+
+    console.log("[DRIVER ACCEPT RESULT] fail — HTTP", res.status, "reason:", json.reason ?? "none");
     return { ok: false, reason: mapAcceptReason(json.reason) };
-  } catch {
+  } catch (err) {
+    console.log("[DRIVER ACCEPT RESULT] error —", err instanceof Error ? err.message : String(err));
     return { ok: false, reason: "unknown" };
   }
 }
