@@ -107,22 +107,32 @@ export async function pgGetActiveOrders(
 
 /**
  * Return every order that currently lists this driver in its
- * active_offer_driver_uids set — the exact PG equivalent of the Firestore L1
- * query `orders WHERE activeOfferDriverUids array-contains uid`.
+ * active_offer_driver_uids set AND has a live (non-expired) dispatch window —
+ * the PG equivalent of the Firestore L1 query but with two additional guards:
  *
- * This column is the FS-mirrored offer set (kept in sync for dispatch, reject,
- * and timeout by the PG dispatcher projection + the shadow-writer's
- * mirrorOfferSet listener), so it tracks the live offered-driver set 1:1 with
- * what the Firestore listener returned. Used by the SSE offer-stream snapshot.
+ *   1. status = 'dispatched'       — excludes accepted/completed/cancelled orders
+ *   2. dispatch_timeout_at > NOW() — excludes stale dispatch cycles whose offer
+ *      window has already closed. This prevents old test/seed rows and zombie
+ *      Firestore-dispatched orders from appearing on the driver's stream.
+ *      A NULL dispatch_timeout_at also evaluates false (excluded), which is
+ *      correct — a dispatched order with no timeout window is incomplete data.
  *
- * No status filter — matches Firestore L1 exactly; the mobile client applies the
- * same stale-dispatch filter it always has.
+ * The active_offer_driver_uids column is FS-mirrored (shadow-writer + projector)
+ * so it stays 1:1 with Firestore's activeOfferDriverUids array in live orders.
  */
 export async function pgGetOffersForDriver(driverUid: string): Promise<Order[]> {
+  const now = new Date();
+
   const rows = await db
     .select()
     .from(ordersTable)
-    .where(sql`${driverUid} = ANY(${ordersTable.activeOfferDriverUids})`)
+    .where(
+      and(
+        sql`${driverUid} = ANY(${ordersTable.activeOfferDriverUids})`,
+        eq(ordersTable.status, "dispatched"),
+        gt(ordersTable.dispatchTimeoutAt, now),
+      ),
+    )
     .orderBy(sql`${ordersTable.dispatchedAt} DESC NULLS LAST`);
 
   return rows;
