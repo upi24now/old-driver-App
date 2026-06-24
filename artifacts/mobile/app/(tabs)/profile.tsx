@@ -1,5 +1,4 @@
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -254,63 +253,59 @@ export default function SettingsScreen() {
         </View>
 
         {/* PROFILE HERO */}
-        <LinearGradient
-          colors={["#1A0612", "#8B1040", "#E8336C"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.profileHero}
+        <View
+          style={[
+            styles.profileHero,
+            {
+              backgroundColor: colors.surface,
+              borderColor: colors.border,
+              shadowColor: "#FF6B00",
+              shadowOpacity: 0.12,
+            },
+          ]}
         >
-          {/* Glass shimmer highlight */}
-          <LinearGradient
-            colors={["rgba(232,51,108,0.22)", "rgba(255,255,255,0)"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0.65, y: 1 }}
-            style={StyleSheet.absoluteFillObject}
-            pointerEvents="none"
-          />
-
           {/* Identity row */}
           <View style={styles.profileRow}>
             <View style={styles.profileAvatarWrap}>
-              <View style={styles.profileAvatar}>
-                <Text style={styles.profileAvatarText}>{avatarInitials}</Text>
+              <View style={[styles.profileAvatar, { backgroundColor: colors.primarySoft, borderColor: colors.primary }]}>
+                <Text style={[styles.profileAvatarText, { color: colors.primary }]}>{avatarInitials}</Text>
               </View>
             </View>
             <View style={{ flex: 1, gap: 2 }}>
-              <Text style={styles.profileName}>{displayName}</Text>
-              <Text style={styles.profilePhone}>{displayPhone}</Text>
+              <Text style={[styles.profileName, { color: colors.foreground }]}>{displayName}</Text>
+              <Text style={[styles.profilePhone, { color: colors.mutedForeground }]}>{displayPhone}</Text>
               <View style={styles.profileVehicleRow}>
-                <MaterialCommunityIcons name="motorbike" size={13} color="rgba(255,255,255,0.5)" />
-                <Text style={styles.profileVehicleText}>{displayVehicle}</Text>
+                <MaterialCommunityIcons name="motorbike" size={13} color={colors.mutedForeground} />
+                <Text style={[styles.profileVehicleText, { color: colors.mutedForeground }]}>{displayVehicle}</Text>
               </View>
             </View>
           </View>
 
           {/* Plan panel */}
-          <View style={styles.planPanel}>
+          <View style={[styles.planPanel, { backgroundColor: colors.primarySoft, borderColor: colors.border }]}>
             {isPlanActive && !planExpired ? (
               <>
                 <View style={styles.planTopRow}>
                   <View style={styles.planBadge}>
                     <View style={[styles.planDot, { backgroundColor: colors.success }]} />
-                    <Text style={styles.planName}>{planName}</Text>
+                    <Text style={[styles.planName, { color: colors.foreground }]}>{planName}</Text>
                   </View>
                   <TouchableOpacity
-                    style={styles.planCta}
+                    style={[styles.planCta, { backgroundColor: colors.muted, borderColor: colors.border }]}
                     onPress={() => router.push("/subscription")}
                     activeOpacity={0.8}
                   >
-                    <Text style={styles.planCtaText}>Manage Plan</Text>
-                    <Feather name="chevron-right" size={12} color="rgba(255,255,255,0.8)" />
+                    <Text style={[styles.planCtaText, { color: colors.foreground }]}>Manage Plan</Text>
+                    <Feather name="chevron-right" size={12} color={colors.mutedForeground} />
                   </TouchableOpacity>
                 </View>
                 <View style={styles.planInfoRow}>
-                  <Text style={styles.planDaysLeft}>
+                  <Text style={[styles.planDaysLeft, { color: colors.foreground }]}>
                     {remainingLabel}
                   </Text>
-                  <Text style={styles.planExpiry}>Expires {planExpiryStr}</Text>
+                  <Text style={[styles.planExpiry, { color: colors.mutedForeground }]}>Expires {planExpiryStr}</Text>
                 </View>
-                <View style={styles.planBarTrack}>
+                <View style={[styles.planBarTrack, { backgroundColor: colors.border }]}>
                   <View
                     style={[
                       styles.planBarFill,
@@ -327,7 +322,7 @@ export default function SettingsScreen() {
                     <Text style={[styles.planName, { color: colors.error }]}>Plan expired</Text>
                   </View>
                   <TouchableOpacity
-                    style={[styles.planCta, { borderColor: "rgba(220,38,38,0.35)" }]}
+                    style={[styles.planCta, { backgroundColor: colors.errorSoft, borderColor: colors.error }]}
                     onPress={() => router.push("/subscription")}
                     activeOpacity={0.8}
                   >
@@ -335,7 +330,7 @@ export default function SettingsScreen() {
                     <Feather name="chevron-right" size={12} color={colors.error} />
                   </TouchableOpacity>
                 </View>
-                <View style={styles.planBarTrack}>
+                <View style={[styles.planBarTrack, { backgroundColor: colors.border }]}>
                   <View style={[styles.planBarFill, { width: "3%", backgroundColor: colors.error }]} />
                 </View>
               </>
@@ -343,25 +338,25 @@ export default function SettingsScreen() {
               <>
                 <View style={styles.planTopRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.planName}>No Active Plan</Text>
-                    <Text style={styles.planSubtext}>Activate plan to receive orders</Text>
+                    <Text style={[styles.planName, { color: colors.foreground }]}>No Active Plan</Text>
+                    <Text style={[styles.planSubtext, { color: colors.mutedForeground }]}>Activate plan to receive orders</Text>
                   </View>
                   <TouchableOpacity
-                    style={styles.planCta}
+                    style={[styles.planCta, { backgroundColor: colors.muted, borderColor: colors.border }]}
                     onPress={() => router.push("/subscription")}
                     activeOpacity={0.8}
                   >
-                    <Text style={styles.planCtaText}>Choose Plan</Text>
-                    <Feather name="chevron-right" size={12} color="rgba(255,255,255,0.8)" />
+                    <Text style={[styles.planCtaText, { color: colors.foreground }]}>Choose Plan</Text>
+                    <Feather name="chevron-right" size={12} color={colors.mutedForeground} />
                   </TouchableOpacity>
                 </View>
-                <View style={styles.planBarTrack}>
+                <View style={[styles.planBarTrack, { backgroundColor: colors.border }]}>
                   <View style={[styles.planBarFill, { width: "3%", backgroundColor: colors.error }]} />
                 </View>
               </>
             )}
           </View>
-        </LinearGradient>
+        </View>
 
         {/* DOCUMENTS & VERIFICATION */}
         <View>
@@ -587,14 +582,10 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 16,
     gap: 14,
-    overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    shadowColor: "#E8336C",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.40,
-    shadowRadius: 18,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 4,
   },
   profileRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   profileAvatarWrap: { position: "relative" },
@@ -602,31 +593,26 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: "rgba(255,255,255,0.14)",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
-    borderColor: "rgba(232,51,108,0.50)",
   },
-  profileAvatarText: { fontSize: 19, fontWeight: "800", color: "#fff" },
-  profileName: { fontSize: 18, fontWeight: "800", color: "#fff", letterSpacing: -0.3 },
-  profilePhone: { fontSize: 12, color: "rgba(255,255,255,0.65)", fontWeight: "600" },
+  profileAvatarText: { fontSize: 19, fontWeight: "800" },
+  profileName: { fontSize: 18, fontWeight: "800", letterSpacing: -0.3 },
+  profilePhone: { fontSize: 12, fontWeight: "600" },
   profileVehicleRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
   profileVehicleText: {
     fontSize: 11,
-    color: "rgba(255,255,255,0.72)",
     fontWeight: "700",
     letterSpacing: 0.5,
   },
 
   // Plan panel
   planPanel: {
-    backgroundColor: "rgba(0,0,0,0.22)",
     borderRadius: 13,
     padding: 12,
     gap: 8,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
   },
   planTopRow: {
     flexDirection: "row",
@@ -636,8 +622,8 @@ const styles = StyleSheet.create({
   },
   planBadge: { flexDirection: "row", alignItems: "center", gap: 6 },
   planDot: { width: 7, height: 7, borderRadius: 3.5 },
-  planName: { fontSize: 13, fontWeight: "800", color: "#fff", letterSpacing: -0.2 },
-  planSubtext: { fontSize: 11, color: "rgba(255,255,255,0.55)", fontWeight: "500", marginTop: 2 },
+  planName: { fontSize: 13, fontWeight: "800", letterSpacing: -0.2 },
+  planSubtext: { fontSize: 11, fontWeight: "500", marginTop: 2 },
   planCta: {
     flexDirection: "row",
     alignItems: "center",
@@ -645,22 +631,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.1)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
   },
-  planCtaText: { fontSize: 11, fontWeight: "700", color: "rgba(255,255,255,0.85)" },
+  planCtaText: { fontSize: 11, fontWeight: "700" },
   planInfoRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  planDaysLeft: { fontSize: 12, fontWeight: "700", color: "rgba(255,255,255,0.9)" },
-  planExpiry: { fontSize: 11, fontWeight: "500", color: "rgba(255,255,255,0.55)" },
+  planDaysLeft: { fontSize: 12, fontWeight: "700" },
+  planExpiry: { fontSize: 11, fontWeight: "500" },
   planBarTrack: {
     height: 5,
     borderRadius: 3,
-    backgroundColor: "rgba(255,255,255,0.1)",
     overflow: "hidden",
   },
   planBarFill: { height: "100%", borderRadius: 3 },

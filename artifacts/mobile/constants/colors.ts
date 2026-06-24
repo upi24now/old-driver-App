@@ -8,10 +8,10 @@ const colors = {
     textPlaceholder:  "#9CA3AF",
 
     // ── Brand ──────────────────────────────────────────────────────────────
-    tint:                "#F59E0B",
-    primary:             "#F59E0B",
-    primaryPressed:      "#D97706",
-    primarySoft:         "#FFFBEB",
+    tint:                "#FF6B00",
+    primary:             "#FF6B00",
+    primaryPressed:      "#E55A00",
+    primarySoft:         "#FFF3EC",
     primaryForeground:   "#FFFFFF",
 
     // ── Surfaces ───────────────────────────────────────────────────────────
@@ -70,7 +70,7 @@ const colors = {
 
     // ── Borders ───────────────────────────────────────────────────────────
     border:       "#E5E7EB",
-    borderFocus:  "#F59E0B",
+    borderFocus:  "#FF6B00",
     borderStrong: "#D1D5DB",
     input:        "#E5E7EB",
   },
@@ -84,10 +84,10 @@ const colors = {
     textPlaceholder:  "#6B7280",
 
     // ── Brand ──────────────────────────────────────────────────────────────
-    tint:                "#FBBF24",
-    primary:             "#FBBF24",
-    primaryPressed:      "#F59E0B",
-    primarySoft:         "rgba(245,158,11,0.15)",
+    tint:                "#FF8533",
+    primary:             "#FF8533",
+    primaryPressed:      "#FF6B00",
+    primarySoft:         "rgba(255,107,0,0.15)",
     primaryForeground:   "#111111",
 
     // ── Surfaces ───────────────────────────────────────────────────────────
@@ -146,7 +146,7 @@ const colors = {
 
     // ── Borders ───────────────────────────────────────────────────────────
     border:       "#2A2A2A",
-    borderFocus:  "#FBBF24",
+    borderFocus:  "#FF8533",
     borderStrong: "#3A3A3A",
     input:        "#2A2A2A",
   },

@@ -383,43 +383,52 @@ export default function SubscriptionScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* HERO */}
-        <LinearGradient
-          colors={["#110712", "#0A0A0A"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.hero}
+        <View
+          style={[
+            styles.hero,
+            {
+              backgroundColor: colors.surface,
+              borderWidth: 1,
+              borderColor: colors.border,
+              shadowColor: "#FF6B00",
+              shadowOpacity: 0.10,
+              shadowRadius: 12,
+              shadowOffset: { width: 0, height: 4 },
+              elevation: 4,
+            },
+          ]}
         >
-          <View style={[styles.heroBadge, { backgroundColor: "rgba(232,51,108,0.15)" }]}>
+          <View style={[styles.heroBadge, { backgroundColor: colors.primarySoft }]}>
             <Feather name="zap" size={11} color={colors.primary} />
             <Text style={[styles.heroBadgeText, { color: colors.primary }]}>
               ZERO COMMISSION
             </Text>
           </View>
-          <Text style={styles.heroTitle}>
+          <Text style={[styles.heroTitle, { color: colors.foreground }]}>
             Keep <Text style={{ color: colors.primary }}>100%</Text>{"\n"}of every ride
           </Text>
-          <Text style={styles.heroSub}>
+          <Text style={[styles.heroSub, { color: colors.mutedForeground }]}>
             Pay one flat fee. No commission, no hidden cuts. More money in your pocket every trip.
           </Text>
 
-          <View style={styles.compareRow}>
+          <View style={[styles.compareRow, { backgroundColor: colors.muted }]}>
             <View style={styles.compareItem}>
-              <Text style={styles.compareLabel}>With commission</Text>
-              <Text style={[styles.compareValue, { textDecorationLine: "line-through", color: "rgba(255,255,255,0.5)" }]}>
+              <Text style={[styles.compareLabel, { color: colors.mutedForeground }]}>With commission</Text>
+              <Text style={[styles.compareValue, { textDecorationLine: "line-through", color: colors.mutedForeground }]}>
                 ₹148
               </Text>
-              <Text style={styles.compareSub}>20% cut on ₹186</Text>
+              <Text style={[styles.compareSub, { color: colors.mutedForeground }]}>20% cut on ₹186</Text>
             </View>
-            <View style={[styles.compareArrow, { backgroundColor: "rgba(255,255,255,0.08)" }]}>
-              <Feather name="arrow-right" size={14} color="#fff" />
+            <View style={[styles.compareArrow, { backgroundColor: colors.border }]}>
+              <Feather name="arrow-right" size={14} color={colors.foreground} />
             </View>
             <View style={styles.compareItem}>
               <Text style={[styles.compareLabel, { color: colors.primary }]}>With Driver Plan</Text>
-              <Text style={[styles.compareValue, { color: "#fff" }]}>₹186</Text>
-              <Text style={styles.compareSub}>You keep full fare</Text>
+              <Text style={[styles.compareValue, { color: colors.foreground }]}>₹186</Text>
+              <Text style={[styles.compareSub, { color: colors.mutedForeground }]}>You keep full fare</Text>
             </View>
           </View>
-        </LinearGradient>
+        </View>
 
         {/* PLAN STATUS */}
         {subscriptionActive ? (
@@ -700,14 +709,12 @@ const styles = StyleSheet.create({
   },
   heroBadgeText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
   heroTitle: {
-    color: "#fff",
     fontSize: 26,
     fontWeight: "800",
     letterSpacing: -0.8,
     lineHeight: 31,
   },
   heroSub: {
-    color: "rgba(255,255,255,0.7)",
     fontSize: 13,
     lineHeight: 18,
   },
@@ -717,13 +724,12 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 6,
     padding: 12,
-    backgroundColor: "rgba(255,255,255,0.05)",
     borderRadius: 13,
   },
   compareItem: { flex: 1, gap: 2 },
-  compareLabel: { fontSize: 10, fontWeight: "700", color: "rgba(255,255,255,0.55)", letterSpacing: 0.3 },
+  compareLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 0.3 },
   compareValue: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3 },
-  compareSub: { fontSize: 10, color: "rgba(255,255,255,0.5)", fontWeight: "500" },
+  compareSub: { fontSize: 10, fontWeight: "500" },
   compareArrow: {
     width: 28,
     height: 28,

@@ -578,16 +578,15 @@ export default function HomeScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScrollView
-        contentContainerStyle={{
+      {/* TOP BAR — outside scroll, safe-area-aware so bell never clips under status bar */}
+      <View
+        style={{
           paddingTop: insets.top + 12,
-          paddingBottom: insets.bottom + 130,
           paddingHorizontal: 16,
-          gap: 14,
+          paddingBottom: 8,
+          backgroundColor: colors.background,
         }}
-        showsVerticalScrollIndicator={false}
       >
-        {/* TOP BAR */}
         <View style={styles.topBar}>
 
           {/* ── Brand tile — premium glass surface ── */}
@@ -661,7 +660,17 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
         </View>
+      </View>
 
+      <ScrollView
+        contentContainerStyle={{
+          paddingTop: 2,
+          paddingBottom: insets.bottom + 130,
+          paddingHorizontal: 16,
+          gap: 14,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
         {/* ── PLAN EXPIRY BANNERS — only shown when plan has lapsed ────────── */}
         {planExpiredWithOrders ? (
           // Amber banner — expired but active deliveries in progress

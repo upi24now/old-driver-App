@@ -1,5 +1,4 @@
 import { Feather } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import {
@@ -181,45 +180,51 @@ export default function WalletScreen() {
         keyboardShouldPersistTaps="handled"
       >
         {/* ── BALANCE HERO ──────────────────────────────────────────────────── */}
-        <LinearGradient
-          colors={["#065F46", "#0F172A"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.balanceCard}
+        <View
+          style={[
+            styles.balanceCard,
+            {
+              backgroundColor: colors.surface,
+              borderWidth: 1,
+              borderColor: colors.border,
+              shadowColor: "#FF6B00",
+              shadowOpacity: 0.10,
+            },
+          ]}
         >
           {/* Top row: balance + icon */}
           <View style={styles.balanceTopRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.balanceLabel}>WALLET BALANCE</Text>
+              <Text style={[styles.balanceLabel, { color: colors.mutedForeground }]}>WALLET BALANCE</Text>
               <View style={styles.balanceAmountRow}>
-                <Text style={styles.balanceCurrency}>₹</Text>
-                <Text style={styles.balanceAmount}>
+                <Text style={[styles.balanceCurrency, { color: colors.primary }]}>₹</Text>
+                <Text style={[styles.balanceAmount, { color: colors.foreground }]}>
                   {Math.floor(walletBalance).toLocaleString("en-IN")}
                 </Text>
-                <Text style={styles.balanceDecimal}>
+                <Text style={[styles.balanceDecimal, { color: colors.mutedForeground }]}>
                   .{(walletBalance % 1).toFixed(2).slice(2)}
                 </Text>
               </View>
             </View>
-            <View style={styles.balanceIconWrap}>
-              <Feather name="credit-card" size={20} color="rgba(255,255,255,0.85)" />
+            <View style={[styles.balanceIconWrap, { backgroundColor: colors.primarySoft, borderColor: colors.border }]}>
+              <Feather name="credit-card" size={20} color={colors.primary} />
             </View>
           </View>
 
           {/* Balance breakdown: locked + withdrawable */}
-          <View style={styles.balanceSplitRow}>
+          <View style={[styles.balanceSplitRow, { backgroundColor: colors.muted }]}>
             <View style={styles.balanceSplitItem}>
-              <View style={styles.balanceSplitDot} />
+              <View style={[styles.balanceSplitDot, { backgroundColor: colors.borderStrong }]} />
               <View>
-                <Text style={styles.balanceSplitLabel}>LOCKED</Text>
-                <Text style={styles.balanceSplitValue}>₹{LOCKED_BALANCE}</Text>
+                <Text style={[styles.balanceSplitLabel, { color: colors.mutedForeground }]}>LOCKED</Text>
+                <Text style={[styles.balanceSplitValue, { color: colors.foreground }]}>₹{LOCKED_BALANCE}</Text>
               </View>
             </View>
-            <View style={[styles.balanceSplitDivider]} />
+            <View style={[styles.balanceSplitDivider, { backgroundColor: colors.border }]} />
             <View style={styles.balanceSplitItem}>
               <View style={[styles.balanceSplitDot, { backgroundColor: colors.money }]} />
               <View>
-                <Text style={styles.balanceSplitLabel}>WITHDRAWABLE</Text>
+                <Text style={[styles.balanceSplitLabel, { color: colors.mutedForeground }]}>WITHDRAWABLE</Text>
                 <Text style={[styles.balanceSplitValue, { color: colors.money }]}>
                   ₹{withdrawable.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
                 </Text>
@@ -236,7 +241,7 @@ export default function WalletScreen() {
               </Text>
             </View>
           )}
-        </LinearGradient>
+        </View>
 
         {/* ── UPI WITHDRAWAL CARD ───────────────────────────────────────────── */}
         <View
@@ -581,30 +586,28 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
   },
   balanceTopRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
-  balanceLabel: { fontSize: 10, fontWeight: "700", color: "rgba(255,255,255,0.6)", letterSpacing: 0.6 },
+  balanceLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 0.6 },
   balanceAmountRow: { flexDirection: "row", alignItems: "flex-end", gap: 2, marginTop: 6 },
-  balanceCurrency: { fontSize: 22, fontWeight: "700", color: "#fff", marginBottom: 6, marginRight: 2 },
-  balanceAmount: { fontSize: 40, fontWeight: "800", color: "#fff", letterSpacing: -1.5, lineHeight: 44 },
-  balanceDecimal: { fontSize: 20, fontWeight: "700", color: "rgba(255,255,255,0.55)", marginBottom: 4, marginLeft: 1 },
+  balanceCurrency: { fontSize: 22, fontWeight: "700", marginBottom: 6, marginRight: 2 },
+  balanceAmount: { fontSize: 40, fontWeight: "800", letterSpacing: -1.5, lineHeight: 44 },
+  balanceDecimal: { fontSize: 20, fontWeight: "700", marginBottom: 4, marginLeft: 1 },
   balanceIconWrap: {
     width: 44, height: 44, borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.08)",
     alignItems: "center", justifyContent: "center",
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.1)",
+    borderWidth: 1,
   },
   balanceSplitRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.07)",
     borderRadius: 12,
     padding: 12,
     gap: 12,
   },
   balanceSplitItem: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
-  balanceSplitDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.35)" },
-  balanceSplitDivider: { width: 1, height: 30, backgroundColor: "rgba(255,255,255,0.12)" },
-  balanceSplitLabel: { fontSize: 9, fontWeight: "700", color: "rgba(255,255,255,0.5)", letterSpacing: 0.5 },
-  balanceSplitValue: { fontSize: 15, fontWeight: "800", color: "#fff", letterSpacing: -0.3, marginTop: 1 },
+  balanceSplitDot: { width: 7, height: 7, borderRadius: 4 },
+  balanceSplitDivider: { width: 1, height: 30 },
+  balanceSplitLabel: { fontSize: 9, fontWeight: "700", letterSpacing: 0.5 },
+  balanceSplitValue: { fontSize: 15, fontWeight: "800", letterSpacing: -0.3, marginTop: 1 },
   todayChip: {
     flexDirection: "row",
     alignItems: "center",
