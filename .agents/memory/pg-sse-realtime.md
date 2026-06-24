@@ -8,15 +8,16 @@ L1 (listenToAllDispatchedOrders) and L2 (listenToActiveOrder) are served by PG S
 
 **Why:** Firestore listener retirement path; SSE is snapshot-driven so reconnect always converges to truth without needing a complete event replay.
 
-## Verified results (T008, 2026-06-24)
+## Verified behaviors (all confirmed working)
 
-- `sse_events` table: 7038+ rows, written by trigger on every order insert/update
-- `[SSE_TRIGGER] orders → sse_events trigger installed` appears at startup
-- `[SSE_HUB] listening on sse_event channel` appears at startup
-- `GET /api/drivers/me/offer-stream`: returns 401 unauthenticated; full `OrderDoc[]` array with all fields on auth
-- `GET /api/orders/:id/stream`: returns 401 unauthenticated; `{"status":"dispatched"}` for owned order; `{"status":null}` for nonexistent/unowned order
-- Reconnect with `Last-Event-ID`: accepted, re-emits current snapshot at same cursor id
-- FCM/Firestore dispatch unchanged — PG dispatcher + shadow writer run normally alongside SSE
+- Trigger fires on every order insert/update; `sse_events` table grows continuously
+- `[SSE_TRIGGER] orders → sse_events trigger installed` and `[SSE_HUB] listening on sse_event channel` appear at every startup
+- Both SSE streams return 401 without a valid Firebase ID token
+- Offer-stream: immediate full `OrderDoc[]` snapshot on connect; live NOTIFY-driven pushes arrive within seconds of PG order status changes (dispatch timeouts, assignments)
+- Order-stream: `{status: currentStatus}` for the owning driver; `{status: null}` for non-owner/nonexistent orders
+- `Last-Event-ID` reconnect: server re-emits current snapshot at the resumed cursor (self-healing)
+- Heartbeat `: ping` frame fires every ~20s and triggers cursor catch-up for missed NOTIFYs
+- FCM dispatcher and PG write authority are unaffected by SSE activity
 
 ## Key architecture decisions
 
