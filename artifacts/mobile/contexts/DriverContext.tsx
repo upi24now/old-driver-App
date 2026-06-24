@@ -39,6 +39,7 @@ import {
   patchDriverVehicle,
   patchDriverBackgroundSetup,
   ensureDriverSignup,
+  getLastProfileFetchDebug,
   type PgDriverProfile,
 } from "@/utils/profile-api";
 import { requestPayout, getWalletTransactions, getWallet } from "@/utils/wallet-api";
@@ -165,6 +166,7 @@ type ConfirmOtpResult = {
   profileComplete: boolean;
   error?:          string;
   nextRoute?:      OnboardingRoute;
+  debugLog?:       string[];
 };
 
 type DriverState = {
@@ -1282,11 +1284,31 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       let serverNextRoute: string | undefined;  // nextRoute from server (PG path; primary)
 
       if (!pgProfile) {
-        // ── Brand-new driver: no PG row yet ─────────────────────────────────
+        // ── Guard: distinguish 404 (new driver) from server errors ──────────
+        // A 404 means the driver has no PG row → brand-new driver, safe to
+        // call ensureDriverSignup. Any other outcome (network failure, 500,
+        // wrong domain, HTML "Cannot GET", etc.) means we must NOT call
+        // ensureDriverSignup — that would create a spurious PG row for an
+        // existing driver whose profile fetch happened to fail.
+        const retryFetchDbg = getLastProfileFetchDebug();
+        if (retryFetchDbg?.source !== "404") {
+          const errDetail = retryFetchDbg
+            ? `status=${retryFetchDbg.status ?? "??"} src=${retryFetchDbg.source} url=${retryFetchDbg.url}`
+            : "no fetch debug";
+          console.error("[OTP_PROFILE_GATE] source ≠ 404 — skipping ensureDriverSignup:", errDetail);
+          console.error("[OTP_PROFILE_GATE] body sample:", retryFetchDbg?.rawBody?.slice(0, 200));
+          setIsOtpVerifying(false);
+          return {
+            ok:              false,
+            profileComplete: false,
+            error:           `Could not load driver profile (${errDetail}). Check your connection and try again.`,
+          };
+        }
+        // ── Brand-new driver: 404 = no PG row yet ───────────────────────────
         // Firestore fallback removed (Phase 1 migration complete). Create the
         // PG row directly via ensureDriverSignup, then re-fetch so all state
         // is always sourced from PostgreSQL — no Firestore reads in this path.
-        console.log("[FIRESTORE_FALLBACK_BLOCKED] uid=" + uid + " — pgProfile null after retry; calling ensureDriverSignup");
+        console.log("[FIRESTORE_FALLBACK_BLOCKED] uid=" + uid + " — pgProfile null after retry (404); calling ensureDriverSignup");
         const signupResult = await ensureDriverSignup({ phone });
         if (signupResult.ok) {
           console.log("[PG_PROFILE_RESTORE] ensureDriverSignup ok — re-fetching PG profile for uid =", uid);
@@ -1501,7 +1523,48 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         // Non-fatal — next cold start will require re-OTP.
       }
 
-      return { ok: true, profileComplete, nextRoute };
+      // ── Debug log for OTP overlay (diagnostic, shown on physical device) ──
+      // Collect all 11 runtime items so the debug overlay in login.tsx can
+      // display them before routing. Non-fatal: any failure is swallowed.
+      const debugLog: string[] = [];
+      try {
+        const fetchDbg = getLastProfileFetchDebug();
+        const [pvRaw, vsRaw, svRaw] = await Promise.all([
+          AsyncStorage.getItem(LOCAL_PERMISSION_KEY).catch(() => null),
+          AsyncStorage.getItem(LOCAL_VERIFICATION_KEY).catch(() => null),
+          AsyncStorage.getItem(SESSION_VERIFIED_KEY).catch(() => null),
+        ]);
+        // Item 8: quick verification-status ping
+        let vsStatus = "skipped"; let vsBody = "";
+        try {
+          const base    = fetchDbg?.url?.replace("/drivers/me", "") ?? "/api/drivers";
+          const ctrl    = new AbortController();
+          const tmo     = setTimeout(() => ctrl.abort(), 3000);
+          const vsRes   = await fetch(`${base}/drivers/verification-status`, {
+            headers: { Authorization: `Bearer ${freshIdToken ?? ""}` },
+            signal: ctrl.signal,
+          });
+          clearTimeout(tmo);
+          vsStatus = String(vsRes.status);
+          vsBody   = (await vsRes.text().catch(() => "")).slice(0, 150);
+        } catch (e) {
+          vsStatus = "ERR";
+          vsBody   = e instanceof Error ? e.message.slice(0, 80) : String(e);
+        }
+        debugLog.push(`1. DOMAIN: ${process.env["EXPO_PUBLIC_DOMAIN"] || "(not set)"}`);
+        debugLog.push(`2. BASE_URL: ${fetchDbg?.url?.replace("/drivers/me", "") ?? "?"}`);
+        debugLog.push(`3. UID: ${uid}`);
+        debugLog.push(`4. Token: credential.user — ${freshIdToken ? freshIdToken.slice(0, 16) + "..." : "FAILED"}`);
+        debugLog.push(`5. /drivers/me URL: ${fetchDbg?.url ?? "?"}`);
+        debugLog.push(`6. /drivers/me status: ${fetchDbg?.status ?? "??"}`);
+        debugLog.push(`7. /drivers/me body: ${(fetchDbg?.rawBody ?? "(none)").slice(0, 200)}`);
+        debugLog.push(`8. /verification-status: ${vsStatus} → ${vsBody}`);
+        debugLog.push(`9. serverNextRoute: ${serverNextRoute ?? "(none — deriveNextRoute used)"}`);
+        debugLog.push(`10. router target: ${nextRoute}`);
+        debugLog.push(`11. AS: permVer=${pvRaw ?? "none"} verifSt=${vsRaw ?? "none"} sessUid=${svRaw ?? "none"}`);
+      } catch { /* non-fatal */ }
+
+      return { ok: true, profileComplete, nextRoute, debugLog };
     } catch (err) {
       // Release the layout route-guard on any failure so normal auth routing resumes.
       setIsOtpVerifying(false);

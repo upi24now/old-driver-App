@@ -19,6 +19,7 @@ import {
   Easing,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -209,6 +210,10 @@ export default function LoginScreen() {
   const [timer,     setTimer]    = useState(RESEND_SECONDS);
   const [canResend, setCanResend] = useState(false);
 
+  // Debug overlay — populated by confirmOtp after OTP success; cleared on PROCEED
+  const [debugLines,   setDebugLines]   = useState<string[] | null>(null);
+  const [pendingRoute, setPendingRoute] = useState<string | null>(null);
+
   const digits  = phone.replace(/\D/g, "");
   const isValid = digits.length === 10;
 
@@ -295,6 +300,16 @@ export default function LoginScreen() {
 
     const nextRoute = result.nextRoute ?? (result.profileComplete ? "/(tabs)" : "/registration");
     console.log("[LOGIN_OTP_SUCCESS] nextRoute =", nextRoute);
+
+    if (result.debugLog && result.debugLog.length > 0) {
+      // Show the debug overlay before routing so the device can be screenshotted.
+      // The user taps PROCEED to continue to the computed route.
+      setVerifying(false);
+      setPendingRoute(nextRoute);
+      setDebugLines(result.debugLog);
+      return;
+    }
+
     router.replace(nextRoute as never);
   }
 
@@ -317,6 +332,31 @@ export default function LoginScreen() {
       style={ss.root}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
+      {/* ── OTP Debug Overlay ── tap PROCEED to route; screenshot before tapping */}
+      <Modal visible={debugLines !== null} transparent animationType="fade">
+        <View style={ss.dbgOverlay}>
+          <View style={ss.dbgCard}>
+            <Text style={ss.dbgTitle}>OTP DEBUG LOG — screenshot then tap PROCEED</Text>
+            <ScrollView style={ss.dbgScroll} showsVerticalScrollIndicator>
+              {debugLines?.map((line, i) => (
+                <Text key={i} style={ss.dbgLine}>{line}</Text>
+              ))}
+            </ScrollView>
+            <TouchableOpacity
+              style={ss.dbgBtn}
+              onPress={() => {
+                const route = pendingRoute;
+                setDebugLines(null);
+                setPendingRoute(null);
+                if (route) router.replace(route as never);
+              }}
+            >
+              <Text style={ss.dbgBtnText}>PROCEED → {pendingRoute}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <ScrollView
         contentContainerStyle={[
           ss.scroll,
@@ -987,5 +1027,50 @@ const ss = StyleSheet.create({
     fontSize:   14,
     fontWeight: "600",
     color:      D.navy,
+  },
+
+  // ── Debug overlay ──────────────────────────────────────────────────────────
+  dbgOverlay: {
+    flex:            1,
+    backgroundColor: "rgba(0,0,0,0.90)",
+    justifyContent:  "center",
+    padding:         18,
+  },
+  dbgCard: {
+    backgroundColor: "#0d1117",
+    borderRadius:    14,
+    padding:         16,
+    maxHeight:       "85%",
+  },
+  dbgTitle: {
+    color:         "#58a6ff",
+    fontSize:      11,
+    fontWeight:    "700",
+    marginBottom:  10,
+    textAlign:     "center",
+    letterSpacing: 1.2,
+  },
+  dbgScroll: {
+    flexGrow: 0,
+  },
+  dbgLine: {
+    color:             "#e6edf3",
+    fontSize:          10,
+    lineHeight:        17,
+    paddingVertical:   3,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#30363d",
+  },
+  dbgBtn: {
+    marginTop:       14,
+    backgroundColor: "#238636",
+    borderRadius:    10,
+    paddingVertical: 13,
+    alignItems:      "center",
+  },
+  dbgBtnText: {
+    color:      "#ffffff",
+    fontSize:   13,
+    fontWeight: "700",
   },
 });

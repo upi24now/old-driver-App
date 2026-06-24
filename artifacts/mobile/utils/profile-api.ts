@@ -113,6 +113,18 @@ export type PgVerificationStatus = {
   nextRoute?:         string;
 };
 
+// ─── Debug accumulator for OTP debug overlay ─────────────────────────────────
+// Written by getDriverProfile on every call; read by confirmOtp to populate the
+// diagnostic overlay shown on physical devices after OTP success.
+let _lastProfileFetch: {
+  url:     string;
+  status:  number | null;
+  rawBody: string;
+  source:  "success" | "404" | "error" | "no_token";
+} | null = null;
+
+export function getLastProfileFetchDebug() { return _lastProfileFetch; }
+
 // ─── GET /api/drivers/me ──────────────────────────────────────────────────────
 
 /**
@@ -132,6 +144,7 @@ export async function getDriverProfile(idTokenOverride?: string): Promise<PgDriv
   console.log("[profile-api] getDriverProfile — idToken:", idToken ? `${idToken.slice(0, 12)}...` : "NULL");
   if (!idToken) {
     console.warn("[profile-api] getDriverProfile: no idToken — firebaseAuth.currentUser =", firebaseAuth.currentUser?.uid ?? "null");
+    _lastProfileFetch = { url: `${BASE_URL}/drivers/me`, status: null, rawBody: "no id token", source: "no_token" };
     return null;
   }
 
@@ -144,23 +157,34 @@ export async function getDriverProfile(idTokenOverride?: string): Promise<PgDriv
 
     console.log("[profile-api] GET /drivers/me →", res.status);
 
-    if (res.status === 404) return null;
+    // Clone before consuming so both the error path and json() path can read body.
+    let _dbgBody = "";
+    try { _dbgBody = await res.clone().text(); } catch { /* non-fatal */ }
+
+    if (res.status === 404) {
+      _lastProfileFetch = { url, status: 404, rawBody: _dbgBody.slice(0, 300), source: "404" };
+      return null;
+    }
 
     if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      console.error("[profile-api] GET /drivers/me status:", res.status, body.slice(0, 200));
+      _lastProfileFetch = { url, status: res.status, rawBody: _dbgBody.slice(0, 300), source: "error" };
+      console.error("[profile-api] GET /drivers/me status:", res.status, _dbgBody.slice(0, 200));
       return null;
     }
 
     const json = (await res.json()) as { ok?: boolean; driver?: PgDriverProfile; onboardingStep?: string; nextRoute?: string };
     if (!json.driver) {
+      _lastProfileFetch = { url, status: res.status, rawBody: _dbgBody.slice(0, 300), source: "error" };
       console.warn("[profile-api] GET /drivers/me: ok but no driver field — json.ok =", json.ok);
       return null;
     }
+    _lastProfileFetch = { url, status: res.status, rawBody: _dbgBody.slice(0, 300), source: "success" };
     console.log("[profile-api] GET /drivers/me success — nextRoute:", json.nextRoute ?? "(none)", "verificationStatus:", json.driver.verificationStatus ?? "(none)");
     return { ...json.driver, onboardingStep: json.onboardingStep, nextRoute: json.nextRoute };
   } catch (err) {
-    console.error("[profile-api] GET /drivers/me network error:", err instanceof Error ? err.message : String(err));
+    const errMsg = err instanceof Error ? err.message : String(err);
+    _lastProfileFetch = { url, status: null, rawBody: errMsg, source: "error" };
+    console.error("[profile-api] GET /drivers/me network error:", errMsg);
     return null;
   }
 }
