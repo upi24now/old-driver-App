@@ -60,6 +60,13 @@ const FSAlert: {
 })();
 console.log("[FSAlert] native module available:", FSAlert !== null);
 
+/**
+ * True when expo-notifications loaded successfully.
+ * False in Expo Go on Android SDK 53+ where the module throws on import.
+ * Use this to skip notification-gated checks that are impossible in Expo Go.
+ */
+export const notificationsAvailable = Notif !== null;
+
 // ─── Channel IDs ──────────────────────────────────────────────────────────────
 export const CHANNEL_ORDERS  = "incoming_orders_v2";
 export const CHANNEL_UPDATES = "order_updates";

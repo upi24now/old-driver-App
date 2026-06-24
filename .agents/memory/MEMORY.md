@@ -28,6 +28,8 @@
 - [PG dispatch bridge → Tier-5 status+location](pg-dispatch-bridge.md) — driver status flipped PG-primary (4 call sites→patchDriverStatus) + new PATCH /orders/:id/location PG-auth+FS projection; reject/timeout/cancel deferred.
 - [Wallet PG migration constraints](wallet-pg-migration.md) — payout sign divergence (FS neg/PG pos), credit shadow not idempotent, FS→PG-only comparator; resolve before PG-primary cutover.
 - [PG SSE realtime (Tier-6)](pg-sse-realtime.md) — L1/L2 Firestore→SSE; snapshot-driven; pool-leak fix in startSseHub; non-owner frame suppression; fresh idToken per reconnect.
+- [OTP post-login routing](otp-routing.md) — debug overlay in login.tsx was blocking router.replace; isOtpVerified=true causes spinner branch that hides the Modal. Always call router.replace directly; remove diagnostic overlays that gate navigation.
+- [Expo Go notifications unavailable](expo-go-notif-unavailable.md) — expo-notifications throws on import in Expo Go Android SDK 53+; Notif=null; getNotificationPermissionStatus returns granted:false; export notificationsAvailable flag and skip notification gate in canContinue.
 - [Order completion PG migration](order-completion-pg.md) — PG-authoritative; PG infra throw → 500 (NOT FS fallback); atomic CASE WHEN for driver daily stats; wallet_txn unique index idempotency.
 - [Support + Payout PG migration](support-payout-pg-migration.md) — UUID guard before PG, sender-authoritative on message routes, try/catch per call site, FOR UPDATE payout lock, FS projection as void IIFE.
 - [Firestore retirement audit](firestore-retirement-audit.md) — support + payouts now PG-authoritative (retired); KEEP forever Auth/FCM; RR dispatcher = kill switch.

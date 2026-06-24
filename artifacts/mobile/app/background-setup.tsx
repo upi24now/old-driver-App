@@ -39,6 +39,7 @@ import {
   requestForegroundLocation,
   requestNotificationPermissions,
 } from "@/utils/permissions";
+import { notificationsAvailable } from "@/utils/notifications";
 import { getDriverProfile } from "@/utils/profile-api";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -212,8 +213,12 @@ export default function PermissionCenterScreen() {
   }, []);
 
   // ── Continue / Finish ─────────────────────────────────────────────────────
-  const canContinue =
-    perms.notifications.granted && perms.location.granted && !initializing;
+  // In Expo Go on Android (SDK 53+), expo-notifications cannot load so
+  // getNotificationPermissionStatus always returns granted:false.  We treat
+  // this as "OK" — the notification card will still show the real status from
+  // the OS (via the fallback UI state), but we never hard-block Continue.
+  const notifOk = perms.notifications.granted || !notificationsAvailable;
+  const canContinue = notifOk && perms.location.granted && !initializing;
 
   async function finish() {
     setFinishing(true);
