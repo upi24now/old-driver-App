@@ -29,7 +29,7 @@
 import { Router } from "express";
 import { requireAuth } from "../lib/require-auth";
 import { db, driversTable, driverDocumentsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and, isNotNull } from "drizzle-orm";
 import { adminFirestore } from "../lib/firebase-admin";
 
 const router = Router();
@@ -184,6 +184,53 @@ function computeOnboardingStep(driver: {
   return { onboardingStep: "verification_pending", nextRoute: "/verification-pending" };
 }
 
+// ─── Firestore→PG verification heal ──────────────────────────────────────────
+//
+// Guards against drivers approved via a Firestore-based admin panel before PG
+// became authoritative for verification status.  When PG shows "pending" but
+// Firestore shows "approved" or "verified", the driver was approved via the old
+// path and PG was never synced.  This heal:
+//   1. Updates PG drivers.verification_status → "approved"
+//   2. Updates PG driver_documents.status     → "approved" for every doc with a URL
+//   3. Returns "approved" so the caller can return the correct nextRoute immediately
+//
+// Called from GET /me and GET /verification-status.  Non-fatal on any error.
+// The PG update is permanent, so the next request skips this path entirely.
+//
+async function healVerificationIfFirestoreApproved(
+  uid:                  string,
+  pgVerificationStatus: string | null | undefined,
+  documentsSubmitted:   boolean | null | undefined,
+  log: { info: (obj: object, msg: string) => void; warn: (obj: object, msg: string) => void },
+): Promise<string | null | undefined> {
+  if (pgVerificationStatus !== "pending" || !documentsSubmitted) {
+    return pgVerificationStatus;
+  }
+  try {
+    const fsDb  = await adminFirestore();
+    const snap  = await fsDb.collection("drivers").doc(uid).get();
+    const fsVer = ((snap.data() ?? {})["verificationStatus"] as string | undefined);
+    if (fsVer === "approved" || fsVer === "verified") {
+      await db
+        .update(driversTable)
+        .set({ verificationStatus: "approved" })
+        .where(eq(driversTable.uid, uid));
+      await db
+        .update(driverDocumentsTable)
+        .set({ status: "approved" })
+        .where(and(
+          eq(driverDocumentsTable.driverUid, uid),
+          isNotNull(driverDocumentsTable.url),
+        ));
+      log.info({ uid, fsVer }, "driver-profile: Firestore→PG verification heal applied");
+      return "approved";
+    }
+  } catch (healErr) {
+    log.warn({ healErr, uid }, "driver-profile: Firestore→PG verification heal failed (non-fatal)");
+  }
+  return pgVerificationStatus;
+}
+
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
 type DocEntry = {
@@ -277,7 +324,16 @@ router.get("/drivers/me", async (req, res) => {
       .from(driverDocumentsTable)
       .where(eq(driverDocumentsTable.driverUid, uid));
 
-    const { onboardingStep, nextRoute } = computeOnboardingStep(driver);
+    // Firestore→PG heal: if PG says pending but Firestore says approved/verified,
+    // auto-sync PG now and return the correct (approved) route this request.
+    const verificationStatus = await healVerificationIfFirestoreApproved(
+      uid, driver.verificationStatus, driver.documentsSubmitted, req.log,
+    );
+
+    const { onboardingStep, nextRoute } = computeOnboardingStep({
+      ...driver,
+      verificationStatus,
+    });
 
     res.json({
       ok:            true,
@@ -299,7 +355,7 @@ router.get("/drivers/me", async (req, res) => {
         documentsSubmitted:         driver.documentsSubmitted         ?? false,
         documentsSubmittedAt:       driver.documentsSubmittedAt
           ? driver.documentsSubmittedAt.toISOString() : null,
-        verificationStatus:         driver.verificationStatus         ?? null,
+        verificationStatus:         verificationStatus                ?? null,
         kycRejectionReason:         driver.kycRejectionReason         ?? null,
         rejectedDocuments:          driver.rejectedDocuments          ?? null,
         backgroundSetupShown:       driver.backgroundSetupShown       ?? false,
@@ -715,14 +771,22 @@ router.get("/drivers/verification-status", async (req, res) => {
       .from(driverDocumentsTable)
       .where(eq(driverDocumentsTable.driverUid, uid));
 
-    const { onboardingStep, nextRoute } = computeOnboardingStep(driver);
+    // Firestore→PG heal: same guard as GET /me — ensures both endpoints are consistent.
+    const verificationStatus = await healVerificationIfFirestoreApproved(
+      uid, driver.verificationStatus, driver.documentsSubmitted, req.log,
+    );
+
+    const { onboardingStep, nextRoute } = computeOnboardingStep({
+      ...driver,
+      verificationStatus,
+    });
 
     req.log.info({ uid, onboardingStep }, "driver-profile: GET /drivers/verification-status");
     res.json({
       ok:                  true,
       onboardingStep,
       nextRoute,
-      verificationStatus:  driver.verificationStatus  ?? null,
+      verificationStatus:  verificationStatus          ?? null,
       documentsSubmitted:  driver.documentsSubmitted   ?? false,
       kycRejectionReason:  driver.kycRejectionReason  ?? null,
       rejectedDocuments:   driver.rejectedDocuments    ?? null,
