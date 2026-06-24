@@ -868,7 +868,7 @@ export async function pgSetOrderLocation(
  * resurrect it back toward the pool. The guard is applied as a `setWhere` on the
  * conflict update so a blocked write is a silent no-op (the existing row wins).
  */
-const POOL_MIRRORABLE_STATUSES = ["searching", "pending", "dispatched"] as const;
+const POOL_MIRRORABLE_STATUSES = ["finding_driver", "searching", "pending", "dispatched"] as const;
 
 // Synthesized offer-window length for externally-claimed orders whose Firestore
 // doc carries no dispatchTimeoutAt (the production FCM dispatcher sets

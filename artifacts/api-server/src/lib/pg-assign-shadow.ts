@@ -62,7 +62,7 @@ const ASSIGNED_STATUS = "dispatched";
 
 // Statuses from which an assignment is valid. We accept the just-written
 // "dispatched" too so the guard tolerates the fire-and-forget mirror race.
-const ASSIGNABLE_STATUSES = new Set(["searching", "pending", "dispatched"]);
+const ASSIGNABLE_STATUSES = new Set(["finding_driver", "searching", "pending", "dispatched"]);
 
 // Allowed skew (ms) between the Firestore timeout and the PG-reproduced timeout.
 // Both are `assignTime + DISPATCH_TIMEOUT_SECONDS`, computed a few ms apart in

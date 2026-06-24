@@ -60,7 +60,7 @@ const IDLE_GUARD_MS = DISPATCH_TIMEOUT_SECONDS * 1000 + POLL_INTERVAL_MS; // 90 
 let lastDispatchAt: number = Date.now();
 
 // Statuses that mean "this order is in the pool, needs a driver".
-const POOL_STATUSES = ["searching", "pending"] as const;
+const POOL_STATUSES = ["finding_driver", "searching", "pending"] as const;
 
 export async function startRoundRobinDispatcher(): Promise<void> {
   let db: Awaited<ReturnType<typeof adminFirestore>>;

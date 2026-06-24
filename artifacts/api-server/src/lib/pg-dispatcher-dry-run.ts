@@ -25,7 +25,7 @@ import { logger } from "./logger";
 import { pgFindEligibleDrivers, type PgEligibleDriver } from "./pg-dispatch-service";
 
 // Mirrors POOL_STATUSES in round-robin-dispatcher.ts / pg-dispatch-service.ts.
-const POOL_STATUSES = ["searching", "pending"] as const;
+const POOL_STATUSES = ["finding_driver", "searching", "pending"] as const;
 
 // Independent of the Firestore dispatcher's poll cadence. Read-only, so a
 // relaxed interval keeps DB/Firestore read volume low.

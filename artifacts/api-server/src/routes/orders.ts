@@ -1030,7 +1030,7 @@ router.get("/orders/hotzone", async (req: Request, res: Response) => {
       .from(ordersTable)
       .where(
         and(
-          inArray(ordersTable.status, ["searching", "pending"]),
+          inArray(ordersTable.status, ["finding_driver", "searching", "pending"]),
           gte(ordersTable.createdAt, cutoff),
         ),
       )

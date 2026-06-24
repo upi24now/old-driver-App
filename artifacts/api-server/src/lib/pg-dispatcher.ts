@@ -42,7 +42,7 @@ import { chooseNextDriver } from "./pg-dispatcher-dry-run";
 import { resolvePgWriteGates, resolveEffectiveVerifyOnly } from "./dispatch-source";
 
 // Mirrors POOL_STATUSES in round-robin-dispatcher.ts / pg-dispatch-service.ts.
-const POOL_STATUSES = ["searching", "pending"] as const;
+const POOL_STATUSES = ["finding_driver", "searching", "pending"] as const;
 
 // Matches the dry-run cadence; independent of the Firestore dispatcher's poll.
 const POLL_INTERVAL_MS = 30_000;

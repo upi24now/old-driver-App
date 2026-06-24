@@ -63,7 +63,7 @@ const DISPATCH_TIMEOUT_SECONDS = 60;
 
 // Statuses that mean "this order is in the pool, needs a driver".
 // Mirrors POOL_STATUSES in round-robin-dispatcher.ts.
-const POOL_STATUSES = ["searching", "pending"] as const;
+const POOL_STATUSES = ["finding_driver", "searching", "pending"] as const;
 
 // ── Result + payload types ───────────────────────────────────────────────────
 

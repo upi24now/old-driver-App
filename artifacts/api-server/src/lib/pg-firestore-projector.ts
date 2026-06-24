@@ -90,7 +90,7 @@ function resolveProjectionCollection(): string {
 // Statuses a fresh order is in while still in the dispatch pool. Mirrors
 // POOL_STATUSES in round-robin-dispatcher.ts — the projector applies an
 // assignment ONLY onto a doc still in one of these states (and with no driver).
-const POOL_STATUSES = ["searching", "pending"] as const;
+const POOL_STATUSES = ["finding_driver", "searching", "pending"] as const;
 
 type ApplyOutcome = "applied" | "skipped";
 

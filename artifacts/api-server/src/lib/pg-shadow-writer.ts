@@ -47,7 +47,7 @@ import {
 
 // Statuses that mean "this order is in the pool, awaiting a driver".
 // Mirrors POOL_STATUSES in round-robin-dispatcher.ts / pg-dispatcher.ts.
-const POOL_STATUSES = ["searching", "pending"] as const;
+const POOL_STATUSES = ["finding_driver", "searching", "pending"] as const;
 
 // Delivery stages that the mobile transitions through after accept.
 // "delivered" is excluded — it is mirrored from POST /complete server-side.
@@ -240,8 +240,8 @@ export async function startPgShadowWriter(): Promise<void> {
             // returnToPool originates in Firestore and MUST mirror back, so keep
             // "dispatched" in the set (the default).
             const guardStatuses = resolveDispatchSource().value === "pg"
-              ? ["searching", "pending"]
-              : ["searching", "pending", "dispatched"];
+              ? ["finding_driver", "searching", "pending"]
+              : ["finding_driver", "searching", "pending", "dispatched"];
             await pgUpsertOrder(orderId, data, { guardRegression: true, guardStatuses });
             logger.info({ orderId, status }, "[PG_INGRESS_POOL]");
           })().catch((e) =>
