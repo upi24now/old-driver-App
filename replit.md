@@ -35,6 +35,7 @@ A driver-facing mobile app for bike, auto, and truck courier delivery partners i
 
 ## Architecture decisions
 
+- **Cash/COD orders never credit the withdrawable wallet** — the driver collects cash directly from the customer, so CASH/COD completions must NOT add fare to `balance`/`total_earnings`, must NOT increment `completed_deliveries`, and must NOT write a payable credit/payout txn; only an audit-only `cash_collected` ledger row (amount 0) is allowed. ONLINE/PREPAID credit normally. Classification is the ONLINE allow-list `isCashPayment(paymentMode)` in `wallet-pg-service.ts` (anything unknown/empty/null = cash, fail-safe). The credit is gated at all 4 completion write paths: `pgCompleteDelivery`, `projectWalletCreditToFirestore`, the Firestore-fallback tx in `orders.ts`, and the PG shadow `pgCreditOrderEarning`. Daily activity stats (`todayEarnings`/`tripsToday`) intentionally still count both modes.
 - **Semantic colour tokens only** — all screens consume tokens from `constants/colors.ts`; no raw hex in JSX or StyleSheet. `active-delivery.tsx` uses module-level brand constants (`GREEN`, `PINK`, `ORANGE`, `BLUE`, `RED`) as a bridge so the StyleSheet can reference them — those constants map 1:1 to the semantic tokens.
 - **Contract-first API** — OpenAPI spec drives codegen (Orval) for React Query hooks and Zod schemas; server validates with the same schemas.
 - **FCM via custom Express server** — Firebase Admin SDK in `api-server`; channel ID `incoming_orders_v2` is fixed and must not change.
