@@ -619,20 +619,6 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* ── DELIVERY HUB BAR (always visible) ──────────────────────────────── */}
-        <TouchableOpacity style={s.hubBar} activeOpacity={0.9} onPress={openHub}>
-          <View style={s.hubBarIcon}>
-            <Feather name="grid" size={18} color="#fff" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={s.hubBarTitle}>Delivery Hub</Text>
-            <Text style={s.hubBarSub}>
-              {activeOrderCount > 0 ? `Manage ${activeOrderCount} active deliver${activeOrderCount > 1 ? "ies" : "y"}` : "Manage all your deliveries"}
-            </Text>
-          </View>
-          <Feather name="chevron-right" size={20} color={PRIMARY} />
-        </TouchableOpacity>
-
         {/* ── HOT ZONES / LIVE MAP ──────────────────────────────────────────── */}
         <View style={s.mapCard}>
           <View style={s.mapHeader}>
@@ -880,8 +866,8 @@ const s = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: BORDER,
-    padding: 13,
-    gap: 10,
+    padding: 8,
+    gap: 5,
     shadowColor: "#0F172A",
     shadowOpacity: 0.06,
     shadowRadius: 14,
@@ -890,18 +876,18 @@ const s = StyleSheet.create({
   },
   statusTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   statusInfo: { flexDirection: "row", alignItems: "center", gap: 10 },
-  statusDot: { width: 10, height: 10, borderRadius: 5 },
-  statusLabel: { fontSize: 15, fontWeight: "800", color: TEXT, letterSpacing: -0.3 },
-  statusSub: { fontSize: 12, fontWeight: "500", color: MUTED, marginTop: 1 },
+  statusDot: { width: 9, height: 9, borderRadius: 5 },
+  statusLabel: { fontSize: 14, lineHeight: 17, fontWeight: "800", color: TEXT, letterSpacing: -0.3 },
+  statusSub: { fontSize: 12, lineHeight: 14, fontWeight: "500", color: MUTED },
   statusDivider: { height: 1, backgroundColor: BORDER },
   earningsRow: { flexDirection: "row", alignItems: "center" },
   earningsMain: { flex: 1 },
-  earningsLabel: { fontSize: 11, fontWeight: "600", color: MUTED, marginBottom: 1 },
-  earningsValue: { fontSize: 23, fontWeight: "900", color: TEXT, letterSpacing: -0.6 },
+  earningsLabel: { fontSize: 11, lineHeight: 13, fontWeight: "600", color: MUTED },
+  earningsValue: { fontSize: 18, lineHeight: 21, fontWeight: "900", color: TEXT, letterSpacing: -0.5 },
   earningsStat: { alignItems: "center", minWidth: 52 },
-  earningsStatNum: { fontSize: 17, fontWeight: "800", color: TEXT },
-  earningsStatLbl: { fontSize: 11, fontWeight: "500", color: MUTED, marginTop: 1 },
-  earningsStatSep: { width: 1, height: 26, backgroundColor: BORDER },
+  earningsStatNum: { fontSize: 16, lineHeight: 18, fontWeight: "800", color: TEXT },
+  earningsStatLbl: { fontSize: 11, lineHeight: 13, fontWeight: "500", color: MUTED },
+  earningsStatSep: { width: 1, height: 18, backgroundColor: BORDER },
   goOnlineBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1048,29 +1034,6 @@ const s = StyleSheet.create({
     paddingVertical: 10,
   },
   emptyTxt: { flex: 1, fontSize: 13, fontWeight: "500", color: MUTED },
-
-  // Delivery Hub bar
-  hubBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: PRIMARY_SOFT,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#FFD9C2",
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-  },
-  hubBarIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 11,
-    backgroundColor: PRIMARY,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  hubBarTitle: { fontSize: 15, fontWeight: "800", color: TEXT, letterSpacing: -0.2 },
-  hubBarSub: { fontSize: 12, fontWeight: "500", color: MUTED, marginTop: 1 },
 
   // Hot zones / map card
   mapCard: {
