@@ -1246,10 +1246,37 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       setDriverUid(uid);
       setPhoneState(phone);
 
+      // ── Get a fresh ID token directly from the credential user ────────────
+      // On React Native, firebaseAuth.currentUser may not be synchronised yet
+      // when signInWithCustomToken's promise resolves. Using credential.user
+      // directly avoids that race: the credential object IS the signed-in user
+      // and getIdToken() always works on it immediately.
+      let freshIdToken: string | undefined;
+      try {
+        freshIdToken = await credential.user.getIdToken(/* forceRefresh= */ false);
+        console.log("[OTP_ID_TOKEN] obtained from credential.user —", freshIdToken.slice(0, 12) + "...");
+      } catch (e) {
+        console.error("[OTP_ID_TOKEN] getIdToken from credential.user failed:", e instanceof Error ? e.message : String(e));
+        // Falls back to firebaseAuth.currentUser inside getDriverProfile
+      }
+
       // ── Try PostgreSQL profile first (primary path) ──────────────────────
       console.log("[PERF] get_driver_profile_start confirmOtp ts=" + Date.now());
-      const pgProfile = await getDriverProfile();
+      let pgProfile = await getDriverProfile(freshIdToken);
       console.log("[PERF] get_driver_profile_end confirmOtp ts=" + Date.now() + " pgProfile=" + (pgProfile ? "ok" : "null"));
+
+      // ── Retry once on null (e.g. transient token or network blip) ─────────
+      if (!pgProfile) {
+        console.warn("[OTP_PROFILE_RETRY] first getDriverProfile returned null — retrying after 400ms");
+        await new Promise<void>((r) => setTimeout(r, 400));
+        // Re-fetch idToken in case the first one expired (unlikely but safe)
+        let retryToken: string | undefined = freshIdToken;
+        try {
+          retryToken = await credential.user.getIdToken(/* forceRefresh= */ false);
+        } catch { /* fall back to freshIdToken */ }
+        pgProfile = await getDriverProfile(retryToken);
+        console.log("[OTP_PROFILE_RETRY] result:", pgProfile ? "ok" : "still null");
+      }
 
       let routingDoc: RoutingDoc;               // used for deriveNextRoute
       let serverNextRoute: string | undefined;  // nextRoute from server (PG path; primary)
@@ -1259,15 +1286,16 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         // Firestore fallback removed (Phase 1 migration complete). Create the
         // PG row directly via ensureDriverSignup, then re-fetch so all state
         // is always sourced from PostgreSQL — no Firestore reads in this path.
-        console.log("[FIRESTORE_FALLBACK_BLOCKED] uid=" + uid + " — pgProfile null; creating PG row (no Firestore fallback)");
+        console.log("[FIRESTORE_FALLBACK_BLOCKED] uid=" + uid + " — pgProfile null after retry; calling ensureDriverSignup");
         const signupResult = await ensureDriverSignup({ phone });
         if (signupResult.ok) {
           console.log("[PG_PROFILE_RESTORE] ensureDriverSignup ok — re-fetching PG profile for uid =", uid);
         } else {
           console.warn("[PG_PROFILE_RESTORE] ensureDriverSignup failed (non-fatal) — using safe defaults uid =", uid);
         }
-        const pg2 = await getDriverProfile();
-        console.log("[PG_PROFILE_RESTORE] re-fetch after ensureDriverSignup —", pg2 ? "ok" : "still null (using safe defaults)");
+        // Pass fresh token here too — same race applies to this second fetch.
+        const pg2 = await getDriverProfile(freshIdToken);
+        console.log("[PG_PROFILE_RESTORE] re-fetch after ensureDriverSignup —", pg2 ? "ok nextRoute=" + (pg2.nextRoute ?? "none") : "still null (using safe defaults)");
 
         const feeApplies = pg2?.onboardingFeeApplies ?? true;
         const feeStatus  = pg2?.onboardingFeeStatus  ?? "pending";

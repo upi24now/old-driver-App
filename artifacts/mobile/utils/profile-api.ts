@@ -28,6 +28,10 @@ import type { Profile, Vehicle } from "@/contexts/DriverContext";
 const DOMAIN   = process.env["EXPO_PUBLIC_DOMAIN"] ?? "";
 const BASE_URL = DOMAIN ? `https://${DOMAIN}/api` : "/api";
 
+// Log at bundle-eval time so Expo Metro logs always show the resolved URL.
+console.log("[profile-api] EXPO_PUBLIC_DOMAIN =", DOMAIN || "(not set)");
+console.log("[profile-api] BASE_URL           =", BASE_URL);
+
 async function getIdToken(): Promise<string | null> {
   const user = firebaseAuth.currentUser;
   if (!user) return null;
@@ -113,27 +117,47 @@ export type PgVerificationStatus = {
 
 /**
  * Fetches the authenticated driver's full profile from PostgreSQL.
+ *
+ * @param idTokenOverride - Pass a freshly-obtained ID token directly (e.g. from
+ *   `credential.user.getIdToken()` immediately after `signInWithCustomToken`).
+ *   Avoids the `firebaseAuth.currentUser` race condition on React Native where
+ *   the SDK may not have synchronised `currentUser` by the time this is called.
+ *   When omitted, falls back to `firebaseAuth.currentUser.getIdToken()`.
+ *
  * Returns null when the driver has no PG row yet (new signup in migration window)
  * or when network/auth is unavailable.
  */
-export async function getDriverProfile(): Promise<PgDriverProfile | null> {
-  const idToken = await getIdToken();
-  if (!idToken) return null;
+export async function getDriverProfile(idTokenOverride?: string): Promise<PgDriverProfile | null> {
+  const idToken = idTokenOverride ?? await getIdToken();
+  console.log("[profile-api] getDriverProfile — idToken:", idToken ? `${idToken.slice(0, 12)}...` : "NULL");
+  if (!idToken) {
+    console.warn("[profile-api] getDriverProfile: no idToken — firebaseAuth.currentUser =", firebaseAuth.currentUser?.uid ?? "null");
+    return null;
+  }
 
+  const url = `${BASE_URL}/drivers/me`;
+  console.log("[profile-api] GET", url);
   try {
-    const res = await fetch(`${BASE_URL}/drivers/me`, {
+    const res = await fetch(url, {
       headers: { Authorization: `Bearer ${idToken}` },
     });
+
+    console.log("[profile-api] GET /drivers/me →", res.status);
 
     if (res.status === 404) return null;
 
     if (!res.ok) {
-      console.error("[profile-api] GET /drivers/me status:", res.status);
+      const body = await res.text().catch(() => "");
+      console.error("[profile-api] GET /drivers/me status:", res.status, body.slice(0, 200));
       return null;
     }
 
     const json = (await res.json()) as { ok?: boolean; driver?: PgDriverProfile; onboardingStep?: string; nextRoute?: string };
-    if (!json.driver) return null;
+    if (!json.driver) {
+      console.warn("[profile-api] GET /drivers/me: ok but no driver field — json.ok =", json.ok);
+      return null;
+    }
+    console.log("[profile-api] GET /drivers/me success — nextRoute:", json.nextRoute ?? "(none)", "verificationStatus:", json.driver.verificationStatus ?? "(none)");
     return { ...json.driver, onboardingStep: json.onboardingStep, nextRoute: json.nextRoute };
   } catch (err) {
     console.error("[profile-api] GET /drivers/me network error:", err instanceof Error ? err.message : String(err));
