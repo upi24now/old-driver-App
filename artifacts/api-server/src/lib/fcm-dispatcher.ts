@@ -47,7 +47,34 @@ import { db as pgDb, driversTable } from "@workspace/db";
 import { adminFirestore, adminMessaging } from "./firebase-admin";
 import { logger } from "./logger";
 import { pgClaimShadowValidate } from "./pg-claim-shadow";
-import { pgCreateOffer } from "./order-pg-service";
+import { pgCreateOffer, pgUpsertOrder } from "./order-pg-service";
+
+/**
+ * Create a PG offer row, retrying on transient failure.
+ *
+ * The offer row carries a FK to orders.id (order_offers_order_id_orders_id_fk).
+ * The parent orders row is mirrored into PG by an independent, Firestore-event-
+ * driven path (pg-shadow-writer → pgUpsertOrder).  Even after we proactively
+ * ensure the orders row here, a bounded retry guards against the parent INSERT
+ * not yet being visible to this connection.  pgCreateOffer never throws — it
+ * returns { ok:false } on error — so we inspect the result, not exceptions.
+ */
+async function createOfferWithRetry(
+  orderId:   string,
+  driverUid: string,
+  attempts = 5,
+  delayMs  = 250,
+): Promise<boolean> {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const res = await pgCreateOffer(orderId, driverUid);
+    if (res.ok) return true;
+    if (attempt < attempts) {
+      logger.warn({ orderId, driverUid, attempt }, "[PG OFFER CREATE RETRY]");
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  return false;
+}
 
 const CHANNEL_ORDERS = "incoming_orders_v2";
 
@@ -114,7 +141,9 @@ export async function startFcmDispatcher(): Promise<void> {
         };
 
         // Fire-and-forget per order; errors are logged and written individually.
-        void sendOrderFcm(db, orderId, targetUids, orderPayload);
+        // `data` (raw Firestore order) is forwarded so the dispatch path can
+        // ensure the parent PG orders row exists before creating offer rows.
+        void sendOrderFcm(db, orderId, targetUids, orderPayload, data);
       }
     },
     (err) => {
@@ -256,6 +285,7 @@ async function sendOrderFcm(
   orderId: string,
   targetUids: string[],
   order: OrderPayload,
+  orderData: Record<string, unknown>,
 ): Promise<void> {
   // ── 1. Atomically claim dispatch rights ───────────────────────────────────
   const claimed = await claimFcmDispatch(db, orderId);
@@ -266,19 +296,55 @@ async function sendOrderFcm(
   // Claim moment, captured for the read-only PG claim shadow validator below.
   const claimedAtMs = Date.now();
 
-  // ── 1b. Create PG offer rows ────────────────────────────────────────────────
+  // ── 1a. Ensure the parent PG orders row exists ──────────────────────────────
+  // RACE FIX: the order_offers row carries a FK to orders.id.  The orders row is
+  // mirrored into PG by pg-shadow-writer on its OWN Firestore event, which races
+  // this dispatch path.  Previously pgCreateOffer could run before that mirror
+  // committed → FK violation (order_offers_order_id_orders_id_fk) → the error was
+  // swallowed → no offer row → driver Accept returned not_in_offer.  We now
+  // proactively upsert the parent row here so offer creation cannot lose the race.
+  // pgUpsertOrder is idempotent and guarded against regressing a claimed/terminal
+  // row, so a concurrent shadow-writer upsert is harmless.
+  logger.info({ orderId }, "[ORDER PG CREATED]");
+  try {
+    await pgUpsertOrder(orderId, orderData, { guardRegression: true });
+    logger.info({ orderId }, "[ORDER PG COMMITTED]");
+  } catch (err) {
+    // pgUpsertOrder is non-throwing, but guard the await defensively.
+    logger.error({ err, orderId }, "[ORDER PG COMMITTED] ensure-parent-row failed");
+  }
+
+  // ── 1b. Create PG offer rows (gated — FCM depends on these) ──────────────────
   // The accept endpoint (POST /orders/:orderId/accept) requires a row in the
   // order_offers table for the accepting driver.  In Firestore-dispatch mode the
   // round-robin PG dispatcher never runs, so no offer rows are created — we
   // create them here, once, in the single instance that won the FCM claim.
   // pgCreateOffer is idempotent (ON CONFLICT DO NOTHING) so replays are safe.
+  //
+  // CRITICAL: a driver is only added to the FCM target list AFTER its offer row
+  // is confirmed to exist.  We never notify a driver who cannot accept.
+  const offerReadyUids: string[] = [];
   await Promise.all(
-    targetUids.map((uid) =>
-      pgCreateOffer(orderId, uid).catch((err) =>
-        logger.warn({ err, orderId, uid }, "[FCM dispatcher] pgCreateOffer failed — accept may fail"),
-      ),
-    ),
+    targetUids.map(async (uid) => {
+      logger.info({ orderId, uid }, "[PG OFFER CREATE START]");
+      const ok = await createOfferWithRetry(orderId, uid);
+      if (ok) {
+        offerReadyUids.push(uid);
+        logger.info({ orderId, uid }, "[PG OFFER CREATE SUCCESS]");
+      } else {
+        logger.error({ orderId, uid }, "[PG OFFER CREATE FAIL]");
+      }
+    }),
   );
+
+  if (offerReadyUids.length === 0) {
+    // No offer row could be created for any target — sending FCM would only
+    // produce another not_in_offer on Accept.  Clear the claim so a cold restart
+    // can re-attempt, and stop here (no FCM is sent without a valid offer row).
+    logger.warn({ orderId }, "[FCM dispatcher] No offer rows created — suppressing FCM and clearing claim");
+    await clearClaim(db, orderId, "no offer rows created");
+    return;
+  }
 
   const notifBody = order.earning !== "0" && order.distanceKm !== "0"
     ? `₹${order.earning} • ${order.distanceKm} km — ${order.customer || "New order"}`
@@ -307,7 +373,9 @@ async function sendOrderFcm(
 
   const results: SendResult[] = [];
 
-  for (const driverUid of targetUids) {
+  // Only drivers with a confirmed offer row are notified (see offerReadyUids).
+  for (const driverUid of offerReadyUids) {
+    logger.info({ orderId, driverUid }, "[FCM SEND START]");
     // Read the driver's push token — PG-first, Firestore-fallback (Phase 4B).
     const fcmToken = await resolveDriverFcmToken(db, driverUid, orderId);
 
@@ -411,7 +479,7 @@ async function sendOrderFcm(
 
       logger.info(
         { orderId, driverUid, messageId, instanceId: INSTANCE_ID, tokenPrefix: fcmToken.substring(0, 10) + "..." },
-        "[FCM dispatcher] push sent",
+        "[FCM SEND SUCCESS]",
       );
       results.push({ uid: driverUid, messageId });
     } catch (err) {
