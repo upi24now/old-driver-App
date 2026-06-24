@@ -37,3 +37,4 @@
 - [EXPO_PUBLIC_DOMAIN dev vs prod routing bug](expo-domain-routing-bug.md) — mobile package.json hardcoded EXPO_PUBLIC_DOMAIN=driver-app-upi24now.replit.app; production server is a separate deployment missing newer API routes; fix: use $REPLIT_DEV_DOMAIN instead.
 - [PG offer-row FK race](pg-offer-fk-race.md) — order_offers FK needs parent orders row first; ensure pgUpsertOrder before pgCreateOffer (retry) and gate FCM on offer success; swallowed FK = not_in_offer.
 - [FCM cold-start staleness guard](fcm-coldstart-staleness.md) — Android caches last FCM tap indefinitely; must check notification age >2min before calling handleNotificationResponse, or every cold start replays stale order popup.
+- [PG SSE offer-stream popup gap](pg-sse-offer-popup-gap.md) — in-app popup = SSE /offer-stream → pgGetOffersForDriver (PG); dispatch "added" path never writes active_offer_driver_uids/dispatch_timeout_at → snapshot size=0 despite FCM success.
