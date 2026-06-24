@@ -29,7 +29,7 @@ import { useDriver } from "@/contexts/DriverContext";
 import LiveMap, { HotZoneStrip } from "@/components/LiveMap";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
-const BG           = "#FFFFFF";
+const BG           = "#F4F6FA";
 const CARD         = "#FFFFFF";
 const SURFACE      = "#F7F8FA";
 const PRIMARY      = "#FF6B00";
@@ -41,6 +41,7 @@ const SUCCESS      = "#059669";
 const SUCCESS_SOFT = "#ECFDF5";
 const INFO         = "#2563EB";
 const INFO_SOFT    = "#EFF6FF";
+const LOCK_BG      = "#F1F5F9";
 
 // ─── Permission Health Card ───────────────────────────────────────────────────
 // Only renders when at least one permission is missing.
@@ -167,6 +168,27 @@ const ph = StyleSheet.create({
   modalConfirmText: { fontSize: 14, fontWeight: "700", color: "#fff" },
 });
 
+// ─── Helpers (presentation only) ──────────────────────────────────────────────
+const STATUS_LABEL: Record<string, string> = {
+  to_pickup: "To Pickup",
+  at_pickup: "At Pickup",
+  to_drop:   "To Drop",
+  at_drop:   "At Drop",
+  delivered: "Delivered",
+  accepted:  "Accepted",
+};
+function statusLabel(st: string | null | undefined): string {
+  return (st && STATUS_LABEL[st]) || "In progress";
+}
+function firstName(n: string | null | undefined): string {
+  const t = (n ?? "").trim();
+  return t.length ? (t.split(/\s+/)[0] ?? t) : "Customer";
+}
+function initial(n: string | null | undefined): string {
+  const t = (n ?? "").trim();
+  return (t.charAt(0) || "C").toUpperCase();
+}
+
 // ─── Home Screen ──────────────────────────────────────────────────────────────
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
@@ -183,6 +205,13 @@ export default function HomeScreen() {
     todayEarnings,
     tripsToday,
     activeOrderCount,
+    activeOrders,
+    currentActiveOrderId,
+    focusOrder,
+    maxActiveOrders,
+    hasCapacity,
+    isAtCapacity,
+    walletBalance,
     incomingRide,
   } = useDriver();
 
@@ -227,7 +256,9 @@ export default function HomeScreen() {
   const planLabel = subscriptionPlan ? (PLAN_LABEL[subscriptionPlan] ?? subscriptionPlan) : null;
 
   const earnings = `₹${todayEarnings.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+  const walletText = `₹${(walletBalance ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 
+  // Routes (unchanged) ────────────────────────────────────────────────────────
   function openAvailable() {
     if (incomingRide) {
       router.push("/ride-request");
@@ -235,11 +266,28 @@ export default function HomeScreen() {
       Alert.alert("No orders right now", "You'll be notified as soon as a nearby order arrives.", [{ text: "OK" }]);
     }
   }
+  function openHub() {
+    router.push("/delivery-command-center");
+  }
+  function openNotifications() {
+    router.push("/notifications");
+  }
+  function openWallet() {
+    router.push("/wallet");
+  }
+
+  // Active-ride dock data (read-only, real orders only) ────────────────────────
+  const focused =
+    activeOrders.find((o) => o.id === currentActiveOrderId) ?? activeOrders[0] ?? null;
+  const slots = Array.from({ length: maxActiveOrders }, (_, i) => activeOrders[i] ?? null);
+
+  // Available Deliveries section availability ──────────────────────────────────
+  const availLocked = !online || isAtCapacity;
 
   return (
     <View style={{ flex: 1, backgroundColor: BG }}>
 
-      {/* ── COMPACT HEADER ─────────────────────────────────────────────────── */}
+      {/* ── PINNED HEADER (greeting + status + bell) ───────────────────────── */}
       <View style={[s.header, { paddingTop: insets.top + 10 }]}>
         <View style={s.headerLeft}>
           <View style={s.logoMark}>
@@ -247,7 +295,16 @@ export default function HomeScreen() {
           </View>
           <View>
             <Text style={s.brandName}>Bike Courier</Text>
-            <Text style={s.brandSub}>Driver Partner</Text>
+            <View style={s.statusLine}>
+              <View style={[s.statusLineDot, { backgroundColor: online ? SUCCESS : MUTED }]} />
+              <Text style={s.statusLineTxt}>
+                {online
+                  ? activeOrderCount > 0
+                    ? `Online · ${activeOrderCount} active`
+                    : "Online · searching"
+                  : "Offline"}
+              </Text>
+            </View>
           </View>
         </View>
         <View style={s.headerRight}>
@@ -259,7 +316,7 @@ export default function HomeScreen() {
           )}
           <TouchableOpacity
             style={s.bellBtn}
-            onPress={() => router.push("/notifications")}
+            onPress={openNotifications}
             activeOpacity={0.7}
             hitSlop={8}
           >
@@ -268,37 +325,120 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* ── PINNED ACTIVE RIDE STRIP ───────────────────────────────────────── */}
-      {activeOrderCount > 0 && (
-        <TouchableOpacity
-          style={s.activeStrip}
-          activeOpacity={0.9}
-          onPress={() => router.push("/delivery-command-center")}
-        >
-          <View style={s.activeStripIcon}>
-            <Feather name="navigation" size={16} color="#fff" />
+      {/* ── WALLET + HUB STRIP (always visible) ────────────────────────────── */}
+      <View style={s.topStrip}>
+        <TouchableOpacity style={s.walletPill} activeOpacity={0.85} onPress={openWallet}>
+          <View style={s.walletPillIcon}>
+            <Feather name="credit-card" size={15} color={SUCCESS} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={s.activeStripTitle}>
-              {activeOrderCount} active deliver{activeOrderCount > 1 ? "ies" : "y"} in progress
-            </Text>
-            <Text style={s.activeStripSub}>Tap to open Delivery Hub</Text>
+            <Text style={s.walletPillLabel}>Wallet</Text>
+            <Text style={s.walletPillValue}>{walletText}</Text>
           </View>
-          <Feather name="chevron-right" size={20} color="#fff" />
+          <Feather name="chevron-right" size={16} color={MUTED} />
         </TouchableOpacity>
+
+        <TouchableOpacity style={s.hubPill} activeOpacity={0.85} onPress={openHub}>
+          <Feather name="grid" size={15} color={PRIMARY} />
+          <Text style={s.hubPillTxt}>Delivery Hub</Text>
+          {online && (
+            <View style={[s.slotCounter, isAtCapacity && s.slotCounterFull]}>
+              <Text style={[s.slotCounterTxt, isAtCapacity && s.slotCounterTxtFull]}>
+                {activeOrderCount}/{maxActiveOrders}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      </View>
+
+      {/* ── PINNED ACTIVE RIDE DOCK (impossible to miss, above fold) ────────── */}
+      {activeOrderCount > 0 && focused && (
+        <View style={s.dock}>
+          <View style={s.dockHead}>
+            <View style={s.dockHeadLeft}>
+              <View style={s.dockRank}><Text style={s.dockRankTxt}>1</Text></View>
+              <Text style={s.dockTitle}>{activeOrderCount > 1 ? "ACTIVE RIDES" : "ACTIVE RIDE"}</Text>
+            </View>
+            <View style={s.dockHeadRight}>
+              {isAtCapacity && (
+                <View style={s.fullBadge}><Text style={s.fullBadgeTxt}>FULL</Text></View>
+              )}
+              <Text style={s.dockCount}>{activeOrderCount}/{maxActiveOrders}</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity style={s.focusCard} activeOpacity={0.9} onPress={openHub}>
+            <View style={s.focusTop}>
+              <View style={s.focusAvatar}>
+                <Text style={s.focusAvatarTxt}>{initial(focused.passengerName)}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.focusName} numberOfLines={1}>{focused.passengerName}</Text>
+                <Text style={s.focusMeta} numberOfLines={1}>
+                  {focused.distanceKm} km · ₹{focused.fareEstimate} · {focused.paymentMode}
+                </Text>
+              </View>
+              <View style={s.focusStatus}>
+                <Text style={s.focusStatusTxt}>{statusLabel(focused.orderStatus)}</Text>
+              </View>
+            </View>
+
+            <View style={s.focusCtaRow}>
+              <View style={s.focusCta}>
+                <Feather name="navigation" size={15} color="#fff" />
+                <Text style={s.focusCtaTxt}>Open Delivery</Text>
+              </View>
+              <Feather name="chevron-right" size={18} color={PRIMARY} />
+            </View>
+          </TouchableOpacity>
+
+          {/* 3-slot rail (architecture preserved visually) */}
+          <View style={s.slotRail}>
+            {slots.map((o, i) =>
+              o ? (
+                <TouchableOpacity
+                  key={o.id}
+                  style={[s.slotChip, o.id === currentActiveOrderId && s.slotChipActive]}
+                  activeOpacity={0.85}
+                  onPress={() => focusOrder(o.id)}
+                >
+                  <Text style={[s.slotNum, o.id === currentActiveOrderId && s.slotNumActive]}>{i + 1}</Text>
+                  <Text
+                    style={[s.slotName, o.id === currentActiveOrderId && s.slotNameActive]}
+                    numberOfLines={1}
+                  >
+                    {firstName(o.passengerName)}
+                  </Text>
+                  {o.id === currentActiveOrderId && <View style={s.slotFocusDot} />}
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  key={`slot-empty-${i}`}
+                  style={s.slotEmpty}
+                  activeOpacity={0.8}
+                  onPress={openAvailable}
+                  disabled={!hasCapacity}
+                >
+                  <Feather name="plus" size={13} color={MUTED} />
+                  <Text style={s.slotEmptyTxt}>Slot {i + 1}</Text>
+                </TouchableOpacity>
+              ),
+            )}
+          </View>
+        </View>
       )}
 
       {/* ── SCROLLABLE CONTENT ─────────────────────────────────────────────── */}
       <ScrollView
         contentContainerStyle={{
           paddingHorizontal: 16,
-          paddingTop: 16,
+          paddingTop: 14,
           paddingBottom: insets.bottom + 130,
           gap: 14,
         }}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── STATUS BLOCK (online/offline + earnings) ──────────────────────── */}
+        {/* ── STATUS BLOCK (online/offline toggle + earnings) ───────────────── */}
         <View style={s.statusBlock}>
           <View style={s.statusTop}>
             <View style={s.statusInfo}>
@@ -387,61 +527,105 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
 
-        {/* ── HERO ACTION TILES ─────────────────────────────────────────────── */}
-        <View style={s.heroTilesRow}>
-          <TouchableOpacity
-            style={[s.heroTile, { borderColor: "#FFE0CC" }]}
-            activeOpacity={0.85}
-            onPress={openAvailable}
-          >
-            <View style={[s.heroTileIcon, { backgroundColor: PRIMARY_SOFT }]}>
-              <Feather name="inbox" size={24} color={PRIMARY} />
-            </View>
-            <View>
-              <Text style={s.heroTileTitle}>Available Deliveries</Text>
-              <Text style={s.heroTileSub}>
-                {incomingRide ? "New order waiting" : "Browse new orders"}
-              </Text>
-            </View>
-            {incomingRide && (
-              <View style={s.heroTileBadge}>
-                <Text style={s.heroTileBadgeTxt}>NEW</Text>
-              </View>
+        {/* ── AVAILABLE DELIVERIES (always visible; locked/muted when offline or full) ── */}
+        <View style={s.section}>
+          <View style={s.sectionHead}>
+            <Text style={s.sectionTitle}>Available Deliveries</Text>
+            {online && !isAtCapacity && incomingRide && (
+              <View style={s.newBadge}><Text style={s.newBadgeTxt}>NEW</Text></View>
             )}
-          </TouchableOpacity>
+          </View>
 
           <TouchableOpacity
-            style={[s.heroTile, { borderColor: "#D6E4FF" }]}
-            activeOpacity={0.85}
-            onPress={() => router.push("/delivery-command-center")}
+            style={[s.availRow, availLocked && s.availRowLocked]}
+            activeOpacity={availLocked ? 1 : 0.85}
+            onPress={openAvailable}
+            disabled={availLocked}
           >
-            <View style={[s.heroTileIcon, { backgroundColor: INFO_SOFT }]}>
-              <Feather name="package" size={24} color={INFO} />
+            <View style={[s.availIcon, availLocked && s.availIconLocked]}>
+              <Feather
+                name={availLocked ? "lock" : "inbox"}
+                size={18}
+                color={availLocked ? MUTED : PRIMARY}
+              />
             </View>
-            <View>
-              <Text style={s.heroTileTitle}>My Deliveries</Text>
-              <Text style={s.heroTileSub}>
-                {activeOrderCount > 0 ? `${activeOrderCount} in progress` : "Active deliveries"}
-              </Text>
+            <View style={{ flex: 1 }}>
+              {!online ? (
+                <>
+                  <Text style={s.availTitleLocked}>Go online to see nearby orders</Text>
+                  <Text style={s.availSub}>You're offline right now</Text>
+                </>
+              ) : isAtCapacity ? (
+                <>
+                  <Text style={s.availTitleLocked}>At capacity ({activeOrderCount}/{maxActiveOrders})</Text>
+                  <Text style={s.availSub}>Finish a ride to accept new orders</Text>
+                </>
+              ) : incomingRide ? (
+                <>
+                  <Text style={s.availTitle}>New order waiting</Text>
+                  <Text style={s.availSub}>Tap to view and accept</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={s.availTitle}>No orders right now</Text>
+                  <Text style={s.availSub}>You'll be notified when one arrives nearby</Text>
+                </>
+              )}
             </View>
-            {activeOrderCount > 0 && (
-              <View style={s.heroTileCount}>
-                <Text style={s.heroTileCountTxt}>{activeOrderCount}</Text>
-              </View>
-            )}
+            {!availLocked && <Feather name="chevron-right" size={18} color={MUTED} />}
           </TouchableOpacity>
         </View>
 
-        {/* ── WALLET SLIM ROW ───────────────────────────────────────────────── */}
-        <TouchableOpacity style={s.walletRow} activeOpacity={0.8} onPress={() => router.push("/wallet")}>
-          <View style={s.walletIcon}>
-            <Feather name="credit-card" size={18} color={SUCCESS} />
+        {/* ── MY DELIVERIES (always visible) ─────────────────────────────────── */}
+        <View style={s.section}>
+          <View style={s.sectionHead}>
+            <Text style={s.sectionTitle}>My Deliveries</Text>
+            {activeOrderCount > 0 && (
+              <View style={s.countPill}><Text style={s.countPillTxt}>{activeOrderCount}</Text></View>
+            )}
+          </View>
+
+          {activeOrderCount === 0 ? (
+            <View style={s.emptyRow}>
+              <View style={s.availIcon}>
+                <Feather name="package" size={18} color={INFO} />
+              </View>
+              <Text style={s.emptyTxt}>No active deliveries right now</Text>
+            </View>
+          ) : (
+            <View style={s.myList}>
+              {activeOrders.map((o) => {
+                const isFocus = o.id === currentActiveOrderId;
+                return (
+                  <TouchableOpacity
+                    key={o.id}
+                    style={s.myRow}
+                    activeOpacity={0.85}
+                    onPress={() => { focusOrder(o.id); openHub(); }}
+                  >
+                    <View style={[s.myDot, { backgroundColor: isFocus ? PRIMARY : INFO }]} />
+                    <Text style={s.myName} numberOfLines={1}>{firstName(o.passengerName)}</Text>
+                    <Text style={s.myStatus}>{statusLabel(o.orderStatus)}</Text>
+                    <Feather name="chevron-right" size={16} color={MUTED} />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+        </View>
+
+        {/* ── DELIVERY HUB BAR (always visible) ──────────────────────────────── */}
+        <TouchableOpacity style={s.hubBar} activeOpacity={0.9} onPress={openHub}>
+          <View style={s.hubBarIcon}>
+            <Feather name="grid" size={18} color="#fff" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={s.walletTitle}>Wallet</Text>
-            <Text style={s.walletSub}>Balance & payouts</Text>
+            <Text style={s.hubBarTitle}>Delivery Hub</Text>
+            <Text style={s.hubBarSub}>
+              {activeOrderCount > 0 ? `Manage ${activeOrderCount} active deliver${activeOrderCount > 1 ? "ies" : "y"}` : "Manage all your deliveries"}
+            </Text>
           </View>
-          <Feather name="chevron-right" size={20} color={MUTED} />
+          <Feather name="chevron-right" size={20} color={PRIMARY} />
         </TouchableOpacity>
 
         {/* ── HOT ZONES / LIVE MAP ──────────────────────────────────────────── */}
@@ -492,7 +676,9 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
   brandName: { fontSize: 16, fontWeight: "800", color: TEXT, letterSpacing: -0.2 },
-  brandSub: { fontSize: 11, fontWeight: "500", color: MUTED, marginTop: 1 },
+  statusLine: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
+  statusLineDot: { width: 7, height: 7, borderRadius: 4 },
+  statusLineTxt: { fontSize: 11, fontWeight: "600", color: MUTED },
   headerRight: { flexDirection: "row", alignItems: "center", gap: 10 },
   planChip: {
     flexDirection: "row",
@@ -516,33 +702,172 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
 
-  // Pinned active ride strip
-  activeStrip: {
+  // Wallet + Hub top strip
+  topStrip: {
+    flexDirection: "row",
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+  walletPill: {
+    flex: 1.1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    marginHorizontal: 16,
-    marginTop: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    borderRadius: 16,
-    backgroundColor: PRIMARY,
-    shadowColor: PRIMARY,
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
+    gap: 9,
+    backgroundColor: CARD,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
-  activeStripIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.22)",
+  walletPillIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    backgroundColor: SUCCESS_SOFT,
     alignItems: "center",
     justifyContent: "center",
   },
-  activeStripTitle: { fontSize: 14, fontWeight: "800", color: "#fff" },
-  activeStripSub: { fontSize: 12, fontWeight: "500", color: "rgba(255,255,255,0.9)", marginTop: 1 },
+  walletPillLabel: { fontSize: 11, fontWeight: "600", color: MUTED },
+  walletPillValue: { fontSize: 15, fontWeight: "800", color: TEXT, marginTop: 1 },
+  hubPill: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    backgroundColor: PRIMARY_SOFT,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#FFD9C2",
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  hubPillTxt: { fontSize: 13, fontWeight: "800", color: PRIMARY },
+  slotCounter: {
+    backgroundColor: "#FFE0CC",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  slotCounterFull: { backgroundColor: "#DC2626" },
+  slotCounterTxt: { fontSize: 11, fontWeight: "800", color: PRIMARY },
+  slotCounterTxtFull: { color: "#fff" },
+
+  // Active ride dock (pinned)
+  dock: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    backgroundColor: "#FFF7F1",
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "#FFD0B0",
+    padding: 14,
+    gap: 12,
+    shadowColor: PRIMARY,
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 5,
+  },
+  dockHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  dockHeadLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
+  dockRank: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: PRIMARY,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dockRankTxt: { fontSize: 12, fontWeight: "900", color: "#fff" },
+  dockTitle: { fontSize: 12, fontWeight: "900", color: PRIMARY, letterSpacing: 0.6 },
+  dockHeadRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+  fullBadge: { backgroundColor: "#DC2626", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  fullBadgeTxt: { fontSize: 10, fontWeight: "900", color: "#fff", letterSpacing: 0.5 },
+  dockCount: { fontSize: 13, fontWeight: "800", color: TEXT },
+
+  focusCard: {
+    backgroundColor: CARD,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: BORDER,
+    padding: 14,
+    gap: 12,
+  },
+  focusTop: { flexDirection: "row", alignItems: "center", gap: 12 },
+  focusAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: PRIMARY_SOFT,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  focusAvatarTxt: { fontSize: 18, fontWeight: "800", color: PRIMARY },
+  focusName: { fontSize: 16, fontWeight: "800", color: TEXT, letterSpacing: -0.2 },
+  focusMeta: { fontSize: 12, fontWeight: "500", color: MUTED, marginTop: 2 },
+  focusStatus: {
+    backgroundColor: INFO_SOFT,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 9,
+  },
+  focusStatusTxt: { fontSize: 11, fontWeight: "800", color: INFO },
+  focusCtaRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  focusCta: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: PRIMARY,
+    borderRadius: 12,
+    paddingVertical: 13,
+  },
+  focusCtaTxt: { fontSize: 15, fontWeight: "800", color: "#fff", letterSpacing: 0.2 },
+
+  // 3-slot rail
+  slotRail: { flexDirection: "row", gap: 8 },
+  slotChip: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: CARD,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: BORDER,
+    paddingHorizontal: 9,
+    paddingVertical: 9,
+  },
+  slotChipActive: { borderColor: PRIMARY, backgroundColor: PRIMARY_SOFT },
+  slotNum: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: MUTED,
+    width: 14,
+    textAlign: "center",
+  },
+  slotNumActive: { color: PRIMARY },
+  slotName: { flex: 1, fontSize: 12, fontWeight: "700", color: TEXT },
+  slotNameActive: { color: PRIMARY },
+  slotFocusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: PRIMARY },
+  slotEmpty: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    backgroundColor: SURFACE,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "#CBD5E1",
+    paddingVertical: 9,
+  },
+  slotEmptyTxt: { fontSize: 12, fontWeight: "600", color: MUTED },
 
   // Status block
   statusBlock: {
@@ -633,78 +958,106 @@ const s = StyleSheet.create({
   bannerSoftTitle: { fontSize: 13, fontWeight: "700", color: TEXT, marginBottom: 1 },
   bannerSoftSub: { fontSize: 11, fontWeight: "500", color: MUTED },
 
-  // Hero action tiles (2-up)
-  heroTilesRow: { flexDirection: "row", gap: 12 },
-  heroTile: {
-    flex: 1,
-    minHeight: 152,
+  // Generic section (Available / My deliveries)
+  section: {
     backgroundColor: CARD,
     borderRadius: 18,
     borderWidth: 1,
-    padding: 16,
-    justifyContent: "space-between",
-    overflow: "hidden",
+    borderColor: BORDER,
+    padding: 14,
+    gap: 12,
     shadowColor: "#0F172A",
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  heroTileIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 14,
+  sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  sectionTitle: { fontSize: 15, fontWeight: "800", color: TEXT, letterSpacing: -0.2 },
+  newBadge: { backgroundColor: PRIMARY, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  newBadgeTxt: { fontSize: 10, fontWeight: "900", color: "#fff", letterSpacing: 0.5 },
+  countPill: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: INFO_SOFT,
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: 7,
   },
-  heroTileTitle: { fontSize: 15, fontWeight: "800", color: TEXT, letterSpacing: -0.2 },
-  heroTileSub: { fontSize: 12, fontWeight: "500", color: MUTED, marginTop: 3 },
-  heroTileBadge: {
-    position: "absolute",
-    top: 14,
-    right: 14,
-    backgroundColor: PRIMARY,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  heroTileBadgeTxt: { fontSize: 10, fontWeight: "900", color: "#fff", letterSpacing: 0.5 },
-  heroTileCount: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    minWidth: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "#DC2626",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 6,
-  },
-  heroTileCountTxt: { fontSize: 12, fontWeight: "800", color: "#fff" },
+  countPillTxt: { fontSize: 12, fontWeight: "800", color: INFO },
 
-  // Wallet slim row
-  walletRow: {
+  // Available row
+  availRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: SURFACE,
+    borderRadius: 13,
+    paddingHorizontal: 12,
+    paddingVertical: 13,
+  },
+  availRowLocked: { backgroundColor: LOCK_BG },
+  availIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 11,
+    backgroundColor: PRIMARY_SOFT,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  availIconLocked: { backgroundColor: "#E2E8F0" },
+  availTitle: { fontSize: 14, fontWeight: "700", color: TEXT },
+  availTitleLocked: { fontSize: 14, fontWeight: "700", color: MUTED },
+  availSub: { fontSize: 12, fontWeight: "500", color: MUTED, marginTop: 2 },
+
+  // My deliveries list
+  myList: { gap: 8 },
+  myRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: SURFACE,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  myDot: { width: 9, height: 9, borderRadius: 5 },
+  myName: { flex: 1, fontSize: 14, fontWeight: "700", color: TEXT },
+  myStatus: { fontSize: 12, fontWeight: "700", color: INFO },
+  emptyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: SURFACE,
+    borderRadius: 13,
+    paddingHorizontal: 12,
+    paddingVertical: 13,
+  },
+  emptyTxt: { flex: 1, fontSize: 13, fontWeight: "500", color: MUTED },
+
+  // Delivery Hub bar
+  hubBar: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
     backgroundColor: CARD,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: "#FFD9C2",
     paddingHorizontal: 14,
     paddingVertical: 14,
   },
-  walletIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 11,
-    backgroundColor: SUCCESS_SOFT,
+  hubBarIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: PRIMARY,
     alignItems: "center",
     justifyContent: "center",
   },
-  walletTitle: { fontSize: 14, fontWeight: "700", color: TEXT },
-  walletSub: { fontSize: 12, fontWeight: "500", color: MUTED, marginTop: 1 },
+  hubBarTitle: { fontSize: 15, fontWeight: "800", color: TEXT, letterSpacing: -0.2 },
+  hubBarSub: { fontSize: 12, fontWeight: "500", color: MUTED, marginTop: 1 },
 
   // Hot zones / map card
   mapCard: {
