@@ -42,6 +42,11 @@ const SUCCESS_SOFT = "#ECFDF5";
 const INFO         = "#2563EB";
 const INFO_SOFT    = "#EFF6FF";
 const LOCK_BG      = "#F1F5F9";
+// Soft action-card palette (compact pass)
+const MINT         = "#0EA372";
+const MINT_SOFT    = "#E9FBF2";
+const TEAL         = "#0D9488";
+const TEAL_SOFT    = "#E4F7F4";
 
 // ─── Permission Health Card ───────────────────────────────────────────────────
 // Only renders when at least one permission is missing.
@@ -329,7 +334,7 @@ export default function HomeScreen() {
       <View style={s.topStrip}>
         <TouchableOpacity style={s.walletPill} activeOpacity={0.85} onPress={openWallet}>
           <View style={s.walletPillIcon}>
-            <Feather name="credit-card" size={15} color={SUCCESS} />
+            <Feather name="credit-card" size={15} color={TEAL} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={s.walletPillLabel}>Wallet</Text>
@@ -432,9 +437,9 @@ export default function HomeScreen() {
       <ScrollView
         contentContainerStyle={{
           paddingHorizontal: 16,
-          paddingTop: 14,
+          paddingTop: 10,
           paddingBottom: insets.bottom + 130,
-          gap: 14,
+          gap: 10,
         }}
         showsVerticalScrollIndicator={false}
       >
@@ -546,7 +551,7 @@ export default function HomeScreen() {
               <Feather
                 name={availLocked ? "lock" : "inbox"}
                 size={18}
-                color={availLocked ? MUTED : PRIMARY}
+                color={availLocked ? MUTED : MINT}
               />
             </View>
             <View style={{ flex: 1 }}>
@@ -587,7 +592,7 @@ export default function HomeScreen() {
 
           {activeOrderCount === 0 ? (
             <View style={s.emptyRow}>
-              <View style={s.availIcon}>
+              <View style={s.availIconBlue}>
                 <Feather name="package" size={18} color={INFO} />
               </View>
               <Text style={s.emptyTxt}>No active deliveries right now</Text>
@@ -707,7 +712,7 @@ const s = StyleSheet.create({
     flexDirection: "row",
     gap: 10,
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 10,
   },
   walletPill: {
     flex: 1.1,
@@ -725,7 +730,7 @@ const s = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 9,
-    backgroundColor: SUCCESS_SOFT,
+    backgroundColor: TEAL_SOFT,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -872,11 +877,11 @@ const s = StyleSheet.create({
   // Status block
   statusBlock: {
     backgroundColor: CARD,
-    borderRadius: 22,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: BORDER,
-    padding: 20,
-    gap: 18,
+    padding: 13,
+    gap: 10,
     shadowColor: "#0F172A",
     shadowOpacity: 0.06,
     shadowRadius: 14,
@@ -884,19 +889,19 @@ const s = StyleSheet.create({
     elevation: 3,
   },
   statusTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  statusInfo: { flexDirection: "row", alignItems: "center", gap: 12 },
-  statusDot: { width: 12, height: 12, borderRadius: 6 },
-  statusLabel: { fontSize: 18, fontWeight: "800", color: TEXT, letterSpacing: -0.3 },
-  statusSub: { fontSize: 13, fontWeight: "500", color: MUTED, marginTop: 2 },
+  statusInfo: { flexDirection: "row", alignItems: "center", gap: 10 },
+  statusDot: { width: 10, height: 10, borderRadius: 5 },
+  statusLabel: { fontSize: 15, fontWeight: "800", color: TEXT, letterSpacing: -0.3 },
+  statusSub: { fontSize: 12, fontWeight: "500", color: MUTED, marginTop: 1 },
   statusDivider: { height: 1, backgroundColor: BORDER },
   earningsRow: { flexDirection: "row", alignItems: "center" },
   earningsMain: { flex: 1 },
-  earningsLabel: { fontSize: 12, fontWeight: "600", color: MUTED, marginBottom: 3 },
-  earningsValue: { fontSize: 30, fontWeight: "900", color: TEXT, letterSpacing: -1 },
-  earningsStat: { alignItems: "center", minWidth: 56 },
-  earningsStatNum: { fontSize: 20, fontWeight: "800", color: TEXT },
-  earningsStatLbl: { fontSize: 11, fontWeight: "500", color: MUTED, marginTop: 2 },
-  earningsStatSep: { width: 1, height: 34, backgroundColor: BORDER },
+  earningsLabel: { fontSize: 11, fontWeight: "600", color: MUTED, marginBottom: 1 },
+  earningsValue: { fontSize: 23, fontWeight: "900", color: TEXT, letterSpacing: -0.6 },
+  earningsStat: { alignItems: "center", minWidth: 52 },
+  earningsStatNum: { fontSize: 17, fontWeight: "800", color: TEXT },
+  earningsStatLbl: { fontSize: 11, fontWeight: "500", color: MUTED, marginTop: 1 },
+  earningsStatSep: { width: 1, height: 26, backgroundColor: BORDER },
   goOnlineBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -904,7 +909,7 @@ const s = StyleSheet.create({
     gap: 10,
     backgroundColor: PRIMARY,
     borderRadius: 14,
-    paddingVertical: 16,
+    paddingVertical: 12,
     shadowColor: PRIMARY,
     shadowOpacity: 0.32,
     shadowRadius: 10,
@@ -961,11 +966,11 @@ const s = StyleSheet.create({
   // Generic section (Available / My deliveries)
   section: {
     backgroundColor: CARD,
-    borderRadius: 18,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: BORDER,
-    padding: 14,
-    gap: 12,
+    padding: 12,
+    gap: 9,
     shadowColor: "#0F172A",
     shadowOpacity: 0.04,
     shadowRadius: 6,
@@ -991,18 +996,26 @@ const s = StyleSheet.create({
   availRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    backgroundColor: SURFACE,
-    borderRadius: 13,
+    gap: 10,
+    backgroundColor: MINT_SOFT,
+    borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 13,
+    paddingVertical: 10,
   },
   availRowLocked: { backgroundColor: LOCK_BG },
   availIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 11,
-    backgroundColor: PRIMARY_SOFT,
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: CARD,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  availIconBlue: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: CARD,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1017,10 +1030,10 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: SURFACE,
+    backgroundColor: INFO_SOFT,
     borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingVertical: 10,
   },
   myDot: { width: 9, height: 9, borderRadius: 5 },
   myName: { flex: 1, fontSize: 14, fontWeight: "700", color: TEXT },
@@ -1028,11 +1041,11 @@ const s = StyleSheet.create({
   emptyRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    backgroundColor: SURFACE,
-    borderRadius: 13,
+    gap: 10,
+    backgroundColor: INFO_SOFT,
+    borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 13,
+    paddingVertical: 10,
   },
   emptyTxt: { flex: 1, fontSize: 13, fontWeight: "500", color: MUTED },
 
@@ -1041,17 +1054,17 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    backgroundColor: CARD,
+    backgroundColor: PRIMARY_SOFT,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "#FFD9C2",
     paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingVertical: 11,
   },
   hubBarIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 11,
     backgroundColor: PRIMARY,
     alignItems: "center",
     justifyContent: "center",
