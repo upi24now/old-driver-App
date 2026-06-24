@@ -94,6 +94,28 @@ export async function pgGetWalletTransactions(
  * For now the function is best-effort idempotent — duplicate calls will
  * produce duplicate credit rows, which is visible in the ledger.
  */
+/**
+ * Payment modes for which the COMPANY owes the driver the fare and therefore the
+ * payable wallet balance must be credited. For every OTHER mode — cash / COD /
+ * empty / unknown — the driver collects the fare directly from the customer, so
+ * crediting the wallet would pay the driver twice. Treated as a strict allow-list
+ * (anything not explicitly online counts as cash — the safe, never-double-pay
+ * default).
+ */
+const ONLINE_PAYMENT_MODES = new Set([
+  "online", "prepaid", "upi", "card", "razorpay", "paid",
+  "wallet", "paytm", "gpay", "phonepe", "netbanking",
+]);
+
+/**
+ * True when the order fare is collected as cash/COD (driver keeps the cash) and
+ * the payable wallet balance must NOT be credited. Defaults to cash for missing
+ * or unrecognised modes.
+ */
+export function isCashPayment(paymentMode: string | null | undefined): boolean {
+  return !ONLINE_PAYMENT_MODES.has((paymentMode ?? "").trim().toLowerCase());
+}
+
 export async function pgCreditOrderEarning(
   driverUid:   string,
   orderId:     string,
@@ -495,34 +517,51 @@ export async function pgCompleteDelivery(
 
       const fareAmount   = order.fareEstimate != null ? parseFloat(order.fareEstimate) : 0;
       const paymentMode  = order.paymentMode ?? "Cash";
-      const amountStr    = fareAmount.toFixed(2);
-      const description  = `Delivery #${orderId.slice(-6).toUpperCase()}`;
+      const cash         = isCashPayment(paymentMode);
+
+      // CASH/COD: the driver already collected the fare from the customer, so the
+      // company owes nothing — credit 0 to the payable wallet (no double-pay).
+      // ONLINE/prepaid: credit the full fare as before.
+      const creditAmount = cash ? 0 : fareAmount;
+      const creditStr    = creditAmount.toFixed(2);
+      const fareStr      = fareAmount.toFixed(2);
+      const description  = cash
+        ? `Cash collected #${orderId.slice(-6).toUpperCase()} (₹${fareStr} paid directly to driver)`
+        : `Delivery #${orderId.slice(-6).toUpperCase()}`;
 
       // ── 4. Upsert driver_wallets (create-or-increment) ────────────────────────
-      // Uses SQL-level arithmetic — no app-level read required.
+      // Uses SQL-level arithmetic — no app-level read required. For cash orders
+      // creditStr is "0.00", so balance/earnings stay unchanged while the wallet
+      // row is still created-if-missing.
       const [wallet] = await tx
         .insert(driverWalletsTable)
         .values({
           driverUid,
-          balance:             amountStr,
-          totalEarnings:       amountStr,
+          balance:             creditStr,
+          totalEarnings:       creditStr,
           totalPaid:           "0",
-          completedDeliveries: 1,
+          completedDeliveries: cash ? 0 : 1,
         })
         .onConflictDoUpdate({
           target: driverWalletsTable.driverUid,
           set: {
-            balance:             sql`${driverWalletsTable.balance}             + ${amountStr}::numeric`,
-            totalEarnings:       sql`${driverWalletsTable.totalEarnings}       + ${amountStr}::numeric`,
-            completedDeliveries: sql`${driverWalletsTable.completedDeliveries} + 1`,
+            balance:             sql`${driverWalletsTable.balance}             + ${creditStr}::numeric`,
+            totalEarnings:       sql`${driverWalletsTable.totalEarnings}       + ${creditStr}::numeric`,
+            completedDeliveries: cash
+              ? sql`${driverWalletsTable.completedDeliveries}`
+              : sql`${driverWalletsTable.completedDeliveries} + 1`,
             updatedAt:           sql`now()`,
           },
         })
         .returning({ balance: driverWalletsTable.balance });
 
-      const newBalance = wallet ? parseFloat(wallet.balance) : fareAmount;
+      const newBalance = wallet ? parseFloat(wallet.balance) : creditAmount;
 
-      // ── 5. Insert wallet_transactions credit row (idempotent) ─────────────────
+      // ── 5. Insert wallet_transactions row (idempotent) ────────────────────────
+      // ONLINE → a payable "credit" row for the full fare.
+      // CASH   → a NON-payable "cash_collected" audit row (amount 0; the fare is
+      //          recorded in the description). It never touches the balance and
+      //          preserves the completed_deliveries == count(type='credit') invariant.
       // The unique index wallet_txn_order_id_type_idx on (order_id, type) means a
       // duplicate insert is silently ignored via ON CONFLICT DO NOTHING.
       await tx
@@ -530,8 +569,8 @@ export async function pgCompleteDelivery(
         .values({
           driverUid,
           orderId,
-          type:        "credit",
-          amount:      amountStr,
+          type:        cash ? "cash_collected" : "credit",
+          amount:      cash ? "0.00" : fareStr,
           status:      "completed",
           description,
         })

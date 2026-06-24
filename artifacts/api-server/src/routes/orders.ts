@@ -3,7 +3,7 @@ import { Router, type Request, type Response } from "express";
 import { adminFirestore } from "../lib/firebase-admin";
 import { requireAuth } from "../lib/require-auth";
 import { pgGetOrder, pgShadowSetStatus, pgAcceptOffer, pgRejectOffer, pgTimeoutOffer, pgRemoveFromOfferSet, pgDriverCancelOrder, pgSetOrderStage, pgSetOrderLocation, pgCreateOffer, pgUpsertOrder, type DeliveryStage } from "../lib/order-pg-service";
-import { pgCreditOrderEarning, pgUpdateDriverDailyStats, pgCompleteDelivery } from "../lib/wallet-pg-service";
+import { pgCreditOrderEarning, pgUpdateDriverDailyStats, pgCompleteDelivery, isCashPayment } from "../lib/wallet-pg-service";
 import { db, ordersTable } from "@workspace/db";
 import { inArray, gte, and } from "drizzle-orm";
 
@@ -63,26 +63,32 @@ async function projectWalletCreditToFirestore(
   log:         Request["log"],
 ): Promise<void> {
   try {
+    const cash         = isCashPayment(paymentMode);
+    const creditAmount = cash ? 0 : fareAmount;
     const walletRef = fsDb.doc(`wallets/${driverUid}`);
     const txnRef    = fsDb.doc(`transactions/${orderId}_earn`);
-    const prevBalance = newBalance - fareAmount;
+    const prevBalance = newBalance - creditAmount;
 
     // Use FieldValue.increment so this is safe even if FS wallet diverged
     // from PG (e.g. due to a FS-authoritative payout not yet mirrored to PG).
+    // CASH/COD increments 0 so the payable balance is never bumped (no double-pay).
     await walletRef.set({
-      balance:             FieldValue.increment(fareAmount),
-      totalEarnings:       FieldValue.increment(fareAmount),
-      completedDeliveries: FieldValue.increment(1),
+      balance:             FieldValue.increment(creditAmount),
+      totalEarnings:       FieldValue.increment(creditAmount),
+      completedDeliveries: FieldValue.increment(cash ? 0 : 1),
       lastUpdatedAt:       FieldValue.serverTimestamp(),
     }, { merge: true });
 
     // Legacy ledger entry — customer-facing wallet history; no longer authoritative.
+    // CASH/COD writes a non-payable audit row (amount 0; fare noted in description).
     await txnRef.set({
       driverUid,
       orderId,
-      type:          "credit",
-      amount:        fareAmount,
-      description:   `Delivery #${orderId.slice(-6).toUpperCase()}`,
+      type:          cash ? "cash_collected" : "credit",
+      amount:        cash ? 0 : fareAmount,
+      description:   cash
+        ? `Cash collected #${orderId.slice(-6).toUpperCase()} (₹${fareAmount.toFixed(2)} paid directly to driver)`
+        : `Delivery #${orderId.slice(-6).toUpperCase()}`,
       paymentMode,
       balanceBefore: prevBalance,
       balanceAfter:  newBalance,
@@ -228,10 +234,11 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
     return Object.assign(new Error(code), { code }) as TxError;
   }
 
-  let fareAmount = 0;
-  let newBalance = 0;
-  let newToday   = 0;
-  let newTrips   = 0;
+  let fareAmount  = 0;
+  let newBalance  = 0;
+  let newToday    = 0;
+  let newTrips    = 0;
+  let isCashOrder = false;
 
   try {
     await fsDb.runTransaction(async (tx) => {
@@ -256,12 +263,18 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
 
       fareAmount        = typeof order["fareEstimate"] === "number" ? order["fareEstimate"] : 0;
       const paymentMode = typeof order["paymentMode"]  === "string"  ? order["paymentMode"]  : "Cash";
+      isCashOrder       = isCashPayment(paymentMode);
+
+      // CASH/COD: driver keeps the customer's cash → credit 0 to the payable
+      // wallet. ONLINE/prepaid: credit the full fare. Daily activity stats
+      // (todayEarnings/tripsToday) still count the delivery either way.
+      const creditAmount = isCashOrder ? 0 : fareAmount;
 
       const w                 = walletSnap.exists ? (walletSnap.data() as Record<string, unknown>) : {};
       const prevBalance       = (w["balance"]             as number | undefined) ?? 0;
       const prevTotalEarnings = (w["totalEarnings"]       as number | undefined) ?? 0;
       const prevCompleted     = (w["completedDeliveries"] as number | undefined) ?? 0;
-      newBalance = prevBalance + fareAmount;
+      newBalance = prevBalance + creditAmount;
 
       const d         = driverSnap.exists ? (driverSnap.data() as Record<string, unknown>) : {};
       const isSameDay = d["todayDate"] === today;
@@ -275,8 +288,8 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
 
       tx.set(walletRef, {
         balance:             newBalance,
-        totalEarnings:       prevTotalEarnings + fareAmount,
-        completedDeliveries: prevCompleted + 1,
+        totalEarnings:       prevTotalEarnings + creditAmount,
+        completedDeliveries: prevCompleted + (isCashOrder ? 0 : 1),
         lastUpdatedAt:       FieldValue.serverTimestamp(),
       }, { merge: true });
 
@@ -290,9 +303,11 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
       tx.set(txnRef, {
         driverUid,
         orderId,
-        type:          "credit",
-        amount:        fareAmount,
-        description:   `Delivery #${orderId.slice(-6).toUpperCase()}`,
+        type:          isCashOrder ? "cash_collected" : "credit",
+        amount:        isCashOrder ? 0 : fareAmount,
+        description:   isCashOrder
+          ? `Cash collected #${orderId.slice(-6).toUpperCase()} (₹${fareAmount.toFixed(2)} paid directly to driver)`
+          : `Delivery #${orderId.slice(-6).toUpperCase()}`,
         paymentMode,
         balanceBefore: prevBalance,
         balanceAfter:  newBalance,
@@ -307,9 +322,15 @@ router.post("/orders/:orderId/complete", async (req: Request, res: Response) => 
       .then(() => req.log.info({ orderId, driverUid }, "[PG_SHADOW_STATUS] delivered"))
       .catch((e) => req.log.error({ err: e, orderId }, "[PG_SHADOW_STATUS] delivered error — continuing"));
 
-    void pgCreditOrderEarning(driverUid, orderId, fareAmount, `Delivery #${orderId.slice(-6).toUpperCase()}`)
-      .then(() => req.log.info({ orderId, driverUid, fareAmount }, "[PG_WALLET_CREDIT]"))
-      .catch((e) => req.log.error({ err: e, orderId, driverUid }, "[PG_WALLET_CREDIT] shadow write failed — non-blocking"));
+    // CASH/COD: never shadow-credit the payable PG wallet (driver kept the cash).
+    // ONLINE/prepaid: mirror the FS credit into PG as before.
+    if (!isCashOrder) {
+      void pgCreditOrderEarning(driverUid, orderId, fareAmount, `Delivery #${orderId.slice(-6).toUpperCase()}`)
+        .then(() => req.log.info({ orderId, driverUid, fareAmount }, "[PG_WALLET_CREDIT]"))
+        .catch((e) => req.log.error({ err: e, orderId, driverUid }, "[PG_WALLET_CREDIT] shadow write failed — non-blocking"));
+    } else {
+      req.log.info({ orderId, driverUid, fareAmount }, "[PG_WALLET_CREDIT] skipped — cash order, no payable credit");
+    }
 
     void pgUpdateDriverDailyStats(driverUid, today, newToday, newTrips)
       .then(() => req.log.info({ driverUid, today, todayEarnings: newToday, tripsToday: newTrips }, "[PG_DRIVER_STATS]"))

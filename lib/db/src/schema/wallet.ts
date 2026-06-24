@@ -50,9 +50,11 @@ export const driverWalletsTable = pgTable("driver_wallets", {
 // manual adjustment.
 //
 // type values:
-//   "credit"     — order earning credited after delivery
-//   "payout"     — driver cash-out debit (mirrors processed payout_request)
-//   "adjustment" — manual admin correction
+//   "credit"         — order earning credited after delivery (ONLINE/prepaid only)
+//   "cash_collected" — CASH/COD delivery audit row; amount 0, NON-payable, never
+//                      touches balance (driver already took the cash from customer)
+//   "payout"         — driver cash-out debit (mirrors processed payout_request)
+//   "adjustment"     — manual admin correction
 //
 // status values:
 //   "completed"  — the movement is settled (default for all sync operations)
