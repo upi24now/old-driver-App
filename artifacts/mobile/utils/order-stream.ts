@@ -32,6 +32,21 @@ const BASE_URL = DOMAIN ? `https://${DOMAIN}/api` : "/api";
 const RECONNECT_MIN_MS = 2_000;
 const RECONNECT_MAX_MS = 30_000;
 
+// The infra/proxy in front of the SSE endpoint terminates long-lived streams at
+// ~300s as a CLEAN HTTP completion (readyState DONE, status 200). react-native-sse
+// (with pollingInterval:0) dispatches NEITHER "error" NOR "close" on that path, so
+// the stream silently dies and the app's error-only reconnect never fires.
+//
+// To survive that, a watchdog proactively recycles the connection a bit BEFORE the
+// proxy's cap so we never reach the silent clean-close. It also recycles a
+// connection that never reaches "open" (a stalled connect). NOTE: the server
+// heartbeat is a comment frame (": ping"), which react-native-sse ignores — it
+// produces no "message" event — so liveness cannot be tracked from heartbeats;
+// connection age is the reliable signal instead.
+const CONNECTION_MAX_MS = 270_000; // recycle before the ~300s infra cap
+const OPEN_TIMEOUT_MS   = 30_000;  // recycle if "open" never arrives after connect
+const WATCHDOG_TICK_MS  = 15_000;  // how often the watchdog checks
+
 async function freshIdToken(): Promise<string | null> {
   const user = firebaseAuth.currentUser;
   if (!user) return null;
@@ -44,8 +59,9 @@ async function freshIdToken(): Promise<string | null> {
 
 /**
  * Generic SSE subscription with token refresh, exponential-backoff reconnect,
- * and Last-Event-ID resume. `onData` receives each parsed message payload.
- * Returns an unsubscribe function.
+ * Last-Event-ID resume, and an age/stall watchdog that recovers from the infra
+ * proxy's silent ~300s clean-close. `onData` receives each parsed message
+ * payload. Returns an unsubscribe function.
  */
 function subscribe<T>(
   path: string,
@@ -57,9 +73,25 @@ function subscribe<T>(
   let lastId: string | null = null;
   let backoff = RECONNECT_MIN_MS;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let watchdog: ReturnType<typeof setInterval> | null = null;
+  let connectedAt = 0;      // when the current EventSource was constructed
+  let openedAt = 0;         // when "open" fired for the current connection (0 = not yet)
+  let lastMessageAt = 0;    // last "message" frame timestamp (diagnostic)
+  let generation = 0;       // bumped on every (re)connect/teardown; guards stale async connects
 
-  const scheduleReconnect = () => {
+  const teardownEs = (reason: string) => {
+    generation += 1; // invalidate any in-flight connect() for the old connection
+    if (!es) return;
+    console.log("OFFER_STREAM_CLOSED", { path, reason });
+    es.removeAllEventListeners();
+    es.close();
+    es = null;
+    openedAt = 0;
+  };
+
+  const scheduleReconnect = (reason: string) => {
     if (closed || retryTimer) return;
+    console.log("OFFER_STREAM_RETRY", { path, reason, inMs: backoff });
     retryTimer = setTimeout(() => {
       retryTimer = null;
       void connect();
@@ -67,31 +99,79 @@ function subscribe<T>(
     backoff = Math.min(backoff * 2, RECONNECT_MAX_MS);
   };
 
+  const startWatchdog = () => {
+    if (watchdog) return;
+    watchdog = setInterval(() => {
+      if (closed || !es) return;
+      const now = Date.now();
+      // Stalled connect: constructed but never reached "open".
+      if (openedAt === 0 && now - connectedAt >= OPEN_TIMEOUT_MS) {
+        console.log("OFFER_STREAM_WATCHDOG_RECONNECT", { path, reason: "open-timeout" });
+        teardownEs("open-timeout");
+        scheduleReconnect("open-timeout");
+        return;
+      }
+      // Proactively recycle before the proxy's silent ~300s clean-close.
+      if (now - connectedAt >= CONNECTION_MAX_MS) {
+        console.log("OFFER_STREAM_WATCHDOG_RECONNECT", {
+          path,
+          reason: "max-age",
+          ageMs: now - connectedAt,
+          lastMessageAgoMs: lastMessageAt ? now - lastMessageAt : null,
+        });
+        teardownEs("max-age");
+        scheduleReconnect("max-age");
+      }
+    }, WATCHDOG_TICK_MS);
+  };
+
+  const stopWatchdog = () => {
+    if (watchdog) {
+      clearInterval(watchdog);
+      watchdog = null;
+    }
+  };
+
   const connect = async () => {
     if (closed) return;
 
+    // Capture the generation BEFORE awaiting so we can detect an unsubscribe or
+    // recycle that happened while the token was being fetched — otherwise the
+    // resolved promise would construct an orphan EventSource (zombie connection).
+    const myGeneration = generation;
+
     const token = await freshIdToken();
+    if (closed || generation !== myGeneration) return;
     if (!token) {
       // Not authenticated yet — retry shortly without escalating backoff hard.
-      scheduleReconnect();
+      console.log("OFFER_STREAM_TOKEN_NULL", { path });
+      scheduleReconnect("token-null");
       return;
     }
 
     const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
     if (lastId) headers["Last-Event-ID"] = lastId;
 
+    connectedAt = Date.now();
+    openedAt = 0;
+
     es = new EventSource(`${BASE_URL}${path}`, {
       headers,
-      pollingInterval: 0, // disable built-in reconnect; we manage it manually
+      pollingInterval: 0, // disable built-in reconnect; we manage it manually (fresh token per retry)
     });
+    console.log("OFFER_STREAM_EVENTSOURCE_CREATED", { path });
 
     es.addEventListener("open", () => {
+      openedAt = Date.now();
       backoff = RECONNECT_MIN_MS; // healthy connection resets backoff
+      console.log("OFFER_STREAM_OPEN", { path });
     });
 
     es.addEventListener("message", (event) => {
+      lastMessageAt = Date.now();
       if (event.lastEventId) lastId = event.lastEventId;
       if (!event.data) return;
+      console.log("OFFER_STREAM_MESSAGE", { path, bytes: event.data.length });
       try {
         onData(parse(event.data));
       } catch {
@@ -99,12 +179,13 @@ function subscribe<T>(
       }
     });
 
-    es.addEventListener("error", () => {
-      es?.removeAllEventListeners();
-      es?.close();
-      es = null;
-      scheduleReconnect();
+    es.addEventListener("error", (event) => {
+      console.log("OFFER_STREAM_ERROR", { path, event });
+      teardownEs("error");
+      scheduleReconnect("error");
     });
+
+    startWatchdog();
   };
 
   void connect();
@@ -115,9 +196,8 @@ function subscribe<T>(
       clearTimeout(retryTimer);
       retryTimer = null;
     }
-    es?.removeAllEventListeners();
-    es?.close();
-    es = null;
+    stopWatchdog();
+    teardownEs("unsubscribe");
   };
 }
 
