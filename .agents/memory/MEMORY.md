@@ -39,3 +39,4 @@
 - [FCM cold-start staleness guard](fcm-coldstart-staleness.md) — Android caches last FCM tap indefinitely; must check notification age >2min before calling handleNotificationResponse, or every cold start replays stale order popup.
 - [PG SSE offer-stream popup gap](pg-sse-offer-popup-gap.md) — in-app popup = SSE /offer-stream → pgGetOffersForDriver (PG); dispatch "added" path never writes active_offer_driver_uids/dispatch_timeout_at → snapshot size=0 despite FCM success.
 - [PG accept not_in_offer in prod](pg-accept-not-in-offer.md) — prod dispatch+FCM happen outside api-server offer paths → no order_offers row → accept fails; fix = self-heal accept from authoritative Firestore offer doc.
+- [Dispatch delay = engagement gap](dispatch-delay-not-pipeline.md) — "orders reach driver late" is NOT pipeline lag (dispatch is instant + re-offers ~90s); it's FCM-off (PG_FCM_SEND_ENABLED≠true) + no order TTL redispatching abandoned orders.
