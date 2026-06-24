@@ -17,26 +17,30 @@ import {
   type AppStateStatus,
   Modal,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDriver } from "@/contexts/DriverContext";
-import { useColors } from "@/hooks/useColors";
 import LiveMap, { HotZoneStrip } from "@/components/LiveMap";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
-const BG      = "#F8FAFC";
-const CARD    = "#FFFFFF";
-const PRIMARY = "#FF6B00";
-const TEXT    = "#0F172A";
-const MUTED   = "#64748B";
-const BORDER  = "#E2E8F0";
-const SUCCESS = "#059669";
+const BG           = "#FFFFFF";
+const CARD         = "#FFFFFF";
+const SURFACE      = "#F7F8FA";
+const PRIMARY      = "#FF6B00";
+const PRIMARY_SOFT = "#FFF3EC";
+const TEXT         = "#0F172A";
+const MUTED        = "#64748B";
+const BORDER       = "#ECEFF3";
+const SUCCESS      = "#059669";
+const SUCCESS_SOFT = "#ECFDF5";
+const INFO         = "#2563EB";
+const INFO_SOFT    = "#EFF6FF";
 
 // ─── Permission Health Card ───────────────────────────────────────────────────
 // Only renders when at least one permission is missing.
@@ -165,7 +169,6 @@ const ph = StyleSheet.create({
 
 // ─── Home Screen ──────────────────────────────────────────────────────────────
 export default function HomeScreen() {
-  const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const {
@@ -223,17 +226,27 @@ export default function HomeScreen() {
   const PLAN_LABEL: Record<string, string> = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
   const planLabel = subscriptionPlan ? (PLAN_LABEL[subscriptionPlan] ?? subscriptionPlan) : null;
 
+  const earnings = `₹${todayEarnings.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+
+  function openAvailable() {
+    if (incomingRide) {
+      router.push("/ride-request");
+    } else {
+      Alert.alert("No orders right now", "You'll be notified as soon as a nearby order arrives.", [{ text: "OK" }]);
+    }
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: BG }}>
 
-      {/* ── FIXED HEADER ───────────────────────────────────────────────────── */}
+      {/* ── COMPACT HEADER ─────────────────────────────────────────────────── */}
       <View style={[s.header, { paddingTop: insets.top + 10 }]}>
         <View style={s.headerLeft}>
-          <View style={s.brandIconWrap}>
-            <Feather name="navigation" size={15} color={PRIMARY} />
+          <View style={s.logoMark}>
+            <Feather name="navigation" size={16} color="#fff" />
           </View>
           <View>
-            <Text style={s.brandName}>BIKE COURIER</Text>
+            <Text style={s.brandName}>Bike Courier</Text>
             <Text style={s.brandSub}>Driver Partner</Text>
           </View>
         </View>
@@ -241,101 +254,106 @@ export default function HomeScreen() {
           {subscriptionActive && planLabel && (
             <View style={s.planChip}>
               <View style={s.planChipDot} />
-              <Text style={s.planChipText}>{planLabel} Plan</Text>
+              <Text style={s.planChipText}>{planLabel}</Text>
             </View>
           )}
           <TouchableOpacity
             style={s.bellBtn}
             onPress={() => router.push("/notifications")}
             activeOpacity={0.7}
+            hitSlop={8}
           >
-            <Feather name="bell" size={18} color={TEXT} />
+            <Feather name="bell" size={20} color={TEXT} />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* ── ONLINE / OFFLINE HERO ───────────────────────────────────────────── */}
-      <View style={[s.heroWrap, { marginHorizontal: 16, marginTop: 14 }]}>
-        {online ? (
-          /* ONLINE STATE */
-          <View style={[s.heroCard, { backgroundColor: "#F0FDF4", borderColor: "#BBF7D0" }]}>
-            <View style={s.heroTopRow}>
-              <View style={s.onlineStatusRow}>
-                <View style={s.onlineDot} />
-                <Text style={s.onlineLabel}>ONLINE</Text>
-              </View>
-              <View style={s.heroEarningBadge}>
-                <Feather name="trending-up" size={12} color={SUCCESS} />
-                <Text style={s.heroEarningText}>
-                  ₹{todayEarnings.toLocaleString("en-IN", { maximumFractionDigits: 0 })} today
-                </Text>
-              </View>
-            </View>
-
-            <Text style={s.heroSubtext}>
-              {activeOrderCount > 0
-                ? `${activeOrderCount} active order${activeOrderCount > 1 ? "s" : ""} in progress`
-                : "Waiting for orders nearby..."}
-            </Text>
-
-            <View style={s.heroStatsRow}>
-              <View style={s.heroStat}>
-                <Text style={s.heroStatNum}>{tripsToday}</Text>
-                <Text style={s.heroStatLbl}>Trips Today</Text>
-              </View>
-              <View style={s.heroStatSep} />
-              <View style={s.heroStat}>
-                <Text style={s.heroStatNum}>
-                  ₹{todayEarnings.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-                </Text>
-                <Text style={s.heroStatLbl}>Earned Today</Text>
-              </View>
-              <View style={s.heroStatSep} />
-              <View style={s.heroStat}>
-                <Text style={s.heroStatNum}>{activeOrderCount}</Text>
-                <Text style={s.heroStatLbl}>Active Orders</Text>
-              </View>
-            </View>
-
-            <TouchableOpacity style={s.goOfflineBtn} onPress={() => setOnline(false)} activeOpacity={0.85}>
-              <Feather name="wifi-off" size={15} color={TEXT} />
-              <Text style={s.goOfflineTxt}>Go Offline</Text>
-            </TouchableOpacity>
+      {/* ── PINNED ACTIVE RIDE STRIP ───────────────────────────────────────── */}
+      {activeOrderCount > 0 && (
+        <TouchableOpacity
+          style={s.activeStrip}
+          activeOpacity={0.9}
+          onPress={() => router.push("/delivery-command-center")}
+        >
+          <View style={s.activeStripIcon}>
+            <Feather name="navigation" size={16} color="#fff" />
           </View>
-        ) : (
-          /* OFFLINE STATE */
-          <View style={[s.heroCard, { backgroundColor: CARD, borderColor: BORDER }]}>
-            <View style={s.offlineStatusRow}>
-              <View style={s.offlineDot} />
-              <Text style={s.offlineLabel}>OFFLINE</Text>
-            </View>
-            <Text style={s.offlineTitle}>Start earning now</Text>
-            <Text style={s.offlineSubtext}>
-              Go online to receive delivery orders from customers nearby
+          <View style={{ flex: 1 }}>
+            <Text style={s.activeStripTitle}>
+              {activeOrderCount} active deliver{activeOrderCount > 1 ? "ies" : "y"} in progress
             </Text>
-            <TouchableOpacity
-              style={s.goOnlineBtn}
-              onPress={() => setOnline(true)}
-              activeOpacity={0.88}
-            >
-              <Feather name="wifi" size={18} color="#fff" />
-              <Text style={s.goOnlineTxt}>GO ONLINE</Text>
-            </TouchableOpacity>
+            <Text style={s.activeStripSub}>Tap to open Delivery Hub</Text>
           </View>
-        )}
-      </View>
+          <Feather name="chevron-right" size={20} color="#fff" />
+        </TouchableOpacity>
+      )}
 
       {/* ── SCROLLABLE CONTENT ─────────────────────────────────────────────── */}
       <ScrollView
         contentContainerStyle={{
           paddingHorizontal: 16,
-          paddingTop: 14,
+          paddingTop: 16,
           paddingBottom: insets.bottom + 130,
-          gap: 12,
+          gap: 14,
         }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Plan expiry / no-plan banners */}
+        {/* ── STATUS BLOCK (online/offline + earnings) ──────────────────────── */}
+        <View style={s.statusBlock}>
+          <View style={s.statusTop}>
+            <View style={s.statusInfo}>
+              <View style={[s.statusDot, { backgroundColor: online ? SUCCESS : MUTED }]} />
+              <View>
+                <Text style={s.statusLabel}>{online ? "You're Online" : "You're Offline"}</Text>
+                <Text style={s.statusSub}>
+                  {online
+                    ? activeOrderCount > 0
+                      ? `${activeOrderCount} order${activeOrderCount > 1 ? "s" : ""} in progress`
+                      : "Receiving orders nearby"
+                    : "Not receiving orders"}
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={online}
+              onValueChange={(v) => void setOnline(v)}
+              trackColor={{ false: "#CBD5E1", true: "#FFB37A" }}
+              thumbColor={online ? PRIMARY : "#FFFFFF"}
+              ios_backgroundColor="#CBD5E1"
+            />
+          </View>
+
+          <View style={s.statusDivider} />
+
+          <View style={s.earningsRow}>
+            <View style={s.earningsMain}>
+              <Text style={s.earningsLabel}>Earned today</Text>
+              <Text style={s.earningsValue}>{earnings}</Text>
+            </View>
+            <View style={s.earningsStat}>
+              <Text style={s.earningsStatNum}>{tripsToday}</Text>
+              <Text style={s.earningsStatLbl}>Trips</Text>
+            </View>
+            {online && (
+              <>
+                <View style={s.earningsStatSep} />
+                <View style={s.earningsStat}>
+                  <Text style={s.earningsStatNum}>{activeOrderCount}</Text>
+                  <Text style={s.earningsStatLbl}>Active</Text>
+                </View>
+              </>
+            )}
+          </View>
+
+          {!online && (
+            <TouchableOpacity style={s.goOnlineBtn} onPress={() => void setOnline(true)} activeOpacity={0.9}>
+              <Feather name="power" size={18} color="#fff" />
+              <Text style={s.goOnlineTxt}>GO ONLINE</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* ── PLAN BANNERS ──────────────────────────────────────────────────── */}
         {planExpiredWithOrders && (
           <TouchableOpacity style={s.bannerAmber} activeOpacity={0.88} onPress={() => router.push("/subscription")}>
             <Feather name="clock" size={15} color="#fff" style={{ flexShrink: 0 }} />
@@ -369,64 +387,73 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Quick action cards */}
-        <View style={s.actionRow}>
+        {/* ── HERO ACTION TILES ─────────────────────────────────────────────── */}
+        <View style={s.heroTilesRow}>
           <TouchableOpacity
-            style={s.actionCard}
-            activeOpacity={0.82}
-            onPress={() => {
-              if (incomingRide) {
-                router.push("/ride-request");
-              } else {
-                Alert.alert("No orders right now", "You'll be notified as soon as a nearby order arrives.", [{ text: "OK" }]);
-              }
-            }}
+            style={[s.heroTile, { borderColor: "#FFE0CC" }]}
+            activeOpacity={0.85}
+            onPress={openAvailable}
           >
-            <View style={[s.actionIconWrap, { backgroundColor: "#FFF3EC" }]}>
-              <Feather name="bell" size={20} color={PRIMARY} />
+            <View style={[s.heroTileIcon, { backgroundColor: PRIMARY_SOFT }]}>
+              <Feather name="inbox" size={24} color={PRIMARY} />
             </View>
-            <Text style={s.actionCardTitle}>Available</Text>
-            <Text style={s.actionCardSub}>New orders</Text>
-            {incomingRide && <View style={[s.actionBadgeDot, { backgroundColor: PRIMARY }]} />}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={s.actionCard}
-            activeOpacity={0.82}
-            onPress={() => router.push("/delivery-command-center")}
-          >
-            <View style={[s.actionIconWrap, { backgroundColor: "#EFF6FF" }]}>
-              <Feather name="layers" size={20} color="#2563EB" />
+            <View>
+              <Text style={s.heroTileTitle}>Available Deliveries</Text>
+              <Text style={s.heroTileSub}>
+                {incomingRide ? "New order waiting" : "Browse new orders"}
+              </Text>
             </View>
-            <Text style={s.actionCardTitle}>My Orders</Text>
-            <Text style={s.actionCardSub}>Active deliveries</Text>
-            {activeOrderCount > 0 && (
-              <View style={s.actionBadgeCount}>
-                <Text style={s.actionBadgeNum}>{activeOrderCount}</Text>
+            {incomingRide && (
+              <View style={s.heroTileBadge}>
+                <Text style={s.heroTileBadgeTxt}>NEW</Text>
               </View>
             )}
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={s.actionCard}
-            activeOpacity={0.82}
-            onPress={() => router.push("/wallet")}
+            style={[s.heroTile, { borderColor: "#D6E4FF" }]}
+            activeOpacity={0.85}
+            onPress={() => router.push("/delivery-command-center")}
           >
-            <View style={[s.actionIconWrap, { backgroundColor: "#ECFDF5" }]}>
-              <Feather name="credit-card" size={20} color={SUCCESS} />
+            <View style={[s.heroTileIcon, { backgroundColor: INFO_SOFT }]}>
+              <Feather name="package" size={24} color={INFO} />
             </View>
-            <Text style={s.actionCardTitle}>Wallet</Text>
-            <Text style={s.actionCardSub}>Balance & pay</Text>
+            <View>
+              <Text style={s.heroTileTitle}>My Deliveries</Text>
+              <Text style={s.heroTileSub}>
+                {activeOrderCount > 0 ? `${activeOrderCount} in progress` : "Active deliveries"}
+              </Text>
+            </View>
+            {activeOrderCount > 0 && (
+              <View style={s.heroTileCount}>
+                <Text style={s.heroTileCountTxt}>{activeOrderCount}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
 
-        {/* Live Map card */}
+        {/* ── WALLET SLIM ROW ───────────────────────────────────────────────── */}
+        <TouchableOpacity style={s.walletRow} activeOpacity={0.8} onPress={() => router.push("/wallet")}>
+          <View style={s.walletIcon}>
+            <Feather name="credit-card" size={18} color={SUCCESS} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.walletTitle}>Wallet</Text>
+            <Text style={s.walletSub}>Balance & payouts</Text>
+          </View>
+          <Feather name="chevron-right" size={20} color={MUTED} />
+        </TouchableOpacity>
+
+        {/* ── HOT ZONES / LIVE MAP ──────────────────────────────────────────── */}
         <View style={s.mapCard}>
-          <View style={s.mapCardHeader}>
-            <Text style={s.mapCardTitle}>Live Map</Text>
-            <View style={[s.mapStatusChip, { backgroundColor: online ? "#ECFDF5" : "#F1F5F9" }]}>
-              <View style={[s.mapStatusDot, { backgroundColor: online ? SUCCESS : MUTED }]} />
-              <Text style={[s.mapStatusText, { color: online ? SUCCESS : MUTED }]}>
+          <View style={s.mapHeader}>
+            <View>
+              <Text style={s.mapTitle}>Hot Zones</Text>
+              <Text style={s.mapSub}>High-demand areas near you</Text>
+            </View>
+            <View style={[s.mapChip, { backgroundColor: online ? SUCCESS_SOFT : "#F1F5F9" }]}>
+              <View style={[s.mapDot, { backgroundColor: online ? SUCCESS : MUTED }]} />
+              <Text style={[s.mapChipTxt, { color: online ? SUCCESS : MUTED }]}>
                 {online ? "Live" : "Paused"}
               </Text>
             </View>
@@ -435,7 +462,7 @@ export default function HomeScreen() {
           <HotZoneStrip online={online} />
         </View>
 
-        {/* Permission health — only when issues exist */}
+        {/* ── PERMISSION HEALTH (lowest priority) ───────────────────────────── */}
         <PermissionHealthCard />
 
       </ScrollView>
@@ -450,107 +477,101 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingBottom: 14,
     backgroundColor: CARD,
     borderBottomWidth: 1,
     borderBottomColor: BORDER,
   },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
-  brandIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "#FFF3EC",
+  logoMark: {
+    width: 38,
+    height: 38,
+    borderRadius: 11,
+    backgroundColor: PRIMARY,
     alignItems: "center",
     justifyContent: "center",
   },
-  brandName: { fontSize: 13, fontWeight: "800", color: TEXT, letterSpacing: 1 },
-  brandSub: { fontSize: 10, fontWeight: "500", color: MUTED, marginTop: 1 },
+  brandName: { fontSize: 16, fontWeight: "800", color: TEXT, letterSpacing: -0.2 },
+  brandSub: { fontSize: 11, fontWeight: "500", color: MUTED, marginTop: 1 },
   headerRight: { flexDirection: "row", alignItems: "center", gap: 10 },
   planChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    backgroundColor: "#ECFDF5",
+    backgroundColor: SUCCESS_SOFT,
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderRadius: 20,
   },
   planChipDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: SUCCESS },
-  planChipText: { fontSize: 11, fontWeight: "700", color: SUCCESS },
+  planChipText: { fontSize: 12, fontWeight: "700", color: SUCCESS },
   bellBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: "#F8FAFC",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: SURFACE,
     borderWidth: 1,
     borderColor: BORDER,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  // Hero wrapper
-  heroWrap: { marginBottom: 2 },
-  heroCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 20,
-    gap: 14,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
+  // Pinned active ride strip
+  activeStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    borderRadius: 16,
+    backgroundColor: PRIMARY,
+    shadowColor: PRIMARY,
+    shadowOpacity: 0.3,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
+    elevation: 5,
   },
-
-  // Online state
-  heroTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  onlineStatusRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  onlineDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: SUCCESS },
-  onlineLabel: { fontSize: 13, fontWeight: "800", color: SUCCESS, letterSpacing: 0.5 },
-  heroEarningBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "#DCFCE7",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-  },
-  heroEarningText: { fontSize: 12, fontWeight: "700", color: SUCCESS },
-  heroSubtext: { fontSize: 14, fontWeight: "500", color: "#374151" },
-  heroStatsRow: {
-    flexDirection: "row",
-    backgroundColor: CARD,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-    borderWidth: 1,
-    borderColor: "#D1FAE5",
-  },
-  heroStat: { flex: 1, alignItems: "center", gap: 3 },
-  heroStatNum: { fontSize: 16, fontWeight: "800", color: TEXT },
-  heroStatLbl: { fontSize: 10, fontWeight: "500", color: MUTED },
-  heroStatSep: { width: 1, height: 32, backgroundColor: BORDER },
-  goOfflineBtn: {
-    flexDirection: "row",
+  activeStripIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.22)",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: CARD,
-    borderWidth: 1.5,
-    borderColor: BORDER,
   },
-  goOfflineTxt: { fontSize: 14, fontWeight: "700", color: TEXT },
+  activeStripTitle: { fontSize: 14, fontWeight: "800", color: "#fff" },
+  activeStripSub: { fontSize: 12, fontWeight: "500", color: "rgba(255,255,255,0.9)", marginTop: 1 },
 
-  // Offline state
-  offlineStatusRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  offlineDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: MUTED },
-  offlineLabel: { fontSize: 12, fontWeight: "800", color: MUTED, letterSpacing: 0.8 },
-  offlineTitle: { fontSize: 22, fontWeight: "800", color: TEXT },
-  offlineSubtext: { fontSize: 14, color: MUTED, lineHeight: 21 },
+  // Status block
+  statusBlock: {
+    backgroundColor: CARD,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: BORDER,
+    padding: 20,
+    gap: 18,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  statusTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  statusInfo: { flexDirection: "row", alignItems: "center", gap: 12 },
+  statusDot: { width: 12, height: 12, borderRadius: 6 },
+  statusLabel: { fontSize: 18, fontWeight: "800", color: TEXT, letterSpacing: -0.3 },
+  statusSub: { fontSize: 13, fontWeight: "500", color: MUTED, marginTop: 2 },
+  statusDivider: { height: 1, backgroundColor: BORDER },
+  earningsRow: { flexDirection: "row", alignItems: "center" },
+  earningsMain: { flex: 1 },
+  earningsLabel: { fontSize: 12, fontWeight: "600", color: MUTED, marginBottom: 3 },
+  earningsValue: { fontSize: 30, fontWeight: "900", color: TEXT, letterSpacing: -1 },
+  earningsStat: { alignItems: "center", minWidth: 56 },
+  earningsStatNum: { fontSize: 20, fontWeight: "800", color: TEXT },
+  earningsStatLbl: { fontSize: 11, fontWeight: "500", color: MUTED, marginTop: 2 },
+  earningsStatSep: { width: 1, height: 34, backgroundColor: BORDER },
   goOnlineBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -559,14 +580,13 @@ const s = StyleSheet.create({
     backgroundColor: PRIMARY,
     borderRadius: 14,
     paddingVertical: 16,
-    marginTop: 4,
     shadowColor: PRIMARY,
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.32,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
   },
-  goOnlineTxt: { fontSize: 16, fontWeight: "900", color: "#fff", letterSpacing: 0.3 },
+  goOnlineTxt: { fontSize: 16, fontWeight: "900", color: "#fff", letterSpacing: 0.4 },
 
   // Banners
   bannerAmber: {
@@ -591,7 +611,7 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    backgroundColor: "#FFF3EC",
+    backgroundColor: PRIMARY_SOFT,
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -613,83 +633,104 @@ const s = StyleSheet.create({
   bannerSoftTitle: { fontSize: 13, fontWeight: "700", color: TEXT, marginBottom: 1 },
   bannerSoftSub: { fontSize: 11, fontWeight: "500", color: MUTED },
 
-  // Action cards (3-up)
-  actionRow: { flexDirection: "row", gap: 10 },
-  actionCard: {
+  // Hero action tiles (2-up)
+  heroTilesRow: { flexDirection: "row", gap: 12 },
+  heroTile: {
     flex: 1,
+    minHeight: 152,
     backgroundColor: CARD,
-    borderRadius: 14,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: BORDER,
-    padding: 14,
-    gap: 4,
+    padding: 16,
+    justifyContent: "space-between",
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
     elevation: 2,
   },
-  actionIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
+  heroTileIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 4,
   },
-  actionCardTitle: { fontSize: 13, fontWeight: "700", color: TEXT },
-  actionCardSub: { fontSize: 10, fontWeight: "500", color: MUTED },
-  actionBadgeDot: {
+  heroTileTitle: { fontSize: 15, fontWeight: "800", color: TEXT, letterSpacing: -0.2 },
+  heroTileSub: { fontSize: 12, fontWeight: "500", color: MUTED, marginTop: 3 },
+  heroTileBadge: {
     position: "absolute",
-    top: 10,
-    right: 10,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    borderWidth: 2,
-    borderColor: CARD,
+    top: 14,
+    right: 14,
+    backgroundColor: PRIMARY,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
-  actionBadgeCount: {
+  heroTileBadgeTxt: { fontSize: 10, fontWeight: "900", color: "#fff", letterSpacing: 0.5 },
+  heroTileCount: {
     position: "absolute",
-    top: 8,
-    right: 8,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
+    top: 12,
+    right: 12,
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: "#DC2626",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 4,
-    borderWidth: 1.5,
-    borderColor: CARD,
+    paddingHorizontal: 6,
   },
-  actionBadgeNum: { fontSize: 10, fontWeight: "800", color: "#fff" },
+  heroTileCountTxt: { fontSize: 12, fontWeight: "800", color: "#fff" },
 
-  // Map card
-  mapCard: {
+  // Wallet slim row
+  walletRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
     backgroundColor: CARD,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: BORDER,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  walletIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 11,
+    backgroundColor: SUCCESS_SOFT,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  walletTitle: { fontSize: 14, fontWeight: "700", color: TEXT },
+  walletSub: { fontSize: 12, fontWeight: "500", color: MUTED, marginTop: 1 },
+
+  // Hot zones / map card
+  mapCard: {
+    backgroundColor: CARD,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: BORDER,
     padding: 16,
     gap: 12,
-    shadowColor: "#000",
+    shadowColor: "#0F172A",
     shadowOpacity: 0.04,
-    shadowRadius: 4,
+    shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  mapCardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  mapCardTitle: { fontSize: 15, fontWeight: "700", color: TEXT },
-  mapStatusChip: {
+  mapHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  mapTitle: { fontSize: 16, fontWeight: "800", color: TEXT, letterSpacing: -0.2 },
+  mapSub: { fontSize: 12, fontWeight: "500", color: MUTED, marginTop: 2 },
+  mapChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 20,
   },
-  mapStatusDot: { width: 6, height: 6, borderRadius: 3 },
-  mapStatusText: { fontSize: 11, fontWeight: "700" },
+  mapDot: { width: 6, height: 6, borderRadius: 3 },
+  mapChipTxt: { fontSize: 11, fontWeight: "700" },
 });
