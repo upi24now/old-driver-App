@@ -544,4 +544,39 @@ router.post("/kyc/:uid/unsuspend", requireAdminJwt, async (req, res) => {
   }
 });
 
+// ─── POST /api/kyc/:uid/waive-fee ─────────────────────────────────────────────
+//
+// Clears the onboarding fee barrier for a driver by setting
+// onboarding_fee_applies = false. Used by admin to exempt a driver from the
+// onboarding fee without requiring a payment (e.g. test accounts, manual waivers).
+//
+// PG write (AWAITED):
+//   drivers: onboarding_fee_applies = false, updated_at = NOW()
+//
+// No Firestore projection — fee state is PG-only.
+
+router.post("/kyc/:uid/waive-fee", requireAdminJwt, async (req, res) => {
+  const uid = req.params["uid"] as string;
+  if (!uid) { res.status(400).json({ ok: false, error: "uid is required." }); return; }
+
+  try {
+    const result = await db
+      .update(driversTable)
+      .set({ onboardingFeeApplies: false, updatedAt: new Date() })
+      .where(eq(driversTable.uid, uid))
+      .returning({ uid: driversTable.uid });
+
+    if (result.length === 0) {
+      res.status(404).json({ ok: false, error: "driver_not_found" });
+      return;
+    }
+
+    req.log.info({ uid }, "kyc-admin: onboarding fee waived");
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err, uid }, "kyc-admin: waive-fee failed");
+    res.status(500).json({ ok: false, error: "Failed to waive onboarding fee." });
+  }
+});
+
 export default router;
