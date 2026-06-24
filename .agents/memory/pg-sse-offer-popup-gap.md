@@ -1,7 +1,17 @@
 ---
 name: PG SSE offer-stream popup gap
-description: Why drivers get FCM but no in-app ride popup after Tier-6 — the dispatched "added" path never writes the PG columns the SSE offer query requires.
+description: Why drivers get FCM but no in-app ride popup after Tier-6 — the dispatched "added" path never writes the PG columns the SSE offer query requires. RESOLVED — dispatch-time upsert now mirrors the offer set.
 ---
+
+> **RESOLVED (option 1).** The FCM dispatch-time `pgUpsertOrder` now passes
+> `mirrorOfferSet:true`, so `active_offer_driver_uids` is mirrored at dispatch and
+> `dispatched_at`/`dispatch_timeout_at` are stamped from the dispatched doc. The SSE
+> offer query is satisfied on a normal single-driver dispatch (no later `modified`
+> event needed). **Durable rule:** the shadow-writer mirrors the offer set only on
+> Firestore `"modified"`; the dispatch-time upsert is the sole writer on the `"added"`
+> dispatch transition — it MUST keep `mirrorOfferSet:true` or the popup silently breaks
+> again while FCM keeps succeeding. The order_otps FK-race (order_otps→orders) is now
+> retried/log-tagged `[PG_SHADOW_OTP_FK_RACE]` in the shadow-writer OTP listener.
 
 # In-app ride popup channel ≠ FCM (post Tier-6)
 

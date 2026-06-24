@@ -305,9 +305,18 @@ async function sendOrderFcm(
   // proactively upsert the parent row here so offer creation cannot lose the race.
   // pgUpsertOrder is idempotent and guarded against regressing a claimed/terminal
   // row, so a concurrent shadow-writer upsert is harmless.
+  //
+  // mirrorOfferSet:true also mirrors activeOfferDriverUids into PG here, and the
+  // upsert stamps dispatchedAt + dispatchTimeoutAt from the dispatched doc. Without
+  // this the PG offer columns stayed empty/NULL (the shadow-writer only mirrors the
+  // pool→searching state, never the dispatched transition), so the SSE offer-stream
+  // query (active_offer_driver_uids @> [uid] AND status='dispatched' AND
+  // dispatch_timeout_at > now()) returned [] and the in-app ride popup never appeared
+  // even though FCM was delivered. The dispatched doc is the dispatch trigger, so it
+  // always carries activeOfferDriverUids + the dispatch window at this point.
   logger.info({ orderId }, "[ORDER PG CREATED]");
   try {
-    await pgUpsertOrder(orderId, orderData, { guardRegression: true });
+    await pgUpsertOrder(orderId, orderData, { guardRegression: true, mirrorOfferSet: true });
     logger.info({ orderId }, "[ORDER PG COMMITTED]");
   } catch (err) {
     // pgUpsertOrder is non-throwing, but guard the await defensively.

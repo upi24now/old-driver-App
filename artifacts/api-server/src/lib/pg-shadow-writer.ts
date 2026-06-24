@@ -54,6 +54,33 @@ const POOL_STATUSES = ["searching", "pending"] as const;
 const DELIVERY_STAGE_STATUSES = ["to_pickup", "at_pickup", "to_drop", "at_drop"] as const;
 type DeliveryStage = typeof DELIVERY_STAGE_STATUSES[number];
 
+/**
+ * Bounded retry around pgUpsertOrderOtp.
+ *
+ * The OTP lives in a private subcollection ("orders/{id}/private/otp") whose
+ * Firestore "added" event can race ahead of the parent order mirror, producing a
+ * transient FK violation (order_otps.order_id → orders.id). Retrying a few times
+ * lets the parent row land first. Mirrors createOfferWithRetry in fcm-dispatcher.
+ * Only retries the FK-race reason; a hard error stops immediately. Never throws.
+ */
+async function upsertOtpWithRetry(
+  orderId:  string,
+  value:    string,
+  attempts = 5,
+  delayMs  = 250,
+): Promise<boolean> {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const res = await pgUpsertOrderOtp(orderId, value);
+    if (res.ok) return true;
+    if (res.reason !== "fk_missing_parent") return false;
+    if (attempt < attempts) {
+      logger.warn({ orderId, attempt }, "[PG_SHADOW_OTP_RETRY]");
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  return false;
+}
+
 export async function startPgShadowWriter(): Promise<void> {
   let db: Awaited<ReturnType<typeof adminFirestore>>;
   try {
@@ -162,8 +189,15 @@ export async function startPgShadowWriter(): Promise<void> {
           }
 
           void (async () => {
-            await pgUpsertOrderOtp(orderId, value);
-            logger.info({ orderId }, "[PG_SHADOW_OTP]");
+            const ok = await upsertOtpWithRetry(orderId, value);
+            if (ok) {
+              logger.info({ orderId }, "[PG_SHADOW_OTP]");
+            } else {
+              logger.error(
+                { orderId },
+                "[PG_SHADOW_OTP] gave up after retries — parent orders row never mirrored",
+              );
+            }
           })().catch((e) =>
             logger.error({ err: e, orderId }, "[PG_SHADOW_OTP] unexpected error — continuing"),
           );

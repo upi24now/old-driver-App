@@ -1192,7 +1192,7 @@ export async function pgShadowMarkAccept(
 export async function pgUpsertOrderOtp(
   orderId: string,
   value:   string,
-): Promise<void> {
+): Promise<{ ok: true } | { ok: false; reason: "fk_missing_parent" | "unknown" }> {
   try {
     await db
       .insert(orderOtpsTable)
@@ -1201,7 +1201,18 @@ export async function pgUpsertOrderOtp(
         target: orderOtpsTable.orderId,
         set:    { value },
       });
+    return { ok: true };
   } catch (err) {
+    // 23503 = foreign_key_violation. order_otps.order_id references orders.id;
+    // the OTP subdoc ("orders/{id}/private/otp") Firestore event can race ahead of
+    // the parent order mirror, so the parent row may not exist yet. Surface this
+    // transient race DISTINCTLY (separate from real errors) so callers can retry.
+    const code = (err as { code?: unknown } | null | undefined)?.code;
+    if (code === "23503") {
+      logger.warn({ orderId }, "[PG_SHADOW_OTP_FK_RACE] parent orders row not mirrored yet");
+      return { ok: false, reason: "fk_missing_parent" };
+    }
     logger.error({ err, orderId }, "[pgUpsertOrderOtp] error (non-blocking)");
+    return { ok: false, reason: "unknown" };
   }
 }
