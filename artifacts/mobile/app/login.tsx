@@ -19,7 +19,6 @@ import {
   Easing,
   Image,
   KeyboardAvoidingView,
-
   Platform,
   Pressable,
   ScrollView,
@@ -210,6 +209,9 @@ export default function LoginScreen() {
   const [timer,     setTimer]    = useState(RESEND_SECONDS);
   const [canResend, setCanResend] = useState(false);
 
+  // Debug panel — shown after OTP verify, before routing
+  const [debugData, setDebugData] = useState<{ lines: string[]; route: string } | null>(null);
+
   const digits  = phone.replace(/\D/g, "");
   const isValid = digits.length === 10;
 
@@ -301,8 +303,9 @@ export default function LoginScreen() {
 
     const result = await confirmOtp(digits, code);
 
+    setVerifying(false);
+
     if (!result.ok) {
-      setVerifying(false);
       setOtp("");
       setOtpErr(result.error ?? "Verification failed. Try again.");
       setTimeout(() => otpRef.current?.focus(), 100);
@@ -312,7 +315,16 @@ export default function LoginScreen() {
     const nextRoute = result.nextRoute ?? (result.profileComplete ? "/(tabs)" : "/registration");
     console.log("[LOGIN_OTP_SUCCESS] nextRoute =", nextRoute);
 
-    router.replace(nextRoute as never);
+    // ── Build debug lines including reason ────────────────────────────────
+    const lines: string[] = [...(result.debugLog ?? [])];
+    if (nextRoute === "/registration") {
+      const srv = result.debugLog?.find((l) => l.startsWith("9."))?.split(": ")[1] ?? "?";
+      lines.push(`12. REASON: server said "${srv}" → mapServerNextRoute collapsed to /registration`);
+    } else {
+      lines.push(`12. REASON: routing to ${nextRoute} (no collapse)`);
+    }
+    setDebugData({ lines, route: nextRoute });
+    // router.replace is called when user taps "Proceed" in the debug panel
   }
 
   console.log("[SCREEN_MOUNT] login — authLoading =", authLoading, "driverUid =", driverUid);
@@ -621,6 +633,43 @@ export default function LoginScreen() {
         )}
 
       </ScrollView>
+
+      {/* ── DEBUG PANEL — shown after OTP verify, blocks routing until "Proceed" ── */}
+      {!!debugData && (
+        <View style={dbg.overlay}>
+          <View style={dbg.card}>
+            <Text style={dbg.title}>🔍 OTP Debug Panel</Text>
+            <Text style={dbg.subtitle}>Read carefully before tapping Proceed</Text>
+            <ScrollView style={dbg.scroll} showsVerticalScrollIndicator>
+              {debugData.lines.map((line, i) => {
+                const isRoute  = line.startsWith("10.") || line.startsWith("11.") || line.startsWith("12.");
+                const isReason = line.startsWith("12.");
+                return (
+                  <Text
+                    key={i}
+                    style={[dbg.line, isReason && dbg.lineReason, isRoute && dbg.lineRoute]}
+                  >
+                    {line}
+                  </Text>
+                );
+              })}
+              <Text style={dbg.lineRoute}>→ will navigate to: {debugData.route}</Text>
+            </ScrollView>
+            <TouchableOpacity
+              style={dbg.proceedBtn}
+              onPress={() => {
+                const route = debugData.route;
+                setDebugData(null);
+                router.replace(route as never);
+              }}
+              activeOpacity={0.85}
+            >
+              <Text style={dbg.proceedText}>Proceed to App →</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
     </KeyboardAvoidingView>
   );
 }
@@ -1016,4 +1065,71 @@ const ss = StyleSheet.create({
     color:      D.navy,
   },
 
+});
+
+// ─── Debug panel styles ────────────────────────────────────────────────────────
+const dbg = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.88)",
+    alignItems:      "center",
+    justifyContent:  "center",
+    zIndex:          9999,
+    padding:         16,
+  },
+  card: {
+    backgroundColor: "#0d1117",
+    borderRadius:    12,
+    borderWidth:     1,
+    borderColor:     "#30363d",
+    width:           "100%",
+    maxHeight:       "85%",
+    padding:         14,
+    gap:             10,
+  },
+  title: {
+    color:      "#e6edf3",
+    fontSize:   16,
+    fontWeight: "700",
+  },
+  subtitle: {
+    color:     "#8b949e",
+    fontSize:  11,
+    marginTop: -6,
+  },
+  scroll: {
+    maxHeight: 400,
+  },
+  line: {
+    color:         "#c9d1d9",
+    fontSize:      10,
+    fontFamily:    "monospace",
+    marginBottom:  4,
+    lineHeight:    16,
+  },
+  lineRoute: {
+    color:      "#58a6ff",
+    fontWeight: "600",
+  },
+  lineReason: {
+    color:         "#f85149",
+    fontWeight:    "700",
+    backgroundColor: "#1c0a0a",
+    padding:       4,
+    borderRadius:  4,
+    marginVertical: 4,
+  },
+  proceedBtn: {
+    backgroundColor: "#238636",
+    borderRadius:    8,
+    height:          44,
+    alignItems:      "center",
+    justifyContent:  "center",
+    marginTop:       6,
+  },
+  proceedText: {
+    color:      "#ffffff",
+    fontSize:   15,
+    fontWeight: "700",
+  },
 });
