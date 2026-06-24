@@ -1,12 +1,10 @@
 import { Feather } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { callSupport } from "@/utils/support";
 import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
   Modal,
   ScrollView,
   StyleSheet,
@@ -21,39 +19,47 @@ import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 import { firebaseAuth } from "@/utils/firebase";
 
+// ─── Design tokens ────────────────────────────────────────────────────────────
+const BG      = "#F8FAFC";
+const CARD    = "#FFFFFF";
+const PRIMARY = "#FF6B00";
+const TEXT    = "#0F172A";
+const MUTED   = "#64748B";
+const BORDER  = "#E2E8F0";
+const SUCCESS = "#059669";
+
 const DOMAIN   = process.env["EXPO_PUBLIC_DOMAIN"] ?? "";
 const API_BASE = DOMAIN ? `https://${DOMAIN}/api` : "/api";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
 type CheckoutState = {
   razorpayOrderId: string;
-  amount: number;
-  currency: string;
-  keyId: string;
-  planType: PlanId;
-  planName: string;
-  driverPhone: string;
+  amount:          number;
+  currency:        string;
+  keyId:           string;
+  planType:        PlanId;
+  planName:        string;
+  driverPhone:     string;
 };
 
 type SuccessModalState = {
-  visible: boolean;
-  planName: string;
+  visible:    boolean;
+  planName:   string;
   expiryText: string;
 };
-
-const SCREEN_WIDTH = Dimensions.get("window").width;
 
 type PlanId = "daily" | "weekly" | "monthly";
 
 type Plan = {
-  id: PlanId;
-  name: string;
-  price: number;
-  period: string;       // human-readable: "/ 12 hours", "/ 7 days", "/ 30 days"
+  id:          PlanId;
+  name:        string;
+  price:       number;
+  period:      string;
   pricePerDay: number;
-  badge?: string;       // "Save 10%", "Long Validity" — shown inline
-  recommended?: boolean; // shows "Recommended" badge
-  subtitle: string;     // one-line beneath price
-  mainFeature: string;  // single feature line at bottom of card
+  badge?:      string;
+  recommended?: boolean;
+  subtitle:    string;
+  mainFeature: string;
 };
 
 const PLANS: Plan[] = [
@@ -89,113 +95,12 @@ const PLANS: Plan[] = [
   },
 ];
 
-// ─── PlanCard ─────────────────────────────────────────────────────────────────
-function PlanCard({
-  plan,
-  selected,
-  onSelect,
-  isCurrentPlan,
-}: {
-  plan: Plan;
-  selected: boolean;
-  onSelect: () => void;
-  isCurrentPlan: boolean;
-}) {
-  const colors = useColors();
-
-  // Per-plan tier accent — daily=info (basic), weekly=primary (standard), monthly=money (premium)
-  const accent     = plan.id === "monthly" ? colors.money   : plan.id === "weekly" ? colors.primary   : colors.info;
-  const accentSoft = plan.id === "monthly" ? colors.moneySoft : plan.id === "weekly" ? colors.primarySoft : colors.infoSoft;
-
-  // Save-badge tint — "Save 10%" → warning, "Long Validity" → info
-  const badgeTint = plan.badge === "Save 10%" ? colors.warning  : colors.info;
-  const badgeSoft = plan.badge === "Save 10%" ? colors.warningSoft : colors.infoSoft;
-
-  return (
-    <TouchableOpacity
-      onPress={onSelect}
-      activeOpacity={0.88}
-      style={[
-        styles.planCard,
-        {
-          backgroundColor: selected ? accentSoft : colors.surfaceElevated,
-          borderColor:     selected ? accent     : colors.border,
-          borderWidth:     selected ? 2          : 1.5,
-          shadowColor:     selected ? accent     : "#000",
-          shadowOpacity:   selected ? 0.22       : 0.06,
-          shadowRadius:    selected ? 18         : 8,
-          shadowOffset:    { width: 0, height: selected ? 6 : 3 },
-          elevation:       selected ? 10         : 3,
-        },
-      ]}
-    >
-      {/* Badges */}
-      {(isCurrentPlan || plan.recommended || plan.badge) && (
-        <View style={styles.badgeRow}>
-          {isCurrentPlan ? (
-            <View style={[styles.badge, { backgroundColor: colors.success }]}>
-              <Feather name="check-circle" size={10} color="#fff" />
-              <Text style={styles.badgeTextLight}>Current Plan</Text>
-            </View>
-          ) : plan.recommended ? (
-            <View
-              style={[
-                styles.badge,
-                { backgroundColor: colors.successSoft, borderWidth: 1, borderColor: colors.success },
-              ]}
-            >
-              <Text style={[styles.badgeTextDark, { color: colors.successText }]}>Recommended</Text>
-            </View>
-          ) : null}
-          {plan.badge && (
-            <View style={[styles.badge, { backgroundColor: badgeSoft }]}>
-              <Text style={[styles.badgeTextDark, { color: badgeTint }]}>{plan.badge}</Text>
-            </View>
-          )}
-        </View>
-      )}
-
-      {/* Main row: name + price + subtitle | radio */}
-      <View style={styles.planMainRow}>
-        <View style={{ flex: 1, gap: 3 }}>
-          <Text style={[styles.planName, { color: colors.foreground }]}>{plan.name}</Text>
-          <View style={styles.priceRow}>
-            <Text style={[styles.priceCurrency, { color: selected ? accent : colors.foreground }]}>
-              ₹
-            </Text>
-            <Text style={[styles.priceValue, { color: selected ? accent : colors.foreground }]}>
-              {plan.price}
-            </Text>
-            <Text style={[styles.pricePeriod, { color: colors.mutedForeground }]}>{plan.period}</Text>
-          </View>
-          <Text style={[styles.planSubtitle, { color: colors.mutedForeground }]}>{plan.subtitle}</Text>
-        </View>
-        <View
-          style={[
-            styles.radio,
-            {
-              borderColor:     selected ? accent       : colors.borderStrong,
-              backgroundColor: selected ? accent       : "transparent",
-            },
-          ]}
-        >
-          {selected && <Feather name="check" size={12} color="#fff" />}
-        </View>
-      </View>
-
-      {/* Divider */}
-      <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-      {/* Single feature line */}
-      <View style={styles.featureRow}>
-        <View style={[styles.featureCheck, { backgroundColor: selected ? accentSoft : colors.successSoft }]}>
-          <Feather name="check" size={10} color={selected ? accent : colors.success} />
-        </View>
-        <Text style={[styles.featureText, { color: colors.textSecondary }]}>{plan.mainFeature}</Text>
-      </View>
-    </TouchableOpacity>
-  );
-}
+// ─── Plan accent colours ──────────────────────────────────────────────────────
+const PLAN_ACCENT: Record<PlanId, { color: string; soft: string }> = {
+  daily:   { color: "#2563EB", soft: "#EFF6FF" },
+  weekly:  { color: PRIMARY,   soft: "#FFF3EC" },
+  monthly: { color: SUCCESS,   soft: "#ECFDF5" },
+};
 
 // ─── SubscriptionScreen ───────────────────────────────────────────────────────
 export default function SubscriptionScreen() {
@@ -210,6 +115,7 @@ export default function SubscriptionScreen() {
     subscriptionActive,
     refreshSubscription,
   } = useDriver();
+
   const [selected,       setSelected]       = useState<PlanId>("monthly");
   const [isActivating,   setIsActivating]   = useState(false);
   const [checkoutParams, setCheckoutParams] = useState<CheckoutState | null>(null);
@@ -220,6 +126,7 @@ export default function SubscriptionScreen() {
   const selectedPlan          = PLANS.find((p) => p.id === selected)!;
   const isSelectedCurrentPlan = subscriptionPlan === selected && subscriptionActive;
 
+  // ── Active plan display data ────────────────────────────────────────────────
   const PLAN_LABEL: Record<string, string> = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
   const MS_PER_DAY  = 86_400_000;
   const MS_PER_HOUR = 3_600_000;
@@ -238,47 +145,34 @@ export default function SubscriptionScreen() {
     ? activePlanExpiryDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })
     : "";
 
+  // ── Business logic — unchanged ──────────────────────────────────────────────
   const handleActivate = async () => {
     if (isActivating || !driverUid) return;
     setIsActivating(true);
     try {
       const user = firebaseAuth.currentUser;
-      if (!user) {
-        Alert.alert("Error", "Not logged in. Please sign in again.");
-        return;
-      }
+      if (!user) { Alert.alert("Error", "Not logged in. Please sign in again."); return; }
       const token = await user.getIdToken();
-
       const res = await fetch(`${API_BASE}/driver-plans/create-order`, {
         method: "POST",
-        headers: {
-          "Content-Type":  "application/json",
-          Authorization:   `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ driverUid, planType: selected }),
       });
-
       const data = (await res.json()) as {
-        razorpayOrderId?: string;
-        amount?:          number;
-        currency?:        string;
-        keyId?:           string;
-        error?:           string;
+        razorpayOrderId?: string; amount?: number; currency?: string; keyId?: string; error?: string;
       };
-
       if (!res.ok || !data.razorpayOrderId || data.amount == null || !data.keyId) {
         Alert.alert("Error", data.error ?? "Could not start payment. Please try again.");
         return;
       }
-
       setCheckoutParams({
         razorpayOrderId: data.razorpayOrderId,
-        amount:          data.amount,
-        currency:        data.currency ?? "INR",
-        keyId:           data.keyId,
-        planType:        selected,
-        planName:        selectedPlan.name,
-        driverPhone:     phone ?? "",
+        amount: data.amount,
+        currency: data.currency ?? "INR",
+        keyId: data.keyId,
+        planType: selected,
+        planName: selectedPlan.name,
+        driverPhone: phone ?? "",
       });
     } catch {
       Alert.alert("Error", "Could not start payment. Check your connection.");
@@ -295,43 +189,23 @@ export default function SubscriptionScreen() {
       const user = firebaseAuth.currentUser;
       if (!user) throw new Error("Not authenticated");
       const token = await user.getIdToken();
-
       const res = await fetch(`${API_BASE}/driver-plans/verify-payment`, {
         method: "POST",
-        headers: {
-          "Content-Type":  "application/json",
-          Authorization:   `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           driverUid,
-          planType:           cp.planType,
-          razorpayOrderId:    cp.razorpayOrderId,
-          razorpayPaymentId:  paymentId,
-          razorpaySignature:  signature,
+          planType:          cp.planType,
+          razorpayOrderId:   cp.razorpayOrderId,
+          razorpayPaymentId: paymentId,
+          razorpaySignature: signature,
         }),
       });
-
-      const data = (await res.json()) as {
-        ok?:          boolean;
-        planExpiryAt?: number;
-        error?:       string;
-      };
-
-      if (!res.ok || !data.ok) {
-        Alert.alert("Payment failed. Please try again.");
-        return;
-      }
-
+      const data = (await res.json()) as { ok?: boolean; planExpiryAt?: number; error?: string };
+      if (!res.ok || !data.ok) { Alert.alert("Payment failed. Please try again."); return; }
       await refreshSubscription();
-
       const expiry = data.planExpiryAt
-        ? new Date(data.planExpiryAt).toLocaleDateString("en-IN", {
-            day:   "numeric",
-            month: "short",
-            year:  "numeric",
-          })
+        ? new Date(data.planExpiryAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
         : "";
-
       setSuccessModal({ visible: true, planName: cp.planName, expiryText: expiry });
     } catch {
       Alert.alert("Error", "Payment verification failed. Please contact support.");
@@ -340,249 +214,238 @@ export default function SubscriptionScreen() {
     }
   };
 
-  const handlePaymentCancel = () => {
-    Alert.alert("Payment cancelled");
-  };
+  const handlePaymentCancel  = () => { Alert.alert("Payment cancelled"); };
+  const handlePaymentFailure = (_error: string) => { Alert.alert("Payment failed. Please try again."); };
 
-  const handlePaymentFailure = (_error: string) => {
-    Alert.alert("Payment failed. Please try again.");
-  };
-
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
-      {/* HEADER */}
-      <View
-        style={[
-          styles.header,
-          {
-            paddingTop:        insets.top + 12,
-            backgroundColor:   colors.surface,
-            borderBottomColor: colors.border,
-          },
-        ]}
-      >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={[styles.iconBtn, { backgroundColor: colors.muted }]}
-          activeOpacity={0.7}
-        >
-          <Feather name="arrow-left" size={18} color={colors.foreground} />
+    <View style={{ flex: 1, backgroundColor: BG }}>
+
+      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      <View style={[sub.header, { paddingTop: insets.top + 12 }]}>
+        <TouchableOpacity style={sub.iconBtn} onPress={() => router.back()} activeOpacity={0.7}>
+          <Feather name="arrow-left" size={18} color={TEXT} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Driver Plans</Text>
-        <TouchableOpacity
-          style={[styles.iconBtn, { backgroundColor: colors.muted }]}
-          activeOpacity={0.7}
-          onPress={callSupport}
-        >
-          <Feather name="help-circle" size={18} color={colors.foreground} />
+        <Text style={sub.headerTitle}>Driver Plans</Text>
+        <TouchableOpacity style={sub.iconBtn} onPress={callSupport} activeOpacity={0.7}>
+          <Feather name="help-circle" size={18} color={TEXT} />
         </TouchableOpacity>
       </View>
 
-      <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: 140, gap: 16 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* HERO */}
-        <View
-          style={[
-            styles.hero,
-            {
-              backgroundColor: colors.surface,
-              borderWidth: 1,
-              borderColor: colors.border,
-              shadowColor: "#FF6B00",
-              shadowOpacity: 0.10,
-              shadowRadius: 12,
-              shadowOffset: { width: 0, height: 4 },
-              elevation: 4,
-            },
-          ]}
-        >
-          <View style={[styles.heroBadge, { backgroundColor: colors.primarySoft }]}>
-            <Feather name="zap" size={11} color={colors.primary} />
-            <Text style={[styles.heroBadgeText, { color: colors.primary }]}>
-              ZERO COMMISSION
-            </Text>
-          </View>
-          <Text style={[styles.heroTitle, { color: colors.foreground }]}>
-            Keep <Text style={{ color: colors.primary }}>100%</Text>{"\n"}of every ride
-          </Text>
-          <Text style={[styles.heroSub, { color: colors.mutedForeground }]}>
-            Pay one flat fee. No commission, no hidden cuts. More money in your pocket every trip.
-          </Text>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 140, gap: 14 }} showsVerticalScrollIndicator={false}>
 
-          <View style={[styles.compareRow, { backgroundColor: colors.muted }]}>
-            <View style={styles.compareItem}>
-              <Text style={[styles.compareLabel, { color: colors.mutedForeground }]}>With commission</Text>
-              <Text style={[styles.compareValue, { textDecorationLine: "line-through", color: colors.mutedForeground }]}>
-                ₹148
-              </Text>
-              <Text style={[styles.compareSub, { color: colors.mutedForeground }]}>20% cut on ₹186</Text>
+        {/* ── VALUE PROP HERO ─────────────────────────────────────────────── */}
+        <View style={sub.heroCard}>
+          <View style={sub.heroBadge}>
+            <Feather name="zap" size={12} color={PRIMARY} />
+            <Text style={sub.heroBadgeText}>ZERO COMMISSION</Text>
+          </View>
+          <Text style={sub.heroTitle}>
+            Keep <Text style={{ color: PRIMARY }}>100%</Text> of every ride
+          </Text>
+          <Text style={sub.heroSub}>
+            Pay one flat fee. No commission cuts. More money in your pocket every trip.
+          </Text>
+          <View style={sub.compareRow}>
+            <View style={sub.compareItem}>
+              <Text style={sub.compareLabel}>Without Plan</Text>
+              <Text style={sub.compareOldPrice}>₹148</Text>
+              <Text style={sub.compareSub}>20% cut on ₹186</Text>
             </View>
-            <View style={[styles.compareArrow, { backgroundColor: colors.border }]}>
-              <Feather name="arrow-right" size={14} color={colors.foreground} />
+            <View style={sub.compareArrow}>
+              <Feather name="arrow-right" size={14} color={PRIMARY} />
             </View>
-            <View style={styles.compareItem}>
-              <Text style={[styles.compareLabel, { color: colors.primary }]}>With Driver Plan</Text>
-              <Text style={[styles.compareValue, { color: colors.foreground }]}>₹186</Text>
-              <Text style={[styles.compareSub, { color: colors.mutedForeground }]}>You keep full fare</Text>
+            <View style={sub.compareItem}>
+              <Text style={[sub.compareLabel, { color: PRIMARY }]}>With Driver Plan</Text>
+              <Text style={[sub.comparePrice, { color: TEXT }]}>₹186</Text>
+              <Text style={sub.compareSub}>You keep full fare</Text>
             </View>
           </View>
         </View>
 
-        {/* PLAN STATUS */}
+        {/* ── PLAN STATUS BANNER ──────────────────────────────────────────── */}
         {subscriptionActive ? (
-          <View
-            style={[
-              styles.statusCard,
-              { borderColor: colors.success, backgroundColor: colors.successSoft },
-            ]}
-          >
-            <View style={[styles.statusIcon, { backgroundColor: colors.moneySoft }]}>
-              <Feather name="check-circle" size={16} color={colors.success} />
+          <View style={[sub.statusCard, { backgroundColor: "#ECFDF5", borderColor: "#BBF7D0" }]}>
+            <View style={[sub.statusIcon, { backgroundColor: "#D1FAE5" }]}>
+              <Feather name="check-circle" size={16} color={SUCCESS} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.statusTitle, { color: colors.successText }]}>
+              <Text style={[sub.statusTitle, { color: "#065F46" }]}>
                 {activePlanName} Plan — Active
               </Text>
-              <Text style={[styles.statusSub, { color: colors.successText }]}>
+              <Text style={[sub.statusSub, { color: "#059669" }]}>
                 {activePlanTimeLeft} · Expires {activePlanExpiryStr}
               </Text>
             </View>
           </View>
         ) : (
-          <View
-            style={[
-              styles.statusCard,
-              { borderColor: colors.border, backgroundColor: colors.surface },
-            ]}
-          >
-            <View style={[styles.statusIcon, { backgroundColor: colors.warningSoft }]}>
-              <Feather name="alert-circle" size={16} color={colors.warning} />
+          <View style={[sub.statusCard, { backgroundColor: "#FFF3EC", borderColor: "#FFD0B0" }]}>
+            <View style={[sub.statusIcon, { backgroundColor: "#FFE8D9" }]}>
+              <Feather name="alert-circle" size={16} color={PRIMARY} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.statusTitle, { color: colors.foreground }]}>
-                No active plan
-              </Text>
-              <Text style={[styles.statusSub, { color: colors.mutedForeground }]}>
+              <Text style={[sub.statusTitle, { color: TEXT }]}>No active plan</Text>
+              <Text style={[sub.statusSub, { color: MUTED }]}>
                 Choose a plan below to go online and accept rides
               </Text>
             </View>
           </View>
         )}
 
-        {/* SECTION HEADER */}
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            Choose a plan
-          </Text>
-          <Text style={[styles.sectionSub, { color: colors.mutedForeground }]}>
-            Cancel anytime · No setup fee
-          </Text>
-        </View>
-
-        {/* PLAN CARDS */}
-        <View style={{ gap: 14 }}>
-          {PLANS.map((p) => (
-            <PlanCard
-              key={p.id}
-              plan={p}
-              selected={selected === p.id}
-              onSelect={() => setSelected(p.id)}
-              isCurrentPlan={subscriptionPlan === p.id && subscriptionActive}
-            />
-          ))}
-        </View>
-
-        {/* PAYMENT METHODS */}
-        <View
-          style={[
-            styles.paymentCard,
-            { borderColor: colors.border, backgroundColor: colors.surface },
-          ]}
-        >
-          <View style={styles.paymentHeader}>
-            <Feather name="credit-card" size={14} color={colors.foreground} />
-            <Text style={[styles.paymentTitle, { color: colors.foreground }]}>
-              Pay using
-            </Text>
+        {/* ── PLAN SELECTOR (horizontal tabs) ─────────────────────────────── */}
+        <View>
+          <Text style={sub.sectionLabel}>Choose your plan</Text>
+          <View style={sub.tabRow}>
+            {PLANS.map((plan) => {
+              const active  = selected === plan.id;
+              const accent  = PLAN_ACCENT[plan.id];
+              const isCurrent = subscriptionPlan === plan.id && subscriptionActive;
+              return (
+                <TouchableOpacity
+                  key={plan.id}
+                  style={[
+                    sub.tab,
+                    active && { backgroundColor: accent.soft, borderColor: accent.color, borderWidth: 2 },
+                  ]}
+                  onPress={() => setSelected(plan.id)}
+                  activeOpacity={0.8}
+                >
+                  {isCurrent && <View style={[sub.tabActiveDot, { backgroundColor: SUCCESS }]} />}
+                  <Text style={[sub.tabName, active && { color: accent.color }]}>{plan.name}</Text>
+                  <Text style={[sub.tabPrice, active && { color: accent.color }]}>₹{plan.price}</Text>
+                  {plan.recommended && !isCurrent && (
+                    <View style={[sub.tabBadge, { backgroundColor: "#ECFDF5" }]}>
+                      <Text style={[sub.tabBadgeText, { color: SUCCESS }]}>★</Text>
+                    </View>
+                  )}
+                  {plan.badge && !isCurrent && (
+                    <View style={[sub.tabBadge, { backgroundColor: "#FEF3C7" }]}>
+                      <Text style={[sub.tabBadgeText, { color: "#D97706" }]}>%</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
           </View>
-          <View style={styles.paymentMethods}>
-            {[
-              { label: "UPI", icon: "smartphone" },
-              { label: "Cards", icon: "credit-card" },
-              { label: "Wallet", icon: "briefcase" },
-              { label: "Net Banking", icon: "globe" },
-            ].map((m) => (
-              <View key={m.label} style={[styles.payMethod, { borderColor: colors.border }]}>
-                <Feather name={m.icon as any} size={13} color={colors.mutedForeground} />
-                <Text style={[styles.payMethodText, { color: colors.foreground }]}>
-                  {m.label}
+        </View>
+
+        {/* ── SELECTED PLAN CARD (full detail) ────────────────────────────── */}
+        {(() => {
+          const plan    = selectedPlan;
+          const accent  = PLAN_ACCENT[plan.id];
+          const isCurrent = subscriptionPlan === plan.id && subscriptionActive;
+          return (
+            <View style={[sub.planDetail, { borderColor: accent.color, borderWidth: 2 }]}>
+              {/* Header */}
+              <View style={[sub.planDetailHeader, { backgroundColor: accent.soft }]}>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text style={[sub.planDetailName, { color: accent.color }]}>{plan.name} Plan</Text>
+                    {isCurrent && (
+                      <View style={[sub.currentBadge, { backgroundColor: SUCCESS }]}>
+                        <Feather name="check" size={9} color="#fff" />
+                        <Text style={sub.currentBadgeText}>Current</Text>
+                      </View>
+                    )}
+                    {plan.recommended && !isCurrent && (
+                      <View style={[sub.currentBadge, { backgroundColor: SUCCESS + "20", borderWidth: 1, borderColor: SUCCESS }]}>
+                        <Text style={[sub.currentBadgeText, { color: SUCCESS }]}>Recommended</Text>
+                      </View>
+                    )}
+                    {plan.badge && (
+                      <View style={[sub.currentBadge, { backgroundColor: "#FEF3C7" }]}>
+                        <Text style={[sub.currentBadgeText, { color: "#D97706" }]}>{plan.badge}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={sub.planDetailSubtitle}>{plan.subtitle}</Text>
+                </View>
+                <View style={{ alignItems: "flex-end" }}>
+                  <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 2 }}>
+                    <Text style={[sub.planDetailCurrency, { color: accent.color }]}>₹</Text>
+                    <Text style={[sub.planDetailPrice, { color: TEXT }]}>{plan.price}</Text>
+                  </View>
+                  <Text style={sub.planDetailPeriod}>{plan.period}</Text>
+                </View>
+              </View>
+
+              {/* Features */}
+              <View style={sub.planDetailBody}>
+                {[
+                  "Keep 100% of all fares",
+                  plan.mainFeature,
+                  "Priority order matching",
+                  "24/7 support",
+                ].map((feat) => (
+                  <View key={feat} style={sub.planFeatureRow}>
+                    <View style={[sub.planFeatureCheck, { backgroundColor: accent.soft }]}>
+                      <Feather name="check" size={11} color={accent.color} />
+                    </View>
+                    <Text style={sub.planFeatureText}>{feat}</Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Per-day cost */}
+              <View style={[sub.perDayRow, { backgroundColor: accent.soft, borderTopColor: accent.color + "30" }]}>
+                <Feather name="calendar" size={12} color={accent.color} />
+                <Text style={[sub.perDayText, { color: accent.color }]}>
+                  Just ₹{plan.pricePerDay.toFixed(2)} per day
                 </Text>
+              </View>
+            </View>
+          );
+        })()}
+
+        {/* ── PAYMENT METHODS ──────────────────────────────────────────────── */}
+        <View style={sub.payCard}>
+          <View style={sub.payHeader}>
+            <Feather name="credit-card" size={13} color={TEXT} />
+            <Text style={sub.payTitle}>Accepted payments</Text>
+          </View>
+          <View style={sub.payMethods}>
+            {[
+              { label: "UPI",         icon: "smartphone"  },
+              { label: "Cards",       icon: "credit-card" },
+              { label: "Wallet",      icon: "briefcase"   },
+              { label: "Net Banking", icon: "globe"       },
+            ].map((m) => (
+              <View key={m.label} style={sub.payMethod}>
+                <Feather name={m.icon as any} size={13} color={MUTED} />
+                <Text style={sub.payMethodText}>{m.label}</Text>
               </View>
             ))}
           </View>
         </View>
 
-        {/* FAQ */}
-        <TouchableOpacity
-          style={[
-            styles.faqRow,
-            { borderColor: colors.border, backgroundColor: colors.surface },
-          ]}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.faqIcon, { backgroundColor: colors.muted }]}>
-            <Feather name="help-circle" size={14} color={colors.foreground} />
+        {/* FAQ row */}
+        <TouchableOpacity style={sub.faqRow} activeOpacity={0.7} onPress={callSupport}>
+          <View style={sub.faqIcon}>
+            <Feather name="help-circle" size={15} color={MUTED} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.faqTitle, { color: colors.foreground }]}>
-              Questions about Driver Plans?
-            </Text>
-            <Text style={[styles.faqSub, { color: colors.mutedForeground }]}>
-              Read FAQs · Contact support
-            </Text>
+            <Text style={sub.faqTitle}>Questions about Driver Plans?</Text>
+            <Text style={sub.faqSub}>Read FAQs · Contact support</Text>
           </View>
-          <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+          <Feather name="chevron-right" size={16} color={MUTED} />
         </TouchableOpacity>
 
-        <Text style={[styles.terms, { color: colors.mutedForeground }]}>
+        <Text style={sub.terms}>
           By activating, you agree to Driver Plan terms. No auto-renewal. GST included.
         </Text>
       </ScrollView>
 
-      {/* STICKY FOOTER CTA */}
-      <View
-        style={[
-          styles.footer,
-          {
-            paddingBottom:   insets.bottom + 12,
-            backgroundColor: colors.surface,
-            borderTopColor:  colors.border,
-          },
-        ]}
-      >
+      {/* ── STICKY CTA ──────────────────────────────────────────────────────── */}
+      <View style={[sub.footer, { paddingBottom: insets.bottom + 12 }]}>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.footerLabel, { color: colors.mutedForeground }]}>
-            {selectedPlan.name} plan
-          </Text>
-          <View style={styles.footerPriceRow}>
-            <Text style={[styles.footerPrice, { color: colors.foreground }]}>
-              ₹{selectedPlan.price}
-            </Text>
-            <Text style={[styles.footerPeriod, { color: colors.mutedForeground }]}>
-              {selectedPlan.period}
-            </Text>
+          <Text style={sub.footerLabel}>{selectedPlan.name} plan</Text>
+          <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 3 }}>
+            <Text style={sub.footerPrice}>₹{selectedPlan.price}</Text>
+            <Text style={sub.footerPeriod}>{selectedPlan.period}</Text>
           </View>
         </View>
         <TouchableOpacity
-          style={[
-            styles.cta,
-            {
-              backgroundColor: colors.primary,
-              opacity: isActivating ? 0.6 : 1,
-            },
-          ]}
+          style={[sub.cta, { opacity: isActivating ? 0.6 : 1 }]}
           activeOpacity={0.85}
           onPress={handleActivate}
           disabled={isActivating}
@@ -592,17 +455,18 @@ export default function SubscriptionScreen() {
           ) : isSelectedCurrentPlan ? (
             <>
               <Feather name="refresh-cw" size={15} color="#fff" />
-              <Text style={styles.ctaText}>Renew {selectedPlan.name} Plan</Text>
+              <Text style={sub.ctaText}>Renew {selectedPlan.name}</Text>
             </>
           ) : (
             <>
-              <Text style={styles.ctaText}>Activate Plan</Text>
+              <Text style={sub.ctaText}>Activate Plan</Text>
               <Feather name="arrow-right" size={16} color="#fff" />
             </>
           )}
         </TouchableOpacity>
       </View>
 
+      {/* Razorpay checkout */}
       {checkoutParams && (
         <RazorpayWebCheckout
           visible
@@ -621,51 +485,44 @@ export default function SubscriptionScreen() {
         />
       )}
 
+      {/* Success modal */}
       <Modal
         visible={successModal.visible}
         transparent
         animationType="fade"
         statusBarTranslucent
-        onRequestClose={() => {
-          setSuccessModal((s) => ({ ...s, visible: false }));
-          router.back();
-        }}
+        onRequestClose={() => { setSuccessModal((s) => ({ ...s, visible: false })); router.back(); }}
       >
-        <View style={styles.successBackdrop}>
-          <View style={styles.successCard}>
-            <LinearGradient
-              colors={["#059669", "#047857"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.successGradient}
-            >
-              <View style={styles.successGlass}>
-                <View style={styles.successCheckCircle}>
-                  <Text style={styles.successCheckMark}>✓</Text>
-                </View>
-
-                <Text style={styles.successTitle}>Plan Activated</Text>
-                <Text style={styles.successSubtitle}>{successModal.planName} Plan Active</Text>
-
-                {successModal.expiryText ? (
-                  <View style={styles.successExpiryRow}>
-                    <Text style={styles.successExpiryLabel}>Expires</Text>
-                    <Text style={styles.successExpiryValue}>{successModal.expiryText}</Text>
-                  </View>
-                ) : null}
-
-                <TouchableOpacity
-                  style={styles.successBtn}
-                  activeOpacity={0.85}
-                  onPress={() => {
-                    setSuccessModal((s) => ({ ...s, visible: false }));
-                    router.back();
-                  }}
-                >
-                  <Text style={styles.successBtnText}>Done</Text>
-                </TouchableOpacity>
+        <View style={sub.successBackdrop}>
+          <View style={sub.successCard}>
+            {/* Green header */}
+            <View style={sub.successHeader}>
+              <View style={sub.successCheckCircle}>
+                <Feather name="check" size={36} color="#fff" />
               </View>
-            </LinearGradient>
+              <Text style={sub.successTitle}>Plan Activated!</Text>
+              <Text style={sub.successPlanName}>{successModal.planName} Plan</Text>
+            </View>
+            {/* Body */}
+            <View style={sub.successBody}>
+              {successModal.expiryText ? (
+                <View style={sub.successExpiryRow}>
+                  <Feather name="calendar" size={15} color={SUCCESS} />
+                  <Text style={sub.successExpiry}>Valid until {successModal.expiryText}</Text>
+                </View>
+              ) : null}
+              <Text style={sub.successSub}>
+                You can now go online and keep 100% of your earnings. Happy riding!
+              </Text>
+              <TouchableOpacity
+                style={sub.successBtn}
+                onPress={() => { setSuccessModal((s) => ({ ...s, visible: false })); router.back(); }}
+                activeOpacity={0.85}
+              >
+                <Feather name="navigation" size={16} color="#fff" />
+                <Text style={sub.successBtnText}>Start Earning</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -674,301 +531,172 @@ export default function SubscriptionScreen() {
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const sub = StyleSheet.create({
+  // Header
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 16, paddingBottom: 12,
+    backgroundColor: CARD, borderBottomWidth: 1, borderBottomColor: BORDER,
   },
-  headerTitle: { fontSize: 17, fontWeight: "800", letterSpacing: -0.2 },
+  headerTitle: { fontSize: 18, fontWeight: "800", color: TEXT },
   iconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 11,
-    alignItems: "center",
-    justifyContent: "center",
+    width: 38, height: 38, borderRadius: 12, backgroundColor: "#F1F5F9",
+    alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: BORDER,
   },
 
   // Hero
-  hero: {
-    borderRadius: 20,
-    padding: 18,
-    gap: 12,
+  heroCard: {
+    backgroundColor: CARD, borderRadius: 20, borderWidth: 1, borderColor: BORDER,
+    padding: 20, gap: 12,
+    shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 3,
   },
   heroBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 7,
+    flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start",
+    backgroundColor: "#FFF3EC", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20,
   },
-  heroBadgeText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
-  heroTitle: {
-    fontSize: 26,
-    fontWeight: "800",
-    letterSpacing: -0.8,
-    lineHeight: 31,
-  },
-  heroSub: {
-    fontSize: 13,
-    lineHeight: 18,
-  },
+  heroBadgeText: { fontSize: 11, fontWeight: "800", color: PRIMARY, letterSpacing: 0.5 },
+  heroTitle: { fontSize: 26, fontWeight: "900", color: TEXT, lineHeight: 32 },
+  heroSub: { fontSize: 14, color: MUTED, lineHeight: 21 },
   compareRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 6,
-    padding: 12,
-    borderRadius: 13,
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: "#F8FAFC", borderRadius: 12, borderWidth: 1, borderColor: BORDER,
+    paddingVertical: 12,
   },
-  compareItem: { flex: 1, gap: 2 },
-  compareLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 0.3 },
-  compareValue: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3 },
-  compareSub: { fontSize: 10, fontWeight: "500" },
+  compareItem: { flex: 1, alignItems: "center", gap: 3 },
   compareArrow: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
+    width: 32, height: 32, borderRadius: 16, backgroundColor: "#FFF3EC",
+    alignItems: "center", justifyContent: "center",
   },
+  compareLabel: { fontSize: 10, fontWeight: "700", color: MUTED, letterSpacing: 0.3 },
+  compareOldPrice: { fontSize: 20, fontWeight: "900", color: "#94A3B8", textDecorationLine: "line-through" },
+  comparePrice: { fontSize: 20, fontWeight: "900" },
+  compareSub: { fontSize: 10, fontWeight: "500", color: MUTED },
 
   // Status card
   statusCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    padding: 12,
-    borderRadius: 13,
-    borderWidth: 1,
+    flexDirection: "row", alignItems: "center", gap: 12,
+    borderRadius: 14, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12,
   },
-  statusIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
+  statusIcon: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  statusTitle: { fontSize: 14, fontWeight: "700", marginBottom: 2 },
+  statusSub: { fontSize: 12, fontWeight: "500" },
+
+  // Section label
+  sectionLabel: { fontSize: 12, fontWeight: "700", color: MUTED, letterSpacing: 0.5, marginBottom: 10, paddingHorizontal: 2 },
+
+  // Horizontal tab selector
+  tabRow: { flexDirection: "row", gap: 10 },
+  tab: {
+    flex: 1, alignItems: "center", gap: 3, paddingVertical: 12, paddingHorizontal: 8,
+    backgroundColor: CARD, borderRadius: 14, borderWidth: 1.5, borderColor: BORDER, position: "relative",
+    overflow: "hidden",
   },
-  statusTitle: { fontSize: 13, fontWeight: "800" },
-  statusSub: { fontSize: 11, fontWeight: "500", marginTop: 1 },
-
-  sectionHeader: { gap: 2, marginTop: 4, paddingHorizontal: 2 },
-  sectionTitle: { fontSize: 18, fontWeight: "800", letterSpacing: -0.3 },
-  sectionSub: { fontSize: 12, fontWeight: "500" },
-
-  // Plan card — colours all injected inline via useColors()
-  planCard: {
-    borderRadius: 22,
-    padding: 16,
-    gap: 12,
+  tabActiveDot: {
+    position: "absolute", top: 6, right: 6,
+    width: 6, height: 6, borderRadius: 3,
   },
-
-  // Badge system
-  badgeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    flexWrap: "wrap",
+  tabName: { fontSize: 13, fontWeight: "700", color: TEXT },
+  tabPrice: { fontSize: 16, fontWeight: "900", color: TEXT },
+  tabBadge: {
+    position: "absolute", top: 4, left: 4,
+    paddingHorizontal: 4, paddingVertical: 2, borderRadius: 5,
   },
-  badge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 7,
+  tabBadgeText: { fontSize: 9, fontWeight: "800" },
+
+  // Plan detail card
+  planDetail: {
+    backgroundColor: CARD, borderRadius: 18, overflow: "hidden",
+    shadowColor: "#000", shadowOpacity: 0.07, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 4,
   },
-  badgeTextLight: { color: "#fff", fontSize: 10, fontWeight: "800", letterSpacing: 0.2 },
-  badgeTextDark:  { fontSize: 10, fontWeight: "800", letterSpacing: 0.2 },
-
-  // Plan card content
-  planMainRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-  planName:    { fontSize: 16, fontWeight: "800", letterSpacing: -0.2 },
-  planSubtitle: { fontSize: 11.5, fontWeight: "500", marginTop: 2 },
-
-  radio: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 4,
+  planDetailHeader: {
+    flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between",
+    padding: 16, gap: 12,
   },
-
-  priceRow:     { flexDirection: "row", alignItems: "flex-end", gap: 2, marginTop: 4 },
-  priceCurrency: { fontSize: 16, fontWeight: "700", marginBottom: 4 },
-  priceValue:   { fontSize: 32, fontWeight: "800", letterSpacing: -1.5, lineHeight: 38 },
-  pricePeriod:  { fontSize: 12, fontWeight: "600", marginBottom: 5, marginLeft: 2 },
-
-  divider: { height: 1 },
-
-  featureRow: { flexDirection: "row", alignItems: "center", gap: 9 },
-  featureCheck: {
-    width: 18,
-    height: 18,
-    borderRadius: 6,
-    alignItems: "center",
-    justifyContent: "center",
+  planDetailName: { fontSize: 18, fontWeight: "800", marginBottom: 3 },
+  planDetailSubtitle: { fontSize: 12, fontWeight: "500", color: MUTED },
+  planDetailCurrency: { fontSize: 16, fontWeight: "700", marginBottom: 5 },
+  planDetailPrice: { fontSize: 36, fontWeight: "900", lineHeight: 40 },
+  planDetailPeriod: { fontSize: 11, fontWeight: "500", color: MUTED, marginTop: 2 },
+  currentBadge: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6,
   },
-  featureText: { flex: 1, fontSize: 12.5, fontWeight: "600" },
+  currentBadgeText: { fontSize: 10, fontWeight: "700", color: "#fff" },
+  planDetailBody: { padding: 16, gap: 10 },
+  planFeatureRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  planFeatureCheck: {
+    width: 22, height: 22, borderRadius: 6, alignItems: "center", justifyContent: "center",
+  },
+  planFeatureText: { fontSize: 14, fontWeight: "500", color: TEXT },
+  perDayRow: {
+    flexDirection: "row", alignItems: "center", gap: 7,
+    paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 1,
+  },
+  perDayText: { fontSize: 13, fontWeight: "700" },
 
   // Payment card
-  paymentCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 14,
-    gap: 10,
+  payCard: {
+    backgroundColor: CARD, borderRadius: 14, borderWidth: 1, borderColor: BORDER, padding: 14, gap: 10,
   },
-  paymentHeader: { flexDirection: "row", alignItems: "center", gap: 7 },
-  paymentTitle: { fontSize: 13, fontWeight: "800" },
-  paymentMethods: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
+  payHeader: { flexDirection: "row", alignItems: "center", gap: 7 },
+  payTitle: { fontSize: 13, fontWeight: "700", color: TEXT },
+  payMethods: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   payMethod: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 9,
-    borderWidth: 1,
+    flexDirection: "row", alignItems: "center", gap: 6,
+    backgroundColor: "#F8FAFC", paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 8, borderWidth: 1, borderColor: BORDER,
   },
-  payMethodText: { fontSize: 11, fontWeight: "700" },
+  payMethodText: { fontSize: 11, fontWeight: "600", color: TEXT },
 
   // FAQ
   faqRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    padding: 12,
-    borderRadius: 13,
-    borderWidth: 1,
+    flexDirection: "row", alignItems: "center", gap: 12,
+    backgroundColor: CARD, borderRadius: 14, borderWidth: 1, borderColor: BORDER,
+    paddingHorizontal: 14, paddingVertical: 12,
   },
   faqIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
+    width: 34, height: 34, borderRadius: 10, backgroundColor: "#F1F5F9",
+    alignItems: "center", justifyContent: "center",
   },
-  faqTitle: { fontSize: 13, fontWeight: "700" },
-  faqSub: { fontSize: 11, fontWeight: "500", marginTop: 1 },
+  faqTitle: { fontSize: 13, fontWeight: "700", color: TEXT, marginBottom: 2 },
+  faqSub: { fontSize: 11, color: MUTED },
+  terms: { fontSize: 11, color: MUTED, textAlign: "center", lineHeight: 17 },
 
-  terms: {
-    fontSize: 10,
-    fontWeight: "500",
-    textAlign: "center",
-    lineHeight: 14,
-    paddingHorizontal: 12,
-    marginTop: 4,
-  },
-
-  // Footer / CTA
+  // Footer CTA
   footer: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: -4 },
-    elevation: 8,
+    position: "absolute", bottom: 0, left: 0, right: 0,
+    flexDirection: "row", alignItems: "center", gap: 14,
+    paddingHorizontal: 16, paddingTop: 14,
+    backgroundColor: CARD, borderTopWidth: 1, borderTopColor: BORDER,
+    shadowColor: "#000", shadowOpacity: 0.07, shadowRadius: 14, shadowOffset: { width: 0, height: -4 }, elevation: 10,
   },
-  footerLabel:    { fontSize: 10, fontWeight: "700", letterSpacing: 0.4, textTransform: "uppercase" },
-  footerPriceRow: { flexDirection: "row", alignItems: "flex-end", gap: 3, marginTop: 2 },
-  footerPrice:    { fontSize: 22, fontWeight: "800", letterSpacing: -0.5 },
-  footerPeriod:   { fontSize: 12, fontWeight: "600", marginBottom: 3 },
+  footerLabel: { fontSize: 11, fontWeight: "600", color: MUTED, marginBottom: 2 },
+  footerPrice: { fontSize: 22, fontWeight: "900", color: TEXT },
+  footerPeriod: { fontSize: 11, color: MUTED, marginBottom: 4 },
   cta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    paddingHorizontal: 20,
-    height: 50,
-    borderRadius: 14,
+    flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: PRIMARY, paddingHorizontal: 20, paddingVertical: 14, borderRadius: 14,
+    shadowColor: PRIMARY, shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 5,
   },
-  ctaText: { color: "#fff", fontSize: 15, fontWeight: "800" },
+  ctaText: { fontSize: 15, fontWeight: "800", color: "#fff" },
 
   // Success modal
-  successBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.52)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  successCard: {
-    width: SCREEN_WIDTH * 0.84,
-    borderRadius: 24,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOpacity: 0.28,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 16,
-  },
-  successGradient: { borderRadius: 24 },
-  successGlass: {
-    backgroundColor: "rgba(255,255,255,0.10)",
-    borderRadius: 24,
-    paddingHorizontal: 24,
-    paddingTop: 28,
-    paddingBottom: 22,
-    alignItems: "center",
-    gap: 6,
-  },
+  successBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.58)", justifyContent: "center", alignItems: "center", paddingHorizontal: 24 },
+  successCard: { width: "100%", backgroundColor: CARD, borderRadius: 24, overflow: "hidden" },
+  successHeader: { backgroundColor: SUCCESS, alignItems: "center", paddingVertical: 32, paddingHorizontal: 20, gap: 12 },
   successCheckCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "rgba(255,255,255,0.22)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 6,
+    width: 72, height: 72, borderRadius: 36,
+    backgroundColor: "rgba(255,255,255,0.25)", alignItems: "center", justifyContent: "center",
   },
-  successCheckMark: { fontSize: 26, fontWeight: "800", color: "#fff", lineHeight: 30 },
-  successTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#fff",
-    letterSpacing: -0.4,
-    marginTop: 2,
-  },
-  successSubtitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "rgba(255,255,255,0.85)",
-    marginTop: 2,
-  },
-  successExpiryRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    marginTop: 10,
-    backgroundColor: "rgba(255,255,255,0.14)",
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 10,
-  },
-  successExpiryLabel: { fontSize: 12, fontWeight: "600", color: "rgba(255,255,255,0.72)" },
-  successExpiryValue: { fontSize: 12, fontWeight: "800", color: "#fff" },
+  successTitle: { fontSize: 22, fontWeight: "900", color: "#fff" },
+  successPlanName: { fontSize: 16, fontWeight: "700", color: "rgba(255,255,255,0.85)" },
+  successBody: { padding: 24, gap: 14, alignItems: "center" },
+  successExpiryRow: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#ECFDF5", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
+  successExpiry: { fontSize: 14, fontWeight: "700", color: SUCCESS },
+  successSub: { fontSize: 14, color: MUTED, textAlign: "center", lineHeight: 21 },
   successBtn: {
-    marginTop: 18,
-    width: "100%",
-    height: 46,
-    borderRadius: 13,
-    backgroundColor: "rgba(255,255,255,0.92)",
-    alignItems: "center",
-    justifyContent: "center",
+    flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: SUCCESS, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 14, marginTop: 4,
   },
-  successBtnText: { fontSize: 15, fontWeight: "800", color: "#059669", letterSpacing: 0.2 },
+  successBtnText: { fontSize: 15, fontWeight: "800", color: "#fff" },
 });

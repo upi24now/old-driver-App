@@ -4,7 +4,9 @@ import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,6 +19,16 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDriver } from "@/contexts/DriverContext";
 import { useColors } from "@/hooks/useColors";
 import { callSupport } from "@/utils/support";
+
+// ─── Design tokens ────────────────────────────────────────────────────────────
+const BG      = "#F8FAFC";
+const CARD    = "#FFFFFF";
+const PRIMARY = "#FF6B00";
+const TEXT    = "#0F172A";
+const MUTED   = "#64748B";
+const BORDER  = "#E2E8F0";
+const SUCCESS = "#059669";
+const INFO    = "#2563EB";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const LOCKED_BALANCE = 50;
@@ -37,46 +49,37 @@ type Transaction = {
   date:     string;
 };
 
-// Semantic-token hex used at module level (no hook access here)
 const TYPE_META: Record<TxnType, { icon: string; color: string; bg: string }> = {
-  earning:  { icon: "navigation",     color: "#059669", bg: "#D1FAE5" },  // money / successSoft
-  tip:      { icon: "heart",          color: "#E8336C", bg: "#FFF0F5" },  // primary / primarySoft
-  bonus:    { icon: "gift",           color: "#7C3AED", bg: "#EDE9FE" },  // pending / pendingSoft
-  withdraw: { icon: "arrow-up-right", color: "#2563EB", bg: "#DBEAFE" },  // info / infoSoft
+  earning:  { icon: "navigation",     color: SUCCESS,   bg: "#D1FAE5" },
+  tip:      { icon: "heart",          color: "#E8336C", bg: "#FFF0F5" },
+  bonus:    { icon: "gift",           color: "#7C3AED", bg: "#EDE9FE" },
+  withdraw: { icon: "arrow-up-right", color: INFO,      bg: "#DBEAFE" },
 };
 
 // ─── TransactionRow ───────────────────────────────────────────────────────────
 function TransactionRow({ txn }: { txn: Transaction }) {
-  const colors = useColors();
-  const meta   = TYPE_META[txn.type];
+  const meta    = TYPE_META[txn.type];
   const isDebit = txn.amount < 0;
-
   return (
-    <View style={styles.txnRow}>
-      <View style={[styles.txnIcon, { backgroundColor: meta.bg }]}>
+    <View style={w.txnRow}>
+      <View style={[w.txnIcon, { backgroundColor: meta.bg }]}>
         <Feather name={meta.icon as any} size={16} color={meta.color} />
       </View>
       <View style={{ flex: 1, gap: 2 }}>
-        <Text style={[styles.txnTitle, { color: colors.foreground }]} numberOfLines={1}>
-          {txn.title}
-        </Text>
-        <View style={styles.txnMeta}>
-          <Text style={[styles.txnSub, { color: colors.mutedForeground }]}>
-            {txn.subtitle}
-          </Text>
-          <View style={[styles.metaDot, { backgroundColor: colors.border }]} />
-          <Text style={[styles.txnSub, { color: colors.mutedForeground }]}>
-            {txn.time}
-          </Text>
+        <Text style={w.txnTitle} numberOfLines={1}>{txn.title}</Text>
+        <View style={w.txnMeta}>
+          <Text style={w.txnSub}>{txn.subtitle}</Text>
+          <View style={w.metaDot} />
+          <Text style={w.txnSub}>{txn.time}</Text>
         </View>
       </View>
       <View style={{ alignItems: "flex-end", gap: 3 }}>
-        <Text style={[styles.txnAmount, { color: isDebit ? colors.foreground : colors.money }]}>
+        <Text style={[w.txnAmount, { color: isDebit ? TEXT : SUCCESS }]}>
           {isDebit ? "-" : "+"}₹{Math.abs(txn.amount).toLocaleString("en-IN")}
         </Text>
         {txn.status === "pending" && (
-          <View style={[styles.statusPill, { backgroundColor: colors.warningSoft }]}>
-            <Text style={[styles.statusPillText, { color: colors.warningText }]}>Pending</Text>
+          <View style={w.pendingPill}>
+            <Text style={w.pendingText}>Pending</Text>
           </View>
         )}
       </View>
@@ -84,50 +87,200 @@ function TransactionRow({ txn }: { txn: Transaction }) {
   );
 }
 
-// ─── Main screen ──────────────────────────────────────────────────────────────
-export default function WalletScreen() {
-  const colors  = useColors();
-  const insets  = useSafeAreaInsets();
-  const router  = useRouter();
-  const { walletBalance, lifetimeEarnings, totalPaid, todayEarnings, tripsToday, totalTrips, transactions, requestWithdrawal, refreshWallet, driverUid } = useDriver();
+// ─── Withdraw Sheet ───────────────────────────────────────────────────────────
+function WithdrawSheet({
+  visible,
+  onClose,
+  withdrawable,
+  canWithdraw,
+  requestWithdrawal,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  withdrawable: number;
+  canWithdraw: boolean;
+  requestWithdrawal: (amount: number, upiId: string) => Promise<{ ok: boolean; reason?: string }>;
+}) {
+  const insets     = useSafeAreaInsets();
+  const amountRef  = useRef<TextInput>(null);
 
-  const [filter, setFilter] = useState<Filter>("all");
+  const [upiId,      setUpiId]      = useState("");
+  const [amountText, setAmountText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [success,    setSuccess]    = useState(false);
+  const [errorMsg,   setErrorMsg]   = useState<string | null>(null);
 
-  // Withdrawal form state
-  const [upiId,       setUpiId]       = useState("");
-  const [amountText,  setAmountText]  = useState("");
-  const [submitting,  setSubmitting]  = useState(false);
-  const [success,     setSuccess]     = useState(false);
-  const [errorMsg,    setErrorMsg]    = useState<string | null>(null);
+  const parsedAmount = parseFloat(amountText.replace(/,/g, "")) || 0;
+  const upiValid     = UPI_REGEX.test(upiId.trim());
+  const amountValid  = parsedAmount > 0 && parsedAmount <= withdrawable;
+  const btnEnabled   = canWithdraw && upiValid && amountValid && !submitting;
 
-  const amountRef = useRef<TextInput>(null);
+  function resetAndClose() {
+    setUpiId(""); setAmountText(""); setSuccess(false); setErrorMsg(null);
+    onClose();
+  }
 
-
-  // ── Computed ────────────────────────────────────────────────────────────────
-  const withdrawable   = Math.max(0, walletBalance - LOCKED_BALANCE);
-  const canWithdraw    = walletBalance > LOCKED_BALANCE;
-  const parsedAmount   = parseFloat(amountText.replace(/,/g, "")) || 0;
-  const upiValid       = UPI_REGEX.test(upiId.trim());
-  const amountValid    = parsedAmount > 0 && parsedAmount <= withdrawable;
-  const btnEnabled     = canWithdraw && upiValid && amountValid && !submitting;
-
-  // ── Submit ──────────────────────────────────────────────────────────────────
-  const handleWithdraw = async () => {
+  async function handleWithdraw() {
     if (!btnEnabled) return;
-    setSubmitting(true);
-    setErrorMsg(null);
+    setSubmitting(true); setErrorMsg(null);
     const result = await requestWithdrawal(parsedAmount, upiId.trim());
     setSubmitting(false);
     if (result.ok) {
       setSuccess(true);
-      setUpiId("");
-      setAmountText("");
+      setUpiId(""); setAmountText("");
     } else {
       setErrorMsg(result.reason ?? "Withdrawal failed. Please try again.");
     }
-  };
+  }
 
-  // ── Transactions list ────────────────────────────────────────────────────────
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={resetAndClose} statusBarTranslucent>
+      <Pressable style={w.sheetBackdrop} onPress={resetAndClose}>
+        <Pressable style={[w.sheetCard, { paddingBottom: insets.bottom + 12 }]} onPress={() => {}}>
+          {/* Handle */}
+          <View style={w.sheetHandle} />
+          <View style={w.sheetHeader}>
+            <Text style={w.sheetTitle}>Withdraw via UPI</Text>
+            <TouchableOpacity style={w.sheetCloseBtn} onPress={resetAndClose} activeOpacity={0.7}>
+              <Feather name="x" size={18} color={TEXT} />
+            </TouchableOpacity>
+          </View>
+
+          {success ? (
+            <View style={w.successBox}>
+              <View style={w.successIcon}>
+                <Feather name="check-circle" size={36} color={SUCCESS} />
+              </View>
+              <Text style={w.successTitle}>Withdrawal Submitted</Text>
+              <Text style={w.successSub}>Amount will be processed to your UPI ID within 24 hours.</Text>
+              <TouchableOpacity style={w.successNewBtn} onPress={() => setSuccess(false)} activeOpacity={0.75}>
+                <Text style={w.successNewBtnText}>New request</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
+              <View style={{ gap: 14 }}>
+                {/* Available */}
+                <View style={w.availableRow}>
+                  <Text style={w.availableLabel}>Available to withdraw</Text>
+                  <Text style={w.availableAmount}>
+                    ₹{withdrawable.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                  </Text>
+                </View>
+
+                {/* UPI ID */}
+                <View>
+                  <Text style={w.inputLabel}>UPI ID</Text>
+                  <View style={[w.inputWrap, {
+                    borderColor: upiId.length > 0 && !upiValid ? "#DC2626" : upiValid ? SUCCESS : BORDER,
+                  }]}>
+                    <Feather name="at-sign" size={15} color={MUTED} />
+                    <TextInput
+                      style={w.input}
+                      placeholder="yourname@upi"
+                      placeholderTextColor={MUTED}
+                      value={upiId}
+                      onChangeText={(t) => { setUpiId(t); setErrorMsg(null); setSuccess(false); }}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="email-address"
+                      returnKeyType="next"
+                      onSubmitEditing={() => amountRef.current?.focus()}
+                    />
+                    {upiValid && <Feather name="check-circle" size={14} color={SUCCESS} />}
+                  </View>
+                  {upiId.length > 0 && !upiValid && (
+                    <Text style={w.inputError}>Enter a valid UPI ID (e.g. name@paytm)</Text>
+                  )}
+                </View>
+
+                {/* Amount */}
+                <View>
+                  <Text style={w.inputLabel}>Amount</Text>
+                  <View style={[w.inputWrap, {
+                    borderColor: amountText.length > 0 && !amountValid ? "#DC2626" : amountValid ? SUCCESS : BORDER,
+                  }]}>
+                    <Text style={w.rupeePfx}>₹</Text>
+                    <TextInput
+                      ref={amountRef}
+                      style={w.input}
+                      placeholder={canWithdraw ? `Max ₹${withdrawable.toLocaleString("en-IN", { maximumFractionDigits: 0 })}` : "0"}
+                      placeholderTextColor={MUTED}
+                      value={amountText}
+                      onChangeText={(t) => { setAmountText(t.replace(/[^0-9.]/g, "")); setErrorMsg(null); }}
+                      keyboardType="numeric"
+                      returnKeyType="done"
+                      onSubmitEditing={handleWithdraw}
+                      editable={canWithdraw}
+                    />
+                    {amountValid && <Feather name="check-circle" size={14} color={SUCCESS} />}
+                  </View>
+                  {amountText.length > 0 && parsedAmount > withdrawable && (
+                    <Text style={w.inputError}>Maximum withdrawable is ₹{withdrawable.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</Text>
+                  )}
+                  {amountText.length > 0 && parsedAmount <= 0 && (
+                    <Text style={w.inputError}>Amount must be greater than ₹0</Text>
+                  )}
+                </View>
+
+                {/* Server error */}
+                {errorMsg && (
+                  <View style={w.errorBox}>
+                    <Feather name="alert-circle" size={13} color="#DC2626" />
+                    <Text style={w.errorBoxText}>{errorMsg}</Text>
+                  </View>
+                )}
+
+                {/* Locked note */}
+                <View style={w.lockNote}>
+                  <Feather name="lock" size={11} color="#D97706" />
+                  <Text style={w.lockNoteText}>₹{LOCKED_BALANCE} minimum always stays in wallet</Text>
+                </View>
+
+                {/* Submit */}
+                <TouchableOpacity
+                  style={[w.submitBtn, { backgroundColor: btnEnabled ? INFO : BORDER }]}
+                  activeOpacity={0.85}
+                  onPress={handleWithdraw}
+                  disabled={!btnEnabled}
+                >
+                  {submitting ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Feather name="arrow-up-right" size={17} color="#fff" />
+                      <Text style={w.submitBtnText}>Request Withdrawal</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </KeyboardAvoidingView>
+          )}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
+export default function WalletScreen() {
+  const colors  = useColors();
+  const insets  = useSafeAreaInsets();
+  const router  = useRouter();
+  const {
+    walletBalance, lifetimeEarnings, totalPaid,
+    todayEarnings, tripsToday, totalTrips,
+    transactions, requestWithdrawal, refreshWallet, driverUid,
+  } = useDriver();
+
+  const [filter,          setFilter]          = useState<Filter>("all");
+  const [withdrawVisible, setWithdrawVisible] = useState(false);
+
+  // Computed
+  const withdrawable = Math.max(0, walletBalance - LOCKED_BALANCE);
+  const canWithdraw  = walletBalance > LOCKED_BALANCE;
+
+  // Transactions
   const allTxns: Transaction[] = transactions as Transaction[];
   const filtered = allTxns.filter((t) => {
     if (filter === "all")     return true;
@@ -139,38 +292,16 @@ export default function WalletScreen() {
     return acc;
   }, {});
 
-  // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.background }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={0}
-    >
-      {/* Header */}
-      <View
-        style={[
-          styles.header,
-          {
-            paddingTop:        insets.top + 12,
-            backgroundColor:   colors.surface,
-            borderBottomColor: colors.border,
-          },
-        ]}
-      >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={[styles.iconBtn, { backgroundColor: colors.muted }]}
-          activeOpacity={0.7}
-        >
-          <Feather name="arrow-left" size={18} color={colors.foreground} />
+    <View style={{ flex: 1, backgroundColor: BG }}>
+      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      <View style={[w.header, { paddingTop: insets.top + 12 }]}>
+        <TouchableOpacity style={w.iconBtn} onPress={() => router.back()} activeOpacity={0.7}>
+          <Feather name="arrow-left" size={18} color={TEXT} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Wallet</Text>
-        <TouchableOpacity
-          style={[styles.iconBtn, { backgroundColor: colors.muted }]}
-          activeOpacity={0.7}
-          onPress={callSupport}
-        >
-          <Feather name="help-circle" size={18} color={colors.foreground} />
+        <Text style={w.headerTitle}>Wallet</Text>
+        <TouchableOpacity style={w.iconBtn} onPress={callSupport} activeOpacity={0.7}>
+          <Feather name="help-circle" size={18} color={TEXT} />
         </TouchableOpacity>
       </View>
 
@@ -179,361 +310,164 @@ export default function WalletScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* ── BALANCE HERO ──────────────────────────────────────────────────── */}
-        <View
-          style={[
-            styles.balanceCard,
-            {
-              backgroundColor: colors.surface,
-              borderWidth: 1,
-              borderColor: colors.border,
-              shadowColor: "#FF6B00",
-              shadowOpacity: 0.10,
-            },
-          ]}
-        >
-          {/* Top row: balance + icon */}
-          <View style={styles.balanceTopRow}>
+        {/* ── BALANCE HERO ────────────────────────────────────────────────── */}
+        <View style={w.balanceCard}>
+          {/* Balance amount */}
+          <View style={w.balanceTopRow}>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.balanceLabel, { color: colors.mutedForeground }]}>WALLET BALANCE</Text>
-              <View style={styles.balanceAmountRow}>
-                <Text style={[styles.balanceCurrency, { color: colors.primary }]}>₹</Text>
-                <Text style={[styles.balanceAmount, { color: colors.foreground }]}>
+              <Text style={w.balanceLabel}>WALLET BALANCE</Text>
+              <View style={w.balanceAmountRow}>
+                <Text style={w.balanceCurrency}>₹</Text>
+                <Text style={w.balanceAmount}>
                   {Math.floor(walletBalance).toLocaleString("en-IN")}
                 </Text>
-                <Text style={[styles.balanceDecimal, { color: colors.mutedForeground }]}>
-                  .{(walletBalance % 1).toFixed(2).slice(2)}
-                </Text>
+                <Text style={w.balanceDecimal}>.{(walletBalance % 1).toFixed(2).slice(2)}</Text>
               </View>
             </View>
-            <View style={[styles.balanceIconWrap, { backgroundColor: colors.primarySoft, borderColor: colors.border }]}>
-              <Feather name="credit-card" size={20} color={colors.primary} />
+            <View style={w.balanceIconWrap}>
+              <Feather name="credit-card" size={22} color={PRIMARY} />
             </View>
           </View>
 
-          {/* Balance breakdown: locked + withdrawable */}
-          <View style={[styles.balanceSplitRow, { backgroundColor: colors.muted }]}>
-            <View style={styles.balanceSplitItem}>
-              <View style={[styles.balanceSplitDot, { backgroundColor: colors.borderStrong }]} />
-              <View>
-                <Text style={[styles.balanceSplitLabel, { color: colors.mutedForeground }]}>LOCKED</Text>
-                <Text style={[styles.balanceSplitValue, { color: colors.foreground }]}>₹{LOCKED_BALANCE}</Text>
-              </View>
+          {/* Progress bar: locked → withdrawable */}
+          <View>
+            <View style={w.progressTrack}>
+              <View style={[w.progressFill, {
+                width: walletBalance > 0 ? `${Math.min(100, (withdrawable / walletBalance) * 100)}%` : "0%",
+              }]} />
             </View>
-            <View style={[styles.balanceSplitDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.balanceSplitItem}>
-              <View style={[styles.balanceSplitDot, { backgroundColor: colors.money }]} />
-              <View>
-                <Text style={[styles.balanceSplitLabel, { color: colors.mutedForeground }]}>WITHDRAWABLE</Text>
-                <Text style={[styles.balanceSplitValue, { color: colors.money }]}>
-                  ₹{withdrawable.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+            <View style={w.progressLabels}>
+              <View style={w.progressLabelItem}>
+                <View style={[w.progressDot, { backgroundColor: BORDER }]} />
+                <Text style={w.progressLabelText}>Locked ₹{LOCKED_BALANCE}</Text>
+              </View>
+              <View style={w.progressLabelItem}>
+                <View style={[w.progressDot, { backgroundColor: SUCCESS }]} />
+                <Text style={[w.progressLabelText, { color: SUCCESS }]}>
+                  Withdrawable ₹{withdrawable.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
                 </Text>
               </View>
             </View>
           </View>
 
-          {/* Today's earnings chip */}
+          {/* Today chip */}
           {todayEarnings > 0 && (
-            <View style={styles.todayChip}>
-              <Feather name="trending-up" size={11} color={colors.money} />
-              <Text style={[styles.todayChipText, { color: colors.money }]}>
+            <View style={w.todayChip}>
+              <Feather name="trending-up" size={11} color={SUCCESS} />
+              <Text style={w.todayChipText}>
                 +₹{todayEarnings.toLocaleString("en-IN", { maximumFractionDigits: 0 })} earned today
               </Text>
             </View>
           )}
-        </View>
 
-        {/* ── UPI WITHDRAWAL CARD ───────────────────────────────────────────── */}
-        <View
-          style={[
-            styles.withdrawCard,
-            { borderColor: colors.border, backgroundColor: colors.surface },
-          ]}
-        >
-          <View
-            style={[
-              styles.withdrawCardHeader,
-              { borderBottomColor: colors.border },
-            ]}
-          >
-            <View style={[styles.withdrawCardIcon, { backgroundColor: colors.infoSoft }]}>
-              <Feather name="smartphone" size={16} color={colors.info} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.withdrawCardTitle, { color: colors.foreground }]}>
-                Withdraw via UPI
-              </Text>
-              <Text style={[styles.withdrawCardSub, { color: colors.mutedForeground }]}>
-                {canWithdraw
-                  ? `Up to ₹${withdrawable.toLocaleString("en-IN", { maximumFractionDigits: 0 })} available`
-                  : "Minimum ₹50 must stay in wallet"}
-              </Text>
-            </View>
+          {/* Quick actions */}
+          <View style={w.quickActions}>
+            <TouchableOpacity
+              style={[w.quickBtn, { backgroundColor: canWithdraw ? PRIMARY : BORDER }]}
+              onPress={() => canWithdraw && setWithdrawVisible(true)}
+              activeOpacity={canWithdraw ? 0.85 : 1}
+            >
+              <Feather name="arrow-up-right" size={16} color={canWithdraw ? "#fff" : MUTED} />
+              <Text style={[w.quickBtnText, { color: canWithdraw ? "#fff" : MUTED }]}>Withdraw</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={w.quickBtnOutline} activeOpacity={0.8}>
+              <Feather name="download" size={16} color={TEXT} />
+              <Text style={w.quickBtnOutlineText}>Export</Text>
+            </TouchableOpacity>
           </View>
-
-          {success ? (
-            /* Success state */
-            <View style={styles.successBox}>
-              <View style={[styles.successIconWrap, { backgroundColor: colors.moneySoft }]}>
-                <Feather name="check-circle" size={28} color={colors.money} />
-              </View>
-              <Text style={[styles.successTitle, { color: colors.foreground }]}>
-                Withdrawal request submitted
-              </Text>
-              <Text style={[styles.successSub, { color: colors.mutedForeground }]}>
-                Amount will be processed to your UPI ID within 24 hours.
-              </Text>
-              <TouchableOpacity
-                style={[styles.successNewBtn, { backgroundColor: colors.muted }]}
-                onPress={() => setSuccess(false)}
-                activeOpacity={0.75}
-              >
-                <Text style={[styles.successNewBtnText, { color: colors.foreground }]}>New request</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            /* Form */
-            <View style={styles.withdrawForm}>
-              {/* UPI ID */}
-              <View>
-                <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>
-                  UPI ID
-                </Text>
-                <View
-                  style={[
-                    styles.inputWrap,
-                    { backgroundColor: colors.surfaceElevated },
-                    {
-                      borderColor: upiId.length > 0 && !upiValid
-                        ? colors.error
-                        : upiValid
-                        ? colors.money
-                        : colors.border,
-                    },
-                  ]}
-                >
-                  <Feather name="at-sign" size={15} color={colors.mutedForeground} />
-                  <TextInput
-                    style={[styles.input, { color: colors.foreground }]}
-                    placeholder="yourname@upi"
-                    placeholderTextColor={colors.mutedForeground}
-                    value={upiId}
-                    onChangeText={(t) => { setUpiId(t); setErrorMsg(null); setSuccess(false); }}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType="email-address"
-                    returnKeyType="next"
-                    onSubmitEditing={() => amountRef.current?.focus()}
-                  />
-                  {upiValid && (
-                    <Feather name="check-circle" size={14} color={colors.money} />
-                  )}
-                </View>
-                {upiId.length > 0 && !upiValid && (
-                  <Text style={[styles.inputError, { color: colors.error }]}>
-                    Enter a valid UPI ID (e.g. name@paytm)
-                  </Text>
-                )}
-              </View>
-
-              {/* Amount */}
-              <View>
-                <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>
-                  Amount
-                </Text>
-                <View
-                  style={[
-                    styles.inputWrap,
-                    { backgroundColor: colors.surfaceElevated },
-                    {
-                      borderColor: amountText.length > 0 && !amountValid
-                        ? colors.error
-                        : amountValid
-                        ? colors.money
-                        : colors.border,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.rupeePfx, { color: colors.mutedForeground }]}>₹</Text>
-                  <TextInput
-                    ref={amountRef}
-                    style={[styles.input, { color: colors.foreground }]}
-                    placeholder={canWithdraw ? `Max ₹${withdrawable.toLocaleString("en-IN", { maximumFractionDigits: 0 })}` : "0"}
-                    placeholderTextColor={colors.mutedForeground}
-                    value={amountText}
-                    onChangeText={(t) => { setAmountText(t.replace(/[^0-9.]/g, "")); setErrorMsg(null); setSuccess(false); }}
-                    keyboardType="numeric"
-                    returnKeyType="done"
-                    onSubmitEditing={handleWithdraw}
-                    editable={canWithdraw}
-                  />
-                  {amountValid && (
-                    <Feather name="check-circle" size={14} color={colors.money} />
-                  )}
-                </View>
-                {amountText.length > 0 && parsedAmount > withdrawable && (
-                  <Text style={[styles.inputError, { color: colors.error }]}>
-                    Maximum withdrawable is ₹{withdrawable.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-                  </Text>
-                )}
-                {amountText.length > 0 && parsedAmount <= 0 && (
-                  <Text style={[styles.inputError, { color: colors.error }]}>
-                    Amount must be greater than ₹0
-                  </Text>
-                )}
-              </View>
-
-              {/* Server error */}
-              {errorMsg && (
-                <View
-                  style={[
-                    styles.errorBox,
-                    { backgroundColor: colors.errorSoft, borderColor: colors.error },
-                  ]}
-                >
-                  <Feather name="alert-circle" size={13} color={colors.error} />
-                  <Text style={[styles.errorBoxText, { color: colors.errorText }]}>{errorMsg}</Text>
-                </View>
-              )}
-
-              {/* Locked balance note */}
-              <View style={[styles.lockNote, { backgroundColor: colors.warningSoft }]}>
-                <Feather name="lock" size={11} color={colors.warning} />
-                <Text style={[styles.lockNoteText, { color: colors.warning }]}>
-                  ₹{LOCKED_BALANCE} minimum always stays in wallet
-                </Text>
-              </View>
-
-              {/* Submit button */}
-              <TouchableOpacity
-                style={[
-                  styles.submitBtn,
-                  { backgroundColor: btnEnabled ? colors.info : colors.border },
-                ]}
-                activeOpacity={0.85}
-                onPress={handleWithdraw}
-                disabled={!btnEnabled}
-              >
-                {submitting ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <>
-                    <Feather name="arrow-up-right" size={17} color="#fff" />
-                    <Text style={styles.submitBtnText}>Request Withdrawal</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-          )}
         </View>
 
-
-        {/* ── STATS GRID ────────────────────────────────────────────────────── */}
-        <View style={styles.statsRow}>
-          <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={[styles.statIcon, { backgroundColor: "#D1FAE5" }]}>
-              <Feather name="trending-up" size={14} color="#059669" />
+        {/* ── EARNINGS SNAPSHOT ───────────────────────────────────────────── */}
+        <View style={w.snapshotCard}>
+          <View style={w.snapshotItem}>
+            <View style={[w.snapshotIcon, { backgroundColor: "#D1FAE5" }]}>
+              <Feather name="trending-up" size={14} color={SUCCESS} />
             </View>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>TOTAL EARNED</Text>
-            <Text style={[styles.statValue, { color: colors.foreground }]}>
-              ₹{lifetimeEarnings.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+            <Text style={w.snapshotLabel}>TODAY</Text>
+            <Text style={w.snapshotValue}>
+              ₹{todayEarnings.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
             </Text>
           </View>
-          <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={[styles.statIcon, { backgroundColor: "#DBEAFE" }]}>
-              <Feather name="send" size={14} color="#2563EB" />
+          <View style={w.snapshotSep} />
+          <View style={w.snapshotItem}>
+            <View style={[w.snapshotIcon, { backgroundColor: "#DBEAFE" }]}>
+              <Feather name="send" size={14} color={INFO} />
             </View>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>TOTAL PAID OUT</Text>
-            <Text style={[styles.statValue, { color: colors.foreground }]}>
+            <Text style={w.snapshotLabel}>TOTAL PAID</Text>
+            <Text style={w.snapshotValue}>
               ₹{totalPaid.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
             </Text>
           </View>
-        </View>
-        <View style={styles.statsRow}>
-          <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={[styles.statIcon, { backgroundColor: "#EDE9FE" }]}>
-              <Feather name="map-pin" size={14} color="#7C3AED" />
+          <View style={w.snapshotSep} />
+          <View style={w.snapshotItem}>
+            <View style={[w.snapshotIcon, { backgroundColor: "#EDE9FE" }]}>
+              <Feather name="award" size={14} color="#7C3AED" />
             </View>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>TRIPS TODAY</Text>
-            <Text style={[styles.statValue, { color: colors.foreground }]}>{tripsToday}</Text>
-          </View>
-          <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={[styles.statIcon, { backgroundColor: "#FFF0F5" }]}>
-              <Feather name="award" size={14} color="#E8336C" />
-            </View>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>TOTAL TRIPS</Text>
-            <Text style={[styles.statValue, { color: colors.foreground }]}>{totalTrips}</Text>
+            <Text style={w.snapshotLabel}>LIFETIME</Text>
+            <Text style={w.snapshotValue}>
+              ₹{lifetimeEarnings.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+            </Text>
           </View>
         </View>
 
-        {/* ── TRANSACTIONS ──────────────────────────────────────────────────── */}
-        <View style={styles.transactionsSection}>
-          <View style={styles.txnHeaderRow}>
-            <Text style={[styles.txnSectionTitle, { color: colors.foreground }]}>
-              Transactions
-            </Text>
-            <TouchableOpacity activeOpacity={0.7}>
-              <Text style={[styles.txnSeeAll, { color: colors.money }]}>Export</Text>
-            </TouchableOpacity>
+        {/* ── Trip stats ──────────────────────────────────────────────────── */}
+        <View style={w.tripStatsRow}>
+          <View style={w.tripStatCard}>
+            <View style={[w.snapshotIcon, { backgroundColor: "#EDE9FE" }]}>
+              <Feather name="map-pin" size={14} color="#7C3AED" />
+            </View>
+            <Text style={w.snapshotLabel}>TRIPS TODAY</Text>
+            <Text style={w.snapshotValue}>{tripsToday}</Text>
+          </View>
+          <View style={w.tripStatCard}>
+            <View style={[w.snapshotIcon, { backgroundColor: "#FFF0F5" }]}>
+              <Feather name="flag" size={14} color="#E8336C" />
+            </View>
+            <Text style={w.snapshotLabel}>TOTAL TRIPS</Text>
+            <Text style={w.snapshotValue}>{totalTrips}</Text>
+          </View>
+        </View>
+
+        {/* ── TRANSACTIONS ────────────────────────────────────────────────── */}
+        <View style={w.txnSection}>
+          <View style={w.txnHeaderRow}>
+            <Text style={w.txnSectionTitle}>Transactions</Text>
           </View>
 
           {/* Filter pills */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterRow}
-          >
-            {[
-              { id: "all"     as Filter, label: "All"          },
-              { id: "earning" as Filter, label: "Earnings"     },
-              { id: "withdraw"as Filter, label: "Withdrawals"  },
-              { id: "bonus"   as Filter, label: "Bonuses"      },
-            ].map((f) => {
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={w.filterRow}>
+            {([
+              { id: "all"      as Filter, label: "All"         },
+              { id: "earning"  as Filter, label: "Earnings"    },
+              { id: "withdraw" as Filter, label: "Withdrawals" },
+              { id: "bonus"    as Filter, label: "Bonuses"     },
+            ] as const).map((f) => {
               const active = filter === f.id;
               return (
                 <TouchableOpacity
                   key={f.id}
                   onPress={() => setFilter(f.id)}
                   activeOpacity={0.7}
-                  style={[
-                    styles.filterPill,
-                    {
-                      backgroundColor: active ? colors.foreground : colors.surface,
-                      borderColor:     active ? colors.foreground : colors.border,
-                    },
-                  ]}
+                  style={[w.filterPill, { backgroundColor: active ? TEXT : CARD, borderColor: active ? TEXT : BORDER }]}
                 >
-                  <Text style={[styles.filterPillText, { color: active ? "#fff" : colors.foreground }]}>
-                    {f.label}
-                  </Text>
+                  <Text style={[w.filterPillText, { color: active ? "#fff" : TEXT }]}>{f.label}</Text>
                 </TouchableOpacity>
               );
             })}
           </ScrollView>
 
-          {/* Grouped transaction rows */}
+          {/* Grouped rows */}
           {Object.entries(grouped).map(([date, items]) => (
-            <View key={date} style={styles.txnGroup}>
-              <View style={styles.txnGroupHeader}>
-                <Text style={[styles.txnGroupTitle, { color: colors.mutedForeground }]}>
-                  {date}
-                </Text>
-                <Text style={[styles.txnGroupCount, { color: colors.mutedForeground }]}>
-                  {items.length} transaction{items.length > 1 ? "s" : ""}
-                </Text>
+            <View key={date} style={w.txnGroup}>
+              <View style={w.txnGroupHeader}>
+                <Text style={w.txnGroupTitle}>{date}</Text>
+                <Text style={w.txnGroupCount}>{items.length} txn{items.length > 1 ? "s" : ""}</Text>
               </View>
-              <View
-                style={[
-                  styles.txnList,
-                  { borderColor: colors.border, backgroundColor: colors.surface },
-                ]}
-              >
-                {items.map((t, i) => (
-                  <View key={t.id}>
-                    <TransactionRow txn={t} />
-                    {i < items.length - 1 && (
-                      <View style={[styles.txnDivider, { backgroundColor: colors.border }]} />
-                    )}
+              <View style={w.txnGroupCard}>
+                {items.map((txn, i) => (
+                  <View key={txn.id}>
+                    <TransactionRow txn={txn} />
+                    {i < items.length - 1 && <View style={w.txnDivider} />}
                   </View>
                 ))}
               </View>
@@ -541,201 +475,182 @@ export default function WalletScreen() {
           ))}
 
           {filtered.length === 0 && (
-            <View
-              style={[
-                styles.emptyState,
-                { borderColor: colors.border, backgroundColor: colors.surface },
-              ]}
-            >
-              <Feather name="inbox" size={28} color={colors.mutedForeground} />
-              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-                No transactions in this category
-              </Text>
+            <View style={w.emptyBox}>
+              <Feather name="inbox" size={28} color={MUTED} />
+              <Text style={w.emptyText}>No transactions yet</Text>
             </View>
           )}
         </View>
       </ScrollView>
-    </KeyboardAvoidingView>
+
+      {/* Withdraw bottom sheet */}
+      <WithdrawSheet
+        visible={withdrawVisible}
+        onClose={() => setWithdrawVisible(false)}
+        withdrawable={withdrawable}
+        canWithdraw={canWithdraw}
+        requestWithdrawal={requestWithdrawal}
+      />
+    </View>
   );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const w = StyleSheet.create({
+  // Header
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 16, paddingBottom: 12,
+    backgroundColor: CARD, borderBottomWidth: 1, borderBottomColor: BORDER,
   },
-  headerTitle: { fontSize: 17, fontWeight: "800", letterSpacing: -0.2 },
+  headerTitle: { fontSize: 18, fontWeight: "800", color: TEXT },
   iconBtn: {
-    width: 38, height: 38, borderRadius: 11,
+    width: 38, height: 38, borderRadius: 12, backgroundColor: "#F1F5F9",
     alignItems: "center", justifyContent: "center",
+    borderWidth: 1, borderColor: BORDER,
   },
 
   // Balance card
   balanceCard: {
-    borderRadius: 20,
-    padding: 18,
-    gap: 14,
-    shadowColor: "#000",
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
+    backgroundColor: CARD, borderRadius: 20, borderWidth: 1, borderColor: BORDER,
+    padding: 20, gap: 14,
+    shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 3,
   },
-  balanceTopRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
-  balanceLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 0.6 },
-  balanceAmountRow: { flexDirection: "row", alignItems: "flex-end", gap: 2, marginTop: 6 },
-  balanceCurrency: { fontSize: 22, fontWeight: "700", marginBottom: 6, marginRight: 2 },
-  balanceAmount: { fontSize: 40, fontWeight: "800", letterSpacing: -1.5, lineHeight: 44 },
-  balanceDecimal: { fontSize: 20, fontWeight: "700", marginBottom: 4, marginLeft: 1 },
+  balanceTopRow: { flexDirection: "row", alignItems: "flex-start" },
+  balanceLabel: { fontSize: 10, fontWeight: "700", color: MUTED, letterSpacing: 1, marginBottom: 4 },
+  balanceAmountRow: { flexDirection: "row", alignItems: "flex-end", gap: 2 },
+  balanceCurrency: { fontSize: 22, fontWeight: "800", color: PRIMARY, marginBottom: 4 },
+  balanceAmount: { fontSize: 44, fontWeight: "900", color: TEXT, lineHeight: 50 },
+  balanceDecimal: { fontSize: 18, fontWeight: "600", color: MUTED, marginBottom: 6 },
   balanceIconWrap: {
-    width: 44, height: 44, borderRadius: 14,
-    alignItems: "center", justifyContent: "center",
-    borderWidth: 1,
+    width: 48, height: 48, borderRadius: 14, backgroundColor: "#FFF3EC",
+    alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#FFD0B0",
   },
-  balanceSplitRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 12,
-    padding: 12,
-    gap: 12,
-  },
-  balanceSplitItem: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
-  balanceSplitDot: { width: 7, height: 7, borderRadius: 4 },
-  balanceSplitDivider: { width: 1, height: 30 },
-  balanceSplitLabel: { fontSize: 9, fontWeight: "700", letterSpacing: 0.5 },
-  balanceSplitValue: { fontSize: 15, fontWeight: "800", letterSpacing: -0.3, marginTop: 1 },
+
+  // Progress bar
+  progressTrack: { height: 8, borderRadius: 4, backgroundColor: BORDER, overflow: "hidden" },
+  progressFill: { height: "100%", borderRadius: 4, backgroundColor: SUCCESS },
+  progressLabels: { flexDirection: "row", justifyContent: "space-between", marginTop: 6 },
+  progressLabelItem: { flexDirection: "row", alignItems: "center", gap: 5 },
+  progressDot: { width: 6, height: 6, borderRadius: 3 },
+  progressLabelText: { fontSize: 11, fontWeight: "600", color: MUTED },
+
+  // Today chip
   todayChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
+    flexDirection: "row", alignItems: "center", gap: 6,
+    backgroundColor: "#ECFDF5", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10,
     alignSelf: "flex-start",
-    backgroundColor: "rgba(5,150,105,0.14)",   // money token at 14% opacity
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "rgba(5,150,105,0.22)",
   },
-  todayChipText: { fontSize: 11, fontWeight: "700" },
+  todayChipText: { fontSize: 12, fontWeight: "700", color: SUCCESS },
 
-  // Withdrawal card
-  withdrawCard: {
-    borderRadius: 18,
-    borderWidth: 1,
-    overflow: "hidden",
+  // Quick actions
+  quickActions: { flexDirection: "row", gap: 10 },
+  quickBtn: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 8, paddingVertical: 13, borderRadius: 12,
   },
-  withdrawCardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 14,
-    borderBottomWidth: 1,
+  quickBtnText: { fontSize: 14, fontWeight: "700" },
+  quickBtnOutline: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 8, paddingVertical: 13, borderRadius: 12,
+    borderWidth: 1.5, borderColor: BORDER, backgroundColor: CARD,
   },
-  withdrawCardIcon: { width: 38, height: 38, borderRadius: 11, alignItems: "center", justifyContent: "center" },
-  withdrawCardTitle: { fontSize: 14, fontWeight: "800" },
-  withdrawCardSub: { fontSize: 11, fontWeight: "500", marginTop: 1 },
+  quickBtnOutlineText: { fontSize: 14, fontWeight: "700", color: TEXT },
 
-  withdrawForm: { padding: 14, gap: 14 },
-
-  inputLabel: { fontSize: 11, fontWeight: "700", letterSpacing: 0.3, marginBottom: 6 },
-  inputWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderWidth: 1.5,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    height: 48,
+  // Snapshot (earnings strip)
+  snapshotCard: {
+    backgroundColor: CARD, borderRadius: 16, borderWidth: 1, borderColor: BORDER,
+    flexDirection: "row", alignItems: "center", paddingVertical: 16,
   },
-  input: { flex: 1, fontSize: 15, fontWeight: "600" },
-  rupeePfx: { fontSize: 16, fontWeight: "700" },
-  inputError: { fontSize: 11, fontWeight: "600", marginTop: 5 },
+  snapshotItem: { flex: 1, alignItems: "center", gap: 5 },
+  snapshotSep: { width: 1, height: 50, backgroundColor: BORDER },
+  snapshotIcon: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  snapshotLabel: { fontSize: 9, fontWeight: "700", color: MUTED, letterSpacing: 0.5 },
+  snapshotValue: { fontSize: 15, fontWeight: "800", color: TEXT },
 
-  errorBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    borderRadius: 10,
-    padding: 10,
-    borderWidth: 1,
+  // Trip stats
+  tripStatsRow: { flexDirection: "row", gap: 10 },
+  tripStatCard: {
+    flex: 1, backgroundColor: CARD, borderRadius: 14, borderWidth: 1, borderColor: BORDER,
+    padding: 14, gap: 5, alignItems: "center",
   },
-  errorBoxText: { flex: 1, fontSize: 12, fontWeight: "600" },
-
-  lockNote: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderRadius: 9,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
-  lockNoteText: { fontSize: 11, fontWeight: "600" },
-
-  submitBtn: {
-    height: 50,
-    borderRadius: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  submitBtnText: { color: "#fff", fontSize: 15, fontWeight: "800" },
-
-  // Success
-  successBox: { padding: 24, alignItems: "center", gap: 10 },
-  successIconWrap: {
-    width: 60, height: 60, borderRadius: 30,
-    alignItems: "center", justifyContent: "center",
-    marginBottom: 4,
-  },
-  successTitle: { fontSize: 16, fontWeight: "800", textAlign: "center" },
-  successSub: { fontSize: 12, fontWeight: "500", textAlign: "center", lineHeight: 18 },
-  successNewBtn: {
-    marginTop: 6,
-    paddingHorizontal: 20,
-    paddingVertical: 9,
-    borderRadius: 20,
-  },
-  successNewBtnText: { fontSize: 13, fontWeight: "700" },
-
-  // Stats grid
-  statsRow:  { flexDirection: "row", gap: 10 },
-  statCard:  { flex: 1, borderRadius: 14, borderWidth: 1, padding: 14, gap: 6 },
-  statIcon:  { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  statLabel: { fontSize: 9,  fontWeight: "800", letterSpacing: 0.5 },
-  statValue: { fontSize: 20, fontWeight: "800", letterSpacing: -0.5 },
 
   // Transactions
-  transactionsSection: { gap: 12 },
-  txnHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 2 },
-  txnSectionTitle: { fontSize: 16, fontWeight: "800" },
-  txnSeeAll: { fontSize: 13, fontWeight: "700" },
-  filterRow: { flexDirection: "row", gap: 8, paddingVertical: 2, paddingRight: 8 },
-  filterPill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 18, borderWidth: 1 },
-  filterPillText: { fontSize: 12, fontWeight: "700" },
-  txnGroup: { gap: 8 },
-  txnGroupHeader: {
-    flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 4,
+  txnSection: { gap: 12 },
+  txnHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  txnSectionTitle: { fontSize: 16, fontWeight: "700", color: TEXT },
+  filterRow: { gap: 8, paddingBottom: 4 },
+  filterPill: {
+    paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, borderWidth: 1,
   },
-  txnGroupTitle: { fontSize: 11, fontWeight: "800", letterSpacing: 0.4, textTransform: "uppercase" },
-  txnGroupCount: { fontSize: 10, fontWeight: "600" },
-  txnList: { borderRadius: 14, borderWidth: 1, overflow: "hidden" },
-  txnRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12 },
-  txnIcon: { width: 36, height: 36, borderRadius: 11, alignItems: "center", justifyContent: "center" },
-  txnTitle: { fontSize: 13, fontWeight: "700" },
+  filterPillText: { fontSize: 12, fontWeight: "600" },
+  txnGroup: { gap: 6 },
+  txnGroupHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 2 },
+  txnGroupTitle: { fontSize: 12, fontWeight: "700", color: MUTED },
+  txnGroupCount: { fontSize: 11, fontWeight: "500", color: MUTED },
+  txnGroupCard: { backgroundColor: CARD, borderRadius: 14, borderWidth: 1, borderColor: BORDER, overflow: "hidden" },
+  txnRow: { flexDirection: "row", alignItems: "center", padding: 14, gap: 12 },
+  txnIcon: { width: 38, height: 38, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+  txnTitle: { fontSize: 14, fontWeight: "600", color: TEXT },
   txnMeta: { flexDirection: "row", alignItems: "center", gap: 6 },
-  txnSub: { fontSize: 11, fontWeight: "500" },
-  metaDot: { width: 3, height: 3, borderRadius: 1.5 },
-  txnAmount: { fontSize: 14, fontWeight: "800", letterSpacing: -0.2 },
-  txnDivider: { height: 1, marginLeft: 58 },
-  statusPill: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
-  statusPillText: { fontSize: 9, fontWeight: "800", letterSpacing: 0.3 },
-  emptyState: {
-    borderRadius: 14, borderWidth: 1, paddingVertical: 30, alignItems: "center", gap: 8,
+  txnSub: { fontSize: 11, color: MUTED },
+  metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: BORDER },
+  txnAmount: { fontSize: 14, fontWeight: "700" },
+  pendingPill: { backgroundColor: "#FEF3C7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  pendingText: { fontSize: 9, fontWeight: "700", color: "#D97706" },
+  txnDivider: { height: StyleSheet.hairlineWidth, backgroundColor: BORDER, marginLeft: 62 },
+  emptyBox: { alignItems: "center", paddingVertical: 32, gap: 10 },
+  emptyText: { fontSize: 14, color: MUTED, fontWeight: "500" },
+
+  // Withdraw sheet
+  sheetBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+  sheetCard: {
+    backgroundColor: CARD, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: 20, paddingTop: 16, gap: 16,
+    shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 20, shadowOffset: { width: 0, height: -4 }, elevation: 20,
   },
-  emptyText: { fontSize: 12, fontWeight: "600" },
+  sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: BORDER, alignSelf: "center", marginBottom: 4 },
+  sheetHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  sheetTitle: { fontSize: 18, fontWeight: "800", color: TEXT },
+  sheetCloseBtn: {
+    width: 32, height: 32, borderRadius: 10, backgroundColor: "#F1F5F9",
+    alignItems: "center", justifyContent: "center",
+  },
+  availableRow: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    backgroundColor: "#ECFDF5", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+  },
+  availableLabel: { fontSize: 12, fontWeight: "600", color: MUTED },
+  availableAmount: { fontSize: 18, fontWeight: "900", color: SUCCESS },
+  inputLabel: { fontSize: 11, fontWeight: "700", color: MUTED, marginBottom: 6, letterSpacing: 0.3 },
+  inputWrap: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
+    backgroundColor: "#F8FAFC",
+  },
+  input: { flex: 1, fontSize: 15, color: TEXT, fontWeight: "600" },
+  rupeePfx: { fontSize: 16, fontWeight: "700", color: MUTED },
+  inputError: { fontSize: 11, color: "#DC2626", marginTop: 4, fontWeight: "500" },
+  errorBox: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: "#FEE2E2", borderRadius: 10, borderWidth: 1, borderColor: "#DC2626",
+    paddingHorizontal: 12, paddingVertical: 8,
+  },
+  errorBoxText: { fontSize: 12, color: "#DC2626", fontWeight: "500", flex: 1 },
+  lockNote: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    backgroundColor: "#FEF3C7", paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8,
+  },
+  lockNoteText: { fontSize: 12, color: "#D97706", fontWeight: "600" },
+  submitBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+    height: 52, borderRadius: 14,
+  },
+  submitBtnText: { fontSize: 15, fontWeight: "800", color: "#fff" },
+  successBox: { alignItems: "center", paddingVertical: 20, gap: 12 },
+  successIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: "#ECFDF5", alignItems: "center", justifyContent: "center" },
+  successTitle: { fontSize: 18, fontWeight: "800", color: TEXT, textAlign: "center" },
+  successSub: { fontSize: 13, color: MUTED, textAlign: "center", lineHeight: 20 },
+  successNewBtn: { backgroundColor: "#F1F5F9", paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, marginTop: 4 },
+  successNewBtnText: { fontSize: 14, fontWeight: "700", color: TEXT },
 });
