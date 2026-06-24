@@ -109,9 +109,6 @@ export async function startFcmDispatcher(): Promise<void> {
         const doc  = change.doc;
         const data = doc.data() as Record<string, unknown>;
 
-        // Fast-path skip: if either guard field already exists, no transaction needed.
-        if (data["fcmDispatchedAt"] || data["fcmDispatchClaimedAt"]) continue;
-
         const orderId = doc.id;
 
         // ── Resolve target UIDs ──────────────────────────────────────────────
@@ -126,6 +123,16 @@ export async function startFcmDispatcher(): Promise<void> {
 
         if (targetUids.length === 0) {
           logger.warn({ orderId }, "[FCM dispatcher] Dispatched order has no target UIDs — skipping");
+          continue;
+        }
+
+        // Fast-path: the order is ALREADY claimed/dispatched (e.g. the external
+        // Firestore-side dispatcher won the claim before our snapshot arrived).
+        // Do NOT send a duplicate FCM — but still mirror the dispatch state into
+        // PG so the driver's in-app SSE popup + Accept work. This is the common
+        // production state; without it PG stays empty and the popup never shows.
+        if (data["fcmDispatchedAt"] || data["fcmDispatchClaimedAt"]) {
+          void mirrorClaimedOrderToPg(orderId, targetUids, data);
           continue;
         }
 
@@ -172,13 +179,21 @@ type OrderPayload = {
  * Firestore's optimistic-concurrency retry means only one instance commits the
  * claim write; all others re-read and see the existing claim on retry.
  *
- * Returns true  — this instance won the claim and must send FCM.
- * Returns false — already claimed or dispatched; this instance must skip.
+ * Returns "won"             — this instance won the claim and must send FCM.
+ * Returns "already_claimed"  — another dispatch owner (e.g. the external
+ *                              Firestore-side dispatcher) already set
+ *                              fcmDispatchedAt / fcmDispatchClaimedAt. This
+ *                              instance must NOT send a duplicate FCM, but it
+ *                              must still mirror the dispatch state into PG.
+ * Returns "error"            — claim transaction failed; skip entirely (state
+ *                              unknown, so do not mirror).
  */
+type FcmClaimResult = "won" | "already_claimed" | "error";
+
 async function claimFcmDispatch(
   db: FirebaseFirestore.Firestore,
   orderId: string,
-): Promise<boolean> {
+): Promise<FcmClaimResult> {
   const orderRef = db.doc(`orders/${orderId}`);
   let alreadyClaimed = false;
 
@@ -207,10 +222,10 @@ async function claimFcmDispatch(
     // Unexpected transaction failure (network, permission, etc.).
     // Treat as unclaimed so we don't silently swallow errors; the caller logs.
     logger.warn({ err, orderId }, "[FCM dispatcher] Claim transaction failed — skipping send");
-    return false;
+    return "error";
   }
 
-  return !alreadyClaimed;
+  return alreadyClaimed ? "already_claimed" : "won";
 }
 
 type SendResult = { uid: string; messageId: string } | { uid: string; error: string };
@@ -280,6 +295,54 @@ async function resolveDriverFcmToken(
   return null;
 }
 
+/**
+ * Mirror an externally-dispatched Firestore order into PG WITHOUT sending FCM.
+ *
+ * Production runs a SECOND, external Firestore-side dispatcher that claims and
+ * dispatches the order first — setting the Firestore offer fields and
+ * fcmDispatchedAt / fcmDispatchClaimedAt. When that owner wins the claim, this
+ * server must NOT send a duplicate push.  But the driver's in-app ride popup
+ * (SSE GET /api/drivers/me/offer-stream) and Accept both read PostgreSQL:
+ *   active_offer_driver_uids @> [uid] AND status='dispatched'
+ *     AND dispatch_timeout_at > now()  +  an order_offers row.
+ * If we just skip, Firestore has the offer but PG is empty → SSE returns [] →
+ * the driver never sees the popup and Accept fails with not_in_offer.
+ *
+ * So on an already-claimed order we mirror the dispatch state into PG exactly as
+ * the claim-winning path does (minus the FCM send):
+ *   - pgUpsertOrder(..., { mirrorOfferSet:true, guardRegression:true }) →
+ *     active_offer_driver_uids + dispatched_at + dispatch_timeout_at
+ *   - one pending order_offers row per Firestore activeOfferDriverUid
+ *
+ * Idempotent and safe to replay: pgUpsertOrder is guarded against regressing a
+ * claimed/terminal row, and pgCreateOffer is ON CONFLICT DO NOTHING.
+ */
+async function mirrorClaimedOrderToPg(
+  orderId: string,
+  targetUids: string[],
+  orderData: Record<string, unknown>,
+): Promise<void> {
+  logger.info({ orderId, targetCount: targetUids.length }, "[FCM CLAIM SKIP MIRROR START]");
+
+  // 1. Mirror the parent order row — active_offer_driver_uids + dispatch window.
+  try {
+    await pgUpsertOrder(orderId, orderData, { guardRegression: true, mirrorOfferSet: true });
+  } catch (err) {
+    // pgUpsertOrder is non-throwing; guard the await defensively.
+    logger.error({ err, orderId }, "[FCM CLAIM SKIP MIRROR] parent upsert failed");
+  }
+
+  // 2. Ensure a pending offer row exists for every Firestore offer target.
+  await Promise.all(
+    targetUids.map(async (uid) => {
+      const ok = await createOfferWithRetry(orderId, uid);
+      logger.info({ orderId, uid, ok }, "[FCM CLAIM SKIP MIRROR OFFER]");
+    }),
+  );
+
+  logger.info({ orderId }, "[FCM CLAIM SKIP MIRROR DONE]");
+}
+
 async function sendOrderFcm(
   db: FirebaseFirestore.Firestore,
   orderId: string,
@@ -288,9 +351,21 @@ async function sendOrderFcm(
   orderData: Record<string, unknown>,
 ): Promise<void> {
   // ── 1. Atomically claim dispatch rights ───────────────────────────────────
-  const claimed = await claimFcmDispatch(db, orderId);
-  if (!claimed) {
-    logger.info({ orderId, instanceId: INSTANCE_ID }, "[FCM dispatcher] Order already claimed or dispatched — skipping");
+  const claim = await claimFcmDispatch(db, orderId);
+  if (claim !== "won") {
+    if (claim === "already_claimed") {
+      // Another dispatch owner (the external Firestore-side dispatcher) already
+      // claimed/dispatched this order. Do NOT send a duplicate FCM — but DO
+      // mirror the dispatch state into PG so the driver's SSE popup + Accept work.
+      logger.info(
+        { orderId, instanceId: INSTANCE_ID },
+        "[FCM dispatcher] Order already claimed or dispatched — mirroring to PG, no FCM",
+      );
+      await mirrorClaimedOrderToPg(orderId, targetUids, orderData);
+    } else {
+      // claim === "error": transaction failed, state unknown — skip entirely.
+      logger.info({ orderId, instanceId: INSTANCE_ID }, "[FCM dispatcher] Claim failed — skipping");
+    }
     return;
   }
   // Claim moment, captured for the read-only PG claim shadow validator below.
