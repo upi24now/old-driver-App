@@ -42,11 +42,14 @@ const SUCCESS_SOFT = "#ECFDF5";
 const INFO         = "#2563EB";
 const INFO_SOFT    = "#EFF6FF";
 const LOCK_BG      = "#F1F5F9";
-// Soft action-card palette (compact pass)
-const MINT         = "#0EA372";
-const MINT_SOFT    = "#E9FBF2";
-const TEAL         = "#0D9488";
-const TEAL_SOFT    = "#E4F7F4";
+// Soft action-card palette
+const MINT          = "#0EA372";
+const MINT_SOFT     = "#E9FBF2";
+const MINT_BORDER   = "#C7F0DD";
+// Duty-toggle bridge constants (ON = green, OFF = red)
+const SUCCESS_TRACK = "#86EFAC";
+const DANGER        = "#DC2626";
+const DANGER_TRACK  = "#FCA5A5";
 
 // ─── Permission Health Card ───────────────────────────────────────────────────
 // Only renders when at least one permission is missing.
@@ -332,27 +335,28 @@ export default function HomeScreen() {
 
       {/* ── WALLET + HUB STRIP (always visible) ────────────────────────────── */}
       <View style={s.topStrip}>
-        <TouchableOpacity style={s.walletPill} activeOpacity={0.85} onPress={openWallet}>
-          <View style={s.walletPillIcon}>
-            <Feather name="credit-card" size={15} color={TEAL} />
+        <TouchableOpacity style={s.walletCard} activeOpacity={0.85} onPress={openWallet}>
+          <View style={s.walletCardIcon}>
+            <Feather name="credit-card" size={16} color={SUCCESS} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={s.walletPillLabel}>Wallet</Text>
-            <Text style={s.walletPillValue}>{walletText}</Text>
+            <Text style={s.walletCardLabel}>Wallet</Text>
+            <Text style={s.walletCardValue}>{walletText}</Text>
           </View>
           <Feather name="chevron-right" size={16} color={MUTED} />
         </TouchableOpacity>
 
-        <TouchableOpacity style={s.hubPill} activeOpacity={0.85} onPress={openHub}>
-          <Feather name="grid" size={15} color={PRIMARY} />
-          <Text style={s.hubPillTxt}>Delivery Hub</Text>
-          {online && (
-            <View style={[s.slotCounter, isAtCapacity && s.slotCounterFull]}>
-              <Text style={[s.slotCounterTxt, isAtCapacity && s.slotCounterTxtFull]}>
-                {activeOrderCount}/{maxActiveOrders}
-              </Text>
-            </View>
-          )}
+        <TouchableOpacity style={s.hubCard} activeOpacity={0.85} onPress={openHub}>
+          <View style={s.hubCardIcon}>
+            <Feather name="grid" size={16} color={PRIMARY} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.hubCardLabel}>Delivery Hub</Text>
+            <Text style={[s.hubCardValue, isAtCapacity && s.hubCardValueFull]}>
+              {activeOrderCount}/{maxActiveOrders}
+            </Text>
+          </View>
+          <Feather name="chevron-right" size={16} color={PRIMARY} />
         </TouchableOpacity>
       </View>
 
@@ -462,9 +466,9 @@ export default function HomeScreen() {
             <Switch
               value={online}
               onValueChange={(v) => void setOnline(v)}
-              trackColor={{ false: "#CBD5E1", true: "#FFB37A" }}
-              thumbColor={online ? PRIMARY : "#FFFFFF"}
-              ios_backgroundColor="#CBD5E1"
+              trackColor={{ false: DANGER_TRACK, true: SUCCESS_TRACK }}
+              thumbColor={online ? SUCCESS : DANGER}
+              ios_backgroundColor={DANGER_TRACK}
             />
           </View>
 
@@ -532,94 +536,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
 
-        {/* ── AVAILABLE DELIVERIES (always visible; locked/muted when offline or full) ── */}
-        <View style={s.section}>
-          <View style={s.sectionHead}>
-            <Text style={s.sectionTitle}>Available Deliveries</Text>
-            {online && !isAtCapacity && incomingRide && (
-              <View style={s.newBadge}><Text style={s.newBadgeTxt}>NEW</Text></View>
-            )}
-          </View>
-
-          <TouchableOpacity
-            style={[s.availRow, availLocked && s.availRowLocked]}
-            activeOpacity={availLocked ? 1 : 0.85}
-            onPress={openAvailable}
-            disabled={availLocked}
-          >
-            <View style={[s.availIcon, availLocked && s.availIconLocked]}>
-              <Feather
-                name={availLocked ? "lock" : "inbox"}
-                size={18}
-                color={availLocked ? MUTED : MINT}
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              {!online ? (
-                <>
-                  <Text style={s.availTitleLocked}>Go online to see nearby orders</Text>
-                  <Text style={s.availSub}>You're offline right now</Text>
-                </>
-              ) : isAtCapacity ? (
-                <>
-                  <Text style={s.availTitleLocked}>At capacity ({activeOrderCount}/{maxActiveOrders})</Text>
-                  <Text style={s.availSub}>Finish a ride to accept new orders</Text>
-                </>
-              ) : incomingRide ? (
-                <>
-                  <Text style={s.availTitle}>New order waiting</Text>
-                  <Text style={s.availSub}>Tap to view and accept</Text>
-                </>
-              ) : (
-                <>
-                  <Text style={s.availTitle}>No orders right now</Text>
-                  <Text style={s.availSub}>You'll be notified when one arrives nearby</Text>
-                </>
-              )}
-            </View>
-            {!availLocked && <Feather name="chevron-right" size={18} color={MUTED} />}
-          </TouchableOpacity>
-        </View>
-
-        {/* ── MY DELIVERIES (always visible) ─────────────────────────────────── */}
-        <View style={s.section}>
-          <View style={s.sectionHead}>
-            <Text style={s.sectionTitle}>My Deliveries</Text>
-            {activeOrderCount > 0 && (
-              <View style={s.countPill}><Text style={s.countPillTxt}>{activeOrderCount}</Text></View>
-            )}
-          </View>
-
-          {activeOrderCount === 0 ? (
-            <View style={s.emptyRow}>
-              <View style={s.availIconBlue}>
-                <Feather name="package" size={18} color={INFO} />
-              </View>
-              <Text style={s.emptyTxt}>No active deliveries right now</Text>
-            </View>
-          ) : (
-            <View style={s.myList}>
-              {activeOrders.map((o) => {
-                const isFocus = o.id === currentActiveOrderId;
-                return (
-                  <TouchableOpacity
-                    key={o.id}
-                    style={s.myRow}
-                    activeOpacity={0.85}
-                    onPress={() => { focusOrder(o.id); openHub(); }}
-                  >
-                    <View style={[s.myDot, { backgroundColor: isFocus ? PRIMARY : INFO }]} />
-                    <Text style={s.myName} numberOfLines={1}>{firstName(o.passengerName)}</Text>
-                    <Text style={s.myStatus}>{statusLabel(o.orderStatus)}</Text>
-                    <Feather name="chevron-right" size={16} color={MUTED} />
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          )}
-        </View>
-
-        {/* ── HOT ZONES / LIVE MAP ──────────────────────────────────────────── */}
+        {/* ── HOT ZONES — HERO MAP with floating deliveries card ────────────── */}
         <View style={s.mapCard}>
           <View style={s.mapHeader}>
             <View>
@@ -633,7 +550,56 @@ export default function HomeScreen() {
               </Text>
             </View>
           </View>
-          <LiveMap online={online} />
+
+          <View style={s.mapHeroWrap}>
+            <LiveMap online={online} />
+
+            {/* Floating deliveries card overlapping the bottom of the map */}
+            <View style={s.deliveriesFloat}>
+              <View style={s.floatHandle} />
+              <View style={s.floatRow}>
+                {/* Available */}
+                <TouchableOpacity
+                  style={[s.floatPill, s.floatPillAvail, availLocked && s.floatPillLocked]}
+                  activeOpacity={availLocked ? 1 : 0.85}
+                  onPress={openAvailable}
+                  disabled={availLocked}
+                >
+                  <View style={[s.floatPillIcon, availLocked && s.floatPillIconLocked]}>
+                    <Feather
+                      name={availLocked ? "lock" : "inbox"}
+                      size={16}
+                      color={availLocked ? MUTED : PRIMARY}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.floatCount, { color: availLocked ? MUTED : PRIMARY }]}>
+                      {incomingRide ? 1 : 0}
+                    </Text>
+                    <Text style={s.floatLabel}>Available</Text>
+                  </View>
+                  {!availLocked && <Feather name="chevron-right" size={16} color={PRIMARY} />}
+                </TouchableOpacity>
+
+                {/* My Deliveries */}
+                <TouchableOpacity
+                  style={[s.floatPill, s.floatPillMine]}
+                  activeOpacity={0.85}
+                  onPress={openHub}
+                >
+                  <View style={[s.floatPillIcon, s.floatPillIconMine]}>
+                    <Feather name="package" size={16} color={MINT} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.floatCount, { color: MINT }]}>{activeOrderCount}</Text>
+                    <Text style={s.floatLabel}>My Deliveries</Text>
+                  </View>
+                  <Feather name="chevron-right" size={16} color={MINT} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+
           <HotZoneStrip online={online} />
         </View>
 
@@ -700,51 +666,51 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 10,
   },
-  walletPill: {
-    flex: 1.1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 9,
-    backgroundColor: CARD,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: BORDER,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  walletPillIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
-    backgroundColor: TEAL_SOFT,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  walletPillLabel: { fontSize: 11, fontWeight: "600", color: MUTED },
-  walletPillValue: { fontSize: 15, fontWeight: "800", color: TEXT, marginTop: 1 },
-  hubPill: {
+  walletCard: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
+    gap: 10,
+    backgroundColor: MINT_SOFT,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: MINT_BORDER,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  walletCardIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    backgroundColor: CARD,
+    alignItems: "center",
     justifyContent: "center",
-    gap: 7,
+  },
+  walletCardLabel: { fontSize: 11, fontWeight: "700", color: MUTED },
+  walletCardValue: { fontSize: 18, fontWeight: "900", color: SUCCESS, marginTop: 1, letterSpacing: -0.4 },
+  hubCard: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
     backgroundColor: PRIMARY_SOFT,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: "#FFD9C2",
-    paddingHorizontal: 10,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
   },
-  hubPillTxt: { fontSize: 13, fontWeight: "800", color: PRIMARY },
-  slotCounter: {
-    backgroundColor: "#FFE0CC",
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 8,
+  hubCardIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    backgroundColor: CARD,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  slotCounterFull: { backgroundColor: "#DC2626" },
-  slotCounterTxt: { fontSize: 11, fontWeight: "800", color: PRIMARY },
-  slotCounterTxtFull: { color: "#fff" },
+  hubCardLabel: { fontSize: 11, fontWeight: "700", color: MUTED },
+  hubCardValue: { fontSize: 18, fontWeight: "900", color: PRIMARY, marginTop: 1, letterSpacing: -0.4 },
+  hubCardValueFull: { color: DANGER },
 
   // Active ride dock (pinned)
   dock: {
@@ -866,8 +832,8 @@ const s = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: BORDER,
-    padding: 4,
-    gap: 2,
+    padding: 16,
+    gap: 14,
     shadowColor: "#0F172A",
     shadowOpacity: 0.06,
     shadowRadius: 14,
@@ -876,18 +842,18 @@ const s = StyleSheet.create({
   },
   statusTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   statusInfo: { flexDirection: "row", alignItems: "center", gap: 10 },
-  statusDot: { width: 8, height: 8, borderRadius: 4 },
-  statusLabel: { fontSize: 13, lineHeight: 15, fontWeight: "800", color: TEXT, letterSpacing: -0.3 },
-  statusSub: { fontSize: 11, lineHeight: 12, fontWeight: "500", color: MUTED },
+  statusDot: { width: 9, height: 9, borderRadius: 5 },
+  statusLabel: { fontSize: 15, lineHeight: 18, fontWeight: "800", color: TEXT, letterSpacing: -0.3 },
+  statusSub: { fontSize: 12, lineHeight: 15, fontWeight: "500", color: MUTED },
   statusDivider: { height: 1, backgroundColor: BORDER },
   earningsRow: { flexDirection: "row", alignItems: "center" },
   earningsMain: { flex: 1 },
-  earningsLabel: { fontSize: 10, lineHeight: 11, fontWeight: "600", color: MUTED },
-  earningsValue: { fontSize: 14, lineHeight: 16, fontWeight: "900", color: TEXT, letterSpacing: -0.5 },
+  earningsLabel: { fontSize: 11, lineHeight: 13, fontWeight: "600", color: MUTED },
+  earningsValue: { fontSize: 22, lineHeight: 26, fontWeight: "900", color: SUCCESS, letterSpacing: -0.5 },
   earningsStat: { alignItems: "center", minWidth: 52 },
-  earningsStatNum: { fontSize: 13, lineHeight: 15, fontWeight: "800", color: TEXT },
-  earningsStatLbl: { fontSize: 10, lineHeight: 11, fontWeight: "500", color: MUTED },
-  earningsStatSep: { width: 1, height: 13, backgroundColor: BORDER },
+  earningsStatNum: { fontSize: 17, lineHeight: 20, fontWeight: "800", color: TEXT },
+  earningsStatLbl: { fontSize: 11, lineHeight: 13, fontWeight: "500", color: MUTED },
+  earningsStatSep: { width: 1, height: 26, backgroundColor: BORDER },
   goOnlineBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -895,7 +861,7 @@ const s = StyleSheet.create({
     gap: 10,
     backgroundColor: PRIMARY,
     borderRadius: 14,
-    paddingVertical: 9,
+    paddingVertical: 13,
     shadowColor: PRIMARY,
     shadowOpacity: 0.32,
     shadowRadius: 10,
@@ -949,91 +915,57 @@ const s = StyleSheet.create({
   bannerSoftTitle: { fontSize: 13, fontWeight: "700", color: TEXT, marginBottom: 1 },
   bannerSoftSub: { fontSize: 11, fontWeight: "500", color: MUTED },
 
-  // Generic section (Available / My deliveries)
-  section: {
+  // Hero map + floating deliveries card
+  mapHeroWrap: { position: "relative" },
+  deliveriesFloat: {
+    position: "absolute",
+    left: 10,
+    right: 10,
+    bottom: 10,
     backgroundColor: CARD,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: BORDER,
-    padding: 12,
-    gap: 9,
+    padding: 8,
+    gap: 6,
     shadowColor: "#0F172A",
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    shadowOpacity: 0.14,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
   },
-  sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  sectionTitle: { fontSize: 15, fontWeight: "800", color: TEXT, letterSpacing: -0.2 },
-  newBadge: { backgroundColor: PRIMARY, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  newBadgeTxt: { fontSize: 10, fontWeight: "900", color: "#fff", letterSpacing: 0.5 },
-  countPill: {
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: INFO_SOFT,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 7,
+  floatHandle: {
+    alignSelf: "center",
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#D7DEE8",
   },
-  countPillTxt: { fontSize: 12, fontWeight: "800", color: INFO },
-
-  // Available row
-  availRow: {
+  floatRow: { flexDirection: "row", gap: 8 },
+  floatPill: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    backgroundColor: MINT_SOFT,
+    gap: 8,
     borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
   },
-  availRowLocked: { backgroundColor: LOCK_BG },
-  availIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
+  floatPillAvail: { backgroundColor: PRIMARY_SOFT },
+  floatPillMine: { backgroundColor: MINT_SOFT },
+  floatPillLocked: { backgroundColor: LOCK_BG },
+  floatPillIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
     backgroundColor: CARD,
     alignItems: "center",
     justifyContent: "center",
   },
-  availIconBlue: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: CARD,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  availIconLocked: { backgroundColor: "#E2E8F0" },
-  availTitle: { fontSize: 14, fontWeight: "700", color: TEXT },
-  availTitleLocked: { fontSize: 14, fontWeight: "700", color: MUTED },
-  availSub: { fontSize: 12, fontWeight: "500", color: MUTED, marginTop: 2 },
-
-  // My deliveries list
-  myList: { gap: 8 },
-  myRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: INFO_SOFT,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  myDot: { width: 9, height: 9, borderRadius: 5 },
-  myName: { flex: 1, fontSize: 14, fontWeight: "700", color: TEXT },
-  myStatus: { fontSize: 12, fontWeight: "700", color: INFO },
-  emptyRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: INFO_SOFT,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  emptyTxt: { flex: 1, fontSize: 13, fontWeight: "500", color: MUTED },
+  floatPillIconMine: { backgroundColor: CARD },
+  floatPillIconLocked: { backgroundColor: "#E2E8F0" },
+  floatCount: { fontSize: 16, fontWeight: "900", letterSpacing: -0.3 },
+  floatLabel: { fontSize: 11, fontWeight: "700", color: MUTED, marginTop: 1 },
 
   // Hot zones / map card
   mapCard: {
