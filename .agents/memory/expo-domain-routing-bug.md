@@ -20,5 +20,12 @@ description: sisko.replit.dev is internal-only (private IP 172.24.0.5); physical
 ## Old (wrong) rule
 Previously wrote: "use `$REPLIT_DEV_DOMAIN`". That was wrong — it caused "Network request failed" on physical devices. Do not restore it.
 
+## Production static build: asset-host domain ≠ API domain
+**Rule:** the static Expo Go production build (`pnpm run build` → `scripts/build.js`) must keep TWO distinct domains: the asset-host domain (where the JS bundle/assets are served — the Replit deployment host) and the baked API domain (`EXPO_PUBLIC_DOMAIN`, what the running app calls — the VPS `api.bikecourierservice.com`). A release build must NEVER bake a Replit/tunnel host as the API domain (also pin `EXPO_PUBLIC_UPLOAD_DOMAIN` to the API domain so KYC uploads follow).
+
+**Why:** conflating them sent production driver signups/KYC/fees to the Replit api-server, invisible to the Admin Panel (which reads the VPS). Dev (`pnpm run dev`) is unaffected (runs `expo start` directly); the EAS `production` profile was already correct — only the static build conflated them.
+
+**Note:** KYC status route is `GET /api/drivers/verification-status` (token-derived uid); there is NO `/api/drivers/<uid>/kyc-status`.
+
 ## Consequence for Tier-6 SSE routes
 The SSE routes (`/api/drivers/me/offer-stream`, `/api/orders/:id/stream`) are dev-only until the API server is (re)deployed. Physical device SSE will get 404 until deployment. Keep Firestore fallback in DriverContext or deploy before testing SSE on device.

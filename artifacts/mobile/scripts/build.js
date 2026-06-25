@@ -73,6 +73,43 @@ function getDeploymentDomain() {
   process.exit(1);
 }
 
+// ─── API (backend) domain ─────────────────────────────────────────────────────
+// This is the domain the *running app* calls for every /api request (auth, KYC,
+// wallet, orders…). It is intentionally SEPARATE from the asset-host domain above,
+// which is only where the static JS bundle/assets are served from.
+//
+// Production / release builds MUST target the VPS production API and must NEVER
+// fall back to a Replit deployment domain, a Replit dev domain, or a tunnel URL.
+// If they did, driver data (signups, KYC, ₹10 onboarding fee) would be written to
+// the wrong backend and the Admin Panel — which reads https://api.bikecourierservice.com
+// — would not be able to see it.
+const PRODUCTION_API_DOMAIN = "api.bikecourierservice.com";
+
+function isReplitOrTunnelHost(host) {
+  return /(?:\.repl\.co|\.replit\.dev|\.replit\.app|\.kirk\.replit\.dev|\.riker\.replit\.dev|\.spock\.replit\.dev|ngrok|\.exp\.direct|\.exp\.host|trycloudflare\.com)/i.test(
+    host,
+  );
+}
+
+function getApiDomain() {
+  // Allow an explicit production override (e.g. a different / staging VPS host)
+  // via EXPO_PUBLIC_API_DOMAIN, but never accept a Replit or tunnel host for a
+  // production build — that is exactly the misconfiguration we are guarding against.
+  const override = process.env.EXPO_PUBLIC_API_DOMAIN;
+  if (override && override.trim()) {
+    const host = stripProtocol(override);
+    if (isReplitOrTunnelHost(host)) {
+      console.warn(
+        `[build] Ignoring EXPO_PUBLIC_API_DOMAIN="${host}" — Replit/tunnel hosts are not allowed ` +
+          `for the production API. Using ${PRODUCTION_API_DOMAIN} instead.`,
+      );
+      return PRODUCTION_API_DOMAIN;
+    }
+    return host;
+  }
+  return PRODUCTION_API_DOMAIN;
+}
+
 function prepareDirectories(timestamp) {
   console.log("Preparing build directories...");
 
@@ -139,6 +176,10 @@ async function startMetro(expoPublicDomain, expoPublicReplId) {
   const env = {
     ...process.env,
     EXPO_PUBLIC_DOMAIN: expoPublicDomain,
+    // Document uploads (storage.ts) read EXPO_PUBLIC_UPLOAD_DOMAIN first and fall
+    // back to EXPO_PUBLIC_DOMAIN — pin both to the same backend so KYC documents
+    // are uploaded to the VPS production API in release builds.
+    EXPO_PUBLIC_UPLOAD_DOMAIN: expoPublicDomain,
     EXPO_PUBLIC_REPL_ID: expoPublicReplId,
   };
 
@@ -510,15 +551,24 @@ async function main() {
 
   setupSignalHandlers();
 
-  const domain = getDeploymentDomain();
+  // Asset-host domain: where the static JS bundle/assets are served from (Replit).
+  const assetHostDomain = getDeploymentDomain();
+  // API domain: the backend the running app calls (VPS production, never Replit).
+  const apiDomain = getApiDomain();
   const expoPublicReplId = getExpoPublicReplId();
-  const baseUrl = `https://${domain}`;
+  const baseUrl = `https://${assetHostDomain}`;
   const timestamp = `${Date.now()}-${process.pid}`;
+
+  console.log("──────────────────────────────────────────────");
+  console.log(`[build] Asset host (static bundle): ${baseUrl}`);
+  console.log(`[build] API base URL (baked into app): https://${apiDomain}/api`);
+  console.log("──────────────────────────────────────────────");
 
   prepareDirectories(timestamp);
   clearMetroCache();
 
-  await startMetro(domain, expoPublicReplId);
+  // Bake the API domain (not the asset host) into the bundle via EXPO_PUBLIC_DOMAIN.
+  await startMetro(apiDomain, expoPublicReplId);
 
   const downloadTimeout = 600000;
   const downloadPromise = downloadBundlesAndManifests(timestamp);
