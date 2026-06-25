@@ -1,0 +1,30 @@
+# EAS no-VCS archive excludes — keep the upload small.
+# Dependencies (reinstalled on the build server)
+node_modules
+**/node_modules
+
+# Version control / local agent state
+.git
+.local
+.agents
+
+# Compiled output / caches
+dist
+**/dist
+tmp
+out-tsc
+*.tsbuildinfo
+.expo
+.expo-shared
+**/.expo
+coverage
+**/coverage
+
+# Logs
+*.log
+npm-debug.log
+yarn-error.log
+
+# Heavy assets / sibling artifacts not needed to build the mobile app
+attached_assets
+screenshots
