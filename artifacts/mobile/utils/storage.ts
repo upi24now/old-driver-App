@@ -4,21 +4,27 @@
  * KYC document upload helper — POSTs to the VPS API server via
  * multipart/form-data.
  *
- * Upload endpoint : https://<EXPO_PUBLIC_UPLOAD_DOMAIN>/api/kyc/upload
- * Auth            : Firebase ID token in Authorization: Bearer header
+ * Upload endpoint : https://<EXPO_PUBLIC_UPLOAD_DOMAIN>/api/kyc/upload-open
+ * Auth            : x-driver-uid header (the driver's 10-digit phone uid).
+ *                   This is the "open" endpoint — it does NOT use a Firebase
+ *                   ID token. It is gated server-side: the driver row must
+ *                   already exist in PG and registration_fee_paid must be true
+ *                   (otherwise it returns 403).
  *
- * The server saves the file to VPS local disk (no Firebase Storage) and returns:
- *   { ok: true, url: "https://api.bikecourierservice.com/uploads/kyc/<uid>/<documentType>.jpg" }
+ * One image per request. Each successful upload:
+ *   - saves the file to VPS local disk (/uploads/kyc/<uid>/<documentType>.jpg)
+ *   - upserts driver_documents (driver_uid, doc_type, url, status='pending')
+ *   - on first submit, flips drivers.documents_submitted=true and
+ *     verification_status='pending'
  *
- * That URL is stored in Firestore (documents.{documentType}.url) by
- * submitDriverDocuments() in firestore.ts.
+ * Returns:
+ *   { ok: true, documentType, url: "https://.../uploads/kyc/<uid>/<type>.jpg" }
  */
 
 import * as FileSystem from "expo-file-system/legacy";
 // FileSystemUploadType is not re-exported from the expo-file-system main index
 // in v56 — import from the legacy sub-path which is the stable, supported way.
 import { FileSystemUploadType } from "expo-file-system/legacy";
-import { firebaseAuth } from "./firebase";
 
 // ─── Upload domain ─────────────────────────────────────────────────────────────
 // EXPO_PUBLIC_UPLOAD_DOMAIN is set to api.bikecourierservice.com in the workflow.
@@ -29,17 +35,19 @@ function getUploadUrl(): string {
     process.env["EXPO_PUBLIC_UPLOAD_DOMAIN"] ??
     process.env["EXPO_PUBLIC_DOMAIN"]        ??
     "";
-  return `https://${domain}/api/kyc/upload`;
+  return `https://${domain}/api/kyc/upload-open`;
 }
 
 // ─── Main upload helper ────────────────────────────────────────────────────────
 
 /**
- * Upload a local image URI to the VPS KYC upload endpoint.
+ * Upload a single local image URI to the VPS open KYC upload endpoint.
  * Returns the publicly accessible HTTPS download URL.
  *
- * @param uid      - Driver UID (must match Firebase Auth UID)
- * @param docId    - Document slot: selfie | aadhaar | pan | license | rc | insurance
+ * @param uid      - Driver UID (the 10-digit phone number; sent as x-driver-uid)
+ * @param docId    - documentType slot. Must be one of:
+ *                   selfie | aadhaarFront | aadhaarBack | pan |
+ *                   licenseFront | licenseBack | rcFront | rcBack
  * @param localUri - Local file:// or content:// path from ImagePicker
  */
 export async function uploadDocumentImage(
@@ -47,40 +55,20 @@ export async function uploadDocumentImage(
   docId:    string,
   localUri: string,
 ): Promise<string> {
-  const uploadUrl   = getUploadUrl();
-  const currentUser = firebaseAuth.currentUser;
+  const uploadUrl = getUploadUrl();
 
   console.log("[storage] uploadDocumentImage ─────────────────────");
   console.log("[storage]   uid        :", uid);
   console.log("[storage]   docId      :", docId);
   console.log("[storage]   uploadUrl  :", uploadUrl);
   console.log("[storage]   localUri   :", localUri.slice(0, 120));
-  console.log("[storage]   authUid    :", currentUser?.uid ?? "(null — unauthenticated!)");
 
-  // ── Auth guard ─────────────────────────────────────────────────────────────
-  if (!currentUser) {
-    throw new Error("upload/unauthenticated: no Firebase Auth session");
+  // ── UID guard ──────────────────────────────────────────────────────────────
+  // The open endpoint authenticates the driver purely via the x-driver-uid
+  // header, which the server requires to be exactly 10 digits.
+  if (!/^\d{10}$/.test(uid)) {
+    console.warn(`[storage] WARNING: uid "${uid}" is not a 10-digit phone number — server will reject it`);
   }
-  if (currentUser.uid !== uid) {
-    console.warn(`[storage] WARNING: authUid "${currentUser.uid}" !== uid "${uid}"`);
-  }
-
-  // ── Get fresh ID token ─────────────────────────────────────────────────────
-  console.log("[storage] forceFreshToken=true");
-  console.log("[storage] uid=" + currentUser.uid);
-  let token: string;
-  try {
-    token = await currentUser.getIdToken(/* forceRefresh */ true);
-    console.log("[storage] token length=" + token.length);
-    console.log("[storage] token prefix=" + token.slice(0, 20));
-  } catch (err) {
-    const e = err as Error;
-    console.error("[storage] getIdToken FAILED:", e?.message);
-    throw new Error(`Could not get auth token: ${e?.message ?? String(err)}`);
-  }
-
-  const authHeader = `Bearer ${token}`;
-  console.log("[storage] Authorization header prefix=" + authHeader.slice(0, 14) + "…");
 
   // ── Multipart upload ───────────────────────────────────────────────────────
   console.log("[storage] starting FileSystem.uploadAsync…");
@@ -91,8 +79,8 @@ export async function uploadDocumentImage(
       uploadType:  FileSystemUploadType.MULTIPART,
       fieldName:   "file",
       mimeType:    "image/jpeg",
-      parameters:  { uid, documentType: docId },
-      headers:     { Authorization: authHeader },
+      parameters:  { documentType: docId },
+      headers:     { "x-driver-uid": uid },
     });
     console.log("[storage] uploadAsync complete — status:", result.status);
     console.log("[storage] response body:", (result.body ?? "").slice(0, 200));
@@ -112,7 +100,7 @@ export async function uploadDocumentImage(
     throw new Error(serverError);
   }
 
-  let parsed: { ok: boolean; url?: string; error?: string };
+  let parsed: { ok: boolean; documentType?: string; url?: string; error?: string };
   try {
     parsed = JSON.parse(result.body) as typeof parsed;
   } catch {

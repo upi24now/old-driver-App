@@ -5,19 +5,22 @@
  * Design: Uber Driver / Rapido Captain style — professional logistics
  * Primary #FF6B00 · Success #16A34A
  *
- * APIs called on submit (unchanged):
- *   1. uploadDocumentImage × N   — upload local images to VPS
- *   2. registerDriverKeys        — duplicate key check
- *   3. patchDriverVehicle        — persist vehicle selection
- *   4. patchDriverProfile        — persist profile fields
- *   5. submitDocumentsToPostgres — submit KYC docs + mark pending
- *   6. (if fee) create-order     — Razorpay order
- *   7. (if fee) verify-payment   — verify Razorpay HMAC
+ * APIs called on submit:
+ *   1. registerDriverKeys        — duplicate key check
+ *   2. patchDriverVehicle        — persist vehicle selection (creates/updates PG row)
+ *   3. patchDriverProfile        — persist profile fields
+ *   4. (if fee) create-order     — Razorpay order
+ *   5. (if fee) verify-payment   — verify Razorpay HMAC, marks registration_fee_paid
+ *   6. uploadDocumentImage × N   — POST /api/kyc/upload-open (x-driver-uid header).
+ *      Runs only AFTER the PG row exists and the fee is paid (the endpoint is
+ *      fee-gated, 403 otherwise). Each success upserts driver_documents(pending)
+ *      and flips the drivers row to documents_submitted / verification_status=pending,
+ *      so no separate /api/drivers/documents call is needed.
  */
 
 import { RazorpayWebCheckout, type RazorpayCheckoutParams } from "@/components/RazorpayWebCheckout";
 import { useDriver } from "@/contexts/DriverContext";
-import { registerDriverKeys, submitDocumentsToPostgres } from "@/utils/driver-api";
+import { registerDriverKeys } from "@/utils/driver-api";
 import { firebaseAuth } from "@/utils/firebase";
 import { getOnboardingFeeConfig } from "@/utils/config-api";
 import { patchDriverProfile, patchDriverVehicle } from "@/utils/profile-api";
@@ -538,6 +541,7 @@ export default function RegistrationScreen() {
     setVehicle,
     setProfile,
     onboardingFeeApplies,
+    onboardingFeeStatus,
     onboardingFeeAmount,
     markOnboardingFeePaidLocally,
   } = useDriver();
@@ -624,6 +628,28 @@ export default function RegistrationScreen() {
     if (uri) setter(uri);
   }
 
+  // ── Upload all KYC documents to the fee-gated open endpoint ──────────────────
+  // One image per request to POST /api/kyc/upload-open (x-driver-uid header).
+  // Must run only AFTER the driver row exists and the registration fee is paid,
+  // otherwise the endpoint returns 403. Throws on the first failed upload so the
+  // caller shows success only when every document returns ok:true.
+  const uploadAllDocuments = useCallback(async () => {
+    if (!driverUid) throw new Error("Missing driver id");
+    const toUpload: Array<{ key: string; uri: string | null }> = [
+      { key: "selfie",       uri: selfie       },
+      { key: "aadhaarFront", uri: aadhaarFront },
+      { key: "aadhaarBack",  uri: aadhaarBack  },
+      { key: "pan",          uri: pan          },
+      { key: "licenseFront", uri: licenseFront },
+      { key: "rcFront",      uri: rcFront      },
+      { key: "rcBack",       uri: rcBack       },
+    ];
+    for (const { key, uri } of toUpload) {
+      if (!uri || isRemoteUrl(uri)) continue;
+      await uploadDocumentImage(driverUid, key, uri);
+    }
+  }, [driverUid, selfie, aadhaarFront, aadhaarBack, pan, licenseFront, rcFront, rcBack]);
+
   // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(async () => {
     if (!allDone || !driverUid) return;
@@ -631,25 +657,9 @@ export default function RegistrationScreen() {
     let goingToCheckout = false;
 
     try {
-      setSubmitStep("Uploading documents…");
-      const uploads: Record<string, string> = {};
-      const toUpload: Array<{ key: string; uri: string }> = [
-        { key: "selfie",       uri: selfie!       },
-        { key: "aadhaarFront", uri: aadhaarFront! },
-        { key: "aadhaarBack",  uri: aadhaarBack!  },
-        { key: "pan",          uri: pan!          },
-        { key: "licenseFront", uri: licenseFront! },
-        { key: "rcFront",      uri: rcFront!      },
-        { key: "rcBack",       uri: rcBack!       },
-      ];
-      await Promise.all(
-        toUpload.map(async ({ key, uri }) => {
-          uploads[key] = isRemoteUrl(uri)
-            ? uri
-            : await uploadDocumentImage(driverUid, key, uri);
-        }),
-      );
-
+      // The driver row must already exist in PG before documents can be uploaded
+      // to the fee-gated /api/kyc/upload-open endpoint, so register + save the
+      // profile FIRST, pay the fee, and only THEN upload documents.
       setSubmitStep("Checking registration…");
       const keysResult = await registerDriverKeys({
         driverUid,
@@ -680,19 +690,13 @@ export default function RegistrationScreen() {
       setVehicle({ id: vehicleId, name: vehicleName });
       setProfile({ name: name.trim(), city, gender, licenseNumber: dlNumber.trim(), vehicleNumber: vehicleNum.trim() });
 
-      setSubmitStep("Submitting documents…");
-      const docsResult = await submitDocumentsToPostgres(uploads, {
-        aadhaar: aadhaarNum.replace(/\s/g, ""),
-        pan:     panNum.trim().toUpperCase(),
-        license: dlNumber.trim(),
-        rc:      rcNumber.trim(),
-      });
-      if (!docsResult.ok) {
-        Alert.alert("Submission failed", docsResult.message);
-        return;
-      }
-
-      if (onboardingFeeApplies !== true) {
+      // Fee already waived or paid → upload now (the endpoint requires
+      // registration_fee_paid=true). Otherwise pay first; the upload then runs
+      // in handlePaymentSuccess once the fee is verified.
+      const needsPayment = onboardingFeeApplies === true && onboardingFeeStatus !== "paid";
+      if (!needsPayment) {
+        setSubmitStep("Uploading documents…");
+        await uploadAllDocuments();
         showPaymentSuccess();
         return;
       }
@@ -730,10 +734,9 @@ export default function RegistrationScreen() {
       if (!goingToCheckout) setSubmitting(false);
     }
   }, [
-    allDone, driverUid, phone, selfie, aadhaarFront, aadhaarBack, aadhaarNum,
-    pan, panNum, licenseFront, rcFront, rcBack, rcNumber,
+    allDone, driverUid, phone,
     vehicleId, vehicleName, vehicleNum, dlNumber, name, city, gender,
-    onboardingFeeApplies, setVehicle, setProfile,
+    onboardingFeeApplies, onboardingFeeStatus, uploadAllDocuments, setVehicle, setProfile,
   ]);
 
   // ── Payment success ────────────────────────────────────────────────────────
@@ -760,16 +763,31 @@ export default function RegistrationScreen() {
       const data = (await res.json()) as { ok?: boolean; error?: string };
       if (!res.ok || !data.ok) {
         Alert.alert("Verification failed", data.error ?? "Please contact support.");
+        setSubmitting(false);
         return;
       }
       markOnboardingFeePaidLocally();
-      showPaymentSuccess();
     } catch {
       Alert.alert("Error", "Payment verification failed. Please contact support.");
-    } finally {
+      setSubmitting(false);
+      return;
+    }
+
+    // Fee is now paid → upload the documents. Show success only if every
+    // document uploads successfully; otherwise let the driver retry (a retry
+    // skips payment because the fee is already marked paid).
+    try {
+      setSubmitStep("Uploading documents…");
+      await uploadAllDocuments();
+      showPaymentSuccess();
+    } catch (err) {
+      Alert.alert(
+        "Upload failed",
+        `Your payment went through, but the documents could not be uploaded. Please tap Submit again to retry.\n\n${(err as Error).message}`,
+      );
       setSubmitting(false);
     }
-  }, [driverUid, markOnboardingFeePaidLocally]);
+  }, [driverUid, markOnboardingFeePaidLocally, uploadAllDocuments]);
 
   const feeRequired = onboardingFeeApplies === true;
   const submitLabel = feeRequired ? `Submit & Pay ₹${feeAmount}` : "Submit Application";

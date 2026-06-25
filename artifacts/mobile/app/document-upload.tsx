@@ -43,7 +43,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDriver } from "@/contexts/DriverContext";
 // onboardingFeeApplies is true only for brand-new signup drivers.
 import { useColors } from "@/hooks/useColors";
-import { registerDriverKeys, submitDocumentsToPostgres, type DocumentNumbers } from "@/utils/driver-api";
+import { registerDriverKeys, type DocumentNumbers } from "@/utils/driver-api";
 import { getDriverVerificationStatus } from "@/utils/profile-api";
 import { uploadDocumentImage, isRemoteUrl } from "@/utils/storage";
 import { firebaseAuth } from "@/utils/firebase";
@@ -1020,41 +1020,14 @@ export default function DocumentUploadScreen() {
     }
     console.log("[KYC] phase 2 — all VPS uploads done. docUris keys:", Object.keys(docUris));
 
-    // ── Phase 3a: PostgreSQL write (primary) ─────────────────────────────────
-    // Strip null entries — the API only accepts { docId: url } string pairs.
-    setUploadStatusText("Saving documents…");
-    console.log("[PERF] submit_documents_start ts=" + Date.now());
-    console.log("[KYC] phase 3a — PostgreSQL write start");
-    console.log("[DOC_DUAL_WRITE] pg_start");
-    const pgDocuments: Record<string, string> = {};
-    for (const [id, url] of Object.entries(docUris)) {
-      if (url !== null) pgDocuments[id] = url;
-    }
-    const pgDocNums: DocumentNumbers = {
-      aadhaar: docNumbers.aadhaar?.trim() || undefined,
-      pan:     docNumbers.pan?.trim().toUpperCase() || undefined,
-      license: docNumbers.license?.trim().toUpperCase() || undefined,
-      rc:      docNumbers.rc?.trim().toUpperCase() || undefined,
-    };
-    console.log("[KYC] phase 3a — pgDocuments keys:", JSON.stringify(Object.keys(pgDocuments)));
-    console.log("[KYC] phase 3a — pgDocNums:", JSON.stringify(pgDocNums));
-    const pgResult = await submitDocumentsToPostgres(pgDocuments, pgDocNums);
-    console.log("[PERF] submit_documents_end ts=" + Date.now());
-    if (!pgResult.ok) {
-      console.error("[KYC] phase 3a — PostgreSQL FAILED:", pgResult.error, pgResult.message);
-      console.error("[DOC_DUAL_WRITE] pg_failed error=" + pgResult.error);
-      Alert.alert(
-        "Submission Failed",
-        `Could not save documents.\n\n${pgResult.message}`,
-        [{ text: "OK" }],
-      );
-      setSubmitting(false);
-      setUploadStatusText("");
-      return;
-    }
-    console.log("[KYC] phase 3a — PostgreSQL SUCCESS, count:", pgResult.count);
-    console.log("[PG_DOCUMENTS_SAVE] uid=" + driverUid + " documents_count=" + pgResult.count);
-    console.log("[DOC_DUAL_WRITE] pg_success count=" + pgResult.count);
+    // ── Persistence ──────────────────────────────────────────────────────────
+    // No separate PostgreSQL submit step is needed: the /api/kyc/upload-open
+    // endpoint upserts each driver_documents row (status='pending') AND flips the
+    // drivers row to documents_submitted=true / verification_status='pending' on
+    // every successful upload above. Document numbers are not accepted by that
+    // endpoint, so they are not persisted here.
+    console.log("[KYC] phase 3 — uploads complete, PG rows written by upload-open");
+    void docUris;
 
     // ── Flush context state before routing ────────────────────────────────────
     // refreshKycStatus() reads the PG verification-status endpoint and calls
