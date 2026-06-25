@@ -1,5 +1,5 @@
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import {
   Animated,
   Easing,
@@ -9,9 +9,7 @@ import {
 } from "react-native";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const LOGO     = require("../assets/images/logo.png") as number;
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const FALLBACK = require("../assets/images/icon.png") as number;
+const LOGO = require("../assets/images/logo.png") as number;
 
 interface AnimatedSplashProps {
   isReady: boolean;
@@ -19,8 +17,6 @@ interface AnimatedSplashProps {
 }
 
 export function AnimatedSplash({ isReady, onAnimationComplete }: AnimatedSplashProps) {
-  const [logoError, setLogoError] = useState(false);
-
   const logoOpacity    = useRef(new Animated.Value(0)).current;
   const logoScale      = useRef(new Animated.Value(0.78)).current;
   const taglineOpacity = useRef(new Animated.Value(0)).current;
@@ -125,8 +121,7 @@ export function AnimatedSplash({ isReady, onAnimationComplete }: AnimatedSplashP
         >
           <View style={styles.iconRing}>
             <Image
-              source={logoError ? FALLBACK : LOGO}
-              onError={() => setLogoError(true)}
+              source={LOGO}
               style={styles.logo}
               resizeMode="contain"
             />
