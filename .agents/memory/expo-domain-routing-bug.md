@@ -25,6 +25,11 @@ Previously wrote: "use `$REPLIT_DEV_DOMAIN`". That was wrong — it caused "Netw
 
 **Why:** conflating them sent production driver signups/KYC/fees to the Replit api-server, invisible to the Admin Panel (which reads the VPS). Dev (`pnpm run dev`) is unaffected (runs `expo start` directly); the EAS `production` profile was already correct — only the static build conflated them.
 
+## EAS profiles: every release/distributed profile must pin the prod API
+**Rule:** in `eas.json`, both `preview` and `production` (any `distribution: internal`/release profile that ships to testers/drivers) must set `EXPO_PUBLIC_DOMAIN`+`EXPO_PUBLIC_UPLOAD_DOMAIN` = `api.bikecourierservice.com`. Only the `development` (`developmentClient: true`) profile may keep a Replit host, since it loads JS from Metro and is never distributed externally. Confirmed 2026-06-25: `preview` had been left on the stale `driver-app-upi24now.replit.app` while `production` was already correct.
+
+**Verify a baked build cheaply:** `EXPO_PUBLIC_DOMAIN=api.bikecourierservice.com pnpm exec expo export --platform android --output-dir <dir>` then `grep -a` the emitted `_expo/static/js/android/*.hbc` — Hermes keeps string literals as ASCII, so the only baked `/api` URL must be `https://api.bikecourierservice.com/api` and there must be 0 replit/ngrok/trycloudflare matches. (`exp.host`/`exp.direct` hits are Expo's own push-relay/tunnel constants from node_modules, not the app's API target — ignore them.)
+
 **Note:** KYC status route is `GET /api/drivers/verification-status` (token-derived uid); there is NO `/api/drivers/<uid>/kyc-status`.
 
 ## Consequence for Tier-6 SSE routes
