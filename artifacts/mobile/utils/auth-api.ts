@@ -13,7 +13,7 @@ console.log("[auth-api] EXPO_PUBLIC_DOMAIN (raw)  =", _rawDomain || "(not set)")
 console.log("[auth-api] BASE_URL (constructed)     =", BASE_URL);
 
 export type SendOtpResult =
-  | { ok: true;  devOtp?: string }
+  | { ok: true }
   | { ok: false; error: string };
 
 export type VerifyOtpResult =
@@ -59,10 +59,9 @@ export async function sendOtp(phone: string): Promise<SendOtpResult> {
 
   console.log("[sendOtp] response status :", res.status, res.statusText);
 
-  let json: { sent?: boolean; devOtp?: string; error?: string };
+  let json: { sent?: boolean; error?: string };
   try {
     json = (await res.json()) as typeof json;
-    console.log("[sendOtp] response body  :", JSON.stringify(json));
   } catch (parseErr) {
     const e = parseErr as Error;
     console.error("[sendOtp] failed to parse response JSON:", e?.message);
@@ -74,8 +73,8 @@ export async function sendOtp(phone: string): Promise<SendOtpResult> {
     return { ok: false, error: json.error ?? `Server error (${res.status}).` };
   }
 
-  console.log("[sendOtp] SUCCESS — devOtp present:", !!json.devOtp);
-  return { ok: true, devOtp: json.devOtp };
+  console.log("[sendOtp] SUCCESS");
+  return { ok: true };
 }
 
 export async function verifyOtpApi(phone: string, otp: string): Promise<VerifyOtpResult> {
@@ -86,7 +85,6 @@ export async function verifyOtpApi(phone: string, otp: string): Promise<VerifyOt
   console.log("[verifyOtp] ──────────────────────────────────────");
   console.log("[verifyOtp] URL     :", url);
   console.log("[verifyOtp] method  : POST");
-  console.log("[verifyOtp] body    :", body);
 
   let res: Response;
   try {
@@ -109,7 +107,6 @@ export async function verifyOtpApi(phone: string, otp: string): Promise<VerifyOt
   let json: { token?: string; error?: string };
   try {
     json = (await res.json()) as typeof json;
-    console.log("[verifyOtp] response body  :", JSON.stringify(json));
   } catch (parseErr) {
     const e = parseErr as Error;
     console.error("[verifyOtp] failed to parse response JSON:", e?.message);

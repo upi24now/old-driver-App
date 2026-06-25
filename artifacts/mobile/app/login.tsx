@@ -200,7 +200,6 @@ export default function LoginScreen() {
   const [focused,  setFocused]  = useState(false);
   const [sending,  setSending]  = useState(false);
   const [sendErr,  setSendErr]  = useState("");
-  const [devOtp,   setDevOtp]   = useState("");
 
   // OTP phase
   const [otp,       setOtp]      = useState("");
@@ -209,28 +208,10 @@ export default function LoginScreen() {
   const [timer,     setTimer]    = useState(RESEND_SECONDS);
   const [canResend, setCanResend] = useState(false);
 
-  // Debug panel — shown after OTP verify, before routing
-  const [debugData, setDebugData] = useState<{ lines: string[]; route: string } | null>(null);
-
   const digits  = phone.replace(/\D/g, "");
   const isValid = digits.length === 10;
 
   const otpDigits = otp.split("").concat(Array(OTP_LENGTH - otp.length).fill(""));
-
-  // ── Runtime diagnostic — baked at Metro build time ────────────────────────
-  const _diagDomain = process.env["EXPO_PUBLIC_DOMAIN"] ?? "(not set)";
-  const _diagUrl    = _diagDomain && _diagDomain !== "(not set)"
-    ? `https://${_diagDomain}/api`
-    : "/api";
-  const [diagHealthz, setDiagHealthz] = useState<string>("…");
-  useEffect(() => {
-    const url = `${_diagUrl}/healthz`;
-    fetch(url, { method: "GET" })
-      .then((r) => r.json())
-      .then((j: unknown) => setDiagHealthz(`${(j as { status?: string }).status ?? "?"} (${url})`))
-      .catch((e: unknown) => setDiagHealthz(`ERR: ${(e as Error).message} (${url})`));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // ── Resend countdown ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -274,7 +255,6 @@ export default function LoginScreen() {
     }
 
     setDriverPhone(digits);
-    setDevOtp(result.devOtp ?? "");
     setOtp("");
     setTimer(RESEND_SECONDS);
     setCanResend(false);
@@ -286,12 +266,10 @@ export default function LoginScreen() {
     if (!canResend) return;
     setOtp("");
     setOtpErr("");
-    setDevOtp("");
     setTimer(RESEND_SECONDS);
     setCanResend(false);
 
-    const result = await sendOtp(digits);
-    if (result.ok && result.devOtp) setDevOtp(result.devOtp);
+    await sendOtp(digits);
     setTimeout(() => otpRef.current?.focus(), 100);
   }
 
@@ -313,17 +291,6 @@ export default function LoginScreen() {
     }
 
     const nextRoute = result.nextRoute ?? (result.profileComplete ? "/(tabs)" : "/registration");
-    console.log("[LOGIN_OTP_SUCCESS] nextRoute =", nextRoute);
-
-    // ── Build debug lines including reason ────────────────────────────────
-    const lines: string[] = [...(result.debugLog ?? [])];
-    if (nextRoute === "/registration") {
-      const srv = result.debugLog?.find((l) => l.startsWith("9."))?.split(": ")[1] ?? "?";
-      lines.push(`12. REASON: server said "${srv}" → mapServerNextRoute collapsed to /registration`);
-    } else {
-      lines.push(`12. REASON: routing to ${nextRoute} (no collapse)`);
-    }
-    setDebugData({ lines, route: nextRoute });
     router.replace(nextRoute as never);
   }
 
@@ -426,16 +393,6 @@ export default function LoginScreen() {
                   <Text style={ss.errorText}>{sendErr}</Text>
                 </View>
               )}
-            </View>
-
-            {/* ── Runtime diagnostic banner (shows baked-in domain + healthz) ── */}
-            <View style={{ backgroundColor: "#1a1a2e", borderRadius: 6, padding: 8, marginBottom: 8 }}>
-              <Text style={{ color: "#aaa", fontSize: 9, fontFamily: "monospace" }}>
-                {"DOMAIN=" + _diagDomain}
-              </Text>
-              <Text style={{ color: "#aaa", fontSize: 9, fontFamily: "monospace" }}>
-                {"HEALTHZ=" + diagHealthz}
-              </Text>
             </View>
 
             {/* ── Trust note ── */}
@@ -569,11 +526,6 @@ export default function LoginScreen() {
               autoCorrect={false}
             />
 
-            {/* Dev hint */}
-            {!!devOtp && (
-              <Text style={ss.devHint}>Dev — code: {devOtp}</Text>
-            )}
-
             {/* OTP error */}
             {!!otpErr && (
               <View style={ss.otpErrRow}>
@@ -633,42 +585,6 @@ export default function LoginScreen() {
         )}
 
       </ScrollView>
-
-      {/* ── DEBUG PANEL — shown after OTP verify, blocks routing until "Proceed" ── */}
-      {!!debugData && (
-        <View style={dbg.overlay}>
-          <View style={dbg.card}>
-            <Text style={dbg.title}>🔍 OTP Debug Panel</Text>
-            <Text style={dbg.subtitle}>Read carefully before tapping Proceed</Text>
-            <ScrollView style={dbg.scroll} showsVerticalScrollIndicator>
-              {debugData.lines.map((line, i) => {
-                const isRoute  = line.startsWith("10.") || line.startsWith("11.") || line.startsWith("12.");
-                const isReason = line.startsWith("12.");
-                return (
-                  <Text
-                    key={i}
-                    style={[dbg.line, isReason && dbg.lineReason, isRoute && dbg.lineRoute]}
-                  >
-                    {line}
-                  </Text>
-                );
-              })}
-              <Text style={dbg.lineRoute}>→ will navigate to: {debugData.route}</Text>
-            </ScrollView>
-            <TouchableOpacity
-              style={dbg.proceedBtn}
-              onPress={() => {
-                const route = debugData.route;
-                setDebugData(null);
-                router.replace(route as never);
-              }}
-              activeOpacity={0.85}
-            >
-              <Text style={dbg.proceedText}>Proceed to App →</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
 
     </KeyboardAvoidingView>
   );
@@ -980,11 +896,6 @@ const ss = StyleSheet.create({
     borderRadius:    3,
     backgroundColor: D.white,
   },
-  devHint: {
-    fontSize:  12,
-    color:     D.textMuted,
-    marginTop: -4,
-  },
   otpErrRow: {
     flexDirection: "row",
     alignItems:    "center",
@@ -1067,69 +978,3 @@ const ss = StyleSheet.create({
 
 });
 
-// ─── Debug panel styles ────────────────────────────────────────────────────────
-const dbg = StyleSheet.create({
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.88)",
-    alignItems:      "center",
-    justifyContent:  "center",
-    zIndex:          9999,
-    padding:         16,
-  },
-  card: {
-    backgroundColor: "#0d1117",
-    borderRadius:    12,
-    borderWidth:     1,
-    borderColor:     "#30363d",
-    width:           "100%",
-    maxHeight:       "85%",
-    padding:         14,
-    gap:             10,
-  },
-  title: {
-    color:      "#e6edf3",
-    fontSize:   16,
-    fontWeight: "700",
-  },
-  subtitle: {
-    color:     "#8b949e",
-    fontSize:  11,
-    marginTop: -6,
-  },
-  scroll: {
-    maxHeight: 400,
-  },
-  line: {
-    color:         "#c9d1d9",
-    fontSize:      10,
-    fontFamily:    "monospace",
-    marginBottom:  4,
-    lineHeight:    16,
-  },
-  lineRoute: {
-    color:      "#58a6ff",
-    fontWeight: "600",
-  },
-  lineReason: {
-    color:         "#f85149",
-    fontWeight:    "700",
-    backgroundColor: "#1c0a0a",
-    padding:       4,
-    borderRadius:  4,
-    marginVertical: 4,
-  },
-  proceedBtn: {
-    backgroundColor: "#238636",
-    borderRadius:    8,
-    height:          44,
-    alignItems:      "center",
-    justifyContent:  "center",
-    marginTop:       6,
-  },
-  proceedText: {
-    color:      "#ffffff",
-    fontSize:   15,
-    fontWeight: "700",
-  },
-});
