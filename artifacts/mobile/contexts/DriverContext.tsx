@@ -169,6 +169,9 @@ type ConfirmOtpResult = {
   error?:          string;
   nextRoute?:      OnboardingRoute;
   debugLog?:       string[];
+  // PIN login only: true when verify-pin reported this account has no PIN set
+  // yet, so the login screen can route into first-time OTP + PIN setup.
+  pinNotFound?:    boolean;
 };
 
 type DriverState = {
@@ -1633,7 +1636,14 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     pin:   string,
   ): Promise<ConfirmOtpResult> => {
     const apiResult = await verifyPinApi(phone, pin);
-    if (!apiResult.ok) return { ok: false, profileComplete: false, error: apiResult.error };
+    if (!apiResult.ok) {
+      return {
+        ok:              false,
+        profileComplete: false,
+        error:           apiResult.error,
+        pinNotFound:     apiResult.pinNotFound,
+      };
+    }
     if (apiResult.sessionId) await setSessionId(apiResult.sessionId);
     return establishSession(apiResult.token, phone);
   };

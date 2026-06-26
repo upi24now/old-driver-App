@@ -24,7 +24,7 @@ export type VerifyOtpResult =
 
 export type VerifyPinResult =
   | { ok: true;  token: string; sessionId?: string }
-  | { ok: false; error: string };
+  | { ok: false; error: string; pinNotFound?: boolean };
 
 export async function sendOtp(phone: string): Promise<SendOtpResult> {
   const url = `${BASE_URL}/auth/send-otp`;
@@ -174,6 +174,17 @@ export async function verifyPinApi(phone: string, pin: string): Promise<VerifyPi
 
   if (!res.ok) {
     console.error("[verifyPin] server returned error:", res.status, json.error);
+    // HTTP 404 from verify-pin means this account has no login PIN set yet.
+    // Surface a machine-readable flag so the login screen can route the driver
+    // into first-time OTP + PIN setup — WITHOUT any anonymous "does a PIN
+    // exist?" lookup endpoint. The verify-pin response alone drives the UI.
+    if (res.status === 404) {
+      return {
+        ok:          false,
+        pinNotFound: true,
+        error:       json.error ?? "No PIN set for this account.",
+      };
+    }
     return { ok: false, error: json.error ?? `Server error (${res.status}).` };
   }
   if (!json.token) {
@@ -201,38 +212,9 @@ async function getIdToken(): Promise<string | null> {
   }
 }
 
-export type PinStatusResult =
-  | { ok: true;  hasPin: boolean }
-  | { ok: false; error: string };
-
 export type SetPinResult =
   | { ok: true;  sessionId?: string }
   | { ok: false; error: string };
-
-/**
- * GET /auth/pin-status — does the signed-in driver already have a login PIN?
- *
- * Returns ok:false on any auth/network/server error so the caller can safely
- * skip the PIN step and continue the existing flow rather than blocking login.
- */
-export async function getPinStatus(): Promise<PinStatusResult> {
-  const idToken = await getIdToken();
-  if (!idToken) return { ok: false, error: "Not signed in." };
-
-  try {
-    const res = await fetch(`${BASE_URL}/auth/pin-status`, {
-      headers: { Authorization: `Bearer ${idToken}` },
-    });
-    const json = (await res.json()) as { hasPin?: boolean; error?: string };
-    if (!res.ok) {
-      return { ok: false, error: json.error ?? `Server error (${res.status}).` };
-    }
-    return { ok: true, hasPin: !!json.hasPin };
-  } catch (err) {
-    const e = err as Error;
-    return { ok: false, error: `Could not check PIN status (${e?.message ?? String(err)}).` };
-  }
-}
 
 /**
  * POST /auth/set-pin — store the driver's 6-digit PIN (server hashes it).

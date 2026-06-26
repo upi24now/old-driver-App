@@ -284,6 +284,14 @@ export default function LoginScreen() {
 
     if (!result.ok) {
       setPin("");
+      // No PIN set for this number yet → send the driver straight into the OTP
+      // verification + first-time PIN setup flow. No error is shown and no
+      // anonymous "does a PIN exist?" lookup is made — the verify-pin 404
+      // response alone drives this branch.
+      if (result.pinNotFound) {
+        startOtpFlow("setup");
+        return;
+      }
       setPinErr(result.error ?? "Incorrect PIN. Please try again.");
       setTimeout(() => pinRef.current?.focus(), 100);
       return;
