@@ -137,3 +137,9 @@ id = "1ZxssgNCFTxAoJ_qShSdz"
 uri = "file://api-deploy-final-6857510.tar.gz"
 type = "unspecified"
 title = "api-deploy-final-6857510.tar.gz (bike-courier-api)"
+
+[[outputs]]
+id = "IcTOAObPmUpbzDCbHRdnV"
+uri = "file://artifacts/api-server/api-deploy-otp-fix.tar.gz"
+type = "unspecified"
+title = "Driver API deploy package (OTP routes fix) — dist + node_modules + package.json"
