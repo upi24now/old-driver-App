@@ -1,0 +1,15 @@
+{
+  "name": "bike-courier-api",
+  "version": "1.1.0-phase1",
+  "description": "Bike Courier production API (Phase 1) — unified process. Adds the additive Firestore->PostgreSQL mirror worker, gated by MIRROR_ENABLED (default OFF). No read/route/response changes vs the previous production bundle.",
+  "type": "module",
+  "private": true,
+  "main": "dist/production-api.js",
+  "scripts": {
+    "start": "node dist/production-api.js",
+    "parity": "node dist/mirror-parity.mjs"
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  }
+}

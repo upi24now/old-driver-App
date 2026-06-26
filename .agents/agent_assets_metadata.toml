@@ -143,3 +143,9 @@ id = "IcTOAObPmUpbzDCbHRdnV"
 uri = "file://artifacts/api-server/api-deploy-otp-fix.tar.gz"
 type = "unspecified"
 title = "Driver API production deploy package (OTP routes) — SHA256 c80a6bf7..."
+
+[[outputs]]
+id = "N6RlUWRQjswTtX6l2xwfm"
+uri = "file://deliverable/api-pkg-otpfix.tar.gz"
+type = "unspecified"
+title = "bike-courier-api OTP fix (api-pkg, patched)"

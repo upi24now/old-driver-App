@@ -35,6 +35,7 @@
 - [Support + Payout PG migration](support-payout-pg-migration.md) — UUID guard before PG, sender-authoritative on message routes, try/catch per call site, FOR UPDATE payout lock, FS projection as void IIFE.
 - [Firestore retirement audit](firestore-retirement-audit.md) — support + payouts now PG-authoritative (retired); KEEP forever Auth/FCM; RR dispatcher = kill switch.
 - [KYC admin read-path migration](kyc-admin-pg-read.md) — GET /api/kyc/drivers was Firestore-only; POST /api/drivers/documents is PG-only → admin invisibility gap; fixed by switching read to PG + Firestore projection on submit.
+- [Prod VPS API is a separate prebuilt bundle](prod-vps-bundle-patch.md) — live API = standalone esbuild production-api.js on VPS (source lost); patch additively by reusing top-level pool/auth/app bindings; never artifacts/api-server.
 - [EXPO_PUBLIC_DOMAIN dev vs prod routing bug](expo-domain-routing-bug.md) — mobile package.json hardcoded EXPO_PUBLIC_DOMAIN=driver-app-upi24now.replit.app; production server is a separate deployment missing newer API routes; fix: use $REPLIT_DEV_DOMAIN instead.
 - [PG offer-row FK race](pg-offer-fk-race.md) — order_offers FK needs parent orders row first; ensure pgUpsertOrder before pgCreateOffer (retry) and gate FCM on offer success; swallowed FK = not_in_offer.
 - [FCM cold-start staleness guard](fcm-coldstart-staleness.md) — Android caches last FCM tap indefinitely; must check notification age >2min before calling handleNotificationResponse, or every cold start replays stale order popup.
