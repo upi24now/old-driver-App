@@ -149,3 +149,9 @@ id = "N6RlUWRQjswTtX6l2xwfm"
 uri = "file://deliverable/api-pkg-otpfix.tar.gz"
 type = "unspecified"
 title = "bike-courier-api OTP fix (api-pkg, patched)"
+
+[[outputs]]
+id = "EaxDV4MH7D_j0RaLCm8xj"
+uri = "file://deliverable/api-pkg-baseline-otp-fixed.tar.gz"
+type = "unspecified"
+title = "api-pkg-baseline-otp-fixed.tar.gz (live baseline + OTP routes)"

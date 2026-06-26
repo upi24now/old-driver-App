@@ -36,6 +36,21 @@ PORT with NODE_ENV=development against the Replit dev DB (Firebase secrets are i
 the routes. A `relation "admin_roles" does not exist` startup warning when booting on the dev
 DB is EXPECTED/non-fatal (prod DB has those tables); the server still listens.
 
+## CRITICAL: never patch the bundle with the text `edit` tool — use byte-safe insertion
+
+The `edit`/`write` text tools round-trip the whole multi-MB bundle through a text/UTF-8
+re-encode and **silently mutate unrelated bytes** elsewhere in the file (observed: ~25
+in-place same-length substitutions in bundled charset/"chars" tables hundreds of thousands of
+lines away from the edit, plus a few KB of net size drift — NOT visible as U+FFFD, count stays
+0). A late insertion that shows `cmp`/`diff` differences *before* the insertion point is the
+tell. The deliverable must differ from the live bundle ONLY by the additive block, so:
+
+**Patch via raw bytes (Python `open(...,'rb')` / Node `Buffer`):** read pristine bundle as
+bytes, find the anchor line bytes (e.g. `b'app.use("/api", routes_default);\n'`, assert it
+occurs exactly once), build `new = orig[:idx] + block + orig[idx:]`, write binary. Then
+`cmp pristine new` must report the FIRST (and only) difference exactly at the insertion offset;
+by construction the head and tail equal the original. Always `node --check` + boot-smoke after.
+
 The VPS `package.json` lists NO dependencies (everything is bundled), so injected code CANNOT
 `import`/`require` new modules at runtime — it MUST reuse the bundle's own bundled bindings.
 Deliver as a tar of the `api-pkg` (dist/production-api.js + mirror-parity.mjs + index.mjs +
