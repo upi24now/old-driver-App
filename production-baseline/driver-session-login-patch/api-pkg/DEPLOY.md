@@ -73,18 +73,12 @@ frontend, FCM dispatcher. NO new secrets/env vars required.
   pm2 restart bike-courier-api
   pm2 logs bike-courier-api --lines 50
 
-## ROLLBACK (instant; safe to leave migration applied — new col/table simply go unused)
-  DIST=dist/production-api.js
-  cp "$DIST.bak.<timestamp>" "$DIST"                  # restore previous live (395ffcb2...)
-  sha256sum "$DIST"                                   # expect 395ffcb2...
-  pm2 restart bike-courier-api
-  # Reverting the bundle removes all session enforcement and the new PIN routes.
-  # The added DB columns/table are simply unused; no rollback SQL is required. If you
-  # must also drop them:
-  #   ALTER TABLE drivers DROP COLUMN IF EXISTS active_session_id;
-  #   ALTER TABLE drivers DROP COLUMN IF EXISTS active_session_at;
-  #   DROP TABLE IF EXISTS otp_send_events;
-  #   (leave pin_* — they belong to the PIN-login feature)
+## ROLLBACK
+  See **ROLLBACK.md** (shipped alongside this file) for the full, instant rollback
+  procedure. In short: restore the `.bak` (or the base `395ffcb2...` bundle) over
+  `dist/production-api.js`, confirm the SHA256 is `395ffcb2...`, and `pm2 restart
+  bike-courier-api`. The migration is additive-only and is safe to leave applied —
+  the new columns/table simply go unused, so re-deploy is a one-step bundle swap.
 
 ## Post-deploy verification (replace HOST + real driver ID token + phone/pin)
   # verify-pin returns a token + sessionId:

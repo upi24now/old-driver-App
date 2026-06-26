@@ -13,7 +13,9 @@ Profile / Razorpay / Customer-app logic untouched.
 | `lib/db/src/schema/drivers.ts` + `otp_send_events` schema | Canonical schema (`activeSessionId`, `activeSessionAt`, OTP send-events) |
 | `production-baseline/driver-session-login-patch/` | Byte-safe prod-bundle patch on base `395ffcb2…` |
 | `…/api-pkg/migrations/003_single_device_login.sql` | Idempotent prod migration |
-| `…/api-pkg/DEPLOY.md`, `SHA256SUMS.txt` | Deploy + rollback runbook + checksums |
+| `…/api-pkg/DEPLOY.md` | Deploy runbook + checksums |
+| `…/api-pkg/ROLLBACK.md` | Standalone instant-rollback runbook |
+| `…/api-pkg/SHA256SUMS.txt` | Self-verifying checksums (`sha256sum -c`) |
 | Mobile: `contexts/DriverContext.tsx`, `app/login.tsx`, `app/create-pin.tsx`, `utils/session.ts`, `utils/api-client.ts` | PIN-primary UI + session plumbing |
 
 ## 2. Checksums (byte-safe splice)

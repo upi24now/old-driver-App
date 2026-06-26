@@ -203,3 +203,9 @@ id = "HNOGRDkE2Eq70fyYRaAWC"
 uri = "file://production-baseline/driver-session-login-patch-21ee8ca7-20260626.tar.gz"
 type = "unspecified"
 title = "Single-Device Login — prod patch + migration + verification report"
+
+[[outputs]]
+id = "ErmLe-K8RmUnwC7Gy4hsc"
+uri = "file://production-baseline/driver-session-login-patch-395ffcb2-base-20260626.tar.gz"
+type = "unspecified"
+title = "Single-Device Login — NEW package (base 395ffcb2): patch + migration + DEPLOY + ROLLBACK + verification"
