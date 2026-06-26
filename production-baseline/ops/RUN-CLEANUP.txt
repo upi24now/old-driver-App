@@ -1,0 +1,21 @@
+ONE-TIME STALE-ORDER CLEANUP — run commands
+===========================================
+orderId  = 1cJqStLYLBmdxPbJ50j7
+driverUid= 918299013350
+
+Requires the SAME service-account env the API already uses:
+  FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY
+Requires Node >= 18 (uses built-in fetch + node:crypto; NO npm install needed).
+
+1) DRY-RUN first (reads + prints order/driver, makes NO changes):
+     node cleanup-stale-order.mjs
+
+2) APPLY (cancels this one order + clears the driver's active marker):
+     node cleanup-stale-order.mjs --apply
+
+If the vars are not already in your shell, load them from the API .env, e.g.:
+     env $(grep -v '^#' /path/to/api/.env | xargs) node cleanup-stale-order.mjs --apply
+
+Notes:
+- Touches ONLY this order + driver markers pointing at it. No deletes. No other order.
+- If Firestore is still quota-exhausted (RESOURCE_EXHAUSTED), the commit may fail; retry after quota resets.

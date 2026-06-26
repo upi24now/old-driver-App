@@ -173,3 +173,9 @@ id = "Bq6C-DiY7dsRTj3wl5bkh"
 uri = "file://production-baseline/driver-plan-patch.tar.gz"
 type = "unspecified"
 title = "Driver Plan Activation — additive patch package"
+
+[[outputs]]
+id = "RHio6QW_Ve9Ww3Zvq4x1l"
+uri = "file://production-baseline/ops/cleanup-stale-order.tar.gz"
+type = "unspecified"
+title = "cleanup-stale-order.tar.gz (cleanup script + run instructions)"
