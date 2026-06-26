@@ -724,9 +724,17 @@ export function DriverProvider({ children }: { children: ReactNode }) {
               });
               setActiveOrders(restoredRides);
               setCurrentActiveOrderId(restoredRides[0]!.id);
+            } else {
+              // PG is authoritative (HTTP 200): an empty result means this driver
+              // has NO active order. Immediately clear any stale local/current
+              // active-order state so the active-ride screen disappears and the
+              // home screen returns to the available/online state. No Firestore.
+              setActiveOrders([]);
+              setCurrentActiveOrderId(null);
             }
           }).catch(() => {
-            // Active order restore failed — driver sees no active delivery after restart.
+            // Server unreachable / non-200 — NOT authoritative. Leave existing
+            // state untouched (never resurrect stale data from Firestore).
           });
         } catch (err) {
           console.error("[Auth] background profile hydration failed:", err);

@@ -191,3 +191,9 @@ id = "mae1VElbm1YGGmNZgpIQX"
 uri = "file://production-baseline/driver-orders-patch/DEPLOY.md"
 type = "text"
 title = "DEPLOY / ROLLBACK instructions"
+
+[[outputs]]
+id = "QiGSx1aJQWPM5agLWHQpi"
+uri = "file://production-baseline/driver-app-active-order-authoritative.patch.txt"
+type = "text"
+title = "driver-app-active-order-authoritative.patch — 2-file mobile diff (firestore.ts + DriverContext.tsx)"
