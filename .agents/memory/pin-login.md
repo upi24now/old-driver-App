@@ -21,3 +21,18 @@ addons that break that bundle. scrypt is secure and dependency-free.
   counter race-safe (same pattern as OTP verify).
 - PIN columns on `drivers` are all nullable/defaulted so existing rows are unaffected.
 - Never log raw PIN (only phone last-4 / uid on reject).
+
+## Phase 2 — mobile "Create PIN" injection
+Post-OTP PIN creation is shown ONLY to drivers without a PIN, injected in
+`login.tsx` `handleVerify()` **between** OTP success and the existing
+onboarding/Home `router.replace(nextRoute)` — never on cold-start session
+restore, so existing logged-in drivers never see PIN setup.
+- Trigger source: additive `GET /auth/pin-status` (Bearer-gated, returns only
+  `{hasPin}`). New driver with no `drivers` row → `hasPin:false` (rows.length 0).
+- **Fail-open rule:** if the pin-status check errors (network/server/token), the
+  login flow MUST fall through to the original `nextRoute`. Never block login on
+  the PIN check.
+- `/create-pin` screen takes the intended route as a `next` param and
+  `router.replace(next)` after `set-pin` succeeds — it adds NO routing logic.
+- `set-pin` requires an existing driver row (404 otherwise); the mobile flow has
+  already created the row (ensureDriverSignup) by the time PIN setup runs.

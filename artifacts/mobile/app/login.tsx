@@ -31,7 +31,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
-import { sendOtp } from "@/utils/auth-api";
+import { getPinStatus, sendOtp } from "@/utils/auth-api";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const D = {
@@ -291,6 +291,22 @@ export default function LoginScreen() {
     }
 
     const nextRoute = result.nextRoute ?? (result.profileComplete ? "/(tabs)" : "/registration");
+
+    // ── Inject the "Create PIN" step ONLY for drivers without a PIN ──────────
+    // This sits between a successful OTP verify and the EXISTING onboarding/Home
+    // routing. The OTP flow and nextRoute are unchanged: if a PIN already exists
+    // (or the status check fails for any reason) we fall through to nextRoute
+    // exactly as before, so login never breaks because of this check.
+    try {
+      const pinStatus = await getPinStatus();
+      if (pinStatus.ok && !pinStatus.hasPin) {
+        router.replace({ pathname: "/create-pin", params: { next: nextRoute } });
+        return;
+      }
+    } catch (e) {
+      console.warn("[LOGIN_PIN_CHECK] pin-status failed; continuing with existing route:", e instanceof Error ? e.message : String(e));
+    }
+
     router.replace(nextRoute as never);
   }
 

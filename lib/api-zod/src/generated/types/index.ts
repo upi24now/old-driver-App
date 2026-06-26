@@ -10,6 +10,7 @@ export * from './apiErrorBody';
 export * from './createOrderRequest';
 export * from './createOrderResult';
 export * from './healthStatus';
+export * from './pinStatusResult';
 export * from './planType';
 export * from './sendOtpRequest';
 export * from './sendOtpResult';

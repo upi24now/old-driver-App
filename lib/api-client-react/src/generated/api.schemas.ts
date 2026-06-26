@@ -55,6 +55,11 @@ export interface VerifyPinResult {
   token: string;
 }
 
+export interface PinStatusResult {
+  /** True when a login PIN is set for this driver */
+  hasPin: boolean;
+}
+
 /**
  * Driver subscription plan type
  */

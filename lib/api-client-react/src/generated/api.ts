@@ -24,6 +24,7 @@ import type {
   CreateOrderRequest,
   CreateOrderResult,
   HealthStatus,
+  PinStatusResult,
   SendOtpRequest,
   SendOtpResult,
   SetPinRequest,
@@ -340,6 +341,85 @@ export const useAuthSetPin = <TError = ErrorType<ApiErrorBody>,
       > => {
       return useMutation(getAuthSetPinMutationOptions(options));
     }
+
+export const getAuthPinStatusUrl = () => {
+
+
+
+
+  return `/api/auth/pin-status`
+}
+
+/**
+ * Requires an existing Firebase session. Returns only whether a PIN hash exists for the driver — never the PIN or its hash. The mobile app uses this after a fresh OTP login to decide whether to prompt PIN creation.
+
+ * @summary Check whether the authenticated driver has a login PIN set
+ */
+export const authPinStatus = async ( options?: RequestInit): Promise<PinStatusResult> => {
+
+  return customFetch<PinStatusResult>(getAuthPinStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getAuthPinStatusQueryKey = () => {
+    return [
+    `/api/auth/pin-status`
+    ] as const;
+    }
+
+
+export const getAuthPinStatusQueryOptions = <TData = Awaited<ReturnType<typeof authPinStatus>>, TError = ErrorType<ApiErrorBody>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof authPinStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getAuthPinStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof authPinStatus>>> = ({ signal }) => authPinStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof authPinStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type AuthPinStatusQueryResult = NonNullable<Awaited<ReturnType<typeof authPinStatus>>>
+export type AuthPinStatusQueryError = ErrorType<ApiErrorBody>
+
+
+/**
+ * @summary Check whether the authenticated driver has a login PIN set
+ */
+
+export function useAuthPinStatus<TData = Awaited<ReturnType<typeof authPinStatus>>, TError = ErrorType<ApiErrorBody>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof authPinStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getAuthPinStatusQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getAuthVerifyPinUrl = () => {
 

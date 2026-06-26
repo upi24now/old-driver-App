@@ -58,6 +58,16 @@ export const AuthSetPinResponse = zod.object({
 
 
 /**
+ * Requires an existing Firebase session. Returns only whether a PIN hash exists for the driver — never the PIN or its hash. The mobile app uses this after a fresh OTP login to decide whether to prompt PIN creation.
+
+ * @summary Check whether the authenticated driver has a login PIN set
+ */
+export const AuthPinStatusResponse = zod.object({
+  "hasPin": zod.boolean().describe('True when a login PIN is set for this driver')
+})
+
+
+/**
  * Accepts phone + 6-digit PIN. On success returns the same Firebase custom token as verify-otp (uid = "91" + phone). Locks the account for 15 minutes after 5 consecutive wrong attempts. OTP login is unaffected.
 
  * @summary Verify a driver PIN and get a Firebase custom token

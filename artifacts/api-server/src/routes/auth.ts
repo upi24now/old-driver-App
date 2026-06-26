@@ -241,6 +241,29 @@ router.post("/auth/set-pin", async (req, res) => {
   }
 });
 
+// GET /auth/pin-status — Firebase-authenticated read-only check.
+// Lets the mobile app decide whether to show the "Create PIN" step after a
+// fresh OTP login. Returns { hasPin } only; never exposes the hash. OTP login
+// and all other flows are unaffected.
+router.get("/auth/pin-status", async (req, res) => {
+  const uid = await requireAuth(req, res);
+  if (!uid) return; // requireAuth already wrote a 401 JSON body.
+
+  try {
+    const rows = await db
+      .select({ pinHash: driversTable.pinHash })
+      .from(driversTable)
+      .where(eq(driversTable.uid, uid))
+      .limit(1);
+
+    const hasPin = rows.length > 0 && !!rows[0]?.pinHash;
+    res.json({ hasPin });
+  } catch (err) {
+    req.log.error({ err }, "pin-status: failed");
+    res.status(500).json({ error: "Could not check PIN status. Please try again." });
+  }
+});
+
 router.post("/auth/verify-pin", async (req, res) => {
   const { phone, pin } = req.body as { phone?: string; pin?: string };
 

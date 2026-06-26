@@ -142,6 +142,36 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorBody"
+  /auth/pin-status:
+    get:
+      operationId: authPinStatus
+      tags: [auth]
+      summary: Check whether the authenticated driver has a login PIN set
+      description: >
+        Requires an existing Firebase session. Returns only whether a PIN hash
+        exists for the driver — never the PIN or its hash. The mobile app uses
+        this after a fresh OTP login to decide whether to prompt PIN creation.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: PIN status retrieved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PinStatusResult"
+        "401":
+          description: Missing or invalid Firebase token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
+        "500":
+          description: Could not check PIN status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
   /auth/verify-pin:
     post:
       operationId: authVerifyPin
@@ -401,6 +431,15 @@ components:
           description: Firebase custom token — use with signInWithCustomToken
       required:
         - token
+    PinStatusResult:
+      type: object
+      properties:
+        hasPin:
+          type: boolean
+          description: True when a login PIN is set for this driver
+          example: false
+      required:
+        - hasPin
     PlanType:
       type: string
       enum:

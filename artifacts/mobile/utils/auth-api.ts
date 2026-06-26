@@ -1,3 +1,5 @@
+import { firebaseAuth } from "@/utils/firebase";
+
 const _rawDomain = process.env["EXPO_PUBLIC_DOMAIN"] ?? "";
 // Strip any accidental protocol prefix or trailing /api so we never produce
 // https://https://... or .../api/api regardless of how the env var is set.
@@ -124,4 +126,78 @@ export async function verifyOtpApi(phone: string, otp: string): Promise<VerifyOt
 
   console.log("[verifyOtp] SUCCESS — token received");
   return { ok: true, token: json.token };
+}
+
+// ─── PIN factor (parallel to OTP — OTP flow unchanged) ──────────────────────────
+//
+// These helpers back the post-OTP "Create PIN" step for drivers who have no PIN.
+// Both require an existing Firebase session (the driver just signed in via OTP),
+// so they send the Firebase ID token as a Bearer credential.
+
+async function getIdToken(): Promise<string | null> {
+  const user = firebaseAuth.currentUser;
+  if (!user) return null;
+  try {
+    return await user.getIdToken();
+  } catch {
+    return null;
+  }
+}
+
+export type PinStatusResult =
+  | { ok: true;  hasPin: boolean }
+  | { ok: false; error: string };
+
+export type SetPinResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+/**
+ * GET /auth/pin-status — does the signed-in driver already have a login PIN?
+ *
+ * Returns ok:false on any auth/network/server error so the caller can safely
+ * skip the PIN step and continue the existing flow rather than blocking login.
+ */
+export async function getPinStatus(): Promise<PinStatusResult> {
+  const idToken = await getIdToken();
+  if (!idToken) return { ok: false, error: "Not signed in." };
+
+  try {
+    const res = await fetch(`${BASE_URL}/auth/pin-status`, {
+      headers: { Authorization: `Bearer ${idToken}` },
+    });
+    const json = (await res.json()) as { hasPin?: boolean; error?: string };
+    if (!res.ok) {
+      return { ok: false, error: json.error ?? `Server error (${res.status}).` };
+    }
+    return { ok: true, hasPin: !!json.hasPin };
+  } catch (err) {
+    const e = err as Error;
+    return { ok: false, error: `Could not check PIN status (${e?.message ?? String(err)}).` };
+  }
+}
+
+/**
+ * POST /auth/set-pin — store the driver's 6-digit PIN (server hashes it).
+ * Requires a valid Firebase session from the just-completed OTP login.
+ */
+export async function setPin(pin: string): Promise<SetPinResult> {
+  const idToken = await getIdToken();
+  if (!idToken) return { ok: false, error: "Not signed in." };
+
+  try {
+    const res = await fetch(`${BASE_URL}/auth/set-pin`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+      body:    JSON.stringify({ pin }),
+    });
+    const json = (await res.json()) as { ok?: boolean; error?: string };
+    if (!res.ok || !json.ok) {
+      return { ok: false, error: json.error ?? `Server error (${res.status}).` };
+    }
+    return { ok: true };
+  } catch (err) {
+    const e = err as Error;
+    return { ok: false, error: `Could not save PIN (${e?.message ?? String(err)}).` };
+  }
 }
