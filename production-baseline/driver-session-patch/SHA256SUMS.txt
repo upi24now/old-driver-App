@@ -1,0 +1,4 @@
+# Driver-session additive patch — checksums
+BASE  (current live VPS bundle, OTP, no PIN):   9e4477c900b13950705f243409ad7d9516068fbae79158da9b6a04c4852817ca  base-9e4477c9-production-api.js
+PATCH (base + driver-session block, DEPLOY):    2ce3e5ea416ece4e22090965fb10fea5a2cb8bf66e3b3af0f617ad5be036b015  production-api.js
+# Inserted block size: 6794 bytes. Patched == base with exactly that block removed (proven).

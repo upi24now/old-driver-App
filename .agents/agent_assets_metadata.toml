@@ -161,3 +161,9 @@ id = "EKjfKLDpXfXvEfevH9cQa"
 uri = "file://deliverable/api-pkg-pin-routes.tar.gz"
 type = "unspecified"
 title = "VPS API package — PIN routes added (OTP+PIN, not deployed)"
+
+[[outputs]]
+id = "58-t-jXgpq1PdNu4dR6S3"
+uri = "file://production-baseline/driver-session-patch.tar.gz"
+type = "unspecified"
+title = "Driver-session API patch (GET /me + PATCH /me/fcm-token)"

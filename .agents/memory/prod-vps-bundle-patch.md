@@ -69,3 +69,23 @@ The "cannot import new modules" rule is about npm deps absent from the bundle's 
 Node CORE modules still work: `const c = await import("node:crypto")` inside a handler is valid
 (Node 24 ESM) and was proven at runtime (scrypt PIN hash/verify). Use dynamic import of
 `node:crypto` rather than assuming a bundled crypto binding exists.
+
+## Prod `drivers` schema diverges from the Replit repo schema — target the bundle's columns
+The mobile login gate is `GET /api/drivers/me` (profile-api.ts → DriverContext): any non-OK
+status makes getDriverProfile return null → app bounces to login. The live bundle had NO `/me`
+route, so it fell through to the admin-gated `GET /api/drivers/:uid` (uid="me") → 403.
+**Fix = add driver-self routes, not change the uid scheme** (uid stays `"91"+phone`).
+- The prod `drivers` table (read the bundle's compiled `pgTable("drivers",…)` for ground truth)
+  uses **`push_token`/`push_token_type`/`push_token_platform`/`push_token_updated_at`** and
+  **registration_fee_*** — it does NOT have `fcm_token`, nor the newer api-server columns
+  (`subscription_*`, `today_*`, `trips_today`, `rating`, `onboarding_fee_*`). The Replit DEV DB
+  has the OPPOSITE set (fcm_token, onboarding_fee_*, etc.). So: a `/me/fcm-token` route must
+  write `push_token` (NOT fcm_token); `/me` returns the missing app-expected fields as null.
+**Why:** the mobile app was built against the newer artifacts/api-server contract; copying that
+route verbatim writes the wrong column and 500s/silently-misses on prod.
+**How to apply:** register `app.get("/api/drivers/me")` + `app.patch(".../me/fcm-token")` BEFORE
+`app.use("/api", routes_default)` so they beat the admin `/:uid` route; reproduce
+computeOnboardingStep (account_blocked→vehicle→profile→documents→fee→reupload→pending→dashboard)
+for `nextRoute`. Smoke a real ID token by: verify-otp (TEST_OTP_PHONES) → custom token →
+Identity Toolkit `accounts:signInWithCustomToken?key=$EXPO_PUBLIC_FIREBASE_API_KEY` → idToken →
+call `/me`. To smoke against the dev DB, ALTER it into a prod-schema superset, then revert.
