@@ -89,3 +89,21 @@ computeOnboardingStep (account_blocked→vehicle→profile→documents→fee→r
 for `nextRoute`. Smoke a real ID token by: verify-otp (TEST_OTP_PHONES) → custom token →
 Identity Toolkit `accounts:signInWithCustomToken?key=$EXPO_PUBLIC_FIREBASE_API_KEY` → idToken →
 call `/me`. To smoke against the dev DB, ALTER it into a prod-schema superset, then revert.
+
+## Smoke-testing a Razorpay money-path patch WITHOUT real keys
+**Rule:** to exercise the full PG-write path of a `verify-payment` route without prod Razorpay
+secrets, boot the bundle with DUMMY `VITE_RAZORPAY_KEY_ID`/`RAZORPAY_KEY_SECRET`, manually
+`INSERT` the bridge order row (status='created'), then locally compute the signature
+`HMAC_SHA256("<order_id>|<payment_id>", <dummy_secret>)` and POST it — the route's own HMAC
+check uses the same dummy secret so it matches and the PG UPDATE runs. `create-order` with dummy
+keys returns 502 `razorpay_order_failed` (Razorpay REST rejects the key) which still proves the
+route exists (JSON, not 404). **Why:** dummy keys can't mint a real order but you fully control
+both sides of the HMAC, so verify-payment's signature gate + tx commit are testable offline.
+**How to apply:** prod reuses EXISTING env `VITE_RAZORPAY_KEY_ID`+`RAZORPAY_KEY_SECRET` (note the
+VITE_ prefix on the id) — no new secret. Plan prices/durations are server-computed, never trust client.
+
+## Prod vs dev DB subscription-column divergence
+Prod `drivers` had NO `subscription_plan`/`subscription_expires_at` (5J-Tier-3 /me read them →
+hard-null → "plan disappeared"); the Replit DEV DB already HAS them (newer api-server schema).
+**How to apply:** when smoke-cleaning the dev DB, DROP only columns/tables YOU added; leave
+pre-existing subscription cols intact. The fix is the idempotent pre-deploy migration + /me reading the cols.

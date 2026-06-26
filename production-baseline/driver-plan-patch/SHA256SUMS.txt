@@ -1,0 +1,6 @@
+# Driver plan-activation additive patch — checksums
+BASE  (current live bundle, must match before deploy):  2ce3e5ea416ece4e22090965fb10fea5a2cb8bf66e3b3af0f617ad5be036b015  base-2ce3e5ea-production-api.js
+PATCH (deploy this):                                    dedff18a3ddb71d5c1eed84614accef642163e11b77ec1f79e6e95a818d37503  production-api.js
+# Changes vs base: (1) DP block inserted (6561 bytes) before app.use("/api",routes_default);
+#                  (2) /me block subscriptionPlan/ExpiresAt now read from PG cols (+99 bytes).
+# Proven: undo both changes == base byte-for-byte.

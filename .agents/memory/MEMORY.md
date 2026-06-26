@@ -49,3 +49,4 @@
 - [Cash/COD wallet credit rule](cash-order-wallet-credit.md) — CASH/COD never credit withdrawable wallet (driver keeps cash); gate all 4 completion write paths via isCashPayment allow-list; PG & FS wallets can diverge when repairing.
 - [react-native-sse silent death](rn-sse-no-reconnect.md) — pollingInterval:0 + proxy 300s clean-close (DONE/200) dispatches no error → app's error-only reconnect never fires → offer-stream dead, foreground driver no popup (root cause = C, EventSource never recreated).
 - [Dispatch delay = engagement gap](dispatch-delay-not-pipeline.md) — "orders reach driver late" is NOT pipeline lag (dispatch is instant + re-offers ~90s); it's FCM-off (PG_FCM_SEND_ENABLED≠true) + no order TTL redispatching abandoned orders.
+- [Razorpay money-path smoke + DB divergence](prod-vps-bundle-patch.md) — test verify-payment offline via dummy key_secret + local HMAC; prod drivers lacked subscription cols (dev has them).
