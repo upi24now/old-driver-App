@@ -1,0 +1,9 @@
+# Driver Order Lifecycle additive patch — checksums
+# BASE (current live, driver-plan patch output):
+dedff18a3ddb71d5c1eed84614accef642163e11b77ec1f79e6e95a818d37503  BASE/production-api.js (dedff18a..., do NOT ship)
+# PATCH (deploy this):
+395ffcb2265179178487878f853b2a86b8eac8a53a77928737c20a28c633b719  production-api.js
+29f5dc5ae25b5c29dc402d81ae743294497dc5db3f80da37701550e1b21f56ae  migrations/002_driver_orders_pg.sql
+bd4a6dbe6cb38527e9ff8eb997e09f4796348275f3089d18e48955f3db95dfdf  ecosystem.config.cjs
+af01481c61aa48058c3afa980f84ca0ed96ed6b53dcde167675e7dd2c4caab85  package.json
+2ed3ef09beeda9834eb2b0b27df1bd391eacc762282ac9a8f813910118316249  DEPLOY.md

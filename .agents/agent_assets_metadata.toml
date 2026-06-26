@@ -179,3 +179,15 @@ id = "RHio6QW_Ve9Ww3Zvq4x1l"
 uri = "file://production-baseline/ops/cleanup-stale-order.tar.gz"
 type = "unspecified"
 title = "cleanup-stale-order.tar.gz (cleanup script + run instructions)"
+
+[[outputs]]
+id = "PjdCdzTrQmPI1XgJxtXkT"
+uri = "file://production-baseline/driver-orders-patch.tar.gz"
+type = "unspecified"
+title = "driver-orders-patch.tar.gz (PATCH SHA 395ffcb2…, DO NOT auto-deploy)"
+
+[[outputs]]
+id = "mae1VElbm1YGGmNZgpIQX"
+uri = "file://production-baseline/driver-orders-patch/DEPLOY.md"
+type = "text"
+title = "DEPLOY / ROLLBACK instructions"

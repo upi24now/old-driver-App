@@ -1,0 +1,14 @@
+{
+  "name": "bike-courier-api",
+  "version": "1.2.0-driver-orders",
+  "description": "Bike Courier production API — driver-plan bundle (dedff18a) + one additive block of 11 PG-only driver order-lifecycle routes. No Firestore in new routes, mirror stays OFF (default), no frontend/customer-app change. No behavior change until orders exist in PG.",
+  "type": "module",
+  "private": true,
+  "main": "dist/production-api.js",
+  "scripts": {
+    "start": "node dist/production-api.js"
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  }
+}
