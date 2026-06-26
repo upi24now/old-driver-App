@@ -155,3 +155,9 @@ id = "EaxDV4MH7D_j0RaLCm8xj"
 uri = "file://deliverable/api-pkg-baseline-otp-fixed.tar.gz"
 type = "unspecified"
 title = "api-pkg-baseline-otp-fixed.tar.gz (live baseline + OTP routes)"
+
+[[outputs]]
+id = "EKjfKLDpXfXvEfevH9cQa"
+uri = "file://deliverable/api-pkg-pin-routes.tar.gz"
+type = "unspecified"
+title = "VPS API package — PIN routes added (OTP+PIN, not deployed)"

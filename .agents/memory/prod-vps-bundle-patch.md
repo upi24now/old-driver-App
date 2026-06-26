@@ -56,3 +56,16 @@ The VPS `package.json` lists NO dependencies (everything is bundled), so injecte
 Deliver as a tar of the `api-pkg` (dist/production-api.js + mirror-parity.mjs + index.mjs +
 package.json + package-lock.json + ecosystem.config.cjs); operator drops in `dist/` and
 `pm2 reload bike-courier-api --update-env`. Never enable MIRROR_ENABLED in the deploy step.
+
+## No runtime DDL in injected routes (least-privilege)
+When added routes need new columns, do NOT run `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
+inside the request path. The VPS app DB role may lack ALTER → every such route returns a
+persistent 500 even when the schema is fine. Instead ship a one-time idempotent migration
+`.sql` in the package and require the operator runs it BEFORE deploy; runtime code uses only
+SELECT/UPDATE. (Caught in architect review of the PIN-routes patch.)
+
+## Node built-ins ARE available via dynamic import
+The "cannot import new modules" rule is about npm deps absent from the bundle's package.json.
+Node CORE modules still work: `const c = await import("node:crypto")` inside a handler is valid
+(Node 24 ESM) and was proven at runtime (scrypt PIN hash/verify). Use dynamic import of
+`node:crypto` rather than assuming a bundled crypto binding exists.
