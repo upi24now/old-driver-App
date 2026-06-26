@@ -41,6 +41,17 @@ export const driversTable = pgTable(
     pinFailedAttempts: integer("pin_failed_attempts").default(0).notNull(),
     pinLockedUntil:    timestamp("pin_locked_until", { withTimezone: true }),
 
+    // ── Single-device session (single-device login) ──────────────────────────
+    // One account = one active device. Every successful login (verify-pin /
+    // verify-otp / set-pin) mints a fresh random session id, stores it here,
+    // and returns it to the client, which echoes it on every authenticated
+    // request via the `x-session-id` header. When active_session_id is non-null
+    // and the header does not match, the request is rejected with 401
+    // SESSION_REPLACED so the superseded device is logged out. Nullable so
+    // existing rows (and legacy app versions) are unaffected until first login.
+    activeSessionId: text("active_session_id"),
+    activeSessionAt: timestamp("active_session_at", { withTimezone: true }),
+
     // ── Profile ──────────────────────────────────────────────────────────────
     name:          text("name"),
     city:          text("city"),

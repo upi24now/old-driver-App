@@ -1,0 +1,9 @@
+# Single-Device Login additive patch — checksums (api-pkg deployable)
+# BASE (current live, driver-orders patch output — do NOT ship):
+395ffcb2265179178487878f853b2a86b8eac8a53a77928737c20a28c633b719  BASE dist/production-api.js (395ffcb2..., do NOT ship)
+# PATCH (deploy this):
+21ee8ca710a6667fac31e518a2d6e63d15f11e7cc1132bfa4e94411e9003fd93  dist/production-api.js
+94d1bb70dc56a13015d5f138bee3c5ad125d553884f7e686976de8ed506dd4b5  migrations/003_single_device_login.sql
+4cc99ed73cbf1d3269502e8641a397757a2622c4b30ae26bd886047575395ed6  ecosystem.config.cjs
+08fd9473b6cf8e016ecca5037dd1990b2b740f5a79e526e603dbbdf7e7be2faa  package.json
+d5bd886c1b4da10690d24f3eaf0506218f4a7b2b2757a930ec3f573f28150e22  DEPLOY.md

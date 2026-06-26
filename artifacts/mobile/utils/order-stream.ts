@@ -24,6 +24,7 @@
 
 import EventSource from "react-native-sse";
 import { firebaseAuth } from "@/utils/firebase";
+import { getSessionIdSync } from "@/utils/session";
 import type { OrderDoc, OrderStatus } from "@/utils/firestore";
 
 const DOMAIN   = process.env["EXPO_PUBLIC_DOMAIN"] ?? "";
@@ -151,6 +152,11 @@ function subscribe<T>(
 
     const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
     if (lastId) headers["Last-Event-ID"] = lastId;
+    // Single-device login — the SSE stream is requireAuth-gated server-side, so
+    // it must echo the active session id like every other authenticated call.
+    // (EventSource bypasses the global fetch interceptor in utils/api-client.ts.)
+    const sid = getSessionIdSync();
+    if (sid) headers["x-session-id"] = sid;
 
     connectedAt = Date.now();
     openedAt = 0;

@@ -1,12 +1,18 @@
 import { Router } from "express";
-import { eq, lt } from "drizzle-orm";
+import { eq, lt, and, gte } from "drizzle-orm";
 import { adminAuth } from "../lib/firebase-admin";
-import { db, authOtpsTable, driversTable } from "@workspace/db";
+import { db, authOtpsTable, driversTable, otpSendEventsTable } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAuth } from "../lib/require-auth";
 import { hashPin, verifyPinHash } from "../lib/pin-hash";
+import { mintSessionId, setActiveSession } from "../lib/session";
 
 const router = Router();
+
+// ─── OTP send rate limit ────────────────────────────────────────────────────
+// At most OTP_SEND_MAX OTP requests per rolling OTP_SEND_WINDOW_MS per phone.
+const OTP_SEND_MAX       = 3;
+const OTP_SEND_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // ─── Test phone bypass ────────────────────────────────────────────────────────
 // Format: TEST_OTP_PHONES="phone1:otp1,phone2:otp2"
@@ -53,6 +59,31 @@ router.post("/auth/send-otp", async (req, res) => {
     return;
   }
 
+  // ── Rate limit: at most OTP_SEND_MAX sends per rolling window per phone ─────
+  try {
+    const windowStart = new Date(Date.now() - OTP_SEND_WINDOW_MS);
+    const recent = await db
+      .select({ id: otpSendEventsTable.id })
+      .from(otpSendEventsTable)
+      .where(
+        and(
+          eq(otpSendEventsTable.phone, phone),
+          gte(otpSendEventsTable.sentAt, windowStart),
+        ),
+      );
+    if (recent.length >= OTP_SEND_MAX) {
+      req.log.warn({ phoneSuffix: phone.slice(-4), count: recent.length }, "send-otp: rate limit exceeded");
+      res.status(429).json({
+        error: "Too many OTP requests. Please try again after 24 hours or log in with your PIN.",
+      });
+      return;
+    }
+  } catch (err) {
+    req.log.error({ err }, "send-otp: rate-limit check failed");
+    res.status(500).json({ error: "Could not send OTP. Please try again." });
+    return;
+  }
+
   // ── Real phone — PG-backed OTP ─────────────────────────────────────────────
   const otp       = Math.floor(100000 + Math.random() * 900000).toString();
   const expiresAt = new Date(Date.now() + OTP_TTL_MS);
@@ -77,6 +108,14 @@ router.post("/auth/send-otp", async (req, res) => {
     req.log.error({ err }, "send-otp: PG upsert failed");
     res.status(500).json({ error: "Could not save OTP. Please try again." });
     return;
+  }
+
+  // Record this send for the rolling rate-limit window (best-effort; a logging
+  // failure must not block a successfully-stored OTP).
+  try {
+    await db.insert(otpSendEventsTable).values({ phone });
+  } catch (err) {
+    req.log.warn({ err }, "send-otp: rate-limit event insert failed (non-fatal)");
   }
 
   req.log.info({ phoneSuffix: phone.slice(-4) }, "OTP generated and stored in PG");
@@ -179,14 +218,19 @@ router.post("/auth/verify-otp", async (req, res) => {
     req.log.info({ phoneSuffix: phone.slice(-4) }, "OTP verified");
   }
 
-  // ── Issue Firebase custom token ────────────────────────────────────────────
+  // ── Issue Firebase custom token + mint single-device session ───────────────
   try {
     const uid   = `91${phone}`;
     const auth  = await adminAuth();
     const token = await auth.createCustomToken(uid);
 
+    // Single-device login: mint a fresh session id, claim it as the active
+    // device (no-op UPDATE if the driver row doesn't exist yet), and return it.
+    const sessionId = mintSessionId();
+    await setActiveSession(uid, sessionId);
+
     req.log.info({ uid }, "OTP verified — custom token issued");
-    res.json({ token });
+    res.json({ token, sessionId });
   } catch (err) {
     req.log.error({ err }, "verify-otp custom token failed");
     res.status(500).json({ error: "Verification failed. Check Firebase Admin configuration." });
@@ -200,8 +244,8 @@ router.post("/auth/verify-otp", async (req, res) => {
 //   • POST /auth/verify-pin — phone + PIN → same custom token as verify-otp.
 // The OTP routes above are untouched. The uid scheme stays exactly "91"+phone.
 
-const PIN_MAX_ATTEMPTS = 5;
-const PIN_LOCK_MS      = 15 * 60 * 1000; // 15 minutes
+const PIN_MAX_ATTEMPTS = 3;
+const PIN_LOCK_MS      = 24 * 60 * 60 * 1000; // 24 hours
 
 router.post("/auth/set-pin", async (req, res) => {
   // Requires an existing valid Firebase session (driver already OTP-verified).
@@ -215,7 +259,8 @@ router.post("/auth/set-pin", async (req, res) => {
   }
 
   try {
-    const pinHash = await hashPin(pin); // raw PIN never stored or logged.
+    const pinHash   = await hashPin(pin); // raw PIN never stored or logged.
+    const sessionId = mintSessionId();    // first-time setup also claims this device.
     const updated = await db
       .update(driversTable)
       .set({
@@ -223,6 +268,8 @@ router.post("/auth/set-pin", async (req, res) => {
         pinSetAt:          new Date(),
         pinFailedAttempts: 0,
         pinLockedUntil:    null,
+        activeSessionId:   sessionId,
+        activeSessionAt:   new Date(),
         updatedAt:         new Date(),
       })
       .where(eq(driversTable.uid, uid))
@@ -234,7 +281,7 @@ router.post("/auth/set-pin", async (req, res) => {
     }
 
     req.log.info({ uid }, "PIN set");
-    res.json({ ok: true });
+    res.json({ ok: true, sessionId });
   } catch (err) {
     req.log.error({ err }, "set-pin: failed");
     res.status(500).json({ error: "Could not set PIN. Please try again." });
@@ -321,7 +368,7 @@ router.post("/auth/verify-pin", async (req, res) => {
               WHERE uid = ${uid}`,
         );
         if (lock) {
-          return { ok: false, status: 429, error: "Too many incorrect attempts. PIN locked for 15 minutes. Log in with OTP." };
+          return { ok: false, status: 429, error: "Too many incorrect attempts. PIN locked for 24 hours. Log in with OTP." };
         }
         return { ok: false, status: 401, error: "Incorrect PIN. Try again." };
       }
@@ -347,13 +394,18 @@ router.post("/auth/verify-pin", async (req, res) => {
     return;
   }
 
-  // ── Issue Firebase custom token (identical to verify-otp) ──────────────────
+  // ── Issue Firebase custom token + mint single-device session ───────────────
   try {
     const auth  = await adminAuth();
     const token = await auth.createCustomToken(uid);
 
+    // Single-device login: this PIN login claims the active device. Any other
+    // device's stored session id no longer matches and will be logged out.
+    const sessionId = mintSessionId();
+    await setActiveSession(uid, sessionId);
+
     req.log.info({ uid }, "PIN verified — custom token issued");
-    res.json({ token });
+    res.json({ token, sessionId });
   } catch (err) {
     req.log.error({ err }, "verify-pin custom token failed");
     res.status(500).json({ error: "Verification failed. Check Firebase Admin configuration." });

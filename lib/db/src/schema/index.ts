@@ -4,6 +4,7 @@ export * from "./orders";
 export * from "./order-offers";
 export * from "./order-otps";
 export * from "./auth-otps";
+export * from "./otp-send-events";
 export * from "./wallet";
 export * from "./dispatch-projections";
 export * from "./sse-events";

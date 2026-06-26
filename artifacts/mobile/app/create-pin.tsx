@@ -30,6 +30,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { setPin as setPinApi } from "@/utils/auth-api";
+import { setSessionId } from "@/utils/session";
 
 // ─── Design tokens (mirror login.tsx) ───────────────────────────────────────────
 const D = {
@@ -163,6 +164,12 @@ export default function CreatePinScreen() {
       setTimeout(() => confirmRef.current?.focus(), 100);
       return;
     }
+
+    // Single-device login — set-pin mints a NEW session id and stores it as the
+    // account's active session, superseding the one from verify-otp. Persist it
+    // here or the very next authenticated request from THIS device would 401
+    // SESSION_REPLACED against itself.
+    if (result.sessionId) await setSessionId(result.sessionId);
 
     // PIN saved — continue the EXISTING onboarding/Home routing unchanged.
     router.replace(nextRoute as never);

@@ -31,7 +31,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDriver } from "@/contexts/DriverContext";
-import { getPinStatus, sendOtp } from "@/utils/auth-api";
+import { sendOtp } from "@/utils/auth-api";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const D = {
@@ -54,6 +54,7 @@ const D = {
 } as const;
 
 const OTP_LENGTH     = 6;
+const PIN_LENGTH     = 6;
 const RESEND_SECONDS = 30;
 
 // ─── Responsive layout config ─────────────────────────────────────────────────
@@ -189,17 +190,29 @@ export default function LoginScreen() {
   const phoneRef = useRef<TextInput>(null);
   const otpRef   = useRef<TextInput>(null);
 
-  const { setPhone: setDriverPhone, driverUid, authLoading, isOtpVerified, confirmOtp } = useDriver();
+  const { setPhone: setDriverPhone, driverUid, authLoading, isOtpVerified, confirmOtp, confirmPin } = useDriver();
 
-  // Phase state
-  const [phase,    setPhase]    = useState<"phone" | "otp">("phone");
+  // Phase state — "login" (phone + PIN) is the daily-login surface and the
+  // default. "phone" → "otp" is the OTP flow, used ONLY for first-time PIN
+  // setup and forgot/reset; it always ends on /create-pin.
+  const [phase,    setPhase]    = useState<"login" | "phone" | "otp">("login");
   const slideAnim              = useRef(new Animated.Value(0)).current;
 
-  // Phone phase
+  // Phone / PIN-login phase
   const [phone,    setPhone]    = useState("");
   const [focused,  setFocused]  = useState(false);
   const [sending,  setSending]  = useState(false);
   const [sendErr,  setSendErr]  = useState("");
+
+  // PIN-login factor
+  const pinRef                    = useRef<TextInput>(null);
+  const [pin,          setPin]          = useState("");
+  const [verifyingPin, setVerifyingPin] = useState(false);
+  const [pinErr,       setPinErr]       = useState("");
+
+  // OTP intent — both "setup" and "forgot" land on /create-pin; only the copy
+  // shown during the OTP flow differs.
+  const [otpIntent, setOtpIntent] = useState<"setup" | "forgot">("setup");
 
   // OTP phase
   const [otp,       setOtp]      = useState("");
@@ -212,6 +225,7 @@ export default function LoginScreen() {
   const isValid = digits.length === 10;
 
   const otpDigits = otp.split("").concat(Array(OTP_LENGTH - otp.length).fill(""));
+  const pinDigits = pin.split("").concat(Array(PIN_LENGTH - pin.length).fill(""));
 
   // ── Resend countdown ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -230,7 +244,7 @@ export default function LoginScreen() {
   }, [phase]);
 
   // ── Phase transition animation ────────────────────────────────────────────
-  function transitionTo(newPhase: "phone" | "otp") {
+  function transitionTo(newPhase: "login" | "phone" | "otp") {
     Animated.timing(slideAnim, {
       toValue:         newPhase === "otp" ? 1 : 0,
       duration:        280,
@@ -238,6 +252,45 @@ export default function LoginScreen() {
       easing:          Easing.out(Easing.cubic),
     }).start(() => setPhase(newPhase));
     setPhase(newPhase);
+  }
+
+  // ── Start the OTP flow (PIN setup or reset) ───────────────────────────────
+  function startOtpFlow(intent: "setup" | "forgot") {
+    setOtpIntent(intent);
+    setSendErr("");
+    setOtp("");
+    setOtpErr("");
+    transitionTo("phone");
+  }
+
+  // ── Back to PIN login from the OTP flow ───────────────────────────────────
+  function backToPinLogin() {
+    setPin("");
+    setPinErr("");
+    setOtp("");
+    setOtpErr("");
+    transitionTo("login");
+  }
+
+  // ── Verify PIN (daily login) ──────────────────────────────────────────────
+  async function handleConfirmPin(code: string) {
+    if (verifyingPin || code.length !== PIN_LENGTH || !isValid) return;
+    setVerifyingPin(true);
+    setPinErr("");
+
+    const result = await confirmPin(digits, code);
+
+    setVerifyingPin(false);
+
+    if (!result.ok) {
+      setPin("");
+      setPinErr(result.error ?? "Incorrect PIN. Please try again.");
+      setTimeout(() => pinRef.current?.focus(), 100);
+      return;
+    }
+
+    const nextRoute = result.nextRoute ?? (result.profileComplete ? "/(tabs)" : "/registration");
+    router.replace(nextRoute as never);
   }
 
   // ── Send OTP ──────────────────────────────────────────────────────────────
@@ -292,22 +345,10 @@ export default function LoginScreen() {
 
     const nextRoute = result.nextRoute ?? (result.profileComplete ? "/(tabs)" : "/registration");
 
-    // ── Inject the "Create PIN" step ONLY for drivers without a PIN ──────────
-    // This sits between a successful OTP verify and the EXISTING onboarding/Home
-    // routing. The OTP flow and nextRoute are unchanged: if a PIN already exists
-    // (or the status check fails for any reason) we fall through to nextRoute
-    // exactly as before, so login never breaks because of this check.
-    try {
-      const pinStatus = await getPinStatus();
-      if (pinStatus.ok && !pinStatus.hasPin) {
-        router.replace({ pathname: "/create-pin", params: { next: nextRoute } });
-        return;
-      }
-    } catch (e) {
-      console.warn("[LOGIN_PIN_CHECK] pin-status failed; continuing with existing route:", e instanceof Error ? e.message : String(e));
-    }
-
-    router.replace(nextRoute as never);
+    // The OTP flow exists ONLY to set up (first-time) or reset (forgot) the PIN,
+    // so a successful OTP verify always routes to /create-pin. create-pin then
+    // continues to nextRoute once the PIN is saved.
+    router.replace({ pathname: "/create-pin", params: { next: nextRoute } });
   }
 
   console.log("[SCREEN_MOUNT] login — authLoading =", authLoading, "driverUid =", driverUid);
@@ -341,6 +382,190 @@ export default function LoginScreen() {
         overScrollMode="never"
       >
 
+        {/* ── PHASE: LOGIN (phone + PIN) ── */}
+        {phase === "login" && (
+          <>
+            {/* ── Brand hero ── */}
+            <View style={[ss.hero, { marginBottom: r.heroMb }]}>
+              <View style={[ss.logoCircle, { width: r.logoSize, height: r.logoSize, borderRadius: r.logoBorderR, marginBottom: r.logoMb }]}>
+                <Text style={[ss.logoText, { fontSize: r.logoFontSize }]}>BC</Text>
+              </View>
+              <Text style={[ss.brandName, { fontSize: r.brandSize }]}>
+                <Text style={{ color: D.text }}>Bike</Text>
+                <Text style={{ color: D.primary }}>Courier</Text>
+              </Text>
+              <Text style={[ss.partnerLabel, { marginBottom: r.partnerMb }]}>PARTNER</Text>
+              <Text style={[ss.headline, { fontSize: r.headlineSize }]}>Welcome Back</Text>
+              {r.showSubline && (
+                <Text style={ss.subline}>Log in with your mobile number & PIN</Text>
+              )}
+            </View>
+
+            {/* ── Phone input card ── */}
+            <View style={[ss.loginCard, { marginBottom: 16 }]}>
+              <Text style={ss.cardLabel}>Mobile Number</Text>
+
+              <Pressable
+                onPress={() => phoneRef.current?.focus()}
+                style={[ss.inputRow, focused && ss.inputRowFocused]}
+              >
+                <View style={ss.countryPill}>
+                  <Text style={ss.flagEmoji}>🇮🇳</Text>
+                  <Text style={ss.countryCode}>+91</Text>
+                </View>
+                <View style={ss.inputDivider} />
+                <TextInput
+                  ref={phoneRef}
+                  style={ss.phoneInput}
+                  value={phone}
+                  onChangeText={(t) => {
+                    setPhone(t.replace(/\D/g, "").slice(0, 10));
+                    setPinErr("");
+                  }}
+                  keyboardType="phone-pad"
+                  placeholder="Enter 10-digit mobile number"
+                  placeholderTextColor={D.placeholder}
+                  onFocus={() => setFocused(true)}
+                  onBlur={() => setFocused(false)}
+                  returnKeyType="next"
+                  onSubmitEditing={() => pinRef.current?.focus()}
+                  underlineColorAndroid="transparent"
+                  selectionColor={D.primary}
+                  {...(Platform.OS === "web" ? ({ outlineWidth: 0 } as object) : {})}
+                />
+              </Pressable>
+            </View>
+
+            {/* ── PIN entry ── */}
+            <View style={[ss.loginCard, { marginBottom: 12 }]}>
+              <Text style={ss.cardLabel}>6-digit PIN</Text>
+
+              <Pressable onPress={() => pinRef.current?.focus()} style={ss.pinCellsRow}>
+                {pinDigits.map((d, i) => {
+                  const isFilled = i < pin.length;
+                  const isActive = i === pin.length && !verifyingPin && isValid;
+                  const hasError = !!pinErr;
+                  return (
+                    <View
+                      key={i}
+                      style={[
+                        ss.pinCellShell,
+                        {
+                          borderColor:     hasError ? D.error : isActive ? D.primary : isFilled ? D.navy + "60" : D.cardBorder,
+                          borderWidth:     isActive || hasError ? 2 : 1,
+                          backgroundColor: isActive ? D.primarySoft : D.white,
+                        },
+                      ]}
+                    >
+                      <Text style={[ss.pinDot, { color: isActive ? D.primary : D.text }]}>
+                        {isFilled ? "●" : ""}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </Pressable>
+
+              {/* Hidden PIN input */}
+              <TextInput
+                ref={pinRef}
+                value={pin}
+                onChangeText={(t) => {
+                  if (verifyingPin) return;
+                  setPinErr("");
+                  const cleaned = t.replace(/\D/g, "").slice(0, PIN_LENGTH);
+                  setPin(cleaned);
+                  if (cleaned.length === PIN_LENGTH && isValid) void handleConfirmPin(cleaned);
+                }}
+                keyboardType="number-pad"
+                maxLength={PIN_LENGTH}
+                secureTextEntry
+                style={ss.hiddenInput}
+                caretHidden
+                selectionColor="transparent"
+                underlineColorAndroid="transparent"
+                autoComplete="off"
+                textContentType="none"
+                importantForAutofill="no"
+                autoCorrect={false}
+              />
+
+              {!!pinErr && (
+                <View style={ss.errorRow}>
+                  <Feather name="alert-circle" size={13} color={D.error} />
+                  <Text style={ss.errorText}>{pinErr}</Text>
+                </View>
+              )}
+            </View>
+
+            {/* ── Forgot PIN ── */}
+            <View style={ss.forgotRow}>
+              <TouchableOpacity
+                onPress={() => startOtpFlow("forgot")}
+                activeOpacity={0.7}
+                hitSlop={8}
+                disabled={!isValid}
+              >
+                <Text style={[ss.forgotLink, !isValid && { color: D.placeholder }]}>Forgot PIN?</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* ── Login button ── */}
+            <TouchableOpacity
+              style={[ss.continueBtn, (!isValid || pin.length < PIN_LENGTH) && ss.continueBtnDisabled, { marginBottom: r.btnMb }]}
+              onPress={() => void handleConfirmPin(pin)}
+              activeOpacity={0.85}
+              disabled={!isValid || pin.length < PIN_LENGTH || verifyingPin}
+            >
+              {verifyingPin ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <ActivityIndicator size="small" color={D.white} />
+                  <Text style={ss.continueBtnText}>Logging in...</Text>
+                </View>
+              ) : (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Text style={[ss.continueBtnText, (!isValid || pin.length < PIN_LENGTH) && ss.continueBtnTextDisabled]}>
+                    Log In
+                  </Text>
+                  {isValid && pin.length === PIN_LENGTH && (
+                    <Feather name="arrow-right" size={18} color={D.white} />
+                  )}
+                </View>
+              )}
+            </TouchableOpacity>
+
+            {/* ── First-time setup link ── */}
+            <View style={ss.setupRow}>
+              <Text style={ss.setupText}>First time here? </Text>
+              <TouchableOpacity
+                onPress={() => startOtpFlow("setup")}
+                activeOpacity={0.7}
+                hitSlop={6}
+                disabled={!isValid}
+              >
+                <Text style={[ss.setupLink, !isValid && { color: D.placeholder }]}>Set up with OTP</Text>
+              </TouchableOpacity>
+            </View>
+
+            {!isValid && (
+              <Text style={ss.setupHint}>Enter your mobile number to continue.</Text>
+            )}
+
+            {/* ── Terms ── */}
+            <View style={ss.termsBlock}>
+              <View style={ss.termsRow}>
+                <Text style={ss.termsText}>By continuing, you agree to our </Text>
+                <TouchableOpacity activeOpacity={0.7} hitSlop={6} onPress={() => router.push("/terms-and-conditions")}>
+                  <Text style={ss.termsLink}>Terms</Text>
+                </TouchableOpacity>
+                <Text style={ss.termsText}> & </Text>
+                <TouchableOpacity activeOpacity={0.7} hitSlop={6} onPress={() => router.push("/privacy-policy")}>
+                  <Text style={ss.termsLink}>Privacy Policy</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </>
+        )}
+
         {/* ── PHASE: PHONE ── */}
         {phase === "phone" && (
           <>
@@ -354,9 +579,15 @@ export default function LoginScreen() {
                 <Text style={{ color: D.primary }}>Courier</Text>
               </Text>
               <Text style={[ss.partnerLabel, { marginBottom: r.partnerMb }]}>PARTNER</Text>
-              <Text style={[ss.headline, { fontSize: r.headlineSize }]}>Welcome Partner</Text>
+              <Text style={[ss.headline, { fontSize: r.headlineSize }]}>
+                {otpIntent === "forgot" ? "Reset your PIN" : "Set up your PIN"}
+              </Text>
               {r.showSubline && (
-                <Text style={ss.subline}>Start earning with BikeCourier</Text>
+                <Text style={ss.subline}>
+                  {otpIntent === "forgot"
+                    ? "Verify your number with OTP to set a new PIN"
+                    : "Verify your number with OTP to create your PIN"}
+                </Text>
               )}
             </View>
 
@@ -455,10 +686,17 @@ export default function LoginScreen() {
                   <Text style={ss.termsLink}>Privacy Policy</Text>
                 </TouchableOpacity>
               </View>
-              <Text style={ss.termsNote}>
-                New or existing user? Verify your mobile number with OTP.
-              </Text>
             </View>
+
+            {/* ── Back to PIN login ── */}
+            <TouchableOpacity
+              style={ss.backToPinBtn}
+              onPress={backToPinLogin}
+              activeOpacity={0.7}
+            >
+              <Feather name="arrow-left" size={15} color={D.navy} />
+              <Text style={ss.changeNumText}>Back to PIN login</Text>
+            </TouchableOpacity>
           </>
         )}
 
@@ -900,6 +1138,58 @@ const ss = StyleSheet.create({
     fontSize:   22,
     fontWeight: "700",
   },
+  // ── PIN-login cells ───────────────────────────────────────────────────────
+  pinCellsRow: {
+    flexDirection:  "row",
+    gap:            8,
+    width:          "100%",
+    justifyContent: "center",
+    alignItems:     "center",
+    marginTop:      4,
+  },
+  pinCellShell: {
+    flex:           1,
+    maxWidth:       52,
+    height:         52,
+    borderRadius:   14,
+    alignItems:     "center",
+    justifyContent: "center",
+  },
+  pinDot: {
+    fontSize:   18,
+    fontWeight: "700",
+  },
+  // ── Forgot / setup links ──────────────────────────────────────────────────
+  forgotRow: {
+    alignSelf:  "flex-end",
+    marginBottom: 16,
+  },
+  forgotLink: {
+    fontSize:   13,
+    fontWeight: "700",
+    color:      D.primary,
+  },
+  setupRow: {
+    flexDirection:  "row",
+    alignItems:     "center",
+    justifyContent: "center",
+    marginBottom:   8,
+  },
+  setupText: {
+    fontSize: 13,
+    color:    D.textSecondary,
+  },
+  setupLink: {
+    fontSize:   13,
+    fontWeight: "700",
+    color:      D.primary,
+  },
+  setupHint: {
+    fontSize:     11,
+    color:        D.textMuted,
+    textAlign:    "center",
+    marginBottom: 12,
+  },
   hiddenInput: {
     position: "absolute",
     width:    1,
@@ -990,6 +1280,15 @@ const ss = StyleSheet.create({
     fontSize:   14,
     fontWeight: "600",
     color:      D.navy,
+  },
+  backToPinBtn: {
+    flexDirection:     "row",
+    alignItems:        "center",
+    justifyContent:    "center",
+    gap:               6,
+    marginTop:         16,
+    paddingVertical:   9,
+    paddingHorizontal: 14,
   },
 
 });

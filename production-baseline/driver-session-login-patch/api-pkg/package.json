@@ -1,0 +1,14 @@
+{
+  "name": "bike-courier-api",
+  "version": "1.3.0-single-device-login",
+  "description": "Bike Courier production API — driver-orders bundle (395ffcb2) + one additive block adding single-device login: PIN-primary auth (set-pin/verify-pin/pin-status), OTP rate limiting (3/24h), and x-session-id enforcement on the order-lifecycle auth gate. No Firestore for business data, no customer-app/frontend change.",
+  "type": "module",
+  "private": true,
+  "main": "dist/production-api.js",
+  "scripts": {
+    "start": "node dist/production-api.js"
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  }
+}

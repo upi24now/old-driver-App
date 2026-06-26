@@ -197,3 +197,9 @@ id = "QiGSx1aJQWPM5agLWHQpi"
 uri = "file://production-baseline/driver-app-active-order-authoritative.patch.txt"
 type = "text"
 title = "driver-app-active-order-authoritative.patch — 2-file mobile diff (firestore.ts + DriverContext.tsx)"
+
+[[outputs]]
+id = "HNOGRDkE2Eq70fyYRaAWC"
+uri = "file://production-baseline/driver-session-login-patch-21ee8ca7-20260626.tar.gz"
+type = "unspecified"
+title = "Single-Device Login — prod patch + migration + verification report"

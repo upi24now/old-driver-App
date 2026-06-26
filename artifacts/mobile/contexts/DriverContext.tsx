@@ -45,7 +45,9 @@ import {
 import { requestPayout, getWalletTransactions, getWallet } from "@/utils/wallet-api";
 import { acceptOrderViaApi } from "@/utils/delivery-api";
 export type { AcceptOrderResult };
-import { verifyOtpApi } from "@/utils/auth-api";
+import { verifyOtpApi, verifyPinApi } from "@/utils/auth-api";
+import { loadSessionId, setSessionId, clearSessionId } from "@/utils/session";
+import { installSessionFetchInterceptor, setSessionReplacedHandler } from "@/utils/api-client";
 import { patchDriverStatus, postDriverLocation } from "@/utils/driver-api";
 import {
   cancelIncomingOrderNotification,
@@ -234,6 +236,7 @@ type DriverState = {
 
   setPhone:   (p: string) => void;
   confirmOtp: (phone: string, otp: string) => Promise<ConfirmOtpResult>;
+  confirmPin: (phone: string, pin: string) => Promise<ConfirmOtpResult>;
   setProfile: (p: Profile) => void;
   setVehicle: (v: Vehicle) => void;
   signOut:    () => Promise<void>;
@@ -549,6 +552,30 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       setLocalPermissionVersion(n);
       console.log("[PERMISSION_GATE] localPermissionVersion read from AsyncStorage =", n);
       return n;
+    });
+
+    // ── Single-device login wiring ───────────────────────────────────────────
+    // 1. Load the persisted session id into the in-memory cache so the fetch
+    //    interceptor / SSE connector can read it synchronously from the very
+    //    first authenticated request.
+    // 2. Install the global fetch interceptor (injects x-session-id + detects
+    //    SESSION_REPLACED).
+    // 3. Register the SESSION_REPLACED handler: a different device has claimed
+    //    this account, so sign out and force the login screen. signOut() resets
+    //    isOtpVerified/driverUid (which _layout.tsx routes on) and clearSessionId;
+    //    the explicit router.replace guarantees the user lands on /login.
+    void loadSessionId();
+    installSessionFetchInterceptor();
+    setSessionReplacedHandler(() => {
+      console.warn("[SESSION_REPLACED] account claimed on another device — signing out");
+      void signOut().finally(() => {
+        try {
+          router.replace("/login");
+        } catch {
+          // Navigation may fail if the router is not mounted yet — _layout.tsx
+          // already routes to /login once signOut resets the auth flags.
+        }
+      });
     });
 
     // Cold-start diagnostics — logged once when DriverProvider mounts.
@@ -1233,13 +1260,16 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     return "/(tabs)";
   }
 
-  const confirmOtp = async (
+  // Shared post-credential session establishment used by BOTH confirmOtp and
+  // confirmPin. Given a Firebase custom token (returned by verify-otp OR
+  // verify-pin), it signs in, loads the PostgreSQL profile, computes the next
+  // route, and releases the layout route-guard via isOtpVerified. Callers store
+  // the single-device sessionId BEFORE invoking this, so the profile fetch
+  // already carries the x-session-id header.
+  const establishSession = async (
+    token: string,
     phone: string,
-    otp:   string,
   ): Promise<ConfirmOtpResult> => {
-    const apiResult = await verifyOtpApi(phone, otp);
-    if (!apiResult.ok) return { ok: false, profileComplete: false, error: apiResult.error };
-
     // ── Block the layout route-guard BEFORE touching Firebase Auth ────────────
     // onAuthStateChanged fires synchronously inside signInWithCustomToken and
     // immediately sets driverUid via setDriverUid(). If isOtpVerified is still
@@ -1251,7 +1281,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     setIsOtpVerifying(true);
 
     try {
-      const credential = await signInWithCustomToken(firebaseAuth, apiResult.token);
+      const credential = await signInWithCustomToken(firebaseAuth, token);
       const uid        = credential.user.uid;
       console.log("[OTP_VERIFY_SESSION_READY] Firebase session established — uid =", uid, "| isOtpVerifying guard is active");
       setDriverUid(uid);
@@ -1582,6 +1612,32 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // OTP path — first-time PIN setup and forgot/reset only. Verifies the OTP,
+  // claims this device with the server-minted session id, then establishes the
+  // Firebase session and routing.
+  const confirmOtp = async (
+    phone: string,
+    otp:   string,
+  ): Promise<ConfirmOtpResult> => {
+    const apiResult = await verifyOtpApi(phone, otp);
+    if (!apiResult.ok) return { ok: false, profileComplete: false, error: apiResult.error };
+    if (apiResult.sessionId) await setSessionId(apiResult.sessionId);
+    return establishSession(apiResult.token, phone);
+  };
+
+  // PIN path — the daily login factor (phone + 6-digit PIN). Same single-device
+  // session + routing contract as confirmOtp; the server enforces the 3-attempt
+  // / 24h lockout.
+  const confirmPin = async (
+    phone: string,
+    pin:   string,
+  ): Promise<ConfirmOtpResult> => {
+    const apiResult = await verifyPinApi(phone, pin);
+    if (!apiResult.ok) return { ok: false, profileComplete: false, error: apiResult.error };
+    if (apiResult.sessionId) await setSessionId(apiResult.sessionId);
+    return establishSession(apiResult.token, phone);
+  };
+
   const setProfile = (p: Profile) => {
     setProfileState(p);
     if (driverUid) {
@@ -1640,6 +1696,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     } catch {
       // Non-fatal — Firebase session is cleared below regardless.
     }
+    // Clear the single-device session id so the next request carries none and
+    // the device no longer claims the (now-released) server session.
+    await clearSessionId();
     // Clear the subscription cache so a different driver logging in on the same
     // device cannot inherit this driver's cached plan state.
     void AsyncStorage.removeItem(LOCAL_SUBSCRIPTION_KEY).catch(() => {});
@@ -2416,6 +2475,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         applyWalletUpdate,
         setPhone,
         confirmOtp,
+        confirmPin,
         setProfile,
         setVehicle,
         signOut,

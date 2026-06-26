@@ -19,7 +19,11 @@ export type SendOtpResult =
   | { ok: false; error: string };
 
 export type VerifyOtpResult =
-  | { ok: true;  token: string }
+  | { ok: true;  token: string; sessionId?: string }
+  | { ok: false; error: string };
+
+export type VerifyPinResult =
+  | { ok: true;  token: string; sessionId?: string }
   | { ok: false; error: string };
 
 export async function sendOtp(phone: string): Promise<SendOtpResult> {
@@ -106,7 +110,7 @@ export async function verifyOtpApi(phone: string, otp: string): Promise<VerifyOt
 
   console.log("[verifyOtp] response status :", res.status, res.statusText);
 
-  let json: { token?: string; error?: string };
+  let json: { token?: string; sessionId?: string; error?: string };
   try {
     json = (await res.json()) as typeof json;
   } catch (parseErr) {
@@ -125,7 +129,60 @@ export async function verifyOtpApi(phone: string, otp: string): Promise<VerifyOt
   }
 
   console.log("[verifyOtp] SUCCESS — token received");
-  return { ok: true, token: json.token };
+  return { ok: true, token: json.token, sessionId: json.sessionId };
+}
+
+/**
+ * POST /auth/verify-pin — daily login factor: phone + 6-digit PIN.
+ *
+ * Mirrors verify-otp's success contract (returns a Firebase custom token plus
+ * the minted single-device sessionId), but uses no Firebase session — the
+ * driver is signing in fresh. Server enforces a 3-attempt / 24h lockout.
+ */
+export async function verifyPinApi(phone: string, pin: string): Promise<VerifyPinResult> {
+  const url = `${BASE_URL}/auth/verify-pin`;
+  const body = JSON.stringify({ phone, pin });
+  const headers = { "Content-Type": "application/json" };
+
+  console.log("[verifyPin] ──────────────────────────────────────");
+  console.log("[verifyPin] URL     :", url);
+  console.log("[verifyPin] method  : POST");
+
+  let res: Response;
+  try {
+    res = await fetch(url, { method: "POST", headers, body });
+  } catch (err) {
+    const e = err as Error & { code?: string };
+    console.error("[verifyPin] fetch THREW ─────────────────────────");
+    console.error("[verifyPin]   error.message:", e?.message);
+    return {
+      ok:    false,
+      error: `Could not connect to server (${e?.message ?? String(err)}).`,
+    };
+  }
+
+  console.log("[verifyPin] response status :", res.status, res.statusText);
+
+  let json: { token?: string; sessionId?: string; error?: string };
+  try {
+    json = (await res.json()) as typeof json;
+  } catch (parseErr) {
+    const e = parseErr as Error;
+    console.error("[verifyPin] failed to parse response JSON:", e?.message);
+    return { ok: false, error: `Server returned an unexpected response (HTTP ${res.status}).` };
+  }
+
+  if (!res.ok) {
+    console.error("[verifyPin] server returned error:", res.status, json.error);
+    return { ok: false, error: json.error ?? `Server error (${res.status}).` };
+  }
+  if (!json.token) {
+    console.error("[verifyPin] no token in successful response");
+    return { ok: false, error: "No token received from server." };
+  }
+
+  console.log("[verifyPin] SUCCESS — token received");
+  return { ok: true, token: json.token, sessionId: json.sessionId };
 }
 
 // ─── PIN factor (parallel to OTP — OTP flow unchanged) ──────────────────────────
@@ -149,7 +206,7 @@ export type PinStatusResult =
   | { ok: false; error: string };
 
 export type SetPinResult =
-  | { ok: true }
+  | { ok: true;  sessionId?: string }
   | { ok: false; error: string };
 
 /**
@@ -191,11 +248,11 @@ export async function setPin(pin: string): Promise<SetPinResult> {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
       body:    JSON.stringify({ pin }),
     });
-    const json = (await res.json()) as { ok?: boolean; error?: string };
+    const json = (await res.json()) as { ok?: boolean; sessionId?: string; error?: string };
     if (!res.ok || !json.ok) {
       return { ok: false, error: json.error ?? `Server error (${res.status}).` };
     }
-    return { ok: true };
+    return { ok: true, sessionId: json.sessionId };
   } catch (err) {
     const e = err as Error;
     return { ok: false, error: `Could not save PIN (${e?.message ?? String(err)}).` };
