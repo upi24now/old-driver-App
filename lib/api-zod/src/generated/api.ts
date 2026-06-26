@@ -44,6 +44,35 @@ export const AuthVerifyOtpResponse = zod.object({
 
 
 /**
+ * Requires an existing Firebase session (driver already OTP-verified). Stores only a secure hash of the 6-digit PIN — never the raw PIN — and resets any lockout state. Runs in parallel to OTP login.
+
+ * @summary Set or replace the driver's login PIN
+ */
+export const AuthSetPinBody = zod.object({
+  "pin": zod.string().describe('6-digit numeric PIN')
+})
+
+export const AuthSetPinResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * Accepts phone + 6-digit PIN. On success returns the same Firebase custom token as verify-otp (uid = "91" + phone). Locks the account for 15 minutes after 5 consecutive wrong attempts. OTP login is unaffected.
+
+ * @summary Verify a driver PIN and get a Firebase custom token
+ */
+export const AuthVerifyPinBody = zod.object({
+  "phone": zod.string().describe('10-digit Indian mobile number (no country code)'),
+  "pin": zod.string().describe('6-digit numeric PIN')
+})
+
+export const AuthVerifyPinResponse = zod.object({
+  "token": zod.string().describe('Firebase custom token — use with signInWithCustomToken')
+})
+
+
+/**
  * Creates a Razorpay payment order server-side. The mobile app receives the order ID and public key ID, then opens the Razorpay checkout. The Razorpay secret key is never exposed to the client.
 
  * @summary Create a Razorpay order for a driver plan

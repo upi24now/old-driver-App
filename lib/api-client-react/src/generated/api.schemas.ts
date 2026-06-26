@@ -34,6 +34,27 @@ export interface ApiErrorBody {
   error: string;
 }
 
+export interface SetPinRequest {
+  /** 6-digit numeric PIN */
+  pin: string;
+}
+
+export interface SetPinResult {
+  ok: boolean;
+}
+
+export interface VerifyPinRequest {
+  /** 10-digit Indian mobile number (no country code) */
+  phone: string;
+  /** 6-digit numeric PIN */
+  pin: string;
+}
+
+export interface VerifyPinResult {
+  /** Firebase custom token — use with signInWithCustomToken */
+  token: string;
+}
+
 /**
  * Driver subscription plan type
  */

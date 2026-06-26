@@ -31,6 +31,16 @@ export const driversTable = pgTable(
     uid:   text("uid").primaryKey(),           // Firebase Auth UID
     phone: text("phone").unique().notNull(),   // E.164; set at first login
 
+    // ── PIN login (Phase 1 — backend-only) ───────────────────────────────────
+    // Optional 6-digit PIN as a PARALLEL auth factor alongside OTP (OTP is
+    // unchanged). pin_hash stores ONLY a scrypt hash — never the raw PIN.
+    // The lockout fields throttle brute-force on POST /api/auth/verify-pin.
+    // All four are nullable / default so existing driver rows are unaffected.
+    pinHash:           text("pin_hash"),
+    pinSetAt:          timestamp("pin_set_at", { withTimezone: true }),
+    pinFailedAttempts: integer("pin_failed_attempts").default(0).notNull(),
+    pinLockedUntil:    timestamp("pin_locked_until", { withTimezone: true }),
+
     // ── Profile ──────────────────────────────────────────────────────────────
     name:          text("name"),
     city:          text("city"),

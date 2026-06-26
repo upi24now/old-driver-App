@@ -94,6 +94,106 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorBody"
+  /auth/set-pin:
+    post:
+      operationId: authSetPin
+      tags: [auth]
+      summary: Set or replace the driver's login PIN
+      description: >
+        Requires an existing Firebase session (driver already OTP-verified).
+        Stores only a secure hash of the 6-digit PIN — never the raw PIN —
+        and resets any lockout state. Runs in parallel to OTP login.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetPinRequest"
+      responses:
+        "200":
+          description: PIN set successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetPinResult"
+        "400":
+          description: PIN missing or not exactly 6 digits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
+        "401":
+          description: Missing or invalid Firebase token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
+        "404":
+          description: Driver not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
+        "500":
+          description: Could not save PIN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
+  /auth/verify-pin:
+    post:
+      operationId: authVerifyPin
+      tags: [auth]
+      summary: Verify a driver PIN and get a Firebase custom token
+      description: >
+        Accepts phone + 6-digit PIN. On success returns the same Firebase
+        custom token as verify-otp (uid = "91" + phone). Locks the account for
+        15 minutes after 5 consecutive wrong attempts. OTP login is unaffected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyPinRequest"
+      responses:
+        "200":
+          description: PIN verified — returns a Firebase custom token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyPinResult"
+        "400":
+          description: Missing or malformed phone/PIN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
+        "401":
+          description: Incorrect PIN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
+        "404":
+          description: No PIN set for this account (use OTP to set one)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
+        "429":
+          description: Too many incorrect attempts — PIN temporarily locked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
+        "500":
+          description: Verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorBody"
   /driver-plans/create-order:
     post:
       operationId: driverPlansCreateOrder
@@ -262,6 +362,45 @@ components:
           type: string
       required:
         - error
+    SetPinRequest:
+      type: object
+      properties:
+        pin:
+          type: string
+          description: 6-digit numeric PIN
+          example: "123456"
+      required:
+        - pin
+    SetPinResult:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+      required:
+        - ok
+    VerifyPinRequest:
+      type: object
+      properties:
+        phone:
+          type: string
+          description: 10-digit Indian mobile number (no country code)
+          example: "9876543210"
+        pin:
+          type: string
+          description: 6-digit numeric PIN
+          example: "123456"
+      required:
+        - phone
+        - pin
+    VerifyPinResult:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Firebase custom token — use with signInWithCustomToken
+      required:
+        - token
     PlanType:
       type: string
       enum:

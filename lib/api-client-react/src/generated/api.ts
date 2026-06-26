@@ -26,10 +26,14 @@ import type {
   HealthStatus,
   SendOtpRequest,
   SendOtpResult,
+  SetPinRequest,
+  SetPinResult,
   VerifyOtpRequest,
   VerifyOtpResult,
   VerifyPaymentRequest,
-  VerifyPaymentResult
+  VerifyPaymentResult,
+  VerifyPinRequest,
+  VerifyPinResult
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -262,6 +266,152 @@ export const useAuthVerifyOtp = <TError = ErrorType<ApiErrorBody>,
         TContext
       > => {
       return useMutation(getAuthVerifyOtpMutationOptions(options));
+    }
+
+export const getAuthSetPinUrl = () => {
+
+
+
+
+  return `/api/auth/set-pin`
+}
+
+/**
+ * Requires an existing Firebase session (driver already OTP-verified). Stores only a secure hash of the 6-digit PIN — never the raw PIN — and resets any lockout state. Runs in parallel to OTP login.
+
+ * @summary Set or replace the driver's login PIN
+ */
+export const authSetPin = async (setPinRequest: SetPinRequest, options?: RequestInit): Promise<SetPinResult> => {
+
+  return customFetch<SetPinResult>(getAuthSetPinUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      setPinRequest,)
+  }
+);}
+
+
+
+
+export const getAuthSetPinMutationOptions = <TError = ErrorType<ApiErrorBody>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof authSetPin>>, TError,{data: BodyType<SetPinRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof authSetPin>>, TError,{data: BodyType<SetPinRequest>}, TContext> => {
+
+const mutationKey = ['authSetPin'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof authSetPin>>, {data: BodyType<SetPinRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  authSetPin(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AuthSetPinMutationResult = NonNullable<Awaited<ReturnType<typeof authSetPin>>>
+    export type AuthSetPinMutationBody = BodyType<SetPinRequest>
+    export type AuthSetPinMutationError = ErrorType<ApiErrorBody>
+
+    /**
+ * @summary Set or replace the driver's login PIN
+ */
+export const useAuthSetPin = <TError = ErrorType<ApiErrorBody>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof authSetPin>>, TError,{data: BodyType<SetPinRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof authSetPin>>,
+        TError,
+        {data: BodyType<SetPinRequest>},
+        TContext
+      > => {
+      return useMutation(getAuthSetPinMutationOptions(options));
+    }
+
+export const getAuthVerifyPinUrl = () => {
+
+
+
+
+  return `/api/auth/verify-pin`
+}
+
+/**
+ * Accepts phone + 6-digit PIN. On success returns the same Firebase custom token as verify-otp (uid = "91" + phone). Locks the account for 15 minutes after 5 consecutive wrong attempts. OTP login is unaffected.
+
+ * @summary Verify a driver PIN and get a Firebase custom token
+ */
+export const authVerifyPin = async (verifyPinRequest: VerifyPinRequest, options?: RequestInit): Promise<VerifyPinResult> => {
+
+  return customFetch<VerifyPinResult>(getAuthVerifyPinUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      verifyPinRequest,)
+  }
+);}
+
+
+
+
+export const getAuthVerifyPinMutationOptions = <TError = ErrorType<ApiErrorBody>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof authVerifyPin>>, TError,{data: BodyType<VerifyPinRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof authVerifyPin>>, TError,{data: BodyType<VerifyPinRequest>}, TContext> => {
+
+const mutationKey = ['authVerifyPin'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof authVerifyPin>>, {data: BodyType<VerifyPinRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  authVerifyPin(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AuthVerifyPinMutationResult = NonNullable<Awaited<ReturnType<typeof authVerifyPin>>>
+    export type AuthVerifyPinMutationBody = BodyType<VerifyPinRequest>
+    export type AuthVerifyPinMutationError = ErrorType<ApiErrorBody>
+
+    /**
+ * @summary Verify a driver PIN and get a Firebase custom token
+ */
+export const useAuthVerifyPin = <TError = ErrorType<ApiErrorBody>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof authVerifyPin>>, TError,{data: BodyType<VerifyPinRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof authVerifyPin>>,
+        TError,
+        {data: BodyType<VerifyPinRequest>},
+        TContext
+      > => {
+      return useMutation(getAuthVerifyPinMutationOptions(options));
     }
 
 export const getDriverPlansCreateOrderUrl = () => {

@@ -1,8 +1,10 @@
 import { Router } from "express";
 import { eq, lt } from "drizzle-orm";
 import { adminAuth } from "../lib/firebase-admin";
-import { db, authOtpsTable } from "@workspace/db";
+import { db, authOtpsTable, driversTable } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import { requireAuth } from "../lib/require-auth";
+import { hashPin, verifyPinHash } from "../lib/pin-hash";
 
 const router = Router();
 
@@ -187,6 +189,150 @@ router.post("/auth/verify-otp", async (req, res) => {
     res.json({ token });
   } catch (err) {
     req.log.error({ err }, "verify-otp custom token failed");
+    res.status(500).json({ error: "Verification failed. Check Firebase Admin configuration." });
+  }
+});
+
+// ─── PIN login (Phase 1 — parallel to OTP, OTP unchanged) ───────────────────────
+//
+// Two routes add an OPTIONAL 6-digit PIN factor:
+//   • POST /auth/set-pin    — Firebase-authenticated; stores a scrypt hash.
+//   • POST /auth/verify-pin — phone + PIN → same custom token as verify-otp.
+// The OTP routes above are untouched. The uid scheme stays exactly "91"+phone.
+
+const PIN_MAX_ATTEMPTS = 5;
+const PIN_LOCK_MS      = 15 * 60 * 1000; // 15 minutes
+
+router.post("/auth/set-pin", async (req, res) => {
+  // Requires an existing valid Firebase session (driver already OTP-verified).
+  const uid = await requireAuth(req, res);
+  if (!uid) return; // requireAuth already wrote a 401 JSON body.
+
+  const { pin } = req.body as { pin?: string };
+  if (!pin || !/^\d{6}$/.test(pin)) {
+    res.status(400).json({ error: "PIN must be exactly 6 digits." });
+    return;
+  }
+
+  try {
+    const pinHash = await hashPin(pin); // raw PIN never stored or logged.
+    const updated = await db
+      .update(driversTable)
+      .set({
+        pinHash,
+        pinSetAt:          new Date(),
+        pinFailedAttempts: 0,
+        pinLockedUntil:    null,
+        updatedAt:         new Date(),
+      })
+      .where(eq(driversTable.uid, uid))
+      .returning({ uid: driversTable.uid });
+
+    if (updated.length === 0) {
+      res.status(404).json({ error: "Driver not found. Complete login before setting a PIN." });
+      return;
+    }
+
+    req.log.info({ uid }, "PIN set");
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "set-pin: failed");
+    res.status(500).json({ error: "Could not set PIN. Please try again." });
+  }
+});
+
+router.post("/auth/verify-pin", async (req, res) => {
+  const { phone, pin } = req.body as { phone?: string; pin?: string };
+
+  // Normalize phone the same way the OTP flow does: strip to 10 digits.
+  const digits = (phone ?? "").replace(/\D/g, "");
+  if (!/^\d{10}$/.test(digits) || !pin || !/^\d{6}$/.test(pin)) {
+    res.status(400).json({ error: "A valid 10-digit phone and 6-digit PIN are required." });
+    return;
+  }
+
+  const uid = `91${digits}`;
+
+  // ── Atomic lock + verify (SELECT FOR UPDATE → conditional UPDATE) ──────────
+  // Mirrors the OTP verify pattern: the row is locked before any check so
+  // concurrent verify requests cannot race the attempt counter. Fail-closed —
+  // a DB error yields a 500 and never mints a token.
+  type VerifyOutcome =
+    | { ok: true }
+    | { ok: false; status: 401 | 404 | 429; error: string };
+
+  let outcome: VerifyOutcome;
+  try {
+    outcome = await db.transaction(async (tx): Promise<VerifyOutcome> => {
+      const rows = await tx.execute(
+        sql`SELECT pin_hash, pin_failed_attempts, pin_locked_until
+            FROM drivers
+            WHERE uid = ${uid}
+            FOR UPDATE`,
+      );
+
+      const row = rows.rows[0] as {
+        pin_hash:            string | null;
+        pin_failed_attempts: number;
+        pin_locked_until:    Date | null;
+      } | undefined;
+
+      if (!row || !row.pin_hash) {
+        // No PIN configured — client should fall back to OTP setup.
+        return { ok: false, status: 404, error: "No PIN set for this account. Please log in with OTP and set a PIN." };
+      }
+
+      if (row.pin_locked_until && new Date() < new Date(row.pin_locked_until)) {
+        return { ok: false, status: 429, error: "Too many incorrect attempts. Try again later or log in with OTP." };
+      }
+
+      const match = await verifyPinHash(pin, row.pin_hash);
+      if (!match) {
+        const attempts = (row.pin_failed_attempts ?? 0) + 1;
+        const lock     = attempts >= PIN_MAX_ATTEMPTS;
+        const lockedUntil = lock ? new Date(Date.now() + PIN_LOCK_MS) : null;
+        await tx.execute(
+          sql`UPDATE drivers
+              SET pin_failed_attempts = ${attempts},
+                  pin_locked_until    = ${lockedUntil}
+              WHERE uid = ${uid}`,
+        );
+        if (lock) {
+          return { ok: false, status: 429, error: "Too many incorrect attempts. PIN locked for 15 minutes. Log in with OTP." };
+        }
+        return { ok: false, status: 401, error: "Incorrect PIN. Try again." };
+      }
+
+      // Correct PIN — reset the lockout counters atomically.
+      await tx.execute(
+        sql`UPDATE drivers
+            SET pin_failed_attempts = 0,
+                pin_locked_until    = NULL
+            WHERE uid = ${uid}`,
+      );
+      return { ok: true };
+    });
+  } catch (err) {
+    req.log.error({ err }, "verify-pin: transaction failed");
+    res.status(500).json({ error: "Verification failed. Please try again." });
+    return;
+  }
+
+  if (!outcome.ok) {
+    req.log.warn({ phoneSuffix: digits.slice(-4), status: outcome.status }, "verify-pin: rejected");
+    res.status(outcome.status).json({ error: outcome.error });
+    return;
+  }
+
+  // ── Issue Firebase custom token (identical to verify-otp) ──────────────────
+  try {
+    const auth  = await adminAuth();
+    const token = await auth.createCustomToken(uid);
+
+    req.log.info({ uid }, "PIN verified — custom token issued");
+    res.json({ token });
+  } catch (err) {
+    req.log.error({ err }, "verify-pin custom token failed");
     res.status(500).json({ error: "Verification failed. Check Firebase Admin configuration." });
   }
 });
