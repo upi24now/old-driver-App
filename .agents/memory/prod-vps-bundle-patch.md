@@ -107,3 +107,14 @@ Prod `drivers` had NO `subscription_plan`/`subscription_expires_at` (5J-Tier-3 /
 hard-null → "plan disappeared"); the Replit DEV DB already HAS them (newer api-server schema).
 **How to apply:** when smoke-cleaning the dev DB, DROP only columns/tables YOU added; leave
 pre-existing subscription cols intact. The fix is the idempotent pre-deploy migration + /me reading the cols.
+
+## Prod driver-plans field-naming diverges from in-repo source
+Prod bundle's `/api/driver-plans` endpoints use DIFFERENT field names than `artifacts/api-server`
+source. `create-order` RESPONSE returns `orderId`/`planId`/`keyId` (NOT source's
+`razorpayOrderId`). `verify-payment` REQUEST requires snake_case `razorpay_order_id`,
+`razorpay_payment_id`, `razorpay_signature` (camelCase → 400 "...are required"; snake_case →
+reaches HMAC check). **Why:** prod is a separate prebuilt bundle, source lost. **How to apply:**
+mobile must send BOTH camelCase + snake_case razorpay_* in verify-payment so prod AND in-repo
+source resolve; map create-order response defensively (orderId ?? razorpayOrderId ...). Prod
+verify SUCCESS body shape unobserved (no key_secret to forge a valid sig) — keep response logging
+and gate success on an explicit positive flag or an expiry field, never a bare 200.

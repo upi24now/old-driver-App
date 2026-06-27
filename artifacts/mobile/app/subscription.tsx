@@ -251,22 +251,62 @@ export default function SubscriptionScreen() {
       const res = await fetch(`${API_BASE}/driver-plans/verify-payment`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        // Production backend requires snake_case razorpay_* field names; in-repo
+        // source uses camelCase. Send BOTH so either backend resolves the fields.
         body: JSON.stringify({
           driverUid,
-          planType:          cp.planType,
-          razorpayOrderId:   cp.razorpayOrderId,
-          razorpayPaymentId: paymentId,
-          razorpaySignature: signature,
+          planType:            cp.planType,
+          razorpayOrderId:     cp.razorpayOrderId,
+          razorpayPaymentId:   paymentId,
+          razorpaySignature:   signature,
+          razorpay_order_id:   cp.razorpayOrderId,
+          razorpay_payment_id: paymentId,
+          razorpay_signature:  signature,
         }),
       });
-      const data = (await res.json()) as { ok?: boolean; planExpiryAt?: number; error?: string };
-      if (!res.ok || !data.ok) { Alert.alert("Payment failed. Please try again."); return; }
+
+      // ── Log the ACTUAL verify-payment response (status + raw body + keys) ───
+      const rawBody = await res.text();
+      console.log("[DriverPlan] verify-payment status:", res.status);
+      console.log("[DriverPlan] verify-payment raw body:", rawBody);
+      console.log("[DriverPlan] verify sent → order:", cp.razorpayOrderId, "| payment:", paymentId, "| sig present:", !!signature);
+
+      type VerifyResponse = { ok?: boolean; success?: boolean; verified?: boolean; status?: string;
+                  planExpiryAt?: number; planExpiresAt?: number; expiresAt?: number; error?: string };
+      let data: VerifyResponse = {};
+      try {
+        const p: unknown = rawBody ? JSON.parse(rawBody) : {};
+        if (typeof p === "object" && p !== null) data = p as VerifyResponse;
+      } catch {
+        console.error("[DriverPlan] verify-payment JSON parse failed; rawBody:", rawBody);
+      }
+      console.log("[DriverPlan] verify-payment keys:", Object.keys(data));
+
+      // Success requires HTTP 2xx, no error, ok!==false, AND a positive signal:
+      // an explicit flag (ok/success/verified/status==="active") OR a real
+      // activation payload (a plan-expiry field). A bare 200 with no positive
+      // signal is treated as NOT verified — the added logging captures the real
+      // prod success contract on the next real payment so this can be locked down.
+      const hasExpiry =
+        data.planExpiryAt != null || data.planExpiresAt != null || data.expiresAt != null;
+      const verified =
+        res.ok && !data.error && data.ok !== false &&
+        (data.ok === true || data.success === true || data.verified === true ||
+         data.status === "active" || hasExpiry);
+      if (!verified) {
+        console.error("[DriverPlan] verify-payment NOT verified:", res.status, data.error ?? "(no error field)");
+        Alert.alert("Payment failed. Please try again.");
+        return;
+      }
+
       await refreshSubscription();
-      const expiry = data.planExpiryAt
-        ? new Date(data.planExpiryAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+      const expiryMs = data.planExpiryAt ?? data.planExpiresAt ?? data.expiresAt;
+      const expiry = expiryMs
+        ? new Date(expiryMs).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
         : "";
       setSuccessModal({ visible: true, planName: cp.planName, expiryText: expiry });
-    } catch {
+    } catch (err) {
+      console.error("[DriverPlan] verify-payment threw:", err);
       Alert.alert("Error", "Payment verification failed. Please contact support.");
     } finally {
       setIsActivating(false);
