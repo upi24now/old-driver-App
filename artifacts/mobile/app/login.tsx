@@ -192,22 +192,23 @@ function LoginHero() {
 // ─── Setup hero: glass India map + skyline + scooter on a glowing platform ──────
 // Recognizable stylized India silhouette path (viewBox 0 0 360 260)
 const INDIA_PATH =
-  "M132 40 C140 30 150 30 158 36 C172 30 188 32 200 42 C214 38 232 40 246 50 " +
-  "C256 56 258 64 250 70 C244 74 250 84 258 96 C268 110 272 124 264 138 " +
-  "C252 158 236 178 220 196 C208 208 196 218 186 222 C182 218 178 206 174 196 " +
-  "C166 176 156 158 146 142 C134 124 120 116 106 110 C92 104 80 100 74 92 " +
-  "C68 86 72 78 82 78 C96 78 108 84 120 80 C128 76 128 56 132 40 Z";
+  "M150 44 C168 34 192 36 206 46 C224 44 244 52 256 66 C262 74 256 82 248 84 " +
+  "C256 92 262 104 258 118 C252 140 240 162 224 184 C210 206 196 224 182 236 " +
+  "C178 232 174 224 170 214 C160 192 150 172 140 156 C130 140 116 130 104 122 " +
+  "C96 116 92 108 98 102 C108 104 118 108 128 104 C134 100 132 86 134 72 " +
+  "C136 58 140 50 150 44 Z";
 
-// A small location pin centred on (x, y)
+// A premium location pin centred on (x, y)
 function Pin({ x, y, s = 1 }: { x: number; y: number; s?: number }) {
   return (
     <G transform={`translate(${x} ${y}) scale(${s})`}>
+      <Ellipse cx="0" cy="13.5" rx="3.4" ry="1.5" fill="#B84600" opacity="0.22" />
       <Path
-        d="M0 12 C-6 4 -7 -2 -3 -6 C-1 -8 1 -8 3 -6 C7 -2 6 4 0 12 Z"
-        fill="#FF6A00"
-        opacity="0.85"
+        d="M0 13 C-6.5 4.5 -7.6 -2.6 -3.3 -6.7 C-1.2 -8.8 1.2 -8.8 3.3 -6.7 C7.6 -2.6 6.5 4.5 0 13 Z"
+        fill="url(#pinGrad)"
       />
-      <Circle cx="0" cy="-2" r="2.1" fill="#FFFFFF" opacity="0.95" />
+      <Circle cx="0" cy="-2.4" r="2.3" fill="#FFFFFF" />
+      <Path d="M-2.2 -6.2 C-1.2 -7.8 1.2 -7.8 2.2 -6.2" stroke="#FFFFFF" strokeWidth="0.7" opacity="0.55" fill="none" />
     </G>
   );
 }
@@ -223,86 +224,109 @@ function SetupHero() {
         style={StyleSheet.absoluteFillObject}
       >
         <Defs>
-          <SvgLinearGradient id="glassFill" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#FFE0CB" stopOpacity="0.62" />
-            <Stop offset="0.45" stopColor="#FFCDA8" stopOpacity="0.34" />
-            <Stop offset="1" stopColor="#FFEADD" stopOpacity="0.55" />
+          <SvgLinearGradient id="glassFill" x1="0.1" y1="0" x2="0.9" y2="1">
+            <Stop offset="0" stopColor="#FFE7D5" stopOpacity="0.70" />
+            <Stop offset="0.5" stopColor="#FFC9A0" stopOpacity="0.40" />
+            <Stop offset="1" stopColor="#FFEFE3" stopOpacity="0.62" />
+          </SvgLinearGradient>
+          <SvgLinearGradient id="glassHi" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.55" />
+            <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
           </SvgLinearGradient>
           <RadialGradient id="platformGlow" cx="50%" cy="50%" r="50%">
-            <Stop offset="0" stopColor="#FF6A00" stopOpacity="0.20" />
+            <Stop offset="0" stopColor="#FF6A00" stopOpacity="0.28" />
+            <Stop offset="0.7" stopColor="#FF6A00" stopOpacity="0.08" />
             <Stop offset="1" stopColor="#FF6A00" stopOpacity="0" />
           </RadialGradient>
+          <RadialGradient id="platformDisc" cx="50%" cy="42%" r="62%">
+            <Stop offset="0" stopColor="#FFE0C2" stopOpacity="0.60" />
+            <Stop offset="0.6" stopColor="#FF9D52" stopOpacity="0.32" />
+            <Stop offset="1" stopColor="#FF6A00" stopOpacity="0.04" />
+          </RadialGradient>
+          <SvgLinearGradient id="reflectGrad" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#FF6A00" stopOpacity="0.20" />
+            <Stop offset="1" stopColor="#FF6A00" stopOpacity="0" />
+          </SvgLinearGradient>
+          <SvgLinearGradient id="pinGrad" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#FF9A4D" />
+            <Stop offset="1" stopColor="#F25600" />
+          </SvgLinearGradient>
           <ClipPath id="indiaClip">
             <Path d={INDIA_PATH} />
           </ClipPath>
         </Defs>
 
         {/* Soft clouds top-right */}
-        <Ellipse cx="296" cy="44" rx="30" ry="12" fill="#FFFFFF" opacity="0.55" />
-        <Ellipse cx="276" cy="50" rx="20" ry="9"  fill="#FFFFFF" opacity="0.45" />
-        <Ellipse cx="318" cy="52" rx="18" ry="8"  fill="#FFE6D6" opacity="0.5" />
+        <Ellipse cx="300" cy="46" rx="30" ry="11" fill="#FFFFFF" opacity="0.55" />
+        <Ellipse cx="280" cy="52" rx="20" ry="8"  fill="#FFFFFF" opacity="0.4" />
+        <Ellipse cx="320" cy="54" rx="16" ry="7"  fill="#FFE6D6" opacity="0.5" />
 
-        {/* India map — glass fill */}
+        {/* India map — premium glass fill */}
         <Path d={INDIA_PATH} fill="url(#glassFill)" />
 
-        {/* Skyline + routes + pins clipped INSIDE the map */}
+        {/* Skyline + routes + highlight clipped INSIDE the map */}
         <G clipPath="url(#indiaClip)">
-          {/* faint inner wash */}
-          <Rect x="60" y="20" width="240" height="210" fill="#FF8A3D" opacity="0.05" />
+          {/* top-left glass highlight */}
+          <Ellipse cx="150" cy="80" rx="80" ry="56" fill="url(#glassHi)" opacity="0.5" />
 
-          {/* Subtle route lines connecting cities */}
-          <Line x1="120" y1="92"  x2="178" y2="78"  stroke="#FF6A00" strokeWidth="1" strokeDasharray="2,5" opacity="0.28" />
-          <Line x1="178" y1="78"  x2="236" y2="104" stroke="#FF6A00" strokeWidth="1" strokeDasharray="2,5" opacity="0.28" />
-          <Line x1="120" y1="92"  x2="150" y2="150" stroke="#FF6A00" strokeWidth="1" strokeDasharray="2,5" opacity="0.24" />
-          <Line x1="236" y1="104" x2="206" y2="170" stroke="#FF6A00" strokeWidth="1" strokeDasharray="2,5" opacity="0.24" />
+          {/* Curved dashed route lines connecting cities */}
+          <Path d="M132 96 Q156 74 174 80"   stroke="#FF6A00" strokeWidth="1.1" strokeDasharray="1,5" strokeLinecap="round" fill="none" opacity="0.32" />
+          <Path d="M174 80 Q210 88 238 112"  stroke="#FF6A00" strokeWidth="1.1" strokeDasharray="1,5" strokeLinecap="round" fill="none" opacity="0.30" />
+          <Path d="M132 96 Q138 126 152 150"  stroke="#FF6A00" strokeWidth="1.1" strokeDasharray="1,5" strokeLinecap="round" fill="none" opacity="0.26" />
+          <Path d="M238 112 Q214 138 188 160" stroke="#FF6A00" strokeWidth="1.1" strokeDasharray="1,5" strokeLinecap="round" fill="none" opacity="0.24" />
 
-          {/* India-Gate style arch (left of centre) */}
-          <G opacity="0.22">
-            <Rect x="118" y="150" width="40" height="56" rx="2" fill="#E07B2C" />
-            <Path d="M128 206 v-34 a10 10 0 0 1 20 0 v34 Z" fill="#FFF1E6" opacity="0.85" />
-            <Rect x="116" y="146" width="44" height="6" rx="2" fill="#E07B2C" />
+          {/* India-Gate style arch (centre-left) */}
+          <G opacity="0.26" fill="#E0772A">
+            <Rect x="138" y="150" width="34" height="50" rx="2" />
+            <Path d="M148 200 v-30 a7 7 0 0 1 14 0 v30 Z" fill="#FFF3E9" opacity="0.9" />
+            <Rect x="135" y="146" width="40" height="6" rx="2" />
+            <Rect x="151" y="138" width="8"  height="9" rx="1.5" />
           </G>
 
-          {/* Domes / palace cluster (centre-left) */}
-          <G opacity="0.20" fill="#E8852F">
-            <Rect x="92" y="168" width="14" height="40" rx="2" />
-            <Ellipse cx="99" cy="168" rx="8" ry="9" />
-            <Rect x="160" y="172" width="12" height="34" rx="2" />
-            <Ellipse cx="166" cy="172" rx="6.5" ry="7" />
+          {/* Domed palace (Taj-style) centre */}
+          <G opacity="0.24" fill="#E8852F">
+            <Rect x="180" y="166" width="30" height="36" rx="2" />
+            <Ellipse cx="195" cy="166" rx="13" ry="14" />
+            <Rect x="193" y="142" width="4" height="12" />
+            <Ellipse cx="195" cy="140" rx="2.4" ry="3.4" />
+            <Rect x="178" y="170" width="4" height="32" />
+            <Rect x="208" y="170" width="4" height="32" />
           </G>
 
           {/* Modern towers (right) */}
-          <G opacity="0.20" fill="#E8852F">
-            <Rect x="228" y="150" width="14" height="58" rx="2" />
-            <Rect x="244" y="162" width="11" height="46" rx="2" />
-            <Rect x="258" y="172" width="9"  height="36" rx="2" />
-            <Path d="M235 150 l-6 -16 l6 0 Z" />
+          <G opacity="0.22" fill="#E8852F">
+            <Rect x="222" y="150" width="13" height="52" rx="2" />
+            <Rect x="237" y="160" width="10" height="42" rx="2" />
+            <Rect x="249" y="170" width="8"  height="32" rx="2" />
+            <Path d="M228.5 150 l-5 -14 l5 0 Z" />
           </G>
 
-          {/* slim spire towers (centre) */}
-          <G opacity="0.18" fill="#E8852F">
-            <Path d="M186 150 l5 -22 l5 22 Z" />
-            <Path d="M200 154 l4 -16 l4 16 Z" />
+          {/* Spire + building (left) */}
+          <G opacity="0.2" fill="#E8852F">
+            <Path d="M120 158 l4 -18 l4 18 Z" />
+            <Rect x="116" y="158" width="16" height="42" rx="2" />
           </G>
         </G>
 
-        {/* Glass glowing edges (layered strokes) */}
-        <Path d={INDIA_PATH} fill="none" stroke="#FF8A3D" strokeWidth="7"   opacity="0.10" />
-        <Path d={INDIA_PATH} fill="none" stroke="#FF8A3D" strokeWidth="3.5" opacity="0.26" />
-        <Path d={INDIA_PATH} fill="none" stroke="#FFDFC6" strokeWidth="1.4" opacity="0.7" />
+        {/* Premium glass glowing edges (layered strokes) */}
+        <Path d={INDIA_PATH} fill="none" stroke="#FF8A3D" strokeWidth="8"   opacity="0.12" strokeLinejoin="round" />
+        <Path d={INDIA_PATH} fill="none" stroke="#FF7A1F" strokeWidth="3.4" opacity="0.45" strokeLinejoin="round" />
+        <Path d={INDIA_PATH} fill="none" stroke="#FFE9D8" strokeWidth="1.3" opacity="0.9"  strokeLinejoin="round" />
 
         {/* City pins across the map */}
-        <Pin x={120} y={86}  s={1} />
-        <Pin x={178} y={72}  s={1.05} />
-        <Pin x={236} y={98}  s={1} />
-        <Pin x={150} y={146} s={0.95} />
-        <Pin x={206} y={166} s={0.95} />
+        <Pin x={132} y={92}  s={1.05} />
+        <Pin x={174} y={70}  s={1.1} />
+        <Pin x={238} y={106} s={1} />
+        <Pin x={152} y={150} s={0.95} />
+        <Pin x={120} y={150} s={0.9} />
 
-        {/* Scooter platform — glow + ring + reflection */}
-        <Ellipse cx="180" cy="224" rx="118" ry="26" fill="url(#platformGlow)" />
-        <Ellipse cx="180" cy="226" rx="92"  ry="16" fill="none" stroke="#FF8A3D" strokeWidth="1.4" opacity="0.45" />
-        <Ellipse cx="180" cy="226" rx="74"  ry="11" fill="none" stroke="#FFC9A6" strokeWidth="1"   opacity="0.6" />
-        <Ellipse cx="180" cy="232" rx="60"  ry="7"  fill="#FF6A00" opacity="0.12" />
+        {/* Scooter platform — glow + glass disc + rings + reflection */}
+        <Ellipse cx="180" cy="224" rx="124" ry="30" fill="url(#platformGlow)" />
+        <Ellipse cx="180" cy="222" rx="96"  ry="21" fill="url(#platformDisc)" />
+        <Ellipse cx="180" cy="222" rx="96"  ry="21" fill="none" stroke="#FFE0C8" strokeWidth="1.4" opacity="0.8" />
+        <Ellipse cx="180" cy="222" rx="72"  ry="14" fill="none" stroke="#FFB985" strokeWidth="1"   opacity="0.6" />
+        <Ellipse cx="166" cy="216" rx="30"  ry="6"  fill="#FFFFFF" opacity="0.3" />
+        <Ellipse cx="180" cy="238" rx="74"  ry="13" fill="url(#reflectGrad)" />
       </Svg>
 
       <Image
