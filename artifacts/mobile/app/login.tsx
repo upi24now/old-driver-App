@@ -818,8 +818,8 @@ export default function LoginScreen() {
         {/* ── PHASE: PHONE ── */}
         {phase === "phone" && (
           <>
-            {/* ── Hero: glass India map + scooter on platform ── */}
-            <SetupHero />
+            {/* ── Hero: reuse the approved Welcome Back hero exactly (1:1) ── */}
+            <LoginHeroImage />
 
             {/* ── Branding ── */}
             <View style={ss.brandBlock}>
