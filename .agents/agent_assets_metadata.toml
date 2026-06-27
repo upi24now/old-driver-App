@@ -215,3 +215,9 @@ id = "i0MN64qBtFewVarxfyA27"
 uri = "file://production-baseline/driver-pin-login-prod-patch.tar.gz"
 type = "unspecified"
 title = "Driver PIN-login Production Patch (api-pkg)"
+
+[[outputs]]
+id = "1Mzy0Lh7MW1Bz5LUL1EQo"
+uri = "file://production-baseline/driver-plan-activation-fix.tar.gz"
+type = "unspecified"
+title = "Driver Plan one-active-plan fix (code + SQL + deploy/rollback)"
