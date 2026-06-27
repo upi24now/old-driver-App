@@ -99,6 +99,28 @@ because the test-phone OTP shortcut is inactive there.
 shapes from device logs rather than guessing; verify against the live domain, not
 repo source.
 
+## "set PIN → bounce to login" REAL cause = /drivers/me 403, NOT a session loop
+**Rule:** when the prod driver app bounces back to /login during first-time PIN
+setup, capture device logs before theorizing. The observed cause was NOT set-pin
+session rotation — the user never reached /create-pin. Trace (deployed prod
+api.bikecourierservice.com): verify-pin 404 (no PIN) → OTP setup → verify-otp 200
+`{ok,customToken,uid,sessionId}` → signInWithCustomToken SUCCESS → `getDriverProfile`
+`GET /api/drivers/me` → **403 `{"error":"Forbidden — account does not have admin
+access"}`** (twice incl. retry) → `establishSession` `[OTP_PROFILE_GATE] source≠404`
+skips ensureDriverSignup, calls `setIsOtpVerifying(false)`, returns `{ok:false}`
+WITHOUT `setIsOtpVerified(true)` → `_layout` guard sees driverUid present +
+isOtpVerified=false → `router.replace("/login")`.
+**Why:** the bounce is the route guard reacting to `isOtpVerified` never flipping
+true; `isOtpVerified` only flips true at the END of establishSession, which aborts
+early when the profile load fails. The prod `/api/drivers/me` route returns 403
+"admin access" for a normal driver token (separate prebuilt prod bundle; route
+exists but is gated wrong / missing the driver self-read path — 403, not 404).
+**How to apply:** the fix belongs on the backend (prod /drivers/me must serve the
+authenticated driver's own profile, not require admin) — client cannot fix a 403
+without masking real failures. The earlier client-side "set-pin session adoption"
+work fixed a DIFFERENT, downstream symptom and does not address this; don't conflate
+them. Always confirm WHICH screen the bounce fires from via logs first.
+
 ## verify-pin 404 must be JSON-agnostic
 `verifyPinApi` (mobile `utils/auth-api.ts`) must check `res.status===404` and return
 `pinNotFound:true` BEFORE parsing the body. **Why:** dev API returns a 404 with a
