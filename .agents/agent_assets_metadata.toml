@@ -209,3 +209,9 @@ id = "ErmLe-K8RmUnwC7Gy4hsc"
 uri = "file://production-baseline/driver-session-login-patch-395ffcb2-base-20260626.tar.gz"
 type = "unspecified"
 title = "Single-Device Login — NEW package (base 395ffcb2): patch + migration + DEPLOY + ROLLBACK + verification"
+
+[[outputs]]
+id = "i0MN64qBtFewVarxfyA27"
+uri = "file://production-baseline/driver-pin-login-prod-patch.tar.gz"
+type = "unspecified"
+title = "Driver PIN-login Production Patch (api-pkg)"
