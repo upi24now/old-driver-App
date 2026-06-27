@@ -80,8 +80,8 @@ const small  = WIN_H < 700;
 const medium = WIN_H >= 700 && WIN_H < 850;
 
 const r = {
-  topPad:       small ? 12  : medium ? 18  : 24,
-  botPad:       small ? 12  : medium ? 16  : 22,
+  topPad:       small ? 10  : medium ? 14  : 18,
+  botPad:       small ? 10  : medium ? 14  : 18,
   logoSize:     small ? 48  : medium ? 54  : 64,
   logoBorderR:  small ? 24  : medium ? 27  : 32,
   logoFontSize: small ? 16  : medium ? 18  : 22,
@@ -1105,16 +1105,16 @@ const ss = StyleSheet.create({
   // ── Setup hero (glass India map + scooter platform) ───────────────────────
   setupHero: {
     width:          "100%",
-    height:         small ? 198 : medium ? 230 : 256,
+    height:         small ? 134 : medium ? 156 : 170,
     alignItems:     "center",
     justifyContent: "center",
     marginTop:      small ? 2 : 4,
-    marginBottom:   small ? 2 : 4,
+    marginBottom:   small ? 6 : 8,
   },
   setupScooter: {
     width:        Math.min(WIN_W * 0.60, 244),
-    height:       small ? 137 : medium ? 157 : 172,
-    marginTop:    small ? 18 : 25,
+    height:       small ? 110 : medium ? 128 : 140,
+    marginTop:    small ? 8 : 12,
     zIndex:       2,
   },
   setupHeadline: {
@@ -1180,7 +1180,7 @@ const ss = StyleSheet.create({
   // ── Branding ──────────────────────────────────────────────────────────────
   brandBlock: {
     alignItems:   "center",
-    marginBottom: small ? 6 : 8,
+    marginBottom: small ? 10 : 12,
   },
   brandWordmark: {
     fontSize:      28,
@@ -1213,14 +1213,14 @@ const ss = StyleSheet.create({
     color:         D.navy,
     letterSpacing: -0.6,
     textAlign:     "center",
-    marginBottom:  4,
+    marginBottom:  6,
   },
   welcomeSub: {
     fontSize:     16,
     fontWeight:   "500",
     color:        D.textSecondary,
     textAlign:    "center",
-    marginBottom: 22,
+    marginBottom: 16,
   },
 
   // ── Floating cards ────────────────────────────────────────────────────────
@@ -1228,7 +1228,7 @@ const ss = StyleSheet.create({
     alignSelf:         "stretch",
     backgroundColor:   D.white,
     borderRadius:      24,
-    paddingVertical:   24,
+    paddingVertical:   18,
     paddingHorizontal: 24,
     borderWidth:       1,
     borderColor:       D.border,
@@ -1237,16 +1237,16 @@ const ss = StyleSheet.create({
     shadowRadius:      18,
     shadowOffset:      { width: 0, height: 8 },
     elevation:         4,
-    marginBottom:      20,
+    marginBottom:      14,
   },
   mobileCardSpacing: {
-    marginBottom: 20,
+    marginBottom: 14,
   },
   cardLabelText: {
     fontSize:     14,
     fontWeight:   "600",
     color:        D.cardLabel,
-    marginBottom: 14,
+    marginBottom: 10,
   },
 
   // ── PIN cell states ───────────────────────────────────────────────────────
@@ -1275,7 +1275,7 @@ const ss = StyleSheet.create({
     alignSelf:     "center",
     borderRadius:  18,
     marginTop:     2,
-    marginBottom:  20,
+    marginBottom:  16,
     shadowColor:   D.primary,
     shadowOpacity: 0.32,
     shadowRadius:  16,
@@ -1365,7 +1365,7 @@ const ss = StyleSheet.create({
     borderWidth:       1,
     borderColor:       D.inputBorder,
     borderRadius:      18,
-    height:            60,
+    height:            54,
     paddingHorizontal: 14,
     backgroundColor:   D.white,
   },
@@ -1561,12 +1561,12 @@ const ss = StyleSheet.create({
     width:          "100%",
     justifyContent: "center",
     alignItems:     "center",
-    marginTop:      4,
+    marginTop:      2,
   },
   pinCellShell: {
     flex:           1,
     maxWidth:       54,
-    height:         60,
+    height:         52,
     borderRadius:   16,
     alignItems:     "center",
     justifyContent: "center",
@@ -1578,8 +1578,8 @@ const ss = StyleSheet.create({
   // ── Forgot / setup links ──────────────────────────────────────────────────
   forgotRow: {
     alignSelf:    "flex-end",
-    marginTop:    -7,
-    marginBottom: 18,
+    marginTop:    -11,
+    marginBottom: 14,
     paddingVertical: 2,
   },
   forgotLink: {
