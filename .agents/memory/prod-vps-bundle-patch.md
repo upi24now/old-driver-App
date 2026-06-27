@@ -118,3 +118,15 @@ mobile must send BOTH camelCase + snake_case razorpay_* in verify-payment so pro
 source resolve; map create-order response defensively (orderId ?? razorpayOrderId ...). Prod
 verify SUCCESS body shape unobserved (no key_secret to forge a valid sig) — keep response logging
 and gate success on an explicit positive flag or an expiry field, never a bare 200.
+
+## Prod verify-payment success contract + plan read-path
+verify-payment SUCCESS body = `{"ok":true,"plan":{id,label,amount,durationDays,status:"active",startedAt,expiresAt}}`
+(expiry is NESTED under `plan.expiresAt` ISO string — NOT top-level planExpiryAt). Mobile success
+check must accept `ok===true`/`plan.status==="active"` and read expiry from `plan.expiresAt`.
+The persisted plan is read back via `GET /api/driver-plans/status` (and `/current`) →
+`{"active":true,"plan":{...}}`; `/api/driver-plans/me` is 404. **Read-path mismatch:** prod
+`GET /api/drivers/me` returns `{driver}` and does NOT carry subscriptionPlan/subscriptionExpiresAt,
+but the mobile app's refreshSubscription/getDriverProfile reads plan from /me → shows plan inactive
+after a successful payment. Canonical plan source in prod is /api/driver-plans/status, not /me.
+**How to apply:** backend HMAC-only verify (no Razorpay round-trip) means a locally-computed
+signature with the matching test key pair drives a real prod 200 + persist for E2E proof.

@@ -272,7 +272,9 @@ export default function SubscriptionScreen() {
       console.log("[DriverPlan] verify sent → order:", cp.razorpayOrderId, "| payment:", paymentId, "| sig present:", !!signature);
 
       type VerifyResponse = { ok?: boolean; success?: boolean; verified?: boolean; status?: string;
-                  planExpiryAt?: number; planExpiresAt?: number; expiresAt?: number; error?: string };
+                  planExpiryAt?: number; planExpiresAt?: number; expiresAt?: number;
+                  plan?: { status?: string; expiresAt?: string | number; startedAt?: string | number };
+                  error?: string };
       let data: VerifyResponse = {};
       try {
         const p: unknown = rawBody ? JSON.parse(rawBody) : {};
@@ -287,12 +289,15 @@ export default function SubscriptionScreen() {
       // activation payload (a plan-expiry field). A bare 200 with no positive
       // signal is treated as NOT verified — the added logging captures the real
       // prod success contract on the next real payment so this can be locked down.
-      const hasExpiry =
-        data.planExpiryAt != null || data.planExpiresAt != null || data.expiresAt != null;
+      // Prod success shape nests under `plan` ({ status:"active", expiresAt }); older/
+      // source shape uses top-level planExpiryAt/ok. Read both.
+      const expiryRaw =
+        data.planExpiryAt ?? data.planExpiresAt ?? data.expiresAt ?? data.plan?.expiresAt;
+      const hasExpiry = expiryRaw != null;
       const verified =
         res.ok && !data.error && data.ok !== false &&
         (data.ok === true || data.success === true || data.verified === true ||
-         data.status === "active" || hasExpiry);
+         data.status === "active" || data.plan?.status === "active" || hasExpiry);
       if (!verified) {
         console.error("[DriverPlan] verify-payment NOT verified:", res.status, data.error ?? "(no error field)");
         Alert.alert("Payment failed. Please try again.");
@@ -300,9 +305,8 @@ export default function SubscriptionScreen() {
       }
 
       await refreshSubscription();
-      const expiryMs = data.planExpiryAt ?? data.planExpiresAt ?? data.expiresAt;
-      const expiry = expiryMs
-        ? new Date(expiryMs).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+      const expiry = expiryRaw
+        ? new Date(expiryRaw).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
         : "";
       setSuccessModal({ visible: true, planName: cp.planName, expiryText: expiry });
     } catch (err) {
