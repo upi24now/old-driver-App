@@ -110,6 +110,10 @@ export default function CreatePinScreen() {
   const [error,   setError]   = useState("");
   const [saving,  setSaving]  = useState(false);
 
+  useEffect(() => {
+    console.log("[FLOW] create-pin: screen mounted — phone:", phone ? "present" : "ABSENT", "| nextRoute:", nextRoute);
+  }, []);
+
   // Auto-focus the active field as the step changes.
   useEffect(() => {
     const t = setTimeout(() => {
@@ -156,9 +160,11 @@ export default function CreatePinScreen() {
       return;
     }
 
+    console.log("[FLOW] create-pin: set-pin request start");
     setSaving(true);
     const result = await setPinApi(pin);
     setSaving(false);
+    console.log("[FLOW] create-pin: set-pin result — ok:", result.ok, "| sessionId returned:", result.ok ? !!result.sessionId : false, "| error:", result.ok ? "none" : result.error);
 
     if (!result.ok) {
       setError(result.error ?? "Could not save PIN. Please try again.");

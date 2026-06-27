@@ -120,6 +120,13 @@ export async function verifyOtpApi(phone: string, otp: string): Promise<VerifyOt
     return { ok: false, error: `Server returned an unexpected response (HTTP ${res.status}).` };
   }
 
+  console.log(
+    "[verifyOtp] RAW response keys:", Object.keys(json).join(","),
+    "| token:", json.token ? "present" : "absent",
+    "| customToken:", json.customToken ? "present" : "absent",
+    "| sessionId:", json.sessionId ? "present" : "absent",
+  );
+
   if (!res.ok) {
     console.error("[verifyOtp] server returned error:", res.status, json.error);
     return { ok: false, error: json.error ?? `Server error (${res.status}).` };

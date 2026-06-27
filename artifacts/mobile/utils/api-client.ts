@@ -66,9 +66,14 @@ export function installSessionFetchInterceptor(): void {
     input: RequestInfo | URL,
     init?: RequestInit,
   ): Promise<Response> => {
-    const isApi = targetsApi(urlOf(input));
+    const url = urlOf(input);
+    const isApi = targetsApi(url);
+    // Verbose per-request logging is scoped to the auth endpoints so the flow can
+    // be traced without flooding the console with every API call.
+    const isAuthEndpoint = /\/auth\/(set-pin|verify-pin|verify-otp|send-otp)/.test(url);
 
     // ── 1. Inject x-session-id on outbound API requests ──────────────────────
+    let sessionAttached = false;
     if (isApi) {
       const sid = getSessionIdSync();
       if (sid) {
@@ -81,7 +86,12 @@ export function installSessionFetchInterceptor(): void {
         );
         if (!headers.has("x-session-id")) headers.set("x-session-id", sid);
         init = { ...(init ?? {}), headers };
+        sessionAttached = true;
       }
+    }
+
+    if (isAuthEndpoint) {
+      console.log("[INTERCEPTOR] → outgoing:", url, "| x-session-id attached:", sessionAttached ? "yes" : "no");
     }
 
     const res = await originalFetch(input, init);
@@ -91,8 +101,11 @@ export function installSessionFetchInterceptor(): void {
       try {
         const data = (await res.clone().json()) as { error?: string };
         if (data && data.error === "SESSION_REPLACED") {
+          console.warn("[INTERCEPTOR] 401 SESSION_REPLACED on:", url, "→ signOut trigger: yes");
           await clearSessionId();
           if (_onReplaced) _onReplaced();
+        } else if (isAuthEndpoint) {
+          console.log("[INTERCEPTOR] 401 on:", url, "| error:", data?.error ?? "(none)", "→ signOut trigger: no");
         }
       } catch {
         // Body not JSON / already consumed — ignore; only SESSION_REPLACED matters.

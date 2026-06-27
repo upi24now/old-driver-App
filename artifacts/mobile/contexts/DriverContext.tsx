@@ -571,6 +571,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     installSessionFetchInterceptor();
     setSessionReplacedHandler(() => {
       console.warn("[SESSION_REPLACED] account claimed on another device — signing out");
+      console.log("[FLOW] DriverContext: SESSION_REPLACED handler fired → signOut() → router.replace('/login') (THIS is the bounce to login)");
       void signOut().finally(() => {
         try {
           router.replace("/login");
@@ -1286,8 +1287,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     try {
       const credential = await signInWithCustomToken(firebaseAuth, token);
       const uid        = credential.user.uid;
+      console.log("[FLOW] establishSession — signInWithCustomToken SUCCESS, uid:", uid);
       console.log("[OTP_VERIFY_SESSION_READY] Firebase session established — uid =", uid, "| isOtpVerifying guard is active");
       setDriverUid(uid);
+      console.log("[FLOW] establishSession — setDriverUid called");
       setPhoneState(phone);
 
       // ── Get a fresh ID token directly from the credential user ────────────
@@ -1623,8 +1626,14 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     otp:   string,
   ): Promise<ConfirmOtpResult> => {
     const apiResult = await verifyOtpApi(phone, otp);
+    console.log("[FLOW] DriverContext.confirmOtp — verifyOtpApi ok:", apiResult.ok, "| token present:", apiResult.ok ? !!apiResult.token : false, "| sessionId returned:", apiResult.ok ? !!apiResult.sessionId : false);
     if (!apiResult.ok) return { ok: false, profileComplete: false, error: apiResult.error };
-    if (apiResult.sessionId) await setSessionId(apiResult.sessionId);
+    if (apiResult.sessionId) {
+      await setSessionId(apiResult.sessionId);
+      console.log("[FLOW] DriverContext.confirmOtp — setSessionId called with verify-otp sessionId");
+    } else {
+      console.warn("[FLOW] DriverContext.confirmOtp — verify-otp returned NO sessionId; keeping existing session");
+    }
     return establishSession(apiResult.token, phone);
   };
 

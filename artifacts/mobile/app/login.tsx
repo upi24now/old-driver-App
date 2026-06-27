@@ -505,10 +505,12 @@ export default function LoginScreen() {
   // ── Verify PIN (daily login) ──────────────────────────────────────────────
   async function handleConfirmPin(code: string) {
     if (verifyingPin || code.length !== PIN_LENGTH || !isValid) return;
+    console.log("[FLOW] login: PIN submitted — phone digits:", digits.length);
     setVerifyingPin(true);
     setPinErr("");
 
     const result = await confirmPin(digits, code);
+    console.log("[FLOW] login: verify-pin result — ok:", result.ok, "| pinNotFound:", result.pinNotFound ?? false, "| error:", result.error ?? "none");
 
     setVerifyingPin(false);
 
@@ -519,6 +521,7 @@ export default function LoginScreen() {
       // anonymous "does a PIN exist?" lookup is made — the verify-pin 404
       // response alone drives this branch.
       if (result.pinNotFound) {
+        console.log("[FLOW] login: pinNotFound branch → startOtpFlow('setup') (open OTP for first-time PIN)");
         startOtpFlow("setup");
         return;
       }
@@ -534,6 +537,7 @@ export default function LoginScreen() {
   // ── Send OTP ──────────────────────────────────────────────────────────────
   async function handleSendOtp() {
     if (sending || !isValid) return;
+    console.log("[FLOW] login: phone submitted (send-otp) — digits:", digits.length, "| intent:", otpIntent);
     setSendErr("");
     setSending(true);
 
@@ -549,6 +553,7 @@ export default function LoginScreen() {
     setOtp("");
     setTimer(RESEND_SECONDS);
     setCanResend(false);
+    console.log("[FLOW] login: OTP screen opened");
     transitionTo("otp");
   }
 
@@ -567,10 +572,12 @@ export default function LoginScreen() {
   // ── Verify OTP ────────────────────────────────────────────────────────────
   async function handleVerify(code: string) {
     if (verifying || code.length !== OTP_LENGTH || !digits) return;
+    console.log("[FLOW] login: OTP submitted");
     setVerifying(true);
     setOtpErr("");
 
     const result = await confirmOtp(digits, code);
+    console.log("[FLOW] login: confirmOtp result — ok:", result.ok, "| nextRoute:", result.nextRoute ?? "(derived)", "| error:", result.error ?? "none");
 
     setVerifying(false);
 
@@ -586,6 +593,7 @@ export default function LoginScreen() {
     // The OTP flow exists ONLY to set up (first-time) or reset (forgot) the PIN,
     // so a successful OTP verify always routes to /create-pin. create-pin then
     // continues to nextRoute once the PIN is saved.
+    console.log("[FLOW] login: route after OTP → /create-pin (next =", nextRoute, ")");
     router.replace({ pathname: "/create-pin", params: { next: nextRoute } });
   }
 

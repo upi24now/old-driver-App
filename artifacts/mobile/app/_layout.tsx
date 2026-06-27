@@ -7,7 +7,7 @@ import {
 import { useFonts } from "expo-font";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Slot, Stack, useRouter } from "expo-router";
+import { Slot, Stack, useRouter, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
@@ -31,8 +31,10 @@ function RootLayoutNav() {
   useNotifications();
 
   const router = useRouter();
+  const pathname = usePathname();
   const { authLoading, driverUid, isOtpVerified, isOtpVerifying, localPermissionVersion } = useDriver();
 
+  console.log("[GUARD] pathname =", pathname, "| driverUid =", driverUid ? "present" : "null", "| isOtpVerified =", isOtpVerified, "| isOtpVerifying =", isOtpVerifying, "| authLoading(isLoading) =", authLoading);
   console.log("[BOOT] render");
   console.log("[BOOT] authLoading =",   authLoading);
   console.log("[BOOT] showOverlay =",   authLoading);
@@ -97,6 +99,7 @@ function RootLayoutNav() {
     }
 
     if (!isOtpVerified) {
+      console.log("[GUARD] REDIRECT → /login | reason = otp_required (driverUid present but isOtpVerified=false) | from pathname =", pathname);
       console.log("[BOOT_ROUTE] chosenRoute = /login (otp_required uid =", driverUid, ")");
       router.replace("/login");
       return;
