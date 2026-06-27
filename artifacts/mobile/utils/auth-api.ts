@@ -111,7 +111,7 @@ export async function verifyOtpApi(phone: string, otp: string): Promise<VerifyOt
 
   console.log("[verifyOtp] response status :", res.status, res.statusText);
 
-  let json: { token?: string; sessionId?: string; error?: string };
+  let json: { token?: string; customToken?: string; sessionId?: string; error?: string };
   try {
     json = (await res.json()) as typeof json;
   } catch (parseErr) {
@@ -124,13 +124,16 @@ export async function verifyOtpApi(phone: string, otp: string): Promise<VerifyOt
     console.error("[verifyOtp] server returned error:", res.status, json.error);
     return { ok: false, error: json.error ?? `Server error (${res.status}).` };
   }
-  if (!json.token) {
+  // The backend returns the Firebase token as `customToken`; some older builds
+  // returned it as `token`. Accept either so the success contract is stable.
+  const token = json.token ?? json.customToken;
+  if (!token) {
     console.error("[verifyOtp] no token in successful response");
     return { ok: false, error: "No token received from server." };
   }
 
   console.log("[verifyOtp] SUCCESS — token received");
-  return { ok: true, token: json.token, sessionId: json.sessionId };
+  return { ok: true, token, sessionId: json.sessionId };
 }
 
 /**
@@ -188,7 +191,7 @@ export async function verifyPinApi(phone: string, pin: string): Promise<VerifyPi
     };
   }
 
-  let json: { token?: string; sessionId?: string; error?: string };
+  let json: { token?: string; customToken?: string; sessionId?: string; error?: string };
   try {
     json = (await res.json()) as typeof json;
   } catch (parseErr) {
@@ -201,13 +204,16 @@ export async function verifyPinApi(phone: string, pin: string): Promise<VerifyPi
     console.error("[verifyPin] server returned error:", res.status, json.error);
     return { ok: false, error: json.error ?? `Server error (${res.status}).` };
   }
-  if (!json.token) {
+  // The backend returns the Firebase token as `customToken`; some older builds
+  // returned it as `token`. Accept either so the success contract is stable.
+  const token = json.token ?? json.customToken;
+  if (!token) {
     console.error("[verifyPin] no token in successful response");
     return { ok: false, error: "No token received from server." };
   }
 
   console.log("[verifyPin] SUCCESS — token received");
-  return { ok: true, token: json.token, sessionId: json.sessionId };
+  return { ok: true, token, sessionId: json.sessionId };
 }
 
 // ─── PIN factor (parallel to OTP — OTP flow unchanged) ──────────────────────────
