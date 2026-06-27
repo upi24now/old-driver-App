@@ -163,6 +163,20 @@ function HeroIllustration({
   );
 }
 
+// ─── Login hero: pixel-perfect reference illustration (image asset) ─────────────
+// Full-bleed frosted-glass India map + monuments + clouds + pins + route lines
+// with the existing delivery scooter on a glowing glass platform. Rendered as the
+// source illustration to match the reference at 1:1 fidelity.
+function LoginHeroImage() {
+  return (
+    <Image
+      source={require("@/assets/images/login-hero.png")}
+      style={ss.loginHeroImg}
+      resizeMode="cover"
+    />
+  );
+}
+
 // ─── Setup hero: glass India map + skyline + scooter on a glowing platform ──────
 // Geographically accurate India outline, projected into viewBox 0 0 360 260.
 // Derived from real national-boundary data and simplified — the angular outline
@@ -609,8 +623,8 @@ export default function LoginScreen() {
         {/* ── PHASE: LOGIN (phone + PIN) ── */}
         {phase === "login" && (
           <>
-            {/* ── Hero: glass India map + scooter on glowing platform ── */}
-            <SetupHero />
+            {/* ── Hero: pixel-perfect reference illustration (image) ── */}
+            <LoginHeroImage />
 
             {/* ── Branding ── */}
             <View style={ss.brandBlock}>
@@ -1135,6 +1149,17 @@ const ss = StyleSheet.create({
     fontSize:  14,
     color:     D.textSecondary,
     textAlign: "center",
+  },
+
+  // ── Login hero (pixel-perfect reference illustration image) ───────────────
+  loginHeroImg: {
+    width:        WIN_W,
+    height:       Math.round(WIN_W * (614 / 853)),
+    marginLeft:   -22,
+    marginRight:  -22,
+    marginTop:    -r.topPad,
+    marginBottom: small ? 6 : 10,
+    alignSelf:    "center",
   },
 
   // ── Login hero (scooter + skyline) ────────────────────────────────────────
