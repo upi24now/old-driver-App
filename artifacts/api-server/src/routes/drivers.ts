@@ -304,11 +304,17 @@ router.post("/drivers/register-keys", async (req, res) => {
 /**
  * PATCH /api/drivers/me/fcm-token
  *
- * Phase 4A — persists the driver's Expo/FCM push token in PostgreSQL.
- * Firestore drivers/{uid}.fcmToken remains the shadow/fallback store (the
- * mobile still writes both for now) and the FCM dispatcher is UNCHANGED — it
- * continues to read the token from Firestore. This endpoint only adds the
- * PG-side storage.
+ * Persists the driver's Expo/FCM push token in PostgreSQL. PostgreSQL is the
+ * single source of truth for push tokens — there is NO Firestore write or
+ * fallback. The token + write timestamp are updated on the driver's row,
+ * keyed on uid.
+ *
+ * This route intentionally does NOT create a drivers row: the /drivers/signup
+ * route owns driver-row creation (onboarding/fee defaults), and its conflict
+ * policy keeps existing values, so pre-creating a minimal row here would freeze
+ * the wrong onboarding state. A missing row is therefore surfaced (saved:false)
+ * rather than masked — the client re-registers the token on the next
+ * login/foreground once signup has run.
  *
  * Auth:
  *   Authorization: Bearer <Firebase ID token>
@@ -316,8 +322,8 @@ router.post("/drivers/register-keys", async (req, res) => {
  *
  * Body: { fcmToken: string }
  *
- * Response 200: { ok: true, saved: true }   — token written to drivers.fcm_token
- * Response 200: { ok: true, saved: false }  — no drivers row yet; Firestore shadow still persists it
+ * Response 200: { ok: true, saved: true }   — token persisted to drivers.fcm_token
+ * Response 200: { ok: true, saved: false }  — no drivers row yet (client retries); not saved
  * Response 400: { ok: false, error: "missing_token" }
  * Response 401: { ok: false, error: "..." }
  * Response 500: { ok: false, error: "server_error" }
@@ -332,21 +338,23 @@ router.patch("/drivers/me/fcm-token", async (req, res) => {
     return;
   }
 
+  const token = fcmToken.trim();
+
   try {
     const updated = await db
       .update(driversTable)
       .set({
-        fcmToken:          fcmToken.trim(),
-        fcmTokenUpdatedAt: new Date(),
-        updatedAt:         new Date(),
+        fcmToken:          token,
+        fcmTokenUpdatedAt: sql`NOW()`,
+        updatedAt:         sql`NOW()`,
       })
       .where(eq(driversTable.uid, uid))
       .returning({ uid: driversTable.uid });
 
     if (updated.length === 0) {
-      // No drivers row in PG yet (signup not migrated for this uid). The mobile
-      // Firestore shadow write still persists the token, so this is non-fatal.
-      req.log.warn({ uid }, "[PG_FCM_TOKEN_FALLBACK] no drivers row — token not saved to PG");
+      // No drivers row for this uid yet. Do NOT create one here (see doc above);
+      // surface it loudly so it is never silently masked. No Firestore fallback.
+      req.log.warn({ uid }, "[PG_FCM_TOKEN_NO_ROW] no drivers row — token not saved (client will retry)");
       res.json({ ok: true, saved: false });
       return;
     }
@@ -354,7 +362,7 @@ router.patch("/drivers/me/fcm-token", async (req, res) => {
     req.log.info({ uid }, "[PG_FCM_TOKEN_SAVE]");
     res.json({ ok: true, saved: true });
   } catch (err) {
-    req.log.error({ err, uid }, "[PG_FCM_TOKEN_FALLBACK] PG update failed");
+    req.log.error({ err, uid }, "[PG_FCM_TOKEN_SAVE_FAILED] PG update failed");
     res.status(500).json({ ok: false, error: "server_error" });
   }
 });

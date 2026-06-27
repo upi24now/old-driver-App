@@ -231,25 +231,22 @@ async function claimFcmDispatch(
 type SendResult = { uid: string; messageId: string } | { uid: string; error: string };
 
 /**
- * Resolve a driver's push token — Phase 4B: PostgreSQL-first, Firestore-fallback.
+ * Resolve a driver's push token from PostgreSQL (drivers.fcm_token).
  *
- * Lookup order:
+ * Lookup:
  *   1. PostgreSQL drivers.fcm_token. If present and non-empty → [PG_FCM_TOKEN_HIT].
- *   2. Otherwise (PG empty, no row, OR PG read error) fall back to the Firestore
- *      drivers/{uid}.fcmToken. If present → [PG_FCM_TOKEN_FALLBACK].
- *   3. Neither store has a usable token → [PG_FCM_TOKEN_MISS], return null.
+ *   2. No usable token (empty, no row, OR PG read error) → [PG_FCM_TOKEN_MISS],
+ *      return null.
  *
- * Failure rules:
- *   - A PG read error MUST NOT block the push — it is logged and treated like a
- *     PG miss, so the Firestore fallback still runs (current behavior preserved).
- *   - The full token is never logged (only a short prefix).
+ * PostgreSQL is the SINGLE source of truth for push tokens — there is no
+ * Firestore fallback. Firebase is used only to SEND the message, never to look
+ * the token up. A PG read error is logged and treated as a miss (no push), and
+ * the full token is never logged (only a short prefix).
  */
 async function resolveDriverFcmToken(
-  firestoreDb: FirebaseFirestore.Firestore,
   driverUid: string,
   orderId: string,
 ): Promise<string | null> {
-  // ── 1. PostgreSQL first ────────────────────────────────────────────────────
   try {
     const rows = await pgDb
       .select({ fcmToken: driversTable.fcmToken })
@@ -265,32 +262,10 @@ async function resolveDriverFcmToken(
       );
       return pgToken;
     }
-    // PG reachable but no usable token → fall through to the Firestore fallback.
   } catch (err) {
-    // PG failure must NOT block push — log and fall back to Firestore.
-    logger.warn(
-      { err, orderId, driverUid },
-      "[FCM dispatcher] PG fcm_token read failed — falling back to Firestore",
-    );
+    logger.error({ err, orderId, driverUid }, "[FCM dispatcher] PG fcm_token read failed");
   }
 
-  // ── 2. Firestore fallback ──────────────────────────────────────────────────
-  try {
-    const driverSnap = await firestoreDb.doc(`drivers/${driverUid}`).get();
-    const token = driverSnap.data()?.["fcmToken"];
-    const fsToken = typeof token === "string" && token.length > 0 ? token : null;
-    if (fsToken) {
-      logger.info(
-        { orderId, driverUid, tokenPrefix: fsToken.substring(0, 10) + "..." },
-        "[PG_FCM_TOKEN_FALLBACK]",
-      );
-      return fsToken;
-    }
-  } catch (err) {
-    logger.error({ err, orderId, driverUid }, "[FCM dispatcher] Firestore fcmToken read failed");
-  }
-
-  // ── 3. Neither store had a usable token ────────────────────────────────────
   logger.warn({ orderId, driverUid }, "[PG_FCM_TOKEN_MISS]");
   return null;
 }
@@ -464,8 +439,8 @@ async function sendOrderFcm(
   // Only drivers with a confirmed offer row are notified (see offerReadyUids).
   for (const driverUid of offerReadyUids) {
     logger.info({ orderId, driverUid }, "[FCM SEND START]");
-    // Read the driver's push token — PG-first, Firestore-fallback (Phase 4B).
-    const fcmToken = await resolveDriverFcmToken(db, driverUid, orderId);
+    // Read the driver's push token from PostgreSQL (single source of truth).
+    const fcmToken = await resolveDriverFcmToken(driverUid, orderId);
 
     if (!fcmToken) {
       results.push({ uid: driverUid, error: "No fcmToken" });

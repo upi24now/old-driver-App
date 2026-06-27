@@ -7,7 +7,9 @@
  *   Returns { messageId } on success.
  */
 import { Router, type IRouter } from "express";
-import { adminFirestore, adminMessaging } from "../lib/firebase-admin";
+import { adminMessaging } from "../lib/firebase-admin";
+import { db, driversTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -32,9 +34,12 @@ function devGuard(
 
 router.post("/dev/test-fcm", devGuard, async (req, res) => {
   try {
-    const db = await adminFirestore();
-    const snap = await db.doc(`drivers/${TEST_DRIVER_UID}`).get();
-    const fcmToken = snap.data()?.fcmToken as string | undefined;
+    const rows = await db
+      .select({ fcmToken: driversTable.fcmToken })
+      .from(driversTable)
+      .where(eq(driversTable.uid, TEST_DRIVER_UID))
+      .limit(1);
+    const fcmToken = rows[0]?.fcmToken ?? undefined;
 
     if (!fcmToken) {
       res.status(404).json({ error: `No fcmToken for driver ${TEST_DRIVER_UID}` });
