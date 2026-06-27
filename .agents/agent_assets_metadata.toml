@@ -221,3 +221,9 @@ id = "1Mzy0Lh7MW1Bz5LUL1EQo"
 uri = "file://production-baseline/driver-plan-activation-fix.tar.gz"
 type = "unspecified"
 title = "Driver Plan one-active-plan fix (code + SQL + deploy/rollback)"
+
+[[outputs]]
+id = "XWSrn8WMTBS9t8qVWpG3Y"
+uri = "file://production-baseline/driver-plan-live-fix.tar.gz"
+type = "unspecified"
+title = "Driver Plan fix — built against your exact live bundle (patcher + ready-patched bundle + SQL + deploy)"
