@@ -163,8 +163,9 @@ function LoginHero() {
         {/* Birds */}
         <Path d="M118 44 q6 -6 12 0 q6 -6 12 0" stroke="#FF6A00" strokeWidth="1.5" fill="none" opacity="0.18" />
         <Path d="M226 38 q5 -5 10 0 q5 -5 10 0" stroke="#FF6A00" strokeWidth="1.5" fill="none" opacity="0.16" />
-        {/* Ground glow under the scooter */}
-        <Ellipse cx="180" cy="184" rx="122" ry="14" fill="#FF6A00" opacity="0.12" />
+        {/* Ground glow under the scooter (slightly stronger) */}
+        <Ellipse cx="180" cy="186" rx="134" ry="18" fill="#FF6A00" opacity="0.16" />
+        <Ellipse cx="180" cy="184" rx="96"  ry="11" fill="#FF6A00" opacity="0.12" />
       </Svg>
 
       <Image
@@ -453,7 +454,7 @@ export default function LoginScreen() {
             <Text style={ss.welcomeSub}>Continue with your Mobile Number & PIN</Text>
 
             {/* ── Mobile number card ── */}
-            <View style={ss.floatCard}>
+            <View style={[ss.floatCard, ss.mobileCardSpacing]}>
               <View style={ss.cardLabelRow}>
                 <Feather name="smartphone" size={16} color={D.primary} />
                 <Text style={ss.cardLabelText}>Mobile Number</Text>
@@ -595,7 +596,7 @@ export default function LoginScreen() {
                     </Text>
                     <Feather
                       name="arrow-right"
-                      size={20}
+                      size={23}
                       color={(!isValid || pin.length < PIN_LENGTH) ? "#9CA3AF" : D.white}
                     />
                   </View>
@@ -611,7 +612,7 @@ export default function LoginScreen() {
               disabled={!isValid}
             >
               <View style={ss.firstTimeIcon}>
-                <Feather name="user-plus" size={18} color={D.primary} />
+                <Feather name="user-plus" size={20} color={D.primary} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={ss.firstTimeTitle}>First time here?</Text>
@@ -987,15 +988,15 @@ const ss = StyleSheet.create({
   // ── Login hero (scooter + skyline) ────────────────────────────────────────
   loginHero: {
     width:          "100%",
-    height:         small ? 158 : medium ? 184 : 204,
+    height:         small ? 182 : medium ? 212 : 234,
     alignItems:     "center",
     justifyContent: "center",
     marginTop:      small ? 4 : 8,
     marginBottom:   2,
   },
   loginScooter: {
-    width:  Math.min(WIN_W * 0.64, 256),
-    height: small ? 138 : medium ? 158 : 172,
+    width:  Math.min(WIN_W * 0.75, 300),
+    height: small ? 160 : medium ? 184 : 200,
     zIndex: 2,
   },
 
@@ -1041,7 +1042,7 @@ const ss = StyleSheet.create({
     fontSize:     14,
     color:        D.textSecondary,
     textAlign:    "center",
-    marginBottom: 20,
+    marginBottom: 28,
   },
 
   // ── Floating cards ────────────────────────────────────────────────────────
@@ -1060,6 +1061,9 @@ const ss = StyleSheet.create({
     elevation:         4,
     marginBottom:      16,
   },
+  mobileCardSpacing: {
+    marginBottom: 25,
+  },
   cardLabelRow: {
     flexDirection: "row",
     alignItems:    "center",
@@ -1075,10 +1079,10 @@ const ss = StyleSheet.create({
   // ── PIN cell states ───────────────────────────────────────────────────────
   pinCellActiveGlow: {
     shadowColor:   D.primary,
-    shadowOpacity: 0.22,
-    shadowRadius:  8,
+    shadowOpacity: 0.32,
+    shadowRadius:  11,
     shadowOffset:  { width: 0, height: 3 },
-    elevation:     3,
+    elevation:     4,
   },
   pinCursor: {
     fontSize:   22,
@@ -1100,10 +1104,10 @@ const ss = StyleSheet.create({
     marginTop:     6,
     marginBottom:  18,
     shadowColor:   D.primary,
-    shadowOpacity: 0.32,
-    shadowRadius:  14,
-    shadowOffset:  { width: 0, height: 8 },
-    elevation:     6,
+    shadowOpacity: 0.40,
+    shadowRadius:  18,
+    shadowOffset:  { width: 0, height: 10 },
+    elevation:     9,
   },
   loginBtn: {
     height:         56,
@@ -1130,7 +1134,7 @@ const ss = StyleSheet.create({
     gap:             14,
     backgroundColor: D.white,
     borderRadius:    18,
-    padding:         16,
+    padding:         14,
     borderWidth:     1,
     borderColor:     "#F1F1F1",
     shadowColor:     "#1B2733",
@@ -1144,9 +1148,9 @@ const ss = StyleSheet.create({
     opacity: 0.55,
   },
   firstTimeIcon: {
-    width:           42,
-    height:          42,
-    borderRadius:    21,
+    width:           46,
+    height:          46,
+    borderRadius:    23,
     backgroundColor: D.primarySoft,
     alignItems:      "center",
     justifyContent:  "center",
@@ -1201,7 +1205,7 @@ const ss = StyleSheet.create({
     borderWidth:       1.5,
     borderColor:       D.border,
     borderRadius:      14,
-    height:            58,
+    height:            62,
     paddingHorizontal: 12,
     backgroundColor:   D.inputBg,
   },
@@ -1403,9 +1407,13 @@ const ss = StyleSheet.create({
     flex:           1,
     maxWidth:       54,
     height:         58,
-    borderRadius:   16,
+    borderRadius:   19,
     alignItems:     "center",
     justifyContent: "center",
+    shadowColor:    "#1B2733",
+    shadowOpacity:  0.05,
+    shadowRadius:   3,
+    shadowOffset:   { width: 0, height: 1 },
   },
   pinDot: {
     fontSize:   18,
