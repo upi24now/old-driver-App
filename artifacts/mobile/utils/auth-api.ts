@@ -163,6 +163,30 @@ export async function verifyPinApi(phone: string, pin: string): Promise<VerifyPi
 
   console.log("[verifyPin] response status :", res.status, res.statusText);
 
+  // A 404 from verify-pin means this account has no login PIN set yet — OR the
+  // backend it reached lacks the verify-pin route entirely (e.g. an older API
+  // bundle that answers with a non-JSON "Cannot POST /…" HTML body). In BOTH
+  // cases the correct, safe behavior is identical: route the driver into
+  // first-time OTP + PIN setup. We therefore treat ANY 404 as pinNotFound
+  // WITHOUT requiring a parseable JSON body, so a non-JSON 404 can never
+  // dead-end the login screen with an "unexpected response" error. (No
+  // anonymous PIN-existence lookup is made — the verify-pin response alone
+  // drives the UI.)
+  if (res.status === 404) {
+    let serverMsg: string | undefined;
+    try {
+      serverMsg = ((await res.json()) as { error?: string })?.error;
+    } catch {
+      // Non-JSON 404 body (e.g. an Express "Cannot POST" HTML page) — ignore.
+    }
+    console.error("[verifyPin] 404 — no PIN set / route absent; falling back to OTP");
+    return {
+      ok:          false,
+      pinNotFound: true,
+      error:       serverMsg ?? "No PIN set for this account.",
+    };
+  }
+
   let json: { token?: string; sessionId?: string; error?: string };
   try {
     json = (await res.json()) as typeof json;
@@ -174,17 +198,6 @@ export async function verifyPinApi(phone: string, pin: string): Promise<VerifyPi
 
   if (!res.ok) {
     console.error("[verifyPin] server returned error:", res.status, json.error);
-    // HTTP 404 from verify-pin means this account has no login PIN set yet.
-    // Surface a machine-readable flag so the login screen can route the driver
-    // into first-time OTP + PIN setup — WITHOUT any anonymous "does a PIN
-    // exist?" lookup endpoint. The verify-pin response alone drives the UI.
-    if (res.status === 404) {
-      return {
-        ok:          false,
-        pinNotFound: true,
-        error:       json.error ?? "No PIN set for this account.",
-      };
-    }
     return { ok: false, error: json.error ?? `Server error (${res.status}).` };
   }
   if (!json.token) {

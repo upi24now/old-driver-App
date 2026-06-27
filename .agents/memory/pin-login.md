@@ -47,3 +47,14 @@ purely from the verify-pin response. No backend/bundle change is needed for this
 after `set-pin` succeeds — it adds NO routing logic. `set-pin` requires an existing
 driver row (404 otherwise); the mobile flow has already created the row
 (ensureDriverSignup) by the time PIN setup runs.
+
+## verify-pin 404 must be JSON-agnostic
+`verifyPinApi` (mobile `utils/auth-api.ts`) must check `res.status===404` and return
+`pinNotFound:true` BEFORE parsing the body. **Why:** dev API returns a 404 with a
+JSON body for no-PIN accounts, but a backend missing the route (the separate prod
+VPS bundle, which lacks newer routes) returns a 404 with a non-JSON HTML
+`Cannot POST /api/auth/verify-pin` page — calling `res.json()` first throws and
+dead-ends login with "Server returned an unexpected response (HTTP 404)" instead of
+falling back to OTP. **How to apply:** treat ANY 404 as the OTP/create-PIN fallback;
+read the JSON error message only opportunistically (tolerate parse failure). Keep
+this defensive even after prod parity — it survives partial rollouts/stale bundles.
