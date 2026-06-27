@@ -167,7 +167,7 @@ const INDIA_PATH =
 function Pin({ x, y, s = 1 }: { x: number; y: number; s?: number }) {
   return (
     <G transform={`translate(${x} ${y}) scale(${s})`}>
-      <Ellipse cx="0" cy="13.5" rx="3.4" ry="1.5" fill="#B84600" opacity="0.22" />
+      <Ellipse cx="0" cy="13.5" rx="3.6" ry="1.6" fill="#B84600" opacity="0.26" />
       <Path
         d="M0 13 C-6.5 4.5 -7.6 -2.6 -3.3 -6.7 C-1.2 -8.8 1.2 -8.8 3.3 -6.7 C7.6 -2.6 6.5 4.5 0 13 Z"
         fill="url(#pinGrad)"
@@ -232,13 +232,13 @@ function SetupHero() {
         {/* Skyline + routes + highlight clipped INSIDE the map */}
         <G clipPath="url(#indiaClip)">
           {/* top-left glass highlight */}
-          <Ellipse cx="150" cy="80" rx="80" ry="56" fill="url(#glassHi)" opacity="0.5" />
+          <Ellipse cx="150" cy="80" rx="80" ry="56" fill="url(#glassHi)" opacity="0.58" />
 
           {/* Curved dashed route lines connecting cities */}
-          <Path d="M132 96 Q156 74 174 80"   stroke="#FF6A00" strokeWidth="1.1" strokeDasharray="1,5" strokeLinecap="round" fill="none" opacity="0.32" />
-          <Path d="M174 80 Q210 88 238 112"  stroke="#FF6A00" strokeWidth="1.1" strokeDasharray="1,5" strokeLinecap="round" fill="none" opacity="0.30" />
-          <Path d="M132 96 Q138 126 152 150"  stroke="#FF6A00" strokeWidth="1.1" strokeDasharray="1,5" strokeLinecap="round" fill="none" opacity="0.26" />
-          <Path d="M238 112 Q214 138 188 160" stroke="#FF6A00" strokeWidth="1.1" strokeDasharray="1,5" strokeLinecap="round" fill="none" opacity="0.24" />
+          <Path d="M132 96 Q156 74 174 80"   stroke="#FF6A00" strokeWidth="1.2" strokeDasharray="1,5" strokeLinecap="round" fill="none" opacity="0.36" />
+          <Path d="M174 80 Q210 88 238 112"  stroke="#FF6A00" strokeWidth="1.2" strokeDasharray="1,5" strokeLinecap="round" fill="none" opacity="0.34" />
+          <Path d="M132 96 Q138 126 152 150"  stroke="#FF6A00" strokeWidth="1.2" strokeDasharray="1,5" strokeLinecap="round" fill="none" opacity="0.30" />
+          <Path d="M238 112 Q214 138 188 160" stroke="#FF6A00" strokeWidth="1.2" strokeDasharray="1,5" strokeLinecap="round" fill="none" opacity="0.27" />
 
           {/* India-Gate style arch (centre-left) */}
           <G opacity="0.26" fill="#E0772A">
@@ -274,9 +274,9 @@ function SetupHero() {
         </G>
 
         {/* Premium glass glowing edges (layered strokes) */}
-        <Path d={INDIA_PATH} fill="none" stroke="#FF8A3D" strokeWidth="8"   opacity="0.12" strokeLinejoin="round" />
-        <Path d={INDIA_PATH} fill="none" stroke="#FF7A1F" strokeWidth="3.4" opacity="0.45" strokeLinejoin="round" />
-        <Path d={INDIA_PATH} fill="none" stroke="#FFE9D8" strokeWidth="1.3" opacity="0.9"  strokeLinejoin="round" />
+        <Path d={INDIA_PATH} fill="none" stroke="#FF8A3D" strokeWidth="9"   opacity="0.16" strokeLinejoin="round" />
+        <Path d={INDIA_PATH} fill="none" stroke="#FF7A1F" strokeWidth="3.4" opacity="0.52" strokeLinejoin="round" />
+        <Path d={INDIA_PATH} fill="none" stroke="#FFE9D8" strokeWidth="1.2" opacity="0.95" strokeLinejoin="round" />
 
         {/* City pins across the map */}
         <Pin x={132} y={92}  s={1.05} />
@@ -1105,16 +1105,16 @@ const ss = StyleSheet.create({
   // ── Setup hero (glass India map + scooter platform) ───────────────────────
   setupHero: {
     width:          "100%",
-    height:         small ? 218 : medium ? 252 : 280,
+    height:         small ? 198 : medium ? 230 : 256,
     alignItems:     "center",
     justifyContent: "center",
-    marginTop:      small ? 4 : 8,
-    marginBottom:   small ? 6 : 10,
+    marginTop:      small ? 2 : 4,
+    marginBottom:   small ? 2 : 4,
   },
   setupScooter: {
-    width:        Math.min(WIN_W * 0.66, 268),
-    height:       small ? 150 : medium ? 172 : 188,
-    marginTop:    small ? 20 : 28,
+    width:        Math.min(WIN_W * 0.60, 244),
+    height:       small ? 137 : medium ? 157 : 172,
+    marginTop:    small ? 18 : 25,
     zIndex:       2,
   },
   setupHeadline: {
@@ -1180,7 +1180,7 @@ const ss = StyleSheet.create({
   // ── Branding ──────────────────────────────────────────────────────────────
   brandBlock: {
     alignItems:   "center",
-    marginBottom: small ? 10 : 14,
+    marginBottom: small ? 6 : 8,
   },
   brandWordmark: {
     fontSize:      28,
@@ -1211,16 +1211,16 @@ const ss = StyleSheet.create({
     fontSize:      small ? 30 : 35,
     fontWeight:    "800",
     color:         D.navy,
-    letterSpacing: -0.8,
+    letterSpacing: -0.6,
     textAlign:     "center",
-    marginBottom:  8,
+    marginBottom:  4,
   },
   welcomeSub: {
     fontSize:     16,
     fontWeight:   "500",
     color:        D.textSecondary,
     textAlign:    "center",
-    marginBottom: 28,
+    marginBottom: 22,
   },
 
   // ── Floating cards ────────────────────────────────────────────────────────
@@ -1384,7 +1384,7 @@ const ss = StyleSheet.create({
   },
   countryCode: {
     fontSize:   15,
-    fontWeight: "700",
+    fontWeight: "600",
     color:      D.text,
   },
   inputDivider: {
@@ -1578,7 +1578,7 @@ const ss = StyleSheet.create({
   // ── Forgot / setup links ──────────────────────────────────────────────────
   forgotRow: {
     alignSelf:    "flex-end",
-    marginTop:    -4,
+    marginTop:    -7,
     marginBottom: 18,
     paddingVertical: 2,
   },
