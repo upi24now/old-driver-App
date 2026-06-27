@@ -1153,8 +1153,8 @@ const ss = StyleSheet.create({
 
   // ── Login hero (pixel-perfect reference illustration image) ───────────────
   loginHeroImg: {
-    width:        Math.round(WIN_W * 0.88),
-    height:       Math.round(WIN_W * 0.88 * (648 / 853)),
+    width:        Math.round(WIN_W * 0.827),
+    height:       Math.round(WIN_W * 0.827 * (648 / 853)),
     marginTop:    -r.topPad,
     marginBottom: -2,
     alignSelf:    "center",
@@ -1257,7 +1257,7 @@ const ss = StyleSheet.create({
     marginBottom: small ? 8 : 10,
   },
   brandWordmark: {
-    fontSize:      27,
+    fontSize:      26,
     fontWeight:    "800",
     letterSpacing: -0.6,
     marginBottom:  5,
@@ -1282,7 +1282,7 @@ const ss = StyleSheet.create({
 
   // ── Welcome ───────────────────────────────────────────────────────────────
   welcomeHeadline: {
-    fontSize:      small ? 26 : 31,
+    fontSize:      small ? 25 : 30,
     fontWeight:    "800",
     color:         D.navy,
     letterSpacing: -0.6,
@@ -1346,13 +1346,13 @@ const ss = StyleSheet.create({
 
   // ── Log In button ─────────────────────────────────────────────────────────
   loginBtnWrap: {
-    width:         "90%",
+    width:         "88%",
     alignSelf:     "center",
     borderRadius:  18,
     marginTop:     -12,
     marginBottom:  10,
     shadowColor:   D.primary,
-    shadowOpacity: 0.32,
+    shadowOpacity: 0.26,
     shadowRadius:  16,
     shadowOffset:  { width: 0, height: 8 },
     elevation:     8,
@@ -1440,7 +1440,7 @@ const ss = StyleSheet.create({
     borderWidth:       1,
     borderColor:       D.inputBorder,
     borderRadius:      18,
-    height:            50,
+    height:            48,
     paddingHorizontal: 14,
     backgroundColor:   D.white,
   },
@@ -1631,12 +1631,13 @@ const ss = StyleSheet.create({
   },
   // ── PIN-login cells ───────────────────────────────────────────────────────
   pinCellsRow: {
-    flexDirection:  "row",
-    gap:            8,
-    width:          "100%",
-    justifyContent: "center",
-    alignItems:     "center",
-    marginTop:      2,
+    flexDirection:     "row",
+    gap:               6,
+    width:             "100%",
+    paddingHorizontal: 8,
+    justifyContent:    "center",
+    alignItems:        "center",
+    marginTop:         2,
   },
   pinCellShell: {
     flex:           1,
