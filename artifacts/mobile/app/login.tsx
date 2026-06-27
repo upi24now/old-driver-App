@@ -79,9 +79,18 @@ const WIN_H  = Dimensions.get("window").height;
 const small  = WIN_H < 700;
 const medium = WIN_H >= 700 && WIN_H < 850;
 
+const clamp = (v: number, lo: number, hi: number) =>
+  Math.round(Math.max(lo, Math.min(hi, v)));
+
+// Hero scales proportionally to viewport height (clamped) so it keeps the same
+// optical balance across 360×800 → 412×915 instead of jumping between tiers.
+const HERO_H     = clamp(WIN_H * 0.205, 138, 186);
+const SCOOTER_H  = clamp(HERO_H * 0.82, 108, 152);
+const SCOOTER_MT = clamp(HERO_H * 0.07, 8, 14);
+
 const r = {
-  topPad:       small ? 10  : medium ? 14  : 18,
-  botPad:       small ? 10  : medium ? 14  : 18,
+  topPad:       clamp(WIN_H * 0.022, 10, 20),
+  botPad:       clamp(WIN_H * 0.020, 10, 18),
   logoSize:     small ? 48  : medium ? 54  : 64,
   logoBorderR:  small ? 24  : medium ? 27  : 32,
   logoFontSize: small ? 16  : medium ? 18  : 22,
@@ -1105,16 +1114,16 @@ const ss = StyleSheet.create({
   // ── Setup hero (glass India map + scooter platform) ───────────────────────
   setupHero: {
     width:          "100%",
-    height:         small ? 134 : medium ? 156 : 170,
+    height:         HERO_H,
     alignItems:     "center",
     justifyContent: "center",
-    marginTop:      small ? 2 : 4,
-    marginBottom:   small ? 6 : 8,
+    marginTop:      clamp(WIN_H * 0.005, 2, 6),
+    marginBottom:   clamp(WIN_H * 0.011, 6, 12),
   },
   setupScooter: {
     width:        Math.min(WIN_W * 0.60, 244),
-    height:       small ? 110 : medium ? 128 : 140,
-    marginTop:    small ? 8 : 12,
+    height:       SCOOTER_H,
+    marginTop:    SCOOTER_MT,
     zIndex:       2,
   },
   setupHeadline: {
