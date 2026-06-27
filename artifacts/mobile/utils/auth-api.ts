@@ -1,4 +1,5 @@
 import { firebaseAuth } from "@/utils/firebase";
+import { getSessionIdSync } from "@/utils/session";
 
 const _rawDomain = process.env["EXPO_PUBLIC_DOMAIN"] ?? "";
 // Strip any accidental protocol prefix or trailing /api so we never produce
@@ -237,10 +238,23 @@ export async function setPin(pin: string): Promise<SetPinResult> {
   const idToken = await getIdToken();
   if (!idToken) return { ok: false, error: "Not signed in." };
 
+  // Single-device login: set-pin runs through require-auth, which 401s
+  // SESSION_REPLACED unless the request echoes the active session id. The global
+  // fetch interceptor (utils/api-client.ts) normally injects this, but set-pin
+  // fires the instant after OTP — before the interceptor/cache are guaranteed to
+  // be in lockstep — so attach it explicitly here. If absent, set-pin would 401,
+  // the PIN would never persist, and every later PIN login would 404 "No PIN set".
+  const sessionId = getSessionIdSync();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${idToken}`,
+  };
+  if (sessionId) headers["x-session-id"] = sessionId;
+
   try {
     const res = await fetch(`${BASE_URL}/auth/set-pin`, {
       method:  "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+      headers,
       body:    JSON.stringify({ pin }),
     });
     const json = (await res.json()) as { ok?: boolean; sessionId?: string; error?: string };

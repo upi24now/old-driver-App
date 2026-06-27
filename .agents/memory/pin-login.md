@@ -48,6 +48,23 @@ after `set-pin` succeeds — it adds NO routing logic. `set-pin` requires an exi
 driver row (404 otherwise); the mobile flow has already created the row
 (ensureDriverSignup) by the time PIN setup runs.
 
+## set-pin must send x-session-id EXPLICITLY (not rely on the global interceptor)
+**Rule:** `setPin()` (mobile `utils/auth-api.ts`) must attach the `x-session-id`
+header itself from `getSessionIdSync()`, not depend solely on the global fetch
+interceptor (`utils/api-client.ts`) to inject it.
+**Why:** `set-pin` is single-device session-gated by `requireAuth`; `verify-otp`
+mints AND persists `active_session_id` right before routing to `/create-pin`, so by
+the time `set-pin` fires the account already has an active session. set-pin fires
+the instant after OTP — the one moment the interceptor install / session cache may
+not be in lockstep. A missing header → `401 SESSION_REPLACED` → PIN never persists
+→ every later `verify-pin` returns the user-visible `404 "No PIN set"`. This was the
+"Set up your PIN → Continue → HTTP 404" bug. The interceptor injection is idempotent
+(`if !headers.has(...)`), so an explicit header is safe (no double-set).
+**How to apply:** any Bearer-authed auth-api helper that fires during a login
+transition should set `x-session-id` explicitly; never trust interceptor timing for
+critical auth steps. Proven flow (dev): send-otp 200 → verify-otp 200 → set-pin 200
+(with header) → verify-pin 200; set-pin WITHOUT header reproducibly 401s.
+
 ## verify-pin 404 must be JSON-agnostic
 `verifyPinApi` (mobile `utils/auth-api.ts`) must check `res.status===404` and return
 `pinNotFound:true` BEFORE parsing the body. **Why:** dev API returns a 404 with a
