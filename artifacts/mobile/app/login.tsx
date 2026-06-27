@@ -1153,12 +1153,10 @@ const ss = StyleSheet.create({
 
   // ── Login hero (pixel-perfect reference illustration image) ───────────────
   loginHeroImg: {
-    width:        WIN_W,
-    height:       Math.round(WIN_W * (614 / 853)),
-    marginLeft:   -22,
-    marginRight:  -22,
+    width:        Math.round(WIN_W * 0.85),
+    height:       Math.round(WIN_W * 0.85 * (614 / 853)),
     marginTop:    -r.topPad,
-    marginBottom: small ? 6 : 10,
+    marginBottom: 2,
     alignSelf:    "center",
   },
 
@@ -1283,12 +1281,12 @@ const ss = StyleSheet.create({
 
   // ── Welcome ───────────────────────────────────────────────────────────────
   welcomeHeadline: {
-    fontSize:      small ? 30 : 35,
+    fontSize:      small ? 28 : 33,
     fontWeight:    "800",
     color:         D.navy,
     letterSpacing: -0.6,
     textAlign:     "center",
-    marginBottom:  6,
+    marginBottom:  2,
   },
   welcomeSub: {
     fontSize:     16,
@@ -1303,7 +1301,7 @@ const ss = StyleSheet.create({
     alignSelf:         "stretch",
     backgroundColor:   D.white,
     borderRadius:      24,
-    paddingVertical:   18,
+    paddingVertical:   14,
     paddingHorizontal: 24,
     borderWidth:       1,
     borderColor:       D.border,
@@ -1349,8 +1347,8 @@ const ss = StyleSheet.create({
     width:         "90%",
     alignSelf:     "center",
     borderRadius:  18,
-    marginTop:     2,
-    marginBottom:  16,
+    marginTop:     -6,
+    marginBottom:  12,
     shadowColor:   D.primary,
     shadowOpacity: 0.32,
     shadowRadius:  16,
@@ -1358,7 +1356,7 @@ const ss = StyleSheet.create({
     elevation:     8,
   },
   loginBtn: {
-    height:         58,
+    height:         52,
     borderRadius:   18,
     flexDirection:  "row",
     alignItems:     "center",
@@ -1397,7 +1395,7 @@ const ss = StyleSheet.create({
     fontSize:     13,
     color:        D.textSecondary,
     textAlign:    "center",
-    marginTop:    6,
+    marginTop:    2,
     marginBottom: 14,
   },
 
@@ -1440,7 +1438,7 @@ const ss = StyleSheet.create({
     borderWidth:       1,
     borderColor:       D.inputBorder,
     borderRadius:      18,
-    height:            54,
+    height:            50,
     paddingHorizontal: 14,
     backgroundColor:   D.white,
   },
@@ -1639,9 +1637,8 @@ const ss = StyleSheet.create({
     marginTop:      2,
   },
   pinCellShell: {
-    flex:           1,
-    maxWidth:       54,
-    height:         52,
+    width:          48,
+    height:         48,
     borderRadius:   16,
     alignItems:     "center",
     justifyContent: "center",
@@ -1653,7 +1650,7 @@ const ss = StyleSheet.create({
   // ── Forgot / setup links ──────────────────────────────────────────────────
   forgotRow: {
     alignSelf:    "flex-end",
-    marginTop:    -11,
+    marginTop:    -17,
     marginBottom: 14,
     paddingVertical: 2,
   },
