@@ -29,6 +29,9 @@ dispatch poller:
 - `PATCH /api/orders/:orderId/location` — driver GPS for live tracking.
 - `GET   /api/orders/:orderId/stream` — SSE order status (`{status}`), **ownership-gated**
   (`driver_uid = me`).
+- `GET   /api/drivers/:uid/active-orders` — the driver's active (non-terminal) assigned
+  orders as `{ ok, orders: OrderDoc[] }`. **Self-only** (`:uid` must equal the
+  authenticated driver, else 403). Returns `200` with `[]` when there are none.
 
 ## Files in this folder
 
@@ -42,9 +45,9 @@ dispatch poller:
 
 ```
 ORIGINAL  sha256: b2f1643f4c62bf9f069c6175f44187a98319dfdf1cdecd056aac2c4e1b394e1c
-PATCHED   sha256: 306b55b16253c5afeb2ec5723cd0c74564aab7632d93099eaec2055ba0fff943
-BLOCK     sha256: fbe3e251bad59a5b9fb27979aa4727c69e91460f937d1116c082b33f2e32c91c
-SIZE      original 4162200 B  →  patched 4186586 B   (delta = +24386 B = block size, exact)
+PATCHED   sha256: 8d15ec721e97b8e718f38f8a7c7cffff7df48cbf2405aef7de917acfe3a6e87a
+BLOCK     sha256: 9cfa3af01c82e43d2d2b8896a4ee604154782f6355b53ea963b19e3645359013
+SIZE      original 4162200 B  →  patched 4189472 B   (delta = +27272 B = block size, exact)
 ```
 
 The patched file differs from the original by the inserted block ONLY: `cmp` reports the

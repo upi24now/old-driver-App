@@ -265,6 +265,66 @@
     res.on("close", cleanup);
   });
 
+  // Project an orders row into the OrderDoc shape the app parses (mirrors offer-stream).
+  function bcdMapOrderRow(r) {
+    var fare = r.fare_estimate != null ? Number(r.fare_estimate) : 0;
+    var total = r.total_amount != null ? Number(r.total_amount) : fare;
+    return {
+      id: r.id,
+      status: r.status || "pending",
+      driverUid: r.driver_uid || null,
+      customerId: r.user_id || "",
+      customerName: r.customer_name || "",
+      customerPhone: r.customer_phone || "",
+      customerRating: 5,
+      parcelType: r.parcel_type || "Parcel",
+      parcelEmoji: "\uD83D\uDCE6",
+      parcelWeight: r.weight_kg != null ? String(r.weight_kg) : "",
+      pickup: r.pickup_address || "",
+      pickupAddress: r.pickup_address || "",
+      pickupCity: r.pickup_city || "",
+      drop: r.delivery_address || "",
+      deliveryAddress: r.delivery_address || "",
+      dropCity: r.drop_city || "",
+      distanceKm: r.distance_km != null ? Number(r.distance_km) : 0,
+      durationMin: r.duration_min != null ? Number(r.duration_min) : 0,
+      fareEstimate: fare,
+      totalAmount: total,
+      paymentMode: normalizePaymentMode(r.payment_mode),
+      createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : new Date().toISOString()
+    };
+  }
+
+  // GET /api/drivers/:uid/active-orders  → { ok, orders: OrderDoc[] }
+  // Self-only: :uid must equal the authenticated driver (uid is "91"+phone).
+  // Returns 200 with an empty array when the driver has no active (non-terminal)
+  // assigned order — this is the app's authoritative "no active order" answer.
+  app2.get("/api/drivers/:uid/active-orders", driverAuth, async function (req, res) {
+    var uid = req.driverUid;
+    if (!uid) { res.status(401).json({ error: "Unauthorized" }); return; }
+    var target = req.params.uid;
+    if (target !== uid) { res.status(403).json({ ok: false, error: "forbidden", orders: [] }); return; }
+    var max = parseInt(req.query.max, 10);
+    if (!(max >= 1)) max = 3;
+    if (max > 10) max = 10;
+    try {
+      var q = await pool.query(
+        "SELECT o.id, o.status, o.user_id, o.customer_name, o.customer_phone, o.parcel_type, o.weight_kg, " +
+        "o.pickup_address, o.pickup_city, o.delivery_address, o.drop_city, o.distance_km, o.duration_min, " +
+        "o.fare_estimate, o.total_amount, o.payment_mode, o.created_at, o.driver_uid " +
+        "FROM orders o " +
+        "WHERE o.driver_uid = $1 " +
+        "AND o.status NOT IN ('delivered','cancelled','canceled','completed','expired','rejected','returned') " +
+        "ORDER BY o.created_at DESC LIMIT $2",
+        [uid, max]
+      );
+      res.json({ ok: true, orders: q.rows.map(bcdMapOrderRow) });
+    } catch (e) {
+      if (req.log && req.log.error) req.log.error({ err: e, uid: uid }, "[BCD] active-orders failed");
+      res.status(500).json({ ok: false, error: "server_error" });
+    }
+  });
+
   // GET /api/orders/:orderId/stream  (SSE → { status })
   app2.get("/api/orders/:orderId/stream", driverAuth, async function (req, res) {
     var uid = req.driverUid;
