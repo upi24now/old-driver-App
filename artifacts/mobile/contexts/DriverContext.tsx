@@ -34,6 +34,7 @@ import {
 } from "@/utils/order-stream";
 import {
   getDriverProfile,
+  getDriverPlanStatus,
   getDriverVerificationStatus,
   patchDriverProfile,
   patchDriverVehicle,
@@ -691,14 +692,11 @@ export function DriverProvider({ children }: { children: ReactNode }) {
                 console.log("[SESSION_RESTORE_SUB] plan restored from cache —", sub.plan, "exp", sub.expiresAt);
               }
             } catch {}
-            // Subscription + daily stats: PG-sourced from pgProfile (Phase 5J-Tier-3).
-            // Unconditional — a PG null must clear stale AsyncStorage cache.
-            setSubPlan((pgProfile.subscriptionPlan as SubPlan) ?? null);
-            setSubExp(pgProfile.subscriptionExpiresAt ?? null);
-            persistSubscriptionCache(
-              (pgProfile.subscriptionPlan as SubPlan) ?? null,
-              pgProfile.subscriptionExpiresAt ?? null,
-            );
+            // Subscription is NOT carried by GET /api/drivers/me — read the
+            // authoritative status from GET /api/driver-plans/status. The cache
+            // restored above is the instant-display value until this resolves;
+            // on failure we keep the cache rather than clearing it to null.
+            void syncSubscriptionFromServer();
             {
               const today   = new Date().toISOString().slice(0, 10);
               const sameDay = pgProfile.todayDate === today;
@@ -1384,16 +1382,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         setSuspendReason(pg2?.suspendReason ?? null);
         setBlacklistReason(pg2?.blacklistReason ?? null);
         setOnlineState(false); // isOnline not stored in PG; always start offline
-        // Subscription + daily stats: PG-sourced from pg2 (Phase 5J-Tier-3).
-        // Guard on pg2 presence; then unconditional — PG null clears stale cache.
-        if (pg2) {
-          setSubPlan((pg2.subscriptionPlan as SubPlan) ?? null);
-          setSubExp(pg2.subscriptionExpiresAt ?? null);
-          persistSubscriptionCache(
-            (pg2.subscriptionPlan as SubPlan) ?? null,
-            pg2.subscriptionExpiresAt ?? null,
-          );
-        }
+        // Subscription is NOT carried by GET /api/drivers/me — read the
+        // authoritative status from GET /api/driver-plans/status (fire-and-forget).
+        void syncSubscriptionFromServer();
         {
           const today   = new Date().toISOString().slice(0, 10);
           const sameDay = pg2?.todayDate === today;
@@ -1465,14 +1456,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             pgProfile.accountStatus === "blocked";
           setOnlineState(isSuspended ? false : false); // isOnline not stored in PG
         }
-        // Subscription + daily stats: PG-sourced from pgProfile (Phase 5J-Tier-3).
-        // Unconditional — a PG null must clear stale AsyncStorage cache.
-        setSubPlan((pgProfile.subscriptionPlan as SubPlan) ?? null);
-        setSubExp(pgProfile.subscriptionExpiresAt ?? null);
-        persistSubscriptionCache(
-          (pgProfile.subscriptionPlan as SubPlan) ?? null,
-          pgProfile.subscriptionExpiresAt ?? null,
-        );
+        // Subscription is NOT carried by GET /api/drivers/me — read the
+        // authoritative status from GET /api/driver-plans/status (fire-and-forget).
+        void syncSubscriptionFromServer();
         {
           const today   = new Date().toISOString().slice(0, 10);
           const sameDay = pgProfile.todayDate === today;
@@ -1870,17 +1856,28 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   };
 
+  // Authoritative subscription sync. The production backend serves the active
+  // plan ONLY from GET /api/driver-plans/status (fallback /current); GET
+  // /api/drivers/me does NOT carry subscription fields, so reading the profile
+  // left the plan inactive after purchase and re-triggered the renewal prompt.
+  const syncSubscriptionFromServer = async (): Promise<void> => {
+    const status = await getDriverPlanStatus();
+    if (!status) return; // network/auth failure — keep last-known (cached) state
+    const normalizePlan = (id: string | null): SubPlan | null =>
+      id === "daily" || id === "weekly" || id === "monthly" ? id : null;
+    const plan      = status.active ? normalizePlan(status.planId) : null;
+    const expiresAt = status.active ? status.expiresAt : null;
+    console.log("[syncSubscription] active:", status.active, "planId:", status.planId, "expiresAt:", expiresAt);
+    // Unconditional updates so an expired/removed plan is always cleared locally.
+    setSubPlan(plan);
+    setSubExp(expiresAt);
+    persistSubscriptionCache(plan, expiresAt);
+  };
+
   const refreshSubscription = async (): Promise<void> => {
     if (!driverUid) return;
     try {
-      const pgDoc = await getDriverProfile();
-      if (!pgDoc) return;
-      // Unconditional updates so an expired/removed plan is always cleared locally.
-      const plan      = (pgDoc.subscriptionPlan as SubPlan) ?? null;
-      const expiresAt = pgDoc.subscriptionExpiresAt ?? null;
-      setSubPlan(plan);
-      setSubExp(expiresAt);
-      persistSubscriptionCache(plan, expiresAt);
+      await syncSubscriptionFromServer();
     } catch {
       // silent — stale state is preferable to an uncaught error
     }

@@ -227,6 +227,63 @@ export async function getDriverVerificationStatus(): Promise<PgVerificationStatu
   }
 }
 
+// ─── GET /api/driver-plans/status  (fallback /api/driver-plans/current) ────────
+
+/** Authoritative subscription status as returned by GET /api/driver-plans/status. */
+export type PgDriverPlanStatus = {
+  active:    boolean;
+  planId:    string | null;
+  status:    string | null;
+  expiresAt: number | null;  // epoch ms (parsed from the ISO string the API returns)
+};
+
+/**
+ * Fetches the driver's authoritative subscription status from the backend.
+ *
+ * The production backend serves the active plan ONLY from /api/driver-plans/status
+ * (and the identical /api/driver-plans/current). GET /api/drivers/me does NOT
+ * carry subscription fields, so the plan must be read here. Tries /status first
+ * and falls back to /current. Returns null only on network/auth failure so the
+ * caller can keep its last-known state.
+ */
+export async function getDriverPlanStatus(): Promise<PgDriverPlanStatus | null> {
+  const idToken = await getIdToken();
+  if (!idToken) return null;
+
+  const parse = (json: unknown): PgDriverPlanStatus | null => {
+    if (typeof json !== "object" || json === null) return null;
+    const j    = json as { active?: boolean; plan?: { id?: string; status?: string; expiresAt?: string | number } | null };
+    const plan = j.plan ?? null;
+    let expiresAt: number | null = null;
+    if (plan && plan.expiresAt != null) {
+      const t = typeof plan.expiresAt === "number" ? plan.expiresAt : new Date(plan.expiresAt).getTime();
+      expiresAt = Number.isFinite(t) ? t : null;
+    }
+    return {
+      active:    !!j.active,
+      planId:    plan?.id     ?? null,
+      status:    plan?.status ?? null,
+      expiresAt,
+    };
+  };
+
+  const fetchPath = async (path: string): Promise<PgDriverPlanStatus | null> => {
+    try {
+      const res = await fetch(`${BASE_URL}${path}`, {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      console.log(`[profile-api] GET ${path} →`, res.status);
+      if (!res.ok) return null;
+      return parse(await res.json());
+    } catch (err) {
+      console.error(`[profile-api] GET ${path} network error:`, err instanceof Error ? err.message : String(err));
+      return null;
+    }
+  };
+
+  return (await fetchPath("/driver-plans/status")) ?? (await fetchPath("/driver-plans/current"));
+}
+
 // ─── PATCH /api/drivers/profile ───────────────────────────────────────────────
 
 /**
