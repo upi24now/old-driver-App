@@ -158,23 +158,82 @@ export default function SubscriptionScreen() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ driverUid, planType: selected }),
       });
-      const data = (await res.json()) as {
-        razorpayOrderId?: string; amount?: number; currency?: string; keyId?: string; error?: string;
+
+      // ── Log the ACTUAL response (status + raw body + keys) ──────────────────
+      const rawBody = await res.text();
+      console.log("[DriverPlan] create-order status:", res.status);
+      console.log("[DriverPlan] create-order raw body:", rawBody);
+
+      type CreateOrderResponse = {
+        razorpayOrderId?:  string;
+        orderId?:          string;
+        razorpay_order_id?: string;
+        order_id?:         string;
+        order?:            { id?: string; amount?: number; currency?: string };
+        amount?:           number;
+        currency?:         string;
+        keyId?:            string;
+        key?:              string;
+        key_id?:           string;
+        razorpayKeyId?:    string;
+        error?:            string;
       };
-      if (!res.ok || !data.razorpayOrderId || data.amount == null || !data.keyId) {
+
+      let parsed: unknown = {};
+      try {
+        parsed = rawBody ? JSON.parse(rawBody) : {};
+      } catch (parseErr) {
+        console.error("[DriverPlan] create-order JSON parse failed:", parseErr);
+        Alert.alert("Error", "Unexpected server response. Please try again.");
+        return;
+      }
+      if (typeof parsed !== "object" || parsed === null) {
+        console.error("[DriverPlan] create-order body is not an object:", parsed);
+        Alert.alert("Error", "Unexpected server response. Please try again.");
+        return;
+      }
+      const data = parsed as CreateOrderResponse;
+      console.log("[DriverPlan] create-order keys:", Object.keys(data));
+
+      if (!res.ok) {
+        console.error("[DriverPlan] create-order non-2xx:", res.status, data.error);
         Alert.alert("Error", data.error ?? "Could not start payment. Please try again.");
         return;
       }
+
+      // ── Resilient mapping: prod bundle may name fields differently ──────────
+      const order = data.order ?? {};
+      const razorpayOrderId =
+        data.razorpayOrderId ?? data.orderId ?? data.razorpay_order_id ?? data.order_id ?? order.id;
+      const amount          = data.amount ?? order.amount;
+      const keyId           = data.keyId ?? data.key ?? data.key_id ?? data.razorpayKeyId;
+      const currency        = data.currency ?? order.currency ?? "INR";
+
+      console.log(
+        "[DriverPlan] mapped → razorpayOrderId:", razorpayOrderId,
+        "| amount:", amount,
+        "| keyId present:", !!keyId,
+      );
+
+      if (!razorpayOrderId || amount == null || !keyId) {
+        console.error("[DriverPlan] create-order missing required fields after mapping:", {
+          razorpayOrderId, amount, keyIdPresent: !!keyId, keys: Object.keys(data),
+        });
+        Alert.alert("Error", data.error ?? "Could not start payment. Please try again.");
+        return;
+      }
+
       setCheckoutParams({
-        razorpayOrderId: data.razorpayOrderId,
-        amount: data.amount,
-        currency: data.currency ?? "INR",
-        keyId: data.keyId,
+        razorpayOrderId,
+        amount,
+        currency,
+        keyId,
         planType: selected,
         planName: selectedPlan.name,
         driverPhone: phone ?? "",
       });
-    } catch {
+    } catch (err) {
+      console.error("[DriverPlan] create-order threw:", err);
       Alert.alert("Error", "Could not start payment. Check your connection.");
     } finally {
       setIsActivating(false);
