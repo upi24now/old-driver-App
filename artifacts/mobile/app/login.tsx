@@ -11,7 +11,7 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import Svg, { Ellipse, Line, Rect } from "react-native-svg";
+import Svg, { Ellipse, Line, Path, Rect } from "react-native-svg";
 import {
   ActivityIndicator,
   Animated,
@@ -29,28 +29,30 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 
 import { useDriver } from "@/contexts/DriverContext";
 import { sendOtp } from "@/utils/auth-api";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const D = {
-  bg:            "#F8FAFC",
-  primary:       "#FF6B00",
+  bg:            "#FFFFFF",
+  primary:       "#FF6A00",
+  primaryDark:   "#F25600",
   primarySoft:   "#FFF3EC",
-  text:          "#111827",
+  text:          "#172033",
   textSecondary: "#6B7280",
   textMuted:     "#9CA3AF",
-  border:        "#E5E7EB",
-  inputBg:       "#F9FAFB",
+  border:        "#E8E8E8",
+  inputBg:       "#FBFBFB",
   white:         "#FFFFFF",
   success:       "#16A34A",
   error:         "#DC2626",
   placeholder:   "#9CA3AF",
   // Aliases used by OTP phase
-  navy:          "#111827",
-  amber:         "#FF6B00",
-  cardBorder:    "#E5E7EB",
+  navy:          "#172033",
+  amber:         "#FF6A00",
+  cardBorder:    "#E8E8E8",
 } as const;
 
 const OTP_LENGTH     = 6;
@@ -131,6 +133,43 @@ function HeroIllustration({
       <Image
         source={require("@/assets/images/vehicles/scooter-hero.png")}
         style={[ss.heroScooter, { width: scooterW, height: scooterH }]}
+        resizeMode="contain"
+      />
+    </View>
+  );
+}
+
+// ─── Login hero: realistic scooter over a soft skyline glow ─────────────────────
+function LoginHero() {
+  return (
+    <View style={ss.loginHero}>
+      <Svg
+        width="100%"
+        height="100%"
+        viewBox="0 0 360 200"
+        preserveAspectRatio="xMidYMid meet"
+        style={StyleSheet.absoluteFillObject}
+      >
+        {/* Soft orange glow behind the scooter */}
+        <Ellipse cx="180" cy="108" rx="150" ry="92" fill="#FF6A00" opacity="0.07" />
+        <Ellipse cx="180" cy="118" rx="104" ry="68" fill="#FF6A00" opacity="0.06" />
+        {/* Very light city skyline (~8% opacity) */}
+        <Rect x="6"   y="72"  width="20" height="118" rx="2" fill="#FF6A00" opacity="0.08" />
+        <Rect x="28"  y="94"  width="14" height="96"  rx="2" fill="#FF6A00" opacity="0.06" />
+        <Rect x="48"  y="112" width="11" height="78"  rx="2" fill="#FF6A00" opacity="0.05" />
+        <Rect x="301" y="66"  width="22" height="124" rx="2" fill="#FF6A00" opacity="0.08" />
+        <Rect x="327" y="90"  width="16" height="100" rx="2" fill="#FF6A00" opacity="0.06" />
+        <Rect x="288" y="108" width="10" height="82"  rx="2" fill="#FF6A00" opacity="0.05" />
+        {/* Birds */}
+        <Path d="M118 44 q6 -6 12 0 q6 -6 12 0" stroke="#FF6A00" strokeWidth="1.5" fill="none" opacity="0.18" />
+        <Path d="M226 38 q5 -5 10 0 q5 -5 10 0" stroke="#FF6A00" strokeWidth="1.5" fill="none" opacity="0.16" />
+        {/* Ground glow under the scooter */}
+        <Ellipse cx="180" cy="184" rx="122" ry="14" fill="#FF6A00" opacity="0.12" />
+      </Svg>
+
+      <Image
+        source={require("@/assets/images/vehicles/scooter-hero.png")}
+        style={ss.loginScooter}
         resizeMode="contain"
       />
     </View>
@@ -383,7 +422,7 @@ export default function LoginScreen() {
           ss.scroll,
           { paddingTop: insets.top + r.topPad, paddingBottom: insets.bottom + r.botPad },
         ]}
-        scrollEnabled={r.scrollable}
+        scrollEnabled
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         bounces={false}
@@ -393,25 +432,32 @@ export default function LoginScreen() {
         {/* ── PHASE: LOGIN (phone + PIN) ── */}
         {phase === "login" && (
           <>
-            {/* ── Brand hero ── */}
-            <View style={[ss.hero, { marginBottom: r.heroMb }]}>
-              <View style={[ss.logoCircle, { width: r.logoSize, height: r.logoSize, borderRadius: r.logoBorderR, marginBottom: r.logoMb }]}>
-                <Text style={[ss.logoText, { fontSize: r.logoFontSize }]}>BC</Text>
-              </View>
-              <Text style={[ss.brandName, { fontSize: r.brandSize }]}>
-                <Text style={{ color: D.text }}>Bike</Text>
+            {/* ── Hero: scooter + skyline + glow ── */}
+            <LoginHero />
+
+            {/* ── Branding ── */}
+            <View style={ss.brandBlock}>
+              <Text style={ss.brandWordmark}>
+                <Text style={{ color: D.navy }}>Bike</Text>
                 <Text style={{ color: D.primary }}>Courier</Text>
               </Text>
-              <Text style={[ss.partnerLabel, { marginBottom: r.partnerMb }]}>PARTNER</Text>
-              <Text style={[ss.headline, { fontSize: r.headlineSize }]}>Welcome Back</Text>
-              {r.showSubline && (
-                <Text style={ss.subline}>Log in with your mobile number & PIN</Text>
-              )}
+              <View style={ss.partnerRow}>
+                <View style={ss.partnerLine} />
+                <Text style={ss.partnerWord}>PARTNER</Text>
+                <View style={ss.partnerLine} />
+              </View>
             </View>
 
-            {/* ── Phone input card ── */}
-            <View style={[ss.loginCard, { marginBottom: 16 }]}>
-              <Text style={ss.cardLabel}>Mobile Number</Text>
+            {/* ── Welcome ── */}
+            <Text style={ss.welcomeHeadline}>Welcome Back, Partner</Text>
+            <Text style={ss.welcomeSub}>Continue with your Mobile Number & PIN</Text>
+
+            {/* ── Mobile number card ── */}
+            <View style={ss.floatCard}>
+              <View style={ss.cardLabelRow}>
+                <Feather name="smartphone" size={16} color={D.primary} />
+                <Text style={ss.cardLabelText}>Mobile Number</Text>
+              </View>
 
               <Pressable
                 onPress={() => phoneRef.current?.focus()}
@@ -444,9 +490,12 @@ export default function LoginScreen() {
               </Pressable>
             </View>
 
-            {/* ── PIN entry ── */}
-            <View style={[ss.loginCard, { marginBottom: 12 }]}>
-              <Text style={ss.cardLabel}>6-digit PIN</Text>
+            {/* ── PIN card ── */}
+            <View style={ss.floatCard}>
+              <View style={ss.cardLabelRow}>
+                <Feather name="lock" size={16} color={D.primary} />
+                <Text style={ss.cardLabelText}>6-digit PIN</Text>
+              </View>
 
               <Pressable onPress={() => pinRef.current?.focus()} style={ss.pinCellsRow}>
                 {pinDigits.map((d, i) => {
@@ -459,15 +508,20 @@ export default function LoginScreen() {
                       style={[
                         ss.pinCellShell,
                         {
-                          borderColor:     hasError ? D.error : isActive ? D.primary : isFilled ? D.navy + "60" : D.cardBorder,
-                          borderWidth:     isActive || hasError ? 2 : 1,
+                          borderColor:     hasError ? D.error : isActive ? D.primary : D.cardBorder,
+                          borderWidth:     isActive || hasError ? 2 : 1.5,
                           backgroundColor: isActive ? D.primarySoft : D.white,
                         },
+                        isActive && ss.pinCellActiveGlow,
                       ]}
                     >
-                      <Text style={[ss.pinDot, { color: isActive ? D.primary : D.text }]}>
-                        {isFilled ? "●" : ""}
-                      </Text>
+                      {isFilled ? (
+                        <Text style={[ss.pinDot, { color: D.navy }]}>●</Text>
+                      ) : isActive ? (
+                        <Text style={ss.pinCursor}>|</Text>
+                      ) : (
+                        <View style={ss.pinIdleDot} />
+                      )}
                     </View>
                   );
                 })}
@@ -503,56 +557,68 @@ export default function LoginScreen() {
                   <Text style={ss.errorText}>{pinErr}</Text>
                 </View>
               )}
-            </View>
 
-            {/* ── Forgot PIN ── */}
-            <View style={ss.forgotRow}>
+              {/* ── Forgot PIN ── */}
               <TouchableOpacity
                 onPress={() => startOtpFlow("forgot")}
                 activeOpacity={0.7}
                 hitSlop={8}
                 disabled={!isValid}
+                style={ss.forgotRow}
               >
                 <Text style={[ss.forgotLink, !isValid && { color: D.placeholder }]}>Forgot PIN?</Text>
               </TouchableOpacity>
             </View>
 
-            {/* ── Login button ── */}
+            {/* ── Log In button ── */}
             <TouchableOpacity
-              style={[ss.continueBtn, (!isValid || pin.length < PIN_LENGTH) && ss.continueBtnDisabled, { marginBottom: r.btnMb }]}
+              style={ss.loginBtnWrap}
               onPress={() => void handleConfirmPin(pin)}
-              activeOpacity={0.85}
+              activeOpacity={0.9}
               disabled={!isValid || pin.length < PIN_LENGTH || verifyingPin}
             >
-              {verifyingPin ? (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <ActivityIndicator size="small" color={D.white} />
-                  <Text style={ss.continueBtnText}>Logging in...</Text>
-                </View>
-              ) : (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Text style={[ss.continueBtnText, (!isValid || pin.length < PIN_LENGTH) && ss.continueBtnTextDisabled]}>
-                    Log In
-                  </Text>
-                  {isValid && pin.length === PIN_LENGTH && (
-                    <Feather name="arrow-right" size={18} color={D.white} />
-                  )}
-                </View>
-              )}
+              <LinearGradient
+                colors={((!isValid || pin.length < PIN_LENGTH) ? ["#E7E9EE", "#E7E9EE"] : [D.primary, D.primaryDark]) as readonly [string, string]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={ss.loginBtn}
+              >
+                {verifyingPin ? (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                    <ActivityIndicator size="small" color={D.white} />
+                    <Text style={ss.loginBtnText}>Logging in...</Text>
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                    <Text style={[ss.loginBtnText, (!isValid || pin.length < PIN_LENGTH) && ss.loginBtnTextDisabled]}>
+                      Log In
+                    </Text>
+                    <Feather
+                      name="arrow-right"
+                      size={20}
+                      color={(!isValid || pin.length < PIN_LENGTH) ? "#9CA3AF" : D.white}
+                    />
+                  </View>
+                )}
+              </LinearGradient>
             </TouchableOpacity>
 
-            {/* ── First-time setup link ── */}
-            <View style={ss.setupRow}>
-              <Text style={ss.setupText}>First time here? </Text>
-              <TouchableOpacity
-                onPress={() => startOtpFlow("setup")}
-                activeOpacity={0.7}
-                hitSlop={6}
-                disabled={!isValid}
-              >
-                <Text style={[ss.setupLink, !isValid && { color: D.placeholder }]}>Set up with OTP</Text>
-              </TouchableOpacity>
-            </View>
+            {/* ── First-time setup card ── */}
+            <TouchableOpacity
+              style={[ss.firstTimeCard, !isValid && ss.firstTimeCardDisabled]}
+              onPress={() => startOtpFlow("setup")}
+              activeOpacity={0.85}
+              disabled={!isValid}
+            >
+              <View style={ss.firstTimeIcon}>
+                <Feather name="user-plus" size={18} color={D.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={ss.firstTimeTitle}>First time here?</Text>
+                <Text style={ss.firstTimeSub}>Set up your account with OTP</Text>
+              </View>
+              <Feather name="chevron-right" size={22} color={D.textMuted} />
+            </TouchableOpacity>
 
             {!isValid && (
               <Text style={ss.setupHint}>Enter your mobile number to continue.</Text>
@@ -859,9 +925,9 @@ const ss = StyleSheet.create({
     backgroundColor: D.bg,
   },
   scroll: {
-    flex:              1,
+    flexGrow:          1,
     alignItems:        "center",
-    paddingHorizontal: 20,
+    paddingHorizontal: 22,
   },
 
   // ── Hero ──────────────────────────────────────────────────────────────────
@@ -918,6 +984,184 @@ const ss = StyleSheet.create({
     textAlign: "center",
   },
 
+  // ── Login hero (scooter + skyline) ────────────────────────────────────────
+  loginHero: {
+    width:          "100%",
+    height:         small ? 158 : medium ? 184 : 204,
+    alignItems:     "center",
+    justifyContent: "center",
+    marginTop:      small ? 4 : 8,
+    marginBottom:   2,
+  },
+  loginScooter: {
+    width:  Math.min(WIN_W * 0.64, 256),
+    height: small ? 138 : medium ? 158 : 172,
+    zIndex: 2,
+  },
+
+  // ── Branding ──────────────────────────────────────────────────────────────
+  brandBlock: {
+    alignItems:   "center",
+    marginBottom: small ? 10 : 14,
+  },
+  brandWordmark: {
+    fontSize:      28,
+    fontWeight:    "800",
+    letterSpacing: -0.6,
+    marginBottom:  6,
+  },
+  partnerRow: {
+    flexDirection: "row",
+    alignItems:    "center",
+    gap:           10,
+  },
+  partnerLine: {
+    width:           26,
+    height:          1.5,
+    borderRadius:    1,
+    backgroundColor: "#F0C9AE",
+  },
+  partnerWord: {
+    fontSize:      11,
+    fontWeight:    "700",
+    color:         D.primary,
+    letterSpacing: 4,
+  },
+
+  // ── Welcome ───────────────────────────────────────────────────────────────
+  welcomeHeadline: {
+    fontSize:      26,
+    fontWeight:    "800",
+    color:         D.navy,
+    letterSpacing: -0.5,
+    textAlign:     "center",
+    marginBottom:  6,
+  },
+  welcomeSub: {
+    fontSize:     14,
+    color:        D.textSecondary,
+    textAlign:    "center",
+    marginBottom: 20,
+  },
+
+  // ── Floating cards ────────────────────────────────────────────────────────
+  floatCard: {
+    alignSelf:         "stretch",
+    backgroundColor:   D.white,
+    borderRadius:      24,
+    paddingVertical:   22,
+    paddingHorizontal: 22,
+    borderWidth:       1,
+    borderColor:       "#F1F1F1",
+    shadowColor:       "#1B2733",
+    shadowOpacity:     0.07,
+    shadowRadius:      18,
+    shadowOffset:      { width: 0, height: 8 },
+    elevation:         4,
+    marginBottom:      16,
+  },
+  cardLabelRow: {
+    flexDirection: "row",
+    alignItems:    "center",
+    gap:           8,
+    marginBottom:  14,
+  },
+  cardLabelText: {
+    fontSize:   14,
+    fontWeight: "700",
+    color:      D.navy,
+  },
+
+  // ── PIN cell states ───────────────────────────────────────────────────────
+  pinCellActiveGlow: {
+    shadowColor:   D.primary,
+    shadowOpacity: 0.22,
+    shadowRadius:  8,
+    shadowOffset:  { width: 0, height: 3 },
+    elevation:     3,
+  },
+  pinCursor: {
+    fontSize:   22,
+    fontWeight: "400",
+    color:      D.primary,
+  },
+  pinIdleDot: {
+    width:           6,
+    height:          6,
+    borderRadius:    3,
+    backgroundColor: "#CBD2DA",
+  },
+
+  // ── Log In button ─────────────────────────────────────────────────────────
+  loginBtnWrap: {
+    width:         "74%",
+    alignSelf:     "center",
+    borderRadius:  18,
+    marginTop:     6,
+    marginBottom:  18,
+    shadowColor:   D.primary,
+    shadowOpacity: 0.32,
+    shadowRadius:  14,
+    shadowOffset:  { width: 0, height: 8 },
+    elevation:     6,
+  },
+  loginBtn: {
+    height:         56,
+    borderRadius:   18,
+    flexDirection:  "row",
+    alignItems:     "center",
+    justifyContent: "center",
+  },
+  loginBtnText: {
+    fontSize:      18,
+    fontWeight:    "800",
+    color:         D.white,
+    letterSpacing: 0.2,
+  },
+  loginBtnTextDisabled: {
+    color: "#9CA3AF",
+  },
+
+  // ── First-time setup card ─────────────────────────────────────────────────
+  firstTimeCard: {
+    alignSelf:       "stretch",
+    flexDirection:   "row",
+    alignItems:      "center",
+    gap:             14,
+    backgroundColor: D.white,
+    borderRadius:    18,
+    padding:         16,
+    borderWidth:     1,
+    borderColor:     "#F1F1F1",
+    shadowColor:     "#1B2733",
+    shadowOpacity:   0.06,
+    shadowRadius:    14,
+    shadowOffset:    { width: 0, height: 6 },
+    elevation:       3,
+    marginBottom:    18,
+  },
+  firstTimeCardDisabled: {
+    opacity: 0.55,
+  },
+  firstTimeIcon: {
+    width:           42,
+    height:          42,
+    borderRadius:    21,
+    backgroundColor: D.primarySoft,
+    alignItems:      "center",
+    justifyContent:  "center",
+  },
+  firstTimeTitle: {
+    fontSize:   15,
+    fontWeight: "700",
+    color:      D.navy,
+  },
+  firstTimeSub: {
+    fontSize:  13,
+    color:     D.textSecondary,
+    marginTop: 2,
+  },
+
   // ── Hero illustration ─────────────────────────────────────────────────────
   heroIllustration: {
     alignSelf:      "stretch",
@@ -956,8 +1200,8 @@ const ss = StyleSheet.create({
     alignItems:        "center",
     borderWidth:       1.5,
     borderColor:       D.border,
-    borderRadius:      12,
-    height:            56,
+    borderRadius:      14,
+    height:            58,
     paddingHorizontal: 12,
     backgroundColor:   D.inputBg,
   },
@@ -1157,9 +1401,9 @@ const ss = StyleSheet.create({
   },
   pinCellShell: {
     flex:           1,
-    maxWidth:       52,
-    height:         52,
-    borderRadius:   14,
+    maxWidth:       54,
+    height:         58,
+    borderRadius:   16,
     alignItems:     "center",
     justifyContent: "center",
   },
@@ -1169,8 +1413,8 @@ const ss = StyleSheet.create({
   },
   // ── Forgot / setup links ──────────────────────────────────────────────────
   forgotRow: {
-    alignSelf:  "flex-end",
-    marginBottom: 16,
+    alignSelf: "flex-end",
+    marginTop: 14,
   },
   forgotLink: {
     fontSize:   13,
