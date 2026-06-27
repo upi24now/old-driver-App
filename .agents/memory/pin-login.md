@@ -65,6 +65,40 @@ transition should set `x-session-id` explicitly; never trust interceptor timing 
 critical auth steps. Proven flow (dev): send-otp 200 → verify-otp 200 → set-pin 200
 (with header) → verify-pin 200; set-pin WITHOUT header reproducibly 401s.
 
+## set-pin completion must ADOPT the rotated session, or login loops back to OTP
+**Rule:** after a successful `set-pin`, the mobile client MUST end up holding the
+server's *current* `active_session_id` before navigating off `/create-pin`. The
+single-device model rotates the session on set-pin; if the client keeps the old
+`x-session-id`, the next authenticated request 401s `SESSION_REPLACED`, the global
+interceptor auto-signs-out, and the `_layout` guard bounces the user back to the
+phone/OTP screen — the "set PIN → back to OTP" loop.
+**Why:** the bounce is NOT a navigation bug — `router.replace(next)` is correct.
+The guard only sends to `/login` when `driverUid`/`isOtpVerified` flip false, which
+ONLY happens via `signOut`, which is wired to `SESSION_REPLACED`. So any "set-pin
+loops to login" report = stale-session 401, not routing.
+**How to apply:** (1) read set-pin's new session id tolerantly (`json.sessionId ??
+json.customSessionId`) and `setSessionId` it; (2) if set-pin returns NO session id,
+re-sync by calling `verifyPinApi(phone, pinJustSet)` and adopt its sessionId;
+(3) FAIL-SAFE — if neither yields a session, do NOT navigate; show a retryable
+error and stay on `/create-pin` (navigating without a valid session re-triggers the
+loop). Gate set-pin success on HTTP status but still treat explicit `{ok:false}` as
+failure (don't blindly trust 200).
+
+## Deployed prod API ≠ repo handlers — never assume response shapes
+**Rule:** the live `api.bikecourierservice.com` runs a separate prebuilt bundle that
+differs from BOTH `artifacts/api-server` source AND the `production-baseline` patches.
+Observed: prod `verify-otp` returns `{ok, customToken, uid, sessionId}` (NOT the
+repo's `{token, sessionId}`), and prod `send-otp` returns `{ok, expiresInSeconds}`
+and does NOT honor the `TEST_OTP_PHONES` bypass (so you can't drive a live OTP probe
+of gated endpoints like set-pin from the agent).
+**Why:** client parsing keyed on repo field names silently breaks ("No token received
+from server" came from reading only `json.token`). Can't introspect prod set-pin live
+because the test-phone OTP shortcut is inactive there.
+**How to apply:** make client parsers shape-tolerant (accept `token ?? customToken`,
+`sessionId ?? customSessionId`); add request/response logging to capture real prod
+shapes from device logs rather than guessing; verify against the live domain, not
+repo source.
+
 ## verify-pin 404 must be JSON-agnostic
 `verifyPinApi` (mobile `utils/auth-api.ts`) must check `res.status===404` and return
 `pinNotFound:true` BEFORE parsing the body. **Why:** dev API returns a 404 with a

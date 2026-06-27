@@ -257,19 +257,37 @@ export async function setPin(pin: string): Promise<SetPinResult> {
   };
   if (sessionId) headers["x-session-id"] = sessionId;
 
+  console.log("[setPin] POST /auth/set-pin — Authorization:", "present", "| x-session-id:", sessionId ? "present (" + sessionId.slice(0, 8) + "…)" : "ABSENT");
+
   try {
     const res = await fetch(`${BASE_URL}/auth/set-pin`, {
       method:  "POST",
       headers,
       body:    JSON.stringify({ pin }),
     });
-    const json = (await res.json()) as { ok?: boolean; sessionId?: string; error?: string };
-    if (!res.ok || !json.ok) {
+    // Response shape varies across backend builds: some return { ok, sessionId },
+    // others { sessionId } or { customSessionId }. Read tolerantly and key
+    // success off the HTTP status, not a specific `ok` field.
+    const json = (await res.json()) as {
+      ok?: boolean;
+      sessionId?: string;
+      customSessionId?: string;
+      error?: string;
+    };
+    const newSessionId = json.sessionId ?? json.customSessionId;
+    console.log("[setPin] response status:", res.status, "| body keys:", Object.keys(json).join(","), "| sessionId:", newSessionId ? "present" : "ABSENT");
+
+    // Treat a non-2xx status OR an explicit { ok:false } (some backends return
+    // 200 with a semantic failure) as an error. A missing `ok` field is fine —
+    // not every build sends one — so only `=== false` counts as failure.
+    if (!res.ok || json.ok === false) {
+      console.error("[setPin] server returned error:", res.status, json.error);
       return { ok: false, error: json.error ?? `Server error (${res.status}).` };
     }
-    return { ok: true, sessionId: json.sessionId };
+    return { ok: true, sessionId: newSessionId };
   } catch (err) {
     const e = err as Error;
+    console.error("[setPin] fetch THREW:", e?.message);
     return { ok: false, error: `Could not save PIN (${e?.message ?? String(err)}).` };
   }
 }

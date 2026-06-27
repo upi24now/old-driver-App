@@ -29,8 +29,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { setPin as setPinApi } from "@/utils/auth-api";
+import { setPin as setPinApi, verifyPinApi } from "@/utils/auth-api";
 import { setSessionId } from "@/utils/session";
+import { useDriver } from "@/contexts/DriverContext";
 
 // ─── Design tokens (mirror login.tsx) ───────────────────────────────────────────
 const D = {
@@ -94,6 +95,7 @@ function PinCells({
 export default function CreatePinScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { phone } = useDriver();
   const params = useLocalSearchParams<{ next?: string }>();
   const nextRoute = typeof params.next === "string" && params.next.length > 0
     ? params.next
@@ -165,13 +167,43 @@ export default function CreatePinScreen() {
       return;
     }
 
-    // Single-device login — set-pin mints a NEW session id and stores it as the
-    // account's active session, superseding the one from verify-otp. Persist it
-    // here or the very next authenticated request from THIS device would 401
-    // SESSION_REPLACED against itself.
-    if (result.sessionId) await setSessionId(result.sessionId);
+    // Single-device login — set-pin mints a NEW active session on the server,
+    // superseding the one from verify-otp. This device MUST adopt the new session
+    // id or the very next authenticated request 401s SESSION_REPLACED against
+    // itself → the app auto-signs-out → bounces back to the OTP/login screen.
+    let sessionAdopted = false;
+    if (result.sessionId) {
+      console.log("[create-pin] set-pin returned sessionId — adopting it");
+      await setSessionId(result.sessionId);
+      sessionAdopted = true;
+    } else if (phone) {
+      // Some backend builds return set-pin success WITHOUT the rotated session id.
+      // The server session is now ahead of ours, so re-login with the PIN we just
+      // set to obtain and adopt the current active session before navigating.
+      console.warn("[create-pin] set-pin returned NO sessionId — re-syncing via verify-pin");
+      const reSync = await verifyPinApi(phone, pin);
+      if (reSync.ok && reSync.sessionId) {
+        console.log("[create-pin] re-sync OK — adopted fresh session from verify-pin");
+        await setSessionId(reSync.sessionId);
+        sessionAdopted = true;
+      } else {
+        console.error("[create-pin] re-sync FAILED:", reSync.ok ? "no sessionId" : reSync.error);
+      }
+    }
 
-    // PIN saved — continue the EXISTING onboarding/Home routing unchanged.
+    // Fail-safe: if we could not establish a current session, navigating forward
+    // would 401 SESSION_REPLACED on the next request and bounce back to login.
+    // Keep the driver on this screen with a retryable error instead of looping.
+    if (!sessionAdopted) {
+      setError("Couldn't finish setting up your PIN. Please try again.");
+      setConfirm("");
+      setTimeout(() => confirmRef.current?.focus(), 100);
+      return;
+    }
+
+    // PIN saved + session in lockstep — continue the EXISTING onboarding/Home
+    // routing unchanged.
+    console.log("[create-pin] navigating forward to:", nextRoute);
     router.replace(nextRoute as never);
   }
 
