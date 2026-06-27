@@ -58,7 +58,7 @@ const D = {
   border:        "#E8E8E8",
   inputBorder:   "#E5E7EB",
   cardLabel:     "#374151",
-  forgot:        "#EA580C",
+  forgot:        "#DC2626",
   inputBg:       "#FBFBFB",
   white:         "#FFFFFF",
   success:       "#16A34A",
@@ -1654,7 +1654,8 @@ const ss = StyleSheet.create({
   // ── Forgot / setup links ──────────────────────────────────────────────────
   forgotRow: {
     alignSelf:    "flex-end",
-    marginTop:    -23,
+    marginTop:    0,
+    marginRight:  24,
     marginBottom: 14,
     paddingVertical: 2,
   },
