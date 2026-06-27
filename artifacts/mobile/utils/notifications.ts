@@ -525,8 +525,9 @@ export async function clearBadge(): Promise<void> {
 
 // ─── Push token registration ──────────────────────────────────────────────────
 /**
- * Collect the device's Expo push token and persist it to
- * drivers/{uid}.fcmToken in Firestore.
+ * Collect the device's Expo push token and persist it to PostgreSQL via
+ * PATCH /api/drivers/me/fcm-token (uid derived server-side from the Firebase ID
+ * token). PG is the single source of truth for the FCM token — no Firestore.
  *
  * Uses getExpoPushTokenAsync() which works universally:
  *   - Expo Go (dev testing)  — Expo relays the push via its own FCM credentials
