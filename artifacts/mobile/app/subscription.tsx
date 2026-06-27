@@ -153,10 +153,20 @@ export default function SubscriptionScreen() {
       const user = firebaseAuth.currentUser;
       if (!user) { Alert.alert("Error", "Not logged in. Please sign in again."); return; }
       const token = await user.getIdToken();
+      // Send the selected plan id under every backend-compatible key. The
+      // production backend keys on `planId`; older builds keyed on `planType`.
+      // Sending all three keeps create-order correct across backend versions.
+      const createOrderBody = {
+        driverUid,
+        planType: selected,
+        planId:   selected,
+        plan:     selected,
+      };
+      console.log("[DriverPlan] create-order request body:", JSON.stringify(createOrderBody));
       const res = await fetch(`${API_BASE}/driver-plans/create-order`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ driverUid, planType: selected }),
+        body: JSON.stringify(createOrderBody),
       });
 
       // ── Log the ACTUAL response (status + raw body + keys) ──────────────────
