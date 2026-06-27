@@ -56,6 +56,9 @@ const D = {
   textSecondary: "#6B7280",
   textMuted:     "#9CA3AF",
   border:        "#E8E8E8",
+  inputBorder:   "#E5E7EB",
+  cardLabel:     "#374151",
+  forgot:        "#EA580C",
   inputBg:       "#FBFBFB",
   white:         "#FFFFFF",
   success:       "#16A34A",
@@ -145,44 +148,6 @@ function HeroIllustration({
       <Image
         source={require("@/assets/images/vehicles/scooter-hero.png")}
         style={[ss.heroScooter, { width: scooterW, height: scooterH }]}
-        resizeMode="contain"
-      />
-    </View>
-  );
-}
-
-// ─── Login hero: realistic scooter over a soft skyline glow ─────────────────────
-function LoginHero() {
-  return (
-    <View style={ss.loginHero}>
-      <Svg
-        width="100%"
-        height="100%"
-        viewBox="0 0 360 200"
-        preserveAspectRatio="xMidYMid meet"
-        style={StyleSheet.absoluteFillObject}
-      >
-        {/* Soft orange glow behind the scooter */}
-        <Ellipse cx="180" cy="108" rx="150" ry="92" fill="#FF6A00" opacity="0.07" />
-        <Ellipse cx="180" cy="118" rx="104" ry="68" fill="#FF6A00" opacity="0.06" />
-        {/* Very light city skyline (~8% opacity) */}
-        <Rect x="6"   y="72"  width="20" height="118" rx="2" fill="#FF6A00" opacity="0.08" />
-        <Rect x="28"  y="94"  width="14" height="96"  rx="2" fill="#FF6A00" opacity="0.06" />
-        <Rect x="48"  y="112" width="11" height="78"  rx="2" fill="#FF6A00" opacity="0.05" />
-        <Rect x="301" y="66"  width="22" height="124" rx="2" fill="#FF6A00" opacity="0.08" />
-        <Rect x="327" y="90"  width="16" height="100" rx="2" fill="#FF6A00" opacity="0.06" />
-        <Rect x="288" y="108" width="10" height="82"  rx="2" fill="#FF6A00" opacity="0.05" />
-        {/* Birds */}
-        <Path d="M118 44 q6 -6 12 0 q6 -6 12 0" stroke="#FF6A00" strokeWidth="1.5" fill="none" opacity="0.18" />
-        <Path d="M226 38 q5 -5 10 0 q5 -5 10 0" stroke="#FF6A00" strokeWidth="1.5" fill="none" opacity="0.16" />
-        {/* Ground glow under the scooter (slightly stronger) */}
-        <Ellipse cx="180" cy="186" rx="134" ry="18" fill="#FF6A00" opacity="0.16" />
-        <Ellipse cx="180" cy="184" rx="96"  ry="11" fill="#FF6A00" opacity="0.12" />
-      </Svg>
-
-      <Image
-        source={require("@/assets/images/vehicles/scooter-hero.png")}
-        style={ss.loginScooter}
         resizeMode="contain"
       />
     </View>
@@ -594,8 +559,8 @@ export default function LoginScreen() {
         {/* ── PHASE: LOGIN (phone + PIN) ── */}
         {phase === "login" && (
           <>
-            {/* ── Hero: scooter + skyline + glow ── */}
-            <LoginHero />
+            {/* ── Hero: glass India map + scooter on glowing platform ── */}
+            <SetupHero />
 
             {/* ── Branding ── */}
             <View style={ss.brandBlock}>
@@ -611,15 +576,12 @@ export default function LoginScreen() {
             </View>
 
             {/* ── Welcome ── */}
-            <Text style={ss.welcomeHeadline}>Welcome Back, Partner</Text>
-            <Text style={ss.welcomeSub}>Continue with your Mobile Number & PIN</Text>
+            <Text style={ss.welcomeHeadline}>Welcome Back</Text>
+            <Text style={ss.welcomeSub}>Log in with your mobile number & PIN</Text>
 
             {/* ── Mobile number card ── */}
             <View style={[ss.floatCard, ss.mobileCardSpacing]}>
-              <View style={ss.cardLabelRow}>
-                <Feather name="smartphone" size={16} color={D.primary} />
-                <Text style={ss.cardLabelText}>Mobile Number</Text>
-              </View>
+              <Text style={ss.cardLabelText}>Mobile Number</Text>
 
               <Pressable
                 onPress={() => phoneRef.current?.focus()}
@@ -639,8 +601,8 @@ export default function LoginScreen() {
                     setPinErr("");
                   }}
                   keyboardType="phone-pad"
-                  placeholder="Enter 10-digit mobile number"
-                  placeholderTextColor={D.placeholder}
+                  placeholder="Enter 10-digit mobile"
+                  placeholderTextColor={D.textSecondary}
                   onFocus={() => setFocused(true)}
                   onBlur={() => setFocused(false)}
                   returnKeyType="next"
@@ -654,10 +616,7 @@ export default function LoginScreen() {
 
             {/* ── PIN card ── */}
             <View style={ss.floatCard}>
-              <View style={ss.cardLabelRow}>
-                <Feather name="lock" size={16} color={D.primary} />
-                <Text style={ss.cardLabelText}>6-digit PIN</Text>
-              </View>
+              <Text style={ss.cardLabelText}>6-digit PIN</Text>
 
               <Pressable onPress={() => pinRef.current?.focus()} style={ss.pinCellsRow}>
                 {pinDigits.map((d, i) => {
@@ -670,8 +629,8 @@ export default function LoginScreen() {
                       style={[
                         ss.pinCellShell,
                         {
-                          borderColor:     hasError ? D.error : isActive ? D.primary : D.cardBorder,
-                          borderWidth:     isActive || hasError ? 2 : 1.5,
+                          borderColor:     hasError ? D.error : isActive ? D.primary : D.inputBorder,
+                          borderWidth:     isActive || hasError ? 2 : 1,
                           backgroundColor: isActive ? D.primarySoft : D.white,
                         },
                         isActive && ss.pinCellActiveGlow,
@@ -681,9 +640,7 @@ export default function LoginScreen() {
                         <Text style={[ss.pinDot, { color: D.navy }]}>●</Text>
                       ) : isActive ? (
                         <Text style={ss.pinCursor}>|</Text>
-                      ) : (
-                        <View style={ss.pinIdleDot} />
-                      )}
+                      ) : null}
                     </View>
                   );
                 })}
@@ -719,18 +676,18 @@ export default function LoginScreen() {
                   <Text style={ss.errorText}>{pinErr}</Text>
                 </View>
               )}
-
-              {/* ── Forgot PIN ── */}
-              <TouchableOpacity
-                onPress={() => startOtpFlow("forgot")}
-                activeOpacity={0.7}
-                hitSlop={8}
-                disabled={!isValid}
-                style={ss.forgotRow}
-              >
-                <Text style={[ss.forgotLink, !isValid && { color: D.placeholder }]}>Forgot PIN?</Text>
-              </TouchableOpacity>
             </View>
+
+            {/* ── Forgot PIN ── */}
+            <TouchableOpacity
+              onPress={() => startOtpFlow("forgot")}
+              activeOpacity={0.7}
+              hitSlop={8}
+              disabled={!isValid}
+              style={ss.forgotRow}
+            >
+              <Text style={[ss.forgotLink, !isValid && { color: D.placeholder }]}>Forgot PIN?</Text>
+            </TouchableOpacity>
 
             {/* ── Log In button ── */}
             <TouchableOpacity
@@ -740,9 +697,9 @@ export default function LoginScreen() {
               disabled={!isValid || pin.length < PIN_LENGTH || verifyingPin}
             >
               <LinearGradient
-                colors={((!isValid || pin.length < PIN_LENGTH) ? ["#E7E9EE", "#E7E9EE"] : [D.primary, D.primaryDark]) as readonly [string, string]}
+                colors={((!isValid || pin.length < PIN_LENGTH) ? ["#E7E9EE", "#E7E9EE"] : ["#FF8A00", "#FF6A00"]) as readonly [string, string]}
                 start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
+                end={{ x: 0, y: 1 }}
                 style={ss.loginBtn}
               >
                 {verifyingPin ? (
@@ -751,43 +708,27 @@ export default function LoginScreen() {
                     <Text style={ss.loginBtnText}>Logging in...</Text>
                   </View>
                 ) : (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                    <Text style={[ss.loginBtnText, (!isValid || pin.length < PIN_LENGTH) && ss.loginBtnTextDisabled]}>
-                      Log In
-                    </Text>
-                    <Feather
-                      name="arrow-right"
-                      size={23}
-                      color={(!isValid || pin.length < PIN_LENGTH) ? "#9CA3AF" : D.white}
-                    />
-                  </View>
+                  <Text style={[ss.loginBtnText, (!isValid || pin.length < PIN_LENGTH) && ss.loginBtnTextDisabled]}>
+                    Log In
+                  </Text>
                 )}
               </LinearGradient>
             </TouchableOpacity>
 
-            {/* ── First-time setup card ── */}
-            <TouchableOpacity
-              style={[ss.firstTimeCard, !isValid && ss.firstTimeCardDisabled]}
-              onPress={() => startOtpFlow("setup")}
-              activeOpacity={0.85}
-              disabled={!isValid}
-            >
-              <View style={ss.firstTimeIcon}>
-                <Feather name="user-plus" size={20} color={D.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={ss.firstTimeTitle}>First time here?</Text>
-                <Text style={ss.firstTimeSub}>Set up your account with OTP</Text>
-              </View>
-              <Feather name="chevron-right" size={22} color={D.textMuted} />
-            </TouchableOpacity>
+            {/* ── First-time setup ── */}
+            <View style={ss.bottomBlock}>
+              <Text style={ss.firstTimeLine}>
+                <Text style={ss.firstTimeGrey}>First time here? </Text>
+                <Text
+                  style={[ss.firstTimeLink, !isValid && { color: D.placeholder }]}
+                  onPress={() => { if (isValid) startOtpFlow("setup"); }}
+                >
+                  Set up with OTP
+                </Text>
+              </Text>
+              <Text style={ss.firstTimeHelper}>Enter your mobile number to continue.</Text>
 
-            {!isValid && (
-              <Text style={ss.setupHint}>Enter your mobile number to continue.</Text>
-            )}
-
-            {/* ── Terms ── */}
-            <View style={ss.termsBlock}>
+              {/* ── Terms ── */}
               <View style={ss.termsRow}>
                 <Text style={ss.termsText}>By continuing, you agree to our </Text>
                 <TouchableOpacity activeOpacity={0.7} hitSlop={6} onPress={() => router.push("/terms-and-conditions")}>
@@ -1267,15 +1208,16 @@ const ss = StyleSheet.create({
 
   // ── Welcome ───────────────────────────────────────────────────────────────
   welcomeHeadline: {
-    fontSize:      26,
+    fontSize:      small ? 30 : 35,
     fontWeight:    "800",
     color:         D.navy,
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
     textAlign:     "center",
-    marginBottom:  6,
+    marginBottom:  8,
   },
   welcomeSub: {
-    fontSize:     14,
+    fontSize:     16,
+    fontWeight:   "500",
     color:        D.textSecondary,
     textAlign:    "center",
     marginBottom: 28,
@@ -1286,30 +1228,25 @@ const ss = StyleSheet.create({
     alignSelf:         "stretch",
     backgroundColor:   D.white,
     borderRadius:      24,
-    paddingVertical:   22,
-    paddingHorizontal: 22,
+    paddingVertical:   24,
+    paddingHorizontal: 24,
     borderWidth:       1,
-    borderColor:       "#F1F1F1",
+    borderColor:       D.border,
     shadowColor:       "#1B2733",
     shadowOpacity:     0.07,
     shadowRadius:      18,
     shadowOffset:      { width: 0, height: 8 },
     elevation:         4,
-    marginBottom:      16,
+    marginBottom:      20,
   },
   mobileCardSpacing: {
-    marginBottom: 25,
-  },
-  cardLabelRow: {
-    flexDirection: "row",
-    alignItems:    "center",
-    gap:           8,
-    marginBottom:  14,
+    marginBottom: 20,
   },
   cardLabelText: {
-    fontSize:   14,
-    fontWeight: "700",
-    color:      D.navy,
+    fontSize:     14,
+    fontWeight:   "600",
+    color:        D.cardLabel,
+    marginBottom: 14,
   },
 
   // ── PIN cell states ───────────────────────────────────────────────────────
@@ -1334,19 +1271,19 @@ const ss = StyleSheet.create({
 
   // ── Log In button ─────────────────────────────────────────────────────────
   loginBtnWrap: {
-    width:         "74%",
+    width:         "90%",
     alignSelf:     "center",
     borderRadius:  18,
-    marginTop:     6,
-    marginBottom:  18,
+    marginTop:     2,
+    marginBottom:  20,
     shadowColor:   D.primary,
-    shadowOpacity: 0.40,
-    shadowRadius:  18,
-    shadowOffset:  { width: 0, height: 10 },
-    elevation:     9,
+    shadowOpacity: 0.32,
+    shadowRadius:  16,
+    shadowOffset:  { width: 0, height: 8 },
+    elevation:     8,
   },
   loginBtn: {
-    height:         56,
+    height:         58,
     borderRadius:   18,
     flexDirection:  "row",
     alignItems:     "center",
@@ -1362,44 +1299,31 @@ const ss = StyleSheet.create({
     color: "#9CA3AF",
   },
 
-  // ── First-time setup card ─────────────────────────────────────────────────
-  firstTimeCard: {
-    alignSelf:       "stretch",
-    flexDirection:   "row",
-    alignItems:      "center",
-    gap:             14,
-    backgroundColor: D.white,
-    borderRadius:    18,
-    padding:         14,
-    borderWidth:     1,
-    borderColor:     "#F1F1F1",
-    shadowColor:     "#1B2733",
-    shadowOpacity:   0.06,
-    shadowRadius:    14,
-    shadowOffset:    { width: 0, height: 6 },
-    elevation:       3,
-    marginBottom:    18,
+  // ── First-time setup (bottom) ─────────────────────────────────────────────
+  bottomBlock: {
+    alignSelf:  "stretch",
+    alignItems: "center",
   },
-  firstTimeCardDisabled: {
-    opacity: 0.55,
+  firstTimeLine: {
+    fontSize:   15,
+    textAlign:  "center",
+    lineHeight: 22,
   },
-  firstTimeIcon: {
-    width:           46,
-    height:          46,
-    borderRadius:    23,
-    backgroundColor: D.primarySoft,
-    alignItems:      "center",
-    justifyContent:  "center",
+  firstTimeGrey: {
+    fontSize: 15,
+    color:    D.textSecondary,
   },
-  firstTimeTitle: {
+  firstTimeLink: {
     fontSize:   15,
     fontWeight: "700",
-    color:      D.navy,
+    color:      D.primary,
   },
-  firstTimeSub: {
-    fontSize:  13,
-    color:     D.textSecondary,
-    marginTop: 2,
+  firstTimeHelper: {
+    fontSize:     13,
+    color:        D.textSecondary,
+    textAlign:    "center",
+    marginTop:    6,
+    marginBottom: 14,
   },
 
   // ── Hero illustration ─────────────────────────────────────────────────────
@@ -1438,12 +1362,12 @@ const ss = StyleSheet.create({
   inputRow: {
     flexDirection:     "row",
     alignItems:        "center",
-    borderWidth:       1.5,
-    borderColor:       D.border,
-    borderRadius:      14,
-    height:            62,
-    paddingHorizontal: 12,
-    backgroundColor:   D.inputBg,
+    borderWidth:       1,
+    borderColor:       D.inputBorder,
+    borderRadius:      18,
+    height:            60,
+    paddingHorizontal: 14,
+    backgroundColor:   D.white,
   },
   inputRowFocused: {
     borderColor:     D.primary,
@@ -1642,14 +1566,10 @@ const ss = StyleSheet.create({
   pinCellShell: {
     flex:           1,
     maxWidth:       54,
-    height:         58,
-    borderRadius:   19,
+    height:         60,
+    borderRadius:   16,
     alignItems:     "center",
     justifyContent: "center",
-    shadowColor:    "#1B2733",
-    shadowOpacity:  0.05,
-    shadowRadius:   3,
-    shadowOffset:   { width: 0, height: 1 },
   },
   pinDot: {
     fontSize:   18,
@@ -1657,13 +1577,15 @@ const ss = StyleSheet.create({
   },
   // ── Forgot / setup links ──────────────────────────────────────────────────
   forgotRow: {
-    alignSelf: "flex-end",
-    marginTop: 14,
+    alignSelf:    "flex-end",
+    marginTop:    -4,
+    marginBottom: 18,
+    paddingVertical: 2,
   },
   forgotLink: {
-    fontSize:   13,
-    fontWeight: "700",
-    color:      D.primary,
+    fontSize:   14,
+    fontWeight: "600",
+    color:      D.forgot,
   },
   setupRow: {
     flexDirection:  "row",
