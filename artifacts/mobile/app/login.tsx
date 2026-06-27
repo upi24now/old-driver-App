@@ -11,7 +11,19 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import Svg, { Ellipse, Line, Path, Rect } from "react-native-svg";
+import Svg, {
+  Ellipse,
+  Line,
+  Path,
+  Rect,
+  Circle,
+  G,
+  Defs,
+  ClipPath,
+  Stop,
+  RadialGradient,
+  LinearGradient as SvgLinearGradient,
+} from "react-native-svg";
 import {
   ActivityIndicator,
   Animated,
@@ -171,6 +183,131 @@ function LoginHero() {
       <Image
         source={require("@/assets/images/vehicles/scooter-hero.png")}
         style={ss.loginScooter}
+        resizeMode="contain"
+      />
+    </View>
+  );
+}
+
+// ─── Setup hero: glass India map + skyline + scooter on a glowing platform ──────
+// Recognizable stylized India silhouette path (viewBox 0 0 360 260)
+const INDIA_PATH =
+  "M132 40 C140 30 150 30 158 36 C172 30 188 32 200 42 C214 38 232 40 246 50 " +
+  "C256 56 258 64 250 70 C244 74 250 84 258 96 C268 110 272 124 264 138 " +
+  "C252 158 236 178 220 196 C208 208 196 218 186 222 C182 218 178 206 174 196 " +
+  "C166 176 156 158 146 142 C134 124 120 116 106 110 C92 104 80 100 74 92 " +
+  "C68 86 72 78 82 78 C96 78 108 84 120 80 C128 76 128 56 132 40 Z";
+
+// A small location pin centred on (x, y)
+function Pin({ x, y, s = 1 }: { x: number; y: number; s?: number }) {
+  return (
+    <G transform={`translate(${x} ${y}) scale(${s})`}>
+      <Path
+        d="M0 12 C-6 4 -7 -2 -3 -6 C-1 -8 1 -8 3 -6 C7 -2 6 4 0 12 Z"
+        fill="#FF6A00"
+        opacity="0.85"
+      />
+      <Circle cx="0" cy="-2" r="2.1" fill="#FFFFFF" opacity="0.95" />
+    </G>
+  );
+}
+
+function SetupHero() {
+  return (
+    <View style={ss.setupHero}>
+      <Svg
+        width="100%"
+        height="100%"
+        viewBox="0 0 360 260"
+        preserveAspectRatio="xMidYMid meet"
+        style={StyleSheet.absoluteFillObject}
+      >
+        <Defs>
+          <SvgLinearGradient id="glassFill" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#FFE0CB" stopOpacity="0.62" />
+            <Stop offset="0.45" stopColor="#FFCDA8" stopOpacity="0.34" />
+            <Stop offset="1" stopColor="#FFEADD" stopOpacity="0.55" />
+          </SvgLinearGradient>
+          <RadialGradient id="platformGlow" cx="50%" cy="50%" r="50%">
+            <Stop offset="0" stopColor="#FF6A00" stopOpacity="0.20" />
+            <Stop offset="1" stopColor="#FF6A00" stopOpacity="0" />
+          </RadialGradient>
+          <ClipPath id="indiaClip">
+            <Path d={INDIA_PATH} />
+          </ClipPath>
+        </Defs>
+
+        {/* Soft clouds top-right */}
+        <Ellipse cx="296" cy="44" rx="30" ry="12" fill="#FFFFFF" opacity="0.55" />
+        <Ellipse cx="276" cy="50" rx="20" ry="9"  fill="#FFFFFF" opacity="0.45" />
+        <Ellipse cx="318" cy="52" rx="18" ry="8"  fill="#FFE6D6" opacity="0.5" />
+
+        {/* India map — glass fill */}
+        <Path d={INDIA_PATH} fill="url(#glassFill)" />
+
+        {/* Skyline + routes + pins clipped INSIDE the map */}
+        <G clipPath="url(#indiaClip)">
+          {/* faint inner wash */}
+          <Rect x="60" y="20" width="240" height="210" fill="#FF8A3D" opacity="0.05" />
+
+          {/* Subtle route lines connecting cities */}
+          <Line x1="120" y1="92"  x2="178" y2="78"  stroke="#FF6A00" strokeWidth="1" strokeDasharray="2,5" opacity="0.28" />
+          <Line x1="178" y1="78"  x2="236" y2="104" stroke="#FF6A00" strokeWidth="1" strokeDasharray="2,5" opacity="0.28" />
+          <Line x1="120" y1="92"  x2="150" y2="150" stroke="#FF6A00" strokeWidth="1" strokeDasharray="2,5" opacity="0.24" />
+          <Line x1="236" y1="104" x2="206" y2="170" stroke="#FF6A00" strokeWidth="1" strokeDasharray="2,5" opacity="0.24" />
+
+          {/* India-Gate style arch (left of centre) */}
+          <G opacity="0.22">
+            <Rect x="118" y="150" width="40" height="56" rx="2" fill="#E07B2C" />
+            <Path d="M128 206 v-34 a10 10 0 0 1 20 0 v34 Z" fill="#FFF1E6" opacity="0.85" />
+            <Rect x="116" y="146" width="44" height="6" rx="2" fill="#E07B2C" />
+          </G>
+
+          {/* Domes / palace cluster (centre-left) */}
+          <G opacity="0.20" fill="#E8852F">
+            <Rect x="92" y="168" width="14" height="40" rx="2" />
+            <Ellipse cx="99" cy="168" rx="8" ry="9" />
+            <Rect x="160" y="172" width="12" height="34" rx="2" />
+            <Ellipse cx="166" cy="172" rx="6.5" ry="7" />
+          </G>
+
+          {/* Modern towers (right) */}
+          <G opacity="0.20" fill="#E8852F">
+            <Rect x="228" y="150" width="14" height="58" rx="2" />
+            <Rect x="244" y="162" width="11" height="46" rx="2" />
+            <Rect x="258" y="172" width="9"  height="36" rx="2" />
+            <Path d="M235 150 l-6 -16 l6 0 Z" />
+          </G>
+
+          {/* slim spire towers (centre) */}
+          <G opacity="0.18" fill="#E8852F">
+            <Path d="M186 150 l5 -22 l5 22 Z" />
+            <Path d="M200 154 l4 -16 l4 16 Z" />
+          </G>
+        </G>
+
+        {/* Glass glowing edges (layered strokes) */}
+        <Path d={INDIA_PATH} fill="none" stroke="#FF8A3D" strokeWidth="7"   opacity="0.10" />
+        <Path d={INDIA_PATH} fill="none" stroke="#FF8A3D" strokeWidth="3.5" opacity="0.26" />
+        <Path d={INDIA_PATH} fill="none" stroke="#FFDFC6" strokeWidth="1.4" opacity="0.7" />
+
+        {/* City pins across the map */}
+        <Pin x={120} y={86}  s={1} />
+        <Pin x={178} y={72}  s={1.05} />
+        <Pin x={236} y={98}  s={1} />
+        <Pin x={150} y={146} s={0.95} />
+        <Pin x={206} y={166} s={0.95} />
+
+        {/* Scooter platform — glow + ring + reflection */}
+        <Ellipse cx="180" cy="224" rx="118" ry="26" fill="url(#platformGlow)" />
+        <Ellipse cx="180" cy="226" rx="92"  ry="16" fill="none" stroke="#FF8A3D" strokeWidth="1.4" opacity="0.45" />
+        <Ellipse cx="180" cy="226" rx="74"  ry="11" fill="none" stroke="#FFC9A6" strokeWidth="1"   opacity="0.6" />
+        <Ellipse cx="180" cy="232" rx="60"  ry="7"  fill="#FF6A00" opacity="0.12" />
+      </Svg>
+
+      <Image
+        source={require("@/assets/images/vehicles/scooter-hero.png")}
+        style={ss.setupScooter}
         resizeMode="contain"
       />
     </View>
@@ -644,40 +781,35 @@ export default function LoginScreen() {
         {/* ── PHASE: PHONE ── */}
         {phase === "phone" && (
           <>
-            {/* ── Brand hero ── */}
-            <View style={[ss.hero, { marginBottom: r.heroMb }]}>
-              <View style={[ss.logoCircle, { width: r.logoSize, height: r.logoSize, borderRadius: r.logoBorderR, marginBottom: r.logoMb }]}>
-                <Text style={[ss.logoText, { fontSize: r.logoFontSize }]}>BC</Text>
-              </View>
-              <Text style={[ss.brandName, { fontSize: r.brandSize }]}>
-                <Text style={{ color: D.text }}>Bike</Text>
+            {/* ── Hero: glass India map + scooter on platform ── */}
+            <SetupHero />
+
+            {/* ── Branding ── */}
+            <View style={ss.brandBlock}>
+              <Text style={ss.brandWordmark}>
+                <Text style={{ color: D.navy }}>Bike</Text>
                 <Text style={{ color: D.primary }}>Courier</Text>
               </Text>
-              <Text style={[ss.partnerLabel, { marginBottom: r.partnerMb }]}>PARTNER</Text>
-              <Text style={[ss.headline, { fontSize: r.headlineSize }]}>
-                {otpIntent === "forgot" ? "Reset your PIN" : "Set up your PIN"}
-              </Text>
-              {r.showSubline && (
-                <Text style={ss.subline}>
-                  {otpIntent === "forgot"
-                    ? "Verify your number with OTP to set a new PIN"
-                    : "Verify your number with OTP to create your PIN"}
-                </Text>
-              )}
+              <View style={ss.partnerRow}>
+                <View style={ss.partnerLine} />
+                <Text style={ss.partnerWord}>PARTNER</Text>
+                <View style={ss.partnerLine} />
+              </View>
             </View>
 
-            {/* ── Delivery illustration ── */}
-            <HeroIllustration
-              h={r.illustH}
-              scooterW={r.scooterW}
-              scooterH={r.scooterH}
-              mt={r.illustMt}
-              mb={r.illustMb}
-            />
+            {/* ── Heading ── */}
+            <Text style={ss.setupHeadline}>
+              {otpIntent === "forgot" ? "Reset your PIN" : "Set up your PIN"}
+            </Text>
+            <Text style={ss.setupSubtitle}>
+              {otpIntent === "forgot"
+                ? "Verify your number with OTP to set a new PIN"
+                : "Verify your number with OTP to create your PIN"}
+            </Text>
 
             {/* ── Phone input card ── */}
-            <View style={[ss.loginCard, { marginBottom: r.cardMb }]}>
-              <Text style={ss.cardLabel}>Mobile Number</Text>
+            <View style={ss.floatCard}>
+              <Text style={ss.setupCardLabel}>Mobile Number</Text>
 
               <Pressable
                 onPress={() => phoneRef.current?.focus()}
@@ -718,35 +850,40 @@ export default function LoginScreen() {
             </View>
 
             {/* ── Trust note ── */}
-            <View style={[ss.trustRow, { marginBottom: r.trustMb }]}>
+            <View style={ss.setupTrustRow}>
               <Feather name="shield" size={14} color={D.primary} />
-              <Text style={ss.trustText}>
+              <Text style={ss.setupTrustText}>
                 Your number is used only for secure login and delivery updates.
               </Text>
             </View>
 
             {/* ── Continue button ── */}
             <TouchableOpacity
-              style={[ss.continueBtn, !isValid && ss.continueBtnDisabled, { marginBottom: r.btnMb }]}
+              style={ss.setupBtnWrap}
               onPress={() => void handleSendOtp()}
-              activeOpacity={0.85}
+              activeOpacity={0.9}
               disabled={!isValid || sending}
             >
-              {sending ? (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <ActivityIndicator size="small" color={D.white} />
-                  <Text style={ss.continueBtnText}>Sending OTP...</Text>
-                </View>
-              ) : (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Text style={[ss.continueBtnText, !isValid && ss.continueBtnTextDisabled]}>
-                    Continue
-                  </Text>
-                  {isValid && (
-                    <Feather name="arrow-right" size={18} color={D.white} />
-                  )}
-                </View>
-              )}
+              <LinearGradient
+                colors={(!isValid ? ["#E7E9EE", "#E7E9EE"] : [D.primary, D.primaryDark]) as readonly [string, string]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={ss.setupBtn}
+              >
+                {sending ? (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                    <ActivityIndicator size="small" color={D.white} />
+                    <Text style={ss.setupBtnText}>Sending OTP...</Text>
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                    <Text style={[ss.setupBtnText, !isValid && ss.loginBtnTextDisabled]}>
+                      Continue
+                    </Text>
+                    <Feather name="arrow-right" size={20} color={!isValid ? "#9CA3AF" : D.white} />
+                  </View>
+                )}
+              </LinearGradient>
             </TouchableOpacity>
 
             {/* ── Terms ── */}
@@ -998,6 +1135,81 @@ const ss = StyleSheet.create({
     width:  Math.min(WIN_W * 0.75, 300),
     height: small ? 160 : medium ? 184 : 200,
     zIndex: 2,
+  },
+
+  // ── Setup hero (glass India map + scooter platform) ───────────────────────
+  setupHero: {
+    width:          "100%",
+    height:         small ? 218 : medium ? 252 : 280,
+    alignItems:     "center",
+    justifyContent: "center",
+    marginTop:      small ? 4 : 8,
+    marginBottom:   small ? 6 : 10,
+  },
+  setupScooter: {
+    width:        Math.min(WIN_W * 0.66, 268),
+    height:       small ? 150 : medium ? 172 : 188,
+    marginTop:    small ? 20 : 28,
+    zIndex:       2,
+  },
+  setupHeadline: {
+    fontSize:      28,
+    fontWeight:    "800",
+    color:         D.navy,
+    letterSpacing: -0.5,
+    textAlign:     "center",
+    marginBottom:  8,
+  },
+  setupSubtitle: {
+    fontSize:      14,
+    color:         D.textSecondary,
+    textAlign:     "center",
+    lineHeight:    20,
+    marginBottom:  24,
+  },
+  setupCardLabel: {
+    fontSize:     14,
+    fontWeight:   "700",
+    color:        D.navy,
+    marginBottom: 12,
+  },
+  setupTrustRow: {
+    flexDirection:  "row",
+    alignItems:     "center",
+    justifyContent: "center",
+    gap:            8,
+    paddingHorizontal: 6,
+    marginTop:      14,
+    marginBottom:   22,
+  },
+  setupTrustText: {
+    flexShrink: 1,
+    fontSize:   13,
+    color:      D.textSecondary,
+    textAlign:  "center",
+  },
+  setupBtnWrap: {
+    alignSelf:     "stretch",
+    borderRadius:  18,
+    marginBottom:  20,
+    shadowColor:   D.primary,
+    shadowOpacity: 0.40,
+    shadowRadius:  18,
+    shadowOffset:  { width: 0, height: 10 },
+    elevation:     9,
+  },
+  setupBtn: {
+    height:         58,
+    borderRadius:   18,
+    flexDirection:  "row",
+    alignItems:     "center",
+    justifyContent: "center",
+  },
+  setupBtnText: {
+    fontSize:      18,
+    fontWeight:    "800",
+    color:         D.white,
+    letterSpacing: 0.2,
   },
 
   // ── Branding ──────────────────────────────────────────────────────────────
