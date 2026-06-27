@@ -28,3 +28,8 @@ The FCM dispatcher (`fcm-dispatcher.ts`) resolves each driver's token PG-first, 
 ## How to apply
 - When promoting dispatch to read tokens from PG, only then is it safe to drop the Firestore token write. Until then keep both.
 - `drivers/{uid}.fcmToken` (Firestore) and `drivers.fcm_token` (PG) must stay in sync during this phase; the mobile dual-write is the only writer.
+
+## UPDATE 2026-06-27 — mobile Firestore shadow write REMOVED
+Per the permanent rule "Firebase in the driver app = Phone OTP/Auth + FCM only", the mobile shadow token write was deleted: `registerDriverPushToken` (notifications.ts) now calls **only** PG `saveDriverFcmToken`; `updateDriverPushToken` was removed from firestore.ts. Mobile is now PG-only for token storage.
+- **Consequence:** the SERVER still reads PG-first / Firestore-fallback (`resolveDriverFcmToken`), but for any driver who registers a token AFTER this change, `drivers/{uid}.fcmToken` in Firestore is no longer refreshed — so the Firestore fallback only holds stale tokens from before the change. PG must be authoritative for new tokens.
+- **Residual risk (out of mobile scope):** if the PG save returns `saved:false` (no driver row) the token is only reattempted on next login/foreground — no durable client retry, and no Firestore shadow to catch it. Backend fix (upsert the row / require retry-until-saved) was recommended but NOT done (server is a separate artifact; this task was mobile-only, no deploy).

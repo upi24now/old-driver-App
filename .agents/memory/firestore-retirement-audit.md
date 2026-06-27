@@ -35,3 +35,6 @@ GET active-orders, GET completed-trips, GET /orders/:id, GET driver-plans — PG
 
 ## Admin routes — out of scope for driver-app retirement
 admin-auth.ts, admin-data.ts, admin-users.ts, kyc-admin.ts — admin panel only.
+
+## MOBILE CLIENT (artifacts/mobile) — Firestore/Storage FULLY removed (2026-06-27)
+The driver app no longer initializes or calls Firestore or Storage at all. `utils/firebase.ts` initializes Firebase **Auth only** (no `getFirestore`/`getStorage`). Removed: the `db`/`storage` exports, `updateDriverPushToken` (Firestore token shadow), and the Firestore fallback inside `fetchOrderById` (now PG-only REST). KYC uploads already went through VPS REST (`utils/storage.ts` → `/api/kyc/upload-open`), not Firebase Storage. Remaining `firebase/*` in mobile = `firebase/auth` (OTP) + FCM/expo-notifications only. The `firebase` npm package stays (Auth needs it). **Do not reintroduce `firebase/firestore` or `firebase/storage` imports into the mobile app** — it's a permanent rule.

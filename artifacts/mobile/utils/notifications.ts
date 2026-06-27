@@ -548,7 +548,7 @@ export async function clearBadge(): Promise<void> {
 // EAS project ID from app.json extra.eas.projectId — required for getExpoPushTokenAsync.
 const EAS_PROJECT_ID = "3222bc75-37c6-45b2-a748-ca3a4a7f3a15";
 
-export async function registerDriverPushToken(uid: string): Promise<void> {
+export async function registerDriverPushToken(_uid: string): Promise<void> {
   if (!Notif || Platform.OS !== "android") return;
 
   try {
@@ -569,25 +569,20 @@ export async function registerDriverPushToken(uid: string): Promise<void> {
     // the FCM delivery using Expo's own credentials, eliminating sender mismatch.
     const tokenData = await Notif.getExpoPushTokenAsync({ projectId: EAS_PROJECT_ID });
     if (!tokenData?.data) {
-      console.warn("[Notifications] Push token empty — skipping Firestore write");
+      console.warn("[Notifications] Push token empty — skipping PG save");
       return;
     }
 
-    // Phase 4A — save the token to PostgreSQL first. The uid is derived
-    // server-side from the Firebase ID token. Firestore remains the
-    // shadow/fallback store and is always written below for now (the FCM
-    // dispatcher still reads the token from Firestore — unchanged).
+    // Save the token to PostgreSQL. The uid is derived server-side from the
+    // Firebase ID token. PG is the single source of truth for the FCM token —
+    // the dispatcher reads it from PG (no Firestore shadow).
     const { saveDriverFcmToken } = await import("./driver-api");
     const pg = await saveDriverFcmToken(tokenData.data);
     if (pg.saved) {
       console.log("[PG_FCM_TOKEN_SAVE] push token saved to PostgreSQL");
     } else {
-      console.warn("[PG_FCM_TOKEN_FALLBACK] PG save skipped/failed — relying on Firestore shadow");
+      console.warn("[PG_FCM_TOKEN_SAVE] PG save skipped/failed");
     }
-
-    // Firestore shadow/fallback write (kept for now — dispatch still reads here).
-    const { updateDriverPushToken } = await import("./firestore");
-    await updateDriverPushToken(uid, tokenData.data);
 
     // Log only the token prefix so the entry is useful for debugging.
     const preview = tokenData.data.slice(0, 22) + "…";

@@ -1,10 +1,4 @@
-import {
-  doc,
-  getDoc,
-  serverTimestamp,
-  setDoc,
-} from "firebase/firestore";
-import { db, firebaseAuth } from "./firebase";
+import { firebaseAuth } from "./firebase";
 
 // ─── API base URL ─────────────────────────────────────────────────────────────
 const _DOMAIN   = process.env["EXPO_PUBLIC_DOMAIN"] ?? "";
@@ -122,27 +116,6 @@ export type CompletedTrip = {
  */
 export const PERMISSION_SETUP_VERSION = 6;
 
-/**
- * Persist the driver's FCM device push token to Firestore drivers/{uid}.
- *
- * Phase 4A/4B: the FCM token is dual-written — PG is primary (saveDriverFcmToken
- * in utils/driver-api.ts) and this Firestore write is the shadow/fallback the
- * server's FCM dispatcher reads if the PG token lookup misses. Retained until
- * the Firestore token fallback is retired.
- * Fields:
- *   fcmToken           — raw Android FCM registration token
- *   fcmTokenUpdatedAt  — server timestamp of last write
- */
-export async function updateDriverPushToken(
-  uid:   string,
-  token: string,
-): Promise<void> {
-  await setDoc(doc(db, "drivers", uid), {
-    fcmToken:          token,
-    fcmTokenUpdatedAt: serverTimestamp(),
-  }, { merge: true });
-}
-
 // ─── Order doc ────────────────────────────────────────────────────────────────
 //
 // Firestore collection: "orders"
@@ -150,10 +123,9 @@ export async function updateDriverPushToken(
 //
 // NOTE (Phase 5J): order WRITES (accept/stage/location/reject/timeout/cancel)
 // are now PG-authoritative via REST (utils/delivery-api.ts + the reject/timeout/
-// driver-cancel wrappers below). Active-order READS are also PG-authoritative:
-// getActiveOrdersForDriver is PG-only (any HTTP 200 is authoritative, including
-// an empty result — NO Firestore fallback). fetchOrderById remains REST-primary
-// with a single-doc Firestore fallback for cold-start recovery of a known id.
+// driver-cancel wrappers below). Order READS are also PG-authoritative:
+// getActiveOrdersForDriver and fetchOrderById are both PG-only via REST — there
+// is NO Firestore fallback anywhere. PostgreSQL is the single source of truth.
 
 export type OrderStatus =
   | "searching"        // in the driver-assignment pool (round-robin status)
@@ -247,38 +219,26 @@ export type OrderDoc = {
 /**
  * Fetch a single order by ID.
  *
- * REST-primary with Firestore fallback:
- *   1. If a Firebase auth token is available, call GET /api/orders/:orderId on
- *      the server (PG-primary read).
- *   2. If the server call fails for any reason (network, auth, 4xx/5xx), fall
- *      back to a direct Firestore read so cold-start recovery is never blocked.
+ * PG-AUTHORITATIVE via GET /api/orders/:orderId. PostgreSQL is the single source
+ * of truth — there is NO Firestore fallback. Returns null when there is no
+ * authenticated user, the server responds non-ok (e.g. 404), or the request
+ * fails (network / auth error).
  */
 export async function fetchOrderById(orderId: string): Promise<OrderDoc | null> {
-  // ── Server (PG-primary) path ────────────────────────────────────────────────
   try {
     const user = firebaseAuth.currentUser;
-    if (user) {
-      const token = await user.getIdToken();
-      const res   = await fetch(`${_BASE_URL}/orders/${orderId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const json = await res.json() as { ok?: boolean; order?: OrderDoc };
-        if (json.ok && json.order) {
-          return json.order;
-        }
+    if (!user) return null;
+    const token = await user.getIdToken();
+    const res   = await fetch(`${_BASE_URL}/orders/${orderId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const json = await res.json() as { ok?: boolean; order?: OrderDoc };
+      if (json.ok && json.order) {
+        return json.order;
       }
-      // Server returned non-ok (e.g. 404) — fall through to Firestore
     }
-  } catch {
-    // Network failure or auth error — fall through to direct Firestore read
-  }
-
-  // ── Firestore fallback ────────────────────────────────────────────────────
-  try {
-    const snap = await getDoc(doc(db, "orders", orderId));
-    if (!snap.exists()) return null;
-    return { id: snap.id, ...snap.data() } as OrderDoc;
+    return null;
   } catch {
     return null;
   }
