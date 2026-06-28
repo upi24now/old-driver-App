@@ -131,8 +131,13 @@ app drives all login through the backend.
 **Why:** prod bundle lineage diverges from repo/patches; a whole router can be
 missing rather than a data bug. The bundle's `drivers` table also had **no** PIN/
 session columns and **no** `auth_otps`/`otp_send_events` tables.
+NOTE: the live bundle SHA moves over time — rebuild the patch against whatever the
+CURRENT live bytes are (later seen: base `246519b9`, patched `3125ceb5`), never an old
+base. The patcher hard-asserts the base SHA and aborts on mismatch; binding names
+(`app`/`pool`/`auth`/`import_express34`) and the anchor `app.use("/api", routes_default)`
+were stable across rebuilds, but re-verify them per new base, don't assume.
 **How to apply:** the PG-only port lives in
-`production-baseline/driver-auth-routes-patch/` (base `453c9c4c`, patched `edc88f3a`):
+`production-baseline/driver-auth-routes-patch/` (patch body sha `e122f5a9`, unchanged across rebuilds):
 additive IIFE spliced before `app.use("/api", routes_default)`, reusing bundle
 bindings `pool` (raw SQL), `auth` (Admin verify/createCustomToken), `import_express34`;
 runs idempotent additive DDL at startup (CREATE TABLE IF NOT EXISTS + ALTER ADD COLUMN

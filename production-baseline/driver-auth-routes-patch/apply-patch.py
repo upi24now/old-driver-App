@@ -5,13 +5,16 @@ import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.path.join(HERE, "..", "..", "attached_assets",
-                    "current-live-production-api-453c9c4c_1782625156585.js")
+                    "current-live-production-api-246519b9_1782641288418.js")
 BODY = os.path.join(HERE, "auth-routes-body.js")
 OUT = os.path.join(HERE, "production-api.PATCHED.js")
 
+# Hard assertion: refuse to patch anything but this exact live bundle.
+EXPECTED_BASE_SHA = "246519b97efcd770c9b76a3825348d1d6ee8c09482739b15847462f4674bb84c"
+
 ANCHOR = 'app.use("/api", routes_default);'
 
-BEGIN = "\n// ===== BEGIN PG-ONLY AUTH ROUTES PATCH (453c9c4c) =====\n"
+BEGIN = "\n// ===== BEGIN PG-ONLY AUTH ROUTES PATCH (246519b9) =====\n"
 END = "\n// ===== END PG-ONLY AUTH ROUTES PATCH =====\n"
 
 
@@ -24,6 +27,13 @@ def main():
         base = f.read()
     with open(BODY, "r", encoding="utf-8") as f:
         body = f.read()
+
+    base_sha = sha(base)
+    if base_sha != EXPECTED_BASE_SHA:
+        print("FATAL: base SHA mismatch.\n  expected %s\n  actual   %s"
+              % (EXPECTED_BASE_SHA, base_sha))
+        sys.exit(1)
+    print("BASE SHA verified == %s" % EXPECTED_BASE_SHA)
 
     count = base.count(ANCHOR.encode("utf-8"))
     if count != 1:
