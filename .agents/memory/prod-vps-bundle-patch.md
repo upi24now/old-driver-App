@@ -130,3 +130,12 @@ but the mobile app's refreshSubscription/getDriverProfile reads plan from /me �
 after a successful payment. Canonical plan source in prod is /api/driver-plans/status, not /me.
 **How to apply:** backend HMAC-only verify (no Razorpay round-trip) means a locally-computed
 signature with the matching test key pair drives a real prod 200 + persist for E2E proof.
+
+## Byte-safe splice patcher: keep the anchor literal OUT of the inserted block
+A patcher that asserts `patched.count(ANCHOR) == 1` (post-insert) will FAIL if the
+inserted block contains the anchor string anywhere — **including in a comment/header**
+(e.g. "spliced before `app.use("/api", routes_default);`"). The base has exactly one
+anchor; the block adds a second → assertion trips. Fix = reword the block comment so it
+never contains the exact anchor literal; do NOT relax the assertion (it is also what
+prevents accidental double-registration). The real byte-safety guarantee is the
+prefix/suffix/length invariant: `strip(inserted_block) == base` byte-for-byte.

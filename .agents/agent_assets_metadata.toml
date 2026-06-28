@@ -251,3 +251,9 @@ id = "ZbCnEXZyGqkbz993q6mUB"
 uri = "file://production-baseline/bike-courier-final-combined-b2f1643f.tar.gz"
 type = "unspecified"
 title = "bike-courier-final-combined-b2f1643f.tar.gz — Final combined Driver Plan + Delivery patch"
+
+[[outputs]]
+id = "bVhRqqvKowSGh7_3K9fMd"
+uri = "file://dist/bike-courier-driver-patch-453c9c4c.tar.gz"
+type = "unspecified"
+title = "Bike Courier driver patch for live bundle 453c9c4c (.tar.gz)"
