@@ -245,3 +245,9 @@ id = "EDhmofjLN77O4RChLWh-G"
 uri = "file://production-baseline/driver-final-combined-b2f1643f/bike-courier-final-combined-b2f1643f.tar.gz"
 type = "unspecified"
 title = "Final combined patch — Driver Plan + Delivery (bike-courier-final-combined-b2f1643f.tar.gz)"
+
+[[outputs]]
+id = "ZbCnEXZyGqkbz993q6mUB"
+uri = "file://production-baseline/bike-courier-final-combined-b2f1643f.tar.gz"
+type = "unspecified"
+title = "bike-courier-final-combined-b2f1643f.tar.gz — Final combined Driver Plan + Delivery patch"
