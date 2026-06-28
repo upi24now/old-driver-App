@@ -1828,32 +1828,18 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   };
 
-  const activatePlan: DriverState["activatePlan"] = (id) => {
-    const price = PLAN_PRICE[id];
-    if (walletBalance < price) {
-      return { ok: false, reason: "Insufficient wallet balance for this plan." };
-    }
-    const expiresAt = Date.now() + PLAN_DAYS[id] * 24 * 60 * 60 * 1000;
-    setSubPlan(id);
-    setSubExp(expiresAt);
-    setBalance((b) => b - price);
-    setTxns((t) => [
-      {
-        id:       `tx${Date.now()}`,
-        type:     "withdraw",
-        title:    `${id.charAt(0).toUpperCase() + id.slice(1)} Driver Plan`,
-        subtitle: "Plan activation",
-        amount:   -price,
-        status:   "completed",
-        time:     new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
-        date:     "Today",
-      },
-      ...t,
-    ]);
-    // Phase 5J-Tier-9A: subscription persistence is now PG-authoritative via the
-    // server (POST /api/driver-plans/verify-payment writes PG + mirrors Firestore).
-    // No client-side Firestore subscription write is performed here.
-    return { ok: true };
+  // DISABLED (PG source-of-truth): the legacy wallet-based local activation used to
+  // set subscriptionPlan/subscriptionExpiresAt on the client (Date.now() + N days),
+  // creating a local "active plan" that bypassed the backend. The ONLY authoritative
+  // activation is now the server: POST /api/driver-plans/verify-payment writes PG
+  // driver_plans, and the app reads it back via GET /api/driver-plans/status
+  // (syncSubscriptionFromServer). This function no longer writes any local plan,
+  // expiry, wallet, or transaction state so no client path can fabricate a plan.
+  const activatePlan: DriverState["activatePlan"] = (_id) => {
+    return {
+      ok: false,
+      reason: "Activate your plan from the subscription screen — it is confirmed by the server after payment.",
+    };
   };
 
   // Authoritative subscription sync. The production backend serves the active

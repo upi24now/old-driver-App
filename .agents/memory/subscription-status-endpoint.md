@@ -23,3 +23,16 @@ routes ALL subscription state through it (post-purchase refresh, cold-start boot
 both OTP login paths). Never reintroduce a `pgProfile.subscription*` read — three
 separate boot/login paths previously clobbered the plan to null that way. parse
 `plan.expiresAt` ISO → epoch ms; `subscriptionActive = !!(expiresAt && expiresAt > now)`.
+
+**404 trap (must hold):** if the deployed bundle is missing `/status` (404),
+`getDriverPlanStatus()` returns null and `syncSubscriptionFromServer()` EARLY-RETURNS,
+so the AsyncStorage plan cache is NEVER cleared and a stale plan survives every
+boot/login forever. The read route therefore MUST exist and return `{active:false,
+plan:null}` (PG-only: `status='active' AND expires_at>now()`) so an expired/absent
+plan clears the cache. Only `active:false` clears it; 404/null preserves it.
+
+**No client-side activation:** `activatePlan()` in DriverContext is the legacy
+wallet-local path that wrote `Date.now()+PLAN_DAYS*24h` client-side — it is
+neutralized (no plan/expiry/wallet writes) so the server status read is the SOLE
+authority. The cache is only ever written by `persistSubscriptionCache()` fed from
+server status, so boot-restore can never resurrect a client-fabricated plan.

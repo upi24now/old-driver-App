@@ -275,3 +275,9 @@ id = "wj-gjeCnCfrlgUBty3-z0"
 uri = "file://production-baseline/bike-courier-combined-453c9c4c.tar.gz"
 type = "unspecified"
 title = "Bike Courier — Combined Driver Patch (base 453c9c4c)"
+
+[[outputs]]
+id = "VflGVKQHiIq7-4f2nBLeB"
+uri = "file://production-baseline/driver-plan-status-fix/bike-courier-driver-plan-status-fix.tar.gz"
+type = "unspecified"
+title = "Driver-Plans status route fix (minimal, additive — deploy package)"
