@@ -281,3 +281,9 @@ id = "VflGVKQHiIq7-4f2nBLeB"
 uri = "file://production-baseline/driver-plan-status-fix/bike-courier-driver-plan-status-fix.tar.gz"
 type = "unspecified"
 title = "bike-courier-driver-plan-status-fix.tar.gz (deploy package)"
+
+[[outputs]]
+id = "dd-i0uFfmffrzlktRJDoq"
+uri = "file://production-baseline/driver-auth-routes-patch/driver-auth-routes-patch-453c9c4c.tar.gz"
+type = "unspecified"
+title = "PG-only /api/auth/* routes patch (base 453c9c4c → patched edc88f3a)"

@@ -121,6 +121,26 @@ without masking real failures. The earlier client-side "set-pin session adoption
 work fixed a DIFFERENT, downstream symptom and does not address this; don't conflate
 them. Always confirm WHICH screen the bounce fires from via logs first.
 
+## A live VPS bundle can be missing the WHOLE `/api/auth/*` router (not just PIN)
+**Rule:** when login 404s in prod, first probe whether the *entire* auth router is
+absent, not just one route. The `453c9c4c` live bundle had **no** `/api/auth/*` at
+all — `send-otp/verify-otp/verify-pin/set-pin` + `pin-status` ALL returned the
+catch-all `404 {"error":"Not found"}` (control routes like `/api/driver-plans/status`
+→ 401, i.e. bundle otherwise healthy). That breaks BOTH OTP and PIN login, since the
+app drives all login through the backend.
+**Why:** prod bundle lineage diverges from repo/patches; a whole router can be
+missing rather than a data bug. The bundle's `drivers` table also had **no** PIN/
+session columns and **no** `auth_otps`/`otp_send_events` tables.
+**How to apply:** the PG-only port lives in
+`production-baseline/driver-auth-routes-patch/` (base `453c9c4c`, patched `edc88f3a`):
+additive IIFE spliced before `app.use("/api", routes_default)`, reusing bundle
+bindings `pool` (raw SQL), `auth` (Admin verify/createCustomToken), `import_express34`;
+runs idempotent additive DDL at startup (CREATE TABLE IF NOT EXISTS + ALTER ADD COLUMN
+IF NOT EXISTS). Firebase = custom-token + verifyIdToken ONLY, zero Firestore.
+DECISION: set-pin/pin-status gate on ID token only (NO single-device enforcement —
+not present in the live bundle; adding it would be a new feature risking setup). Prove
+with the isolation harness (real PG + stubbed Admin), never by booting the full bundle.
+
 ## verify-pin 404 must be JSON-agnostic
 `verifyPinApi` (mobile `utils/auth-api.ts`) must check `res.status===404` and return
 `pinNotFound:true` BEFORE parsing the body. **Why:** dev API returns a 404 with a
