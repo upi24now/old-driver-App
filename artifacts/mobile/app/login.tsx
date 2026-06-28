@@ -750,17 +750,6 @@ export default function LoginScreen() {
               )}
             </View>
 
-            {/* ── Forgot PIN ── */}
-            <TouchableOpacity
-              onPress={() => startOtpFlow("forgot")}
-              activeOpacity={0.7}
-              hitSlop={8}
-              disabled={!isValid}
-              style={ss.forgotRow}
-            >
-              <Text style={[ss.forgotLink, !isValid && { color: D.placeholder }]}>Forgot PIN?</Text>
-            </TouchableOpacity>
-
             {/* ── Log In button ── */}
             <TouchableOpacity
               style={ss.loginBtnWrap}
@@ -787,18 +776,27 @@ export default function LoginScreen() {
               </LinearGradient>
             </TouchableOpacity>
 
-            {/* ── First-time setup ── */}
+            {/* ── New User / Forgot PIN — two small text links in one row ── */}
             <View style={ss.bottomBlock}>
-              <Text style={ss.firstTimeLine}>
-                <Text style={ss.firstTimeGrey}>First time here? </Text>
-                <Text
-                  style={[ss.firstTimeLink, !isValid && { color: D.placeholder }]}
+              <View style={ss.authLinksRow}>
+                <TouchableOpacity
                   onPress={() => { if (isValid) startOtpFlow("setup"); }}
+                  activeOpacity={0.7}
+                  hitSlop={8}
+                  disabled={!isValid}
                 >
-                  Set up with OTP
-                </Text>
-              </Text>
-              <Text style={ss.firstTimeHelper}>Enter your mobile number to continue.</Text>
+                  <Text style={[ss.authLink, !isValid && { color: D.placeholder }]}>New User? Set PIN</Text>
+                </TouchableOpacity>
+                <Text style={ss.authLinkDot}>•</Text>
+                <TouchableOpacity
+                  onPress={() => { if (isValid) startOtpFlow("forgot"); }}
+                  activeOpacity={0.7}
+                  hitSlop={8}
+                  disabled={!isValid}
+                >
+                  <Text style={[ss.authLink, !isValid && { color: D.placeholder }]}>Forgot PIN?</Text>
+                </TouchableOpacity>
+              </View>
 
               {/* ── Terms ── */}
               <View style={ss.termsRow}>
@@ -1407,6 +1405,24 @@ const ss = StyleSheet.create({
     textAlign:    "center",
     marginTop:    2,
     marginBottom: 14,
+  },
+
+  // ── New User / Forgot PIN — single row of small, subtle text links ─────────
+  authLinksRow: {
+    flexDirection:  "row",
+    alignItems:     "center",
+    justifyContent: "center",
+    gap:            10,
+    marginBottom:   14,
+  },
+  authLink: {
+    fontSize:   13,
+    fontWeight: "600",
+    color:      D.primary,
+  },
+  authLinkDot: {
+    fontSize: 12,
+    color:    D.textMuted,
   },
 
   // ── Hero illustration ─────────────────────────────────────────────────────
