@@ -29,7 +29,7 @@ a brand-new driver into OTP + first-time PIN setup keys off **`verify-pin` HTTP
 404** (the handler returns 404 *only* for "no PIN set"). Client maps that 404 to
 `{ ok:false, pinNotFound:true }` (`verifyPinApi` → `confirmPin` → `login.tsx`
 `handleConfirmPin` → `startOtpFlow("setup")`). Other failures stay inline: 401
-wrong PIN, 429 locked. "Forgot PIN" → `startOtpFlow("forgot")` → OTP → `/create-pin`.
+wrong PIN, 429 locked. "Forgot PIN" → `startOtpFlow("forgot")` (see Forgot/Reset flow below — it does NOT route to `/create-pin`).
 **Why:** `GET /auth/pin-status` is **Firebase-Bearer-gated BY DESIGN** — an
 unauthenticated `?phone=` call correctly returns `401 missing_token` (route's own
 `requireAuth`/`__dsRequireDriver` first line; it ignores `?phone=` and keys on the
@@ -41,6 +41,23 @@ removed; the gated `pin-status` route is left untouched (harmless, unused).
 purely from the verify-pin response. No backend/bundle change is needed for this
 (verify-pin already 404s for no-PIN). Optional future hardening: stable
 `PIN_NOT_FOUND` code in the 404 body to decouple the UI from the raw status.
+
+## Forgot/Reset flow — new PIN collected BEFORE OTP, saved AFTER, returns to login
+**Rule:** "Forgot PIN" and "New User Sign Up" are two ungated text tabs on the login
+screen (don't require a valid phone to tap). Setup intent still goes phone → OTP →
+`/create-pin`. Forgot intent collects mobile + new 6-digit PIN + confirm on the
+phone screen, and ONLY after `confirmOtp` succeeds does it call `setPin(newPin)`
+(Bearer-gated PG route), then `signOut()` and return to the login screen so the
+driver re-logs in with the new PIN. All of this lives in `login.tsx` only — no
+backend / DriverContext / create-pin / auth-api change.
+**Why:** the OTP in forgot mode is purely authorization for the in-place PIN reset,
+never a login (user spec: "back to login, log in with new PIN"). Collecting the PIN
+before OTP + gating `setPin` strictly inside the `result.ok` branch guarantees a
+wrong/expired OTP can NEVER write the PIN (the hard requirement). After `signOut`
+the `_layout` guard sees `!driverUid` and lands on `/login` (no bounce to Home).
+**How to apply:** keep `setPin` calls strictly downstream of `confirmOtp` success;
+never persist reset PIN optimistically. `setPin` works post-OTP because
+`firebaseAuth.currentUser` + `getSessionIdSync()` are populated by `confirmOtp`.
 
 ## `/create-pin` continuation
 `/create-pin` takes the intended route as a `next` param and `router.replace(next)`
