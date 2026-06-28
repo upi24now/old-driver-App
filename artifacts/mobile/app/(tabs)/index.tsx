@@ -211,7 +211,6 @@ export default function HomeScreen() {
     planExpiredNoOrders,
     planExpiredWithOrders,
     todayEarnings,
-    tripsToday,
     activeOrderCount,
     activeOrders,
     currentActiveOrderId,
@@ -219,7 +218,6 @@ export default function HomeScreen() {
     maxActiveOrders,
     hasCapacity,
     isAtCapacity,
-    walletBalance,
     incomingRide,
   } = useDriver();
 
@@ -264,7 +262,6 @@ export default function HomeScreen() {
   const planLabel = subscriptionPlan ? (PLAN_LABEL[subscriptionPlan] ?? subscriptionPlan) : null;
 
   const earnings = `₹${todayEarnings.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
-  const walletText = `₹${(walletBalance ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 
   // Routes (unchanged) ────────────────────────────────────────────────────────
   function openAvailable() {
@@ -279,9 +276,6 @@ export default function HomeScreen() {
   }
   function openNotifications() {
     router.push("/notifications");
-  }
-  function openWallet() {
-    router.push("/wallet");
   }
 
   // Active-ride dock data (read-only, real orders only) ────────────────────────
@@ -322,6 +316,13 @@ export default function HomeScreen() {
               <Text style={s.planChipText}>{planLabel}</Text>
             </View>
           )}
+          <Switch
+            value={online}
+            onValueChange={(v) => void setOnline(v)}
+            trackColor={{ false: DANGER_TRACK, true: SUCCESS_TRACK }}
+            thumbColor={online ? SUCCESS : DANGER}
+            ios_backgroundColor={DANGER_TRACK}
+          />
           <TouchableOpacity
             style={s.bellBtn}
             onPress={openNotifications}
@@ -333,18 +334,17 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* ── WALLET + HUB STRIP (always visible) ────────────────────────────── */}
+      {/* ── EARNED TODAY + HUB STRIP (always visible) ──────────────────────── */}
       <View style={s.topStrip}>
-        <TouchableOpacity style={s.walletCard} activeOpacity={0.85} onPress={openWallet}>
-          <View style={s.walletCardIcon}>
+        <View style={s.earnedCard}>
+          <View style={s.earnedCardIcon}>
             <Feather name="credit-card" size={16} color={SUCCESS} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={s.walletCardLabel}>Wallet</Text>
-            <Text style={s.walletCardValue}>{walletText}</Text>
+            <Text style={s.earnedCardLabel}>Earned today</Text>
+            <Text style={s.earnedCardValue}>{earnings}</Text>
           </View>
-          <Feather name="chevron-right" size={16} color={MUTED} />
-        </TouchableOpacity>
+        </View>
 
         <TouchableOpacity style={s.hubCard} activeOpacity={0.85} onPress={openHub}>
           <View style={s.hubCardIcon}>
@@ -447,61 +447,6 @@ export default function HomeScreen() {
         }}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── STATUS BLOCK (online/offline toggle + earnings) ───────────────── */}
-        <View style={s.statusBlock}>
-          <View style={s.statusTop}>
-            <View style={s.statusInfo}>
-              <View style={[s.statusDot, { backgroundColor: online ? SUCCESS : MUTED }]} />
-              <View>
-                <Text style={s.statusLabel}>{online ? "You're Online" : "You're Offline"}</Text>
-                <Text style={s.statusSub}>
-                  {online
-                    ? activeOrderCount > 0
-                      ? `${activeOrderCount} order${activeOrderCount > 1 ? "s" : ""} in progress`
-                      : "Receiving orders nearby"
-                    : "Not receiving orders"}
-                </Text>
-              </View>
-            </View>
-            <Switch
-              value={online}
-              onValueChange={(v) => void setOnline(v)}
-              trackColor={{ false: DANGER_TRACK, true: SUCCESS_TRACK }}
-              thumbColor={online ? SUCCESS : DANGER}
-              ios_backgroundColor={DANGER_TRACK}
-            />
-          </View>
-
-          <View style={s.statusDivider} />
-
-          <View style={s.earningsRow}>
-            <View style={s.earningsMain}>
-              <Text style={s.earningsLabel}>Earned today</Text>
-              <Text style={s.earningsValue}>{earnings}</Text>
-            </View>
-            <View style={s.earningsStat}>
-              <Text style={s.earningsStatNum}>{tripsToday}</Text>
-              <Text style={s.earningsStatLbl}>Trips</Text>
-            </View>
-            {online && (
-              <>
-                <View style={s.earningsStatSep} />
-                <View style={s.earningsStat}>
-                  <Text style={s.earningsStatNum}>{activeOrderCount}</Text>
-                  <Text style={s.earningsStatLbl}>Active</Text>
-                </View>
-              </>
-            )}
-          </View>
-
-          {!online && (
-            <TouchableOpacity style={s.goOnlineBtn} onPress={() => void setOnline(true)} activeOpacity={0.9}>
-              <Feather name="power" size={18} color="#fff" />
-              <Text style={s.goOnlineTxt}>GO ONLINE</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
         {/* ── PLAN BANNERS ──────────────────────────────────────────────────── */}
         {planExpiredWithOrders && (
           <TouchableOpacity style={s.bannerAmber} activeOpacity={0.88} onPress={() => router.push("/subscription")}>
@@ -659,14 +604,14 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
 
-  // Wallet + Hub top strip
+  // Earned today + Hub top strip
   topStrip: {
     flexDirection: "row",
     gap: 10,
     paddingHorizontal: 16,
     paddingTop: 10,
   },
-  walletCard: {
+  earnedCard: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
@@ -678,7 +623,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 12,
   },
-  walletCardIcon: {
+  earnedCardIcon: {
     width: 34,
     height: 34,
     borderRadius: 11,
@@ -686,8 +631,8 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  walletCardLabel: { fontSize: 11, fontWeight: "700", color: MUTED },
-  walletCardValue: { fontSize: 18, fontWeight: "900", color: SUCCESS, marginTop: 1, letterSpacing: -0.4 },
+  earnedCardLabel: { fontSize: 11, fontWeight: "700", color: MUTED },
+  earnedCardValue: { fontSize: 18, fontWeight: "900", color: SUCCESS, marginTop: 1, letterSpacing: -0.4 },
   hubCard: {
     flex: 1,
     flexDirection: "row",
@@ -825,50 +770,6 @@ const s = StyleSheet.create({
     paddingVertical: 9,
   },
   slotEmptyTxt: { fontSize: 12, fontWeight: "600", color: MUTED },
-
-  // Status block
-  statusBlock: {
-    backgroundColor: CARD,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: BORDER,
-    padding: 16,
-    gap: 14,
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.06,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
-  },
-  statusTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  statusInfo: { flexDirection: "row", alignItems: "center", gap: 10 },
-  statusDot: { width: 9, height: 9, borderRadius: 5 },
-  statusLabel: { fontSize: 15, lineHeight: 18, fontWeight: "800", color: TEXT, letterSpacing: -0.3 },
-  statusSub: { fontSize: 12, lineHeight: 15, fontWeight: "500", color: MUTED },
-  statusDivider: { height: 1, backgroundColor: BORDER },
-  earningsRow: { flexDirection: "row", alignItems: "center" },
-  earningsMain: { flex: 1 },
-  earningsLabel: { fontSize: 11, lineHeight: 13, fontWeight: "600", color: MUTED },
-  earningsValue: { fontSize: 22, lineHeight: 26, fontWeight: "900", color: SUCCESS, letterSpacing: -0.5 },
-  earningsStat: { alignItems: "center", minWidth: 52 },
-  earningsStatNum: { fontSize: 17, lineHeight: 20, fontWeight: "800", color: TEXT },
-  earningsStatLbl: { fontSize: 11, lineHeight: 13, fontWeight: "500", color: MUTED },
-  earningsStatSep: { width: 1, height: 26, backgroundColor: BORDER },
-  goOnlineBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    backgroundColor: PRIMARY,
-    borderRadius: 14,
-    paddingVertical: 13,
-    shadowColor: PRIMARY,
-    shadowOpacity: 0.32,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
-  goOnlineTxt: { fontSize: 16, fontWeight: "900", color: "#fff", letterSpacing: 0.4 },
 
   // Banners
   bannerAmber: {
