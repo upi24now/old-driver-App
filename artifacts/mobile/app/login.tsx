@@ -31,10 +31,8 @@ import {
   Dimensions,
   Easing,
   Image,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -44,6 +42,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 
+import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useDriver } from "@/contexts/DriverContext";
 import { sendOtp, setPin as setPinApi } from "@/utils/auth-api";
 
@@ -749,21 +748,19 @@ export default function LoginScreen() {
     : "+91 — — — — —";
 
   return (
-    <KeyboardAvoidingView
+    <KeyboardAwareScrollViewCompat
       style={ss.root}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      contentContainerStyle={[
+        ss.scroll,
+        { paddingTop: insets.top + r.topPad, paddingBottom: insets.bottom + r.botPad },
+      ]}
+      bottomOffset={24}
+      scrollEnabled
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      bounces={false}
+      overScrollMode="never"
     >
-      <ScrollView
-        contentContainerStyle={[
-          ss.scroll,
-          { paddingTop: insets.top + r.topPad, paddingBottom: insets.bottom + r.botPad },
-        ]}
-        scrollEnabled
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        bounces={false}
-        overScrollMode="never"
-      >
 
         {/* ── PHASE: LOGIN (phone + PIN) ── */}
         {phase === "login" && (
@@ -1233,9 +1230,7 @@ export default function LoginScreen() {
           </View>
         )}
 
-      </ScrollView>
-
-    </KeyboardAvoidingView>
+    </KeyboardAwareScrollViewCompat>
   );
 }
 

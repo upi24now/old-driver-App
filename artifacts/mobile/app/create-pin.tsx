@@ -17,10 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -29,6 +26,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { setPin as setPinApi, verifyPinApi } from "@/utils/auth-api";
 import { setSessionId } from "@/utils/session";
 import { useDriver } from "@/contexts/DriverContext";
@@ -216,20 +214,18 @@ export default function CreatePinScreen() {
   const canConfirmManually = step === "confirm" && confirm.length === PIN_LENGTH && !saving;
 
   return (
-    <KeyboardAvoidingView
+    <KeyboardAwareScrollViewCompat
       style={ss.root}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      contentContainerStyle={[
+        ss.scroll,
+        { paddingTop: insets.top + 28, paddingBottom: insets.bottom + 24 },
+      ]}
+      bottomOffset={24}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      bounces={false}
+      overScrollMode="never"
     >
-      <ScrollView
-        contentContainerStyle={[
-          ss.scroll,
-          { paddingTop: insets.top + 28, paddingBottom: insets.bottom + 24 },
-        ]}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        bounces={false}
-        overScrollMode="never"
-      >
         {/* ── Branding ── */}
         <View style={ss.branding}>
           <View style={ss.logoCircle}>
@@ -343,8 +339,7 @@ export default function CreatePinScreen() {
         <Text style={ss.note}>
           Your PIN is encrypted and stored securely. You can still log in with OTP anytime.
         </Text>
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardAwareScrollViewCompat>
   );
 }
 
