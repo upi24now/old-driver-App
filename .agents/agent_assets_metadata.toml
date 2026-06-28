@@ -274,7 +274,7 @@ title = "Driver-Plans PG-Authoritative Money-Path Patch"
 id = "wj-gjeCnCfrlgUBty3-z0"
 uri = "file://production-baseline/bike-courier-combined-453c9c4c.tar.gz"
 type = "unspecified"
-title = "Bike Courier — Combined Driver Patch (base 453c9c4c)"
+title = "Bike Courier — Combined Driver Patch for VPS bundle 453c9c4c (verified)"
 
 [[outputs]]
 id = "VflGVKQHiIq7-4f2nBLeB"
