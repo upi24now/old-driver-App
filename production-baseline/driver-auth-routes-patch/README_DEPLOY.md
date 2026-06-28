@@ -20,8 +20,8 @@ Adds one additive Express router mounted **before** the bundle's `app.use("/api"
 (i.e. before the catch-all 404), reusing the bundle's existing module-scope bindings
 `app`, `pool` (pg Pool), `auth` (Firebase Admin Auth), `import_express34` (express):
 
-- `POST /api/auth/send-otp`    — test-phone bypass via `TEST_OTP_PHONES`, else stores OTP in PG (`auth_otps`), 3/24h rate limit (`otp_send_events`). No SMS sender exists in this backend (unchanged behavior).
-- `POST /api/auth/verify-otp`  — atomic `FOR UPDATE` consume; mints Firebase custom token for uid `91`+phone.
+- `POST /api/auth/send-otp`    — normalizes phone (`+91`/`91`/leading-`0` → 10 digits), test-phone bypass via `TEST_OTP_PHONES`, else stores OTP in PG (`auth_otps`), 3/24h rate limit (`otp_send_events`). No SMS sender exists in this backend (unchanged behavior).
+- `POST /api/auth/verify-otp`  — accepts `otp` **or** `code` **or** `otpCode`; normalizes phone the same as send-otp; trim string compare; checks `consumed_at IS NULL` and `expires_at > NOW()`; on match sets `consumed_at = NOW()`; atomic `FOR UPDATE` consume; mints Firebase custom token for uid `91`+phone. The test-phone bypass now **falls through** to the PG check if the submitted code is not the fixed test value, so a real `auth_otps` OTP works even for numbers listed in `TEST_OTP_PHONES`.
 - `POST /api/auth/set-pin`     — Firebase **ID-token** gated; stores a scrypt PIN hash (`scrypt$<salt>$<hash>`).
 - `GET  /api/auth/pin-status`  — Firebase ID-token gated; returns `{ hasPin }`.
 - `POST /api/auth/verify-pin`  — atomic `FOR UPDATE` lockout (3 wrong → 24h); scrypt verify; mints custom token.
@@ -38,15 +38,20 @@ Adds one additive Express router mounted **before** the bundle's `app.use("/api"
 PG driver-plans guard · `/api/driver-plans/status` · `/api/driver-plans/current` ·
 `/api/driver-plans/create-order` · `/api/driver-plans/verify-payment` · Razorpay/payment ·
 delivery routes · customer routes · admin routes · wallet schema · UI.
-The only change vs base is a single inserted 14,592-byte block.
+The only change vs base is a single inserted 15,044-byte block.
 
 ## Intentional scope decisions
 - `set-pin` / `pin-status` verify the Firebase **ID token only** — they do NOT enforce a
   single-device `x-session-id` policy (no such enforcement exists anywhere in the live bundle;
   adding it would be a new feature that could break first-time setup). `active_session_id` is
   still written so enforcement can be switched on later without a schema change.
-- `verify-otp` keeps the original behavior of using the submitted phone directly for the uid
-  (`send-otp` already hard-requires a clean 10-digit phone; the app always sends clean digits).
+- `verify-otp` and `send-otp` normalize the phone identically (`+91`/`91`/leading-`0` → 10
+  digits) so the uid (`91`+phone) and the `auth_otps` key always line up regardless of the
+  format the client sends.
+- The `TEST_OTP_PHONES` bypass is preserved but no longer **shadows** real OTPs: if the
+  submitted code is not the fixed test value, verify-otp falls through to the normal PG check.
+  This was the root cause of the reported `8299013350` failure — the number was in
+  `TEST_OTP_PHONES`, so the real SMS OTP was rejected by the bypass.
 
 ## Files in this package
 - `production-api.PATCHED.js` — the patched bundle to deploy.
@@ -55,8 +60,8 @@ The only change vs base is a single inserted 14,592-byte block.
 
 ## Integrity (verify before deploy)
 - BASE    sha256: `246519b97efcd770c9b76a3825348d1d6ee8c09482739b15847462f4674bb84c`
-- PATCHED sha256: `3125ceb5fbcdb80d70c9bb440bf05243954ba755e7196f3b96c8deb443bc3425`
-- Inserted block: 14,592 bytes (only change vs base).
+- PATCHED sha256: `7a7ff11d4037aa1a9c8697d79ce92f1076149b984e125d6fe96bede24e081162`
+- Inserted block: 15,044 bytes (only change vs base).
 
 ```
 sha256sum production-api.PATCHED.js   # must equal the PATCHED sha above
@@ -65,7 +70,7 @@ sha256sum production-api.PATCHED.js   # must equal the PATCHED sha above
 ## Deploy (VPS, PM2 process `bike-courier-api`)
 ```bash
 # 1. Verify integrity:
-sha256sum production-api.PATCHED.js   # == 3125ceb5fbcdb80d70c9bb440bf05243954ba755e7196f3b96c8deb443bc3425
+sha256sum production-api.PATCHED.js   # == 7a7ff11d4037aa1a9c8697d79ce92f1076149b984e125d6fe96bede24e081162
 
 # 2. Back up the current live file first (match the filename PM2 launches):
 cp /path/to/current/production-api.js /path/to/current/production-api.BACKUP-246519b9.js
@@ -103,12 +108,19 @@ left behind are harmless (nullable/defaulted; unused by the base bundle).
 
 ## Proof performed before delivery
 - BASE SHA asserted == `246519b9…4bb84c` by the patcher (aborts otherwise).
-- Diff base→patched: **0 deletions / 0 modifications**, 363 added lines (one contiguous block).
+- Diff base→patched: **0 deletions / 0 modifications** — a single contiguous inserted block (15,044 bytes).
+- Byte-safe reconstruction: removing the inserted block reproduces the base bytes exactly.
 - `node --check` on the full patched ESM bundle → OK (no syntax break from the splice).
 - Protected routes confirmed still present in the patched bundle (driver-plans status/current/
   create-order/verify-payment, Razorpay, `app.use("/api", routes_default)`).
-- Patch body confirmed 0 Firestore/Storage/Messaging refs; only `auth.verifyIdToken` + `auth.createCustomToken`.
-- The spliced body (sha `e122f5a9…`) is byte-identical to the version validated end-to-end by the
-  PG isolation harness (exact spliced bytes, real Postgres, stubbed Firebase Admin): **20/20 passing**
-  — route mount (no 404), no-PIN→404, set-pin gate+hash write, pin-status, verify-pin success,
-  3-strike lockout→429, test-phone OTP, PG-stored real-phone OTP send/verify/consume, catch-all 404 intact.
+- Patch body confirmed **0 Firestore/Storage/Realtime-DB refs**; only `auth.verifyIdToken` (×1) +
+  `auth.createCustomToken` (×2) — Firebase used solely for token mint/verify (+ FCM elsewhere).
+- **verify-otp runtime proof** (patched bundle booted locally against real Postgres, phone `8299013350`,
+  real `auth_otps` row `otp=733802`):
+  - DB OTP via `otp` key → **HTTP 200 + custom token**
+  - fresh DB OTP via `code` key → **200**; via `otpCode` key → **200**
+  - phone `+918299013350` and `918299013350` (with surrounding whitespace, trimmed) → **200**
+  - re-using a consumed OTP → **401** `OTP already used`; wrong OTP → **401** `Incorrect OTP`
+  - test-bypass OTP `123456` for the same (test-listed) phone still → **200** (fall-through preserves it)
+  - This reproduces and fixes the reported bug: `8299013350` is in `TEST_OTP_PHONES`, so the bypass
+    previously shadowed the real OTP; it now falls through to the PG check.

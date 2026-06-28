@@ -41,9 +41,16 @@ function authParseTestPhones() {
     const pair = entry.trim().split(":");
     const phone = pair[0];
     const otp = pair[1];
-    if (phone && otp) map.set(phone.trim(), otp.trim());
+    if (phone && otp) map.set(authNormalizePhone(phone), otp.trim());
   }
   return map;
+}
+
+function authNormalizePhone(input) {
+  let d = String(input == null ? "" : input).replace(/\D/g, "");
+  if (d.length === 12 && d.slice(0, 2) === "91") d = d.slice(2);
+  else if (d.length === 11 && d.slice(0, 1) === "0") d = d.slice(1);
+  return d;
 }
 
 function authLog(req, level, obj, msg) {
@@ -103,7 +110,7 @@ const authRouter = import_express34.default.Router();
 
 authRouter.post("/auth/send-otp", async (req, res) => {
   const body = req.body || {};
-  const phone = body.phone;
+  const phone = authNormalizePhone(body.phone);
   if (!phone || !/^\d{10}$/.test(phone)) {
     res.status(400).json({ error: "Invalid phone number. Must be 10 digits." });
     return;
@@ -160,20 +167,20 @@ authRouter.post("/auth/send-otp", async (req, res) => {
 
 authRouter.post("/auth/verify-otp", async (req, res) => {
   const body = req.body || {};
-  const phone = body.phone;
-  const otp = body.otp;
-  if (!phone || !otp) {
+  const phone = authNormalizePhone(body.phone);
+  const otpRaw = body.otp != null ? body.otp : (body.code != null ? body.code : body.otpCode);
+  const otp = otpRaw == null ? "" : String(otpRaw).trim();
+  if (!phone || !/^\d{10}$/.test(phone) || !otp) {
     res.status(400).json({ error: "phone and otp are required." });
     return;
   }
   const testPhones = authParseTestPhones();
-  if (testPhones.has(phone)) {
-    if (testPhones.get(phone) !== otp) {
-      res.status(401).json({ error: "Incorrect OTP. Try again." });
-      return;
-    }
+  let verified = false;
+  if (testPhones.has(phone) && String(testPhones.get(phone)).trim() === otp) {
     authLog(req, "info", { phoneSuffix: phone.slice(-4) }, "OTP verify — test bypass matched");
-  } else {
+    verified = true;
+  }
+  if (!verified) {
     let outcome;
     const client = await pool.connect();
     try {
@@ -195,7 +202,7 @@ authRouter.post("/auth/verify-otp", async (req, res) => {
       } else if (row.attempts >= OTP_MAX_ATTEMPTS) {
         await client.query("ROLLBACK");
         outcome = { ok: false, status: 429, error: "Too many attempts. Request a new code." };
-      } else if (row.otp !== otp) {
+      } else if (String(row.otp).trim() !== otp) {
         await client.query("UPDATE auth_otps SET attempts = attempts + 1 WHERE phone = $1", [phone]);
         await client.query("COMMIT");
         outcome = { ok: false, status: 401, error: "Incorrect OTP. Try again." };
