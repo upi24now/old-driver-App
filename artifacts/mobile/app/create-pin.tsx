@@ -6,13 +6,15 @@
  * successful OTP verification and the existing onboarding/Home routing.
  *
  * Flow:
- *   Enter 6-digit PIN → Confirm 6-digit PIN → POST /auth/set-pin → continue.
- * The intended destination is passed in via the `next` route param and is the
- * exact route the existing flow would have used (no routing logic changes here).
+ *   Enter 6-digit PIN → Confirm 6-digit PIN → POST /auth/set-pin → confirmPin.
+ * OTP only authorizes PIN setup; no full session exists yet (isOtpVerified is
+ * false and /drivers/me has NOT been called). Only AFTER set-pin succeeds
+ * (drivers.pin_hash true) does this screen call confirmPin to establish the full
+ * session, fetch the profile, and route into the existing onboarding/Home flow.
  */
 
 import { Feather } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -27,8 +29,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
-import { setPin as setPinApi, verifyPinApi } from "@/utils/auth-api";
-import { setSessionId, beginSessionRotation, endSessionRotation } from "@/utils/session";
+import { setPin as setPinApi } from "@/utils/auth-api";
+import { beginSessionRotation, endSessionRotation } from "@/utils/session";
 import { useDriver } from "@/contexts/DriverContext";
 
 // ─── Design tokens (mirror login.tsx) ───────────────────────────────────────────
@@ -93,11 +95,7 @@ function PinCells({
 export default function CreatePinScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { phone } = useDriver();
-  const params = useLocalSearchParams<{ next?: string }>();
-  const nextRoute = typeof params.next === "string" && params.next.length > 0
-    ? params.next
-    : FALLBACK_ROUTE;
+  const { phone, confirmPin } = useDriver();
 
   const pinRef     = useRef<TextInput>(null);
   const confirmRef = useRef<TextInput>(null);
@@ -109,7 +107,7 @@ export default function CreatePinScreen() {
   const [saving,  setSaving]  = useState(false);
 
   useEffect(() => {
-    console.log("[FLOW] create-pin: screen mounted — phone:", phone ? "present" : "ABSENT", "| nextRoute:", nextRoute);
+    console.log("[FLOW] create-pin: screen mounted — phone:", phone ? "present" : "ABSENT");
   }, []);
 
   // Auto-focus the active field as the step changes.
@@ -191,44 +189,42 @@ export default function CreatePinScreen() {
         return;
       }
 
-      // Single-device login — set-pin mints a NEW active session on the server,
-      // superseding the one from verify-otp. This device MUST adopt the new session
-      // id or the very next authenticated request 401s SESSION_REPLACED against
-      // itself → the app auto-signs-out → bounces back to the OTP/login screen.
-      let sessionAdopted = false;
-      if (result.sessionId) {
-        console.log("[create-pin] set-pin returned sessionId — adopting it");
-        await setSessionId(result.sessionId);
-        sessionAdopted = true;
-      } else if (phone) {
-        // Some backend builds return set-pin success WITHOUT the rotated session id.
-        // The server session is now ahead of ours, so re-login with the PIN we just
-        // set to obtain and adopt the current active session before navigating.
-        console.warn("[create-pin] set-pin returned NO sessionId — re-syncing via verify-pin");
-        const reSync = await verifyPinApi(phone, pin);
-        if (reSync.ok && reSync.sessionId) {
-          console.log("[create-pin] re-sync OK — adopted fresh session from verify-pin");
-          await setSessionId(reSync.sessionId);
-          sessionAdopted = true;
-        } else {
-          console.error("[create-pin] re-sync FAILED:", reSync.ok ? "no sessionId" : reSync.error);
-        }
-      }
-
-      // Fail-safe: if we could not establish a current session, navigating forward
-      // would 401 SESSION_REPLACED on the next request and bounce back to login.
-      // Keep the driver on this screen with a retryable error instead of looping.
-      if (!sessionAdopted) {
+      // ── set-pin succeeded → drivers.pin_hash is now true ────────────────────
+      // ONLY NOW do we establish the full session: log in with the PIN we just
+      // set. confirmPin runs verify-pin → adopts the freshly-minted single-device
+      // session → fetches the driver profile (/drivers/me, the FIRST such call in
+      // this flow) → computes the onboarding/Home route → sets isOtpVerified=true
+      // (releasing the layout route-guard). This guarantees the required order:
+      // verify-otp → set-pin → pin_hash true → /drivers/me.
+      if (!phone) {
+        // Phone is set during the OTP sign-in step; if it is somehow missing we
+        // cannot re-login. Surface a retryable error rather than navigate into a
+        // session that would 401 on the next request.
         setError("Couldn't finish setting up your PIN. Please try again.");
         setConfirm("");
         setTimeout(() => confirmRef.current?.focus(), 100);
         return;
       }
 
-      // PIN saved + session in lockstep — continue the EXISTING onboarding/Home
-      // routing unchanged.
-      console.log("[create-pin] navigating forward to:", nextRoute);
-      router.replace(nextRoute as never);
+      console.log("[FLOW] create-pin: set-pin OK — establishing session via confirmPin (pin_hash now true)");
+      const login = await confirmPin(phone, pin);
+      console.log("[FLOW] create-pin: confirmPin result — ok:", login.ok, "| nextRoute:", login.nextRoute ?? "(derived)", "| error:", login.ok ? "none" : login.error);
+
+      // Fail-safe: if the post-set-pin login could not complete, keep the driver
+      // on this screen with a retryable error. The PIN is already saved, so they
+      // can also simply return to login and sign in with it.
+      if (!login.ok) {
+        setError(login.error ?? "Couldn't finish setting up your PIN. Please try again.");
+        setConfirm("");
+        setTimeout(() => confirmRef.current?.focus(), 100);
+        return;
+      }
+
+      // PIN saved + full session established — continue the EXISTING onboarding/
+      // Home routing using the route confirmPin derived from the live profile.
+      const next = login.nextRoute ?? (login.profileComplete ? "/(tabs)" : FALLBACK_ROUTE);
+      console.log("[create-pin] navigating forward to:", next);
+      router.replace(next as never);
     } finally {
       // Hold the suppression ~3 s past completion so late-arriving stale requests
       // (e.g. the in-flight account-status poll) don't bounce us after we leave.

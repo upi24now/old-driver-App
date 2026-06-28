@@ -511,6 +511,13 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // ONCE per session regardless of how many times onAuthStateChanged or the
   // subscribeDriverDoc listener fires. Prevents remount blinks on reconnect.
   const hasNavigatedToBlockedRef = useRef(false);
+  // True ONLY during the OTP → set-PIN window (signInForSession → confirmPin).
+  // A ref (not state) because the onAuthStateChanged listener below is registered
+  // once at mount and its closure cannot observe state updates. While true, the
+  // auth listener must NOT fetch /drivers/me or navigate — OTP merely authorizes
+  // PIN setup; the full session (profile + routing) is established only AFTER
+  // set-pin succeeds (pin_hash true), inside establishSession (via confirmPin).
+  const pinSetupInProgressRef = useRef(false);
   const profileRef      = useRef<Profile | null>(null);
   const driverRatingRef = useRef<number | string>("5.0");
   const driverTripsRef  = useRef<number>(0);
@@ -608,6 +615,19 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       setPhoneState(phoneFromUid);
 
       void (async () => {
+        // ── 0. PIN-setup guard ───────────────────────────────────────────────
+        // signInForSession (OTP → set-PIN flow) signs into Firebase to obtain an
+        // ID token for the Bearer-gated set-pin request, which fires this
+        // listener. During that window we must NOT hydrate the profile
+        // (/drivers/me) or navigate — OTP only authorizes PIN setup. The full
+        // session is established AFTER set-pin via confirmPin → establishSession,
+        // which clears this flag. This guarantees the required ordering:
+        // verify-otp → set-pin → pin_hash true → then /drivers/me.
+        if (pinSetupInProgressRef.current) {
+          console.log("[AUTH_STATE] pin-setup in progress — skipping profile hydration + navigation (no premature /drivers/me)");
+          return;
+        }
+
         // ── 1. Session restore check ─────────────────────────────────────────
         // Determine whether this Firebase user has a previously OTP-verified
         // session stored in AsyncStorage from a prior login.
@@ -951,7 +971,13 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // Unlike the Firestore listener, an HTTP poll is not re-triggered by our own
   // write — no infinite loop is possible. The guard is kept for safety.
   useEffect(() => {
-    if (!driverUid) return;
+    // Only poll fully-established sessions. During the OTP → PIN-setup flow the
+    // driver is signed into Firebase (driverUid set) but isOtpVerified is still
+    // false until set-pin succeeds — polling /drivers/me before then would hit
+    // the server prematurely (and, on prod, 403) while the driver sits on
+    // /create-pin. Gating on isOtpVerified defers the first poll until the PIN
+    // is set and the full session is established.
+    if (!driverUid || !isOtpVerified) return;
 
     let hasEnforcedBlock = false;
 
@@ -1012,7 +1038,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       clearInterval(intervalId);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [driverUid]);
+  }, [driverUid, isOtpVerified]);
 
   // ─── Firestore dispatched-order listener (single channel) ────────────────
   // Replaces two previous effects that each ran the identical query:
@@ -1340,6 +1366,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             : "no fetch debug";
           console.error("[OTP_PROFILE_GATE] source ≠ 404 — skipping ensureDriverSignup:", errDetail);
           console.error("[OTP_PROFILE_GATE] body sample:", retryFetchDbg?.rawBody?.slice(0, 200));
+          pinSetupInProgressRef.current = false;
           setIsOtpVerifying(false);
           return {
             ok:              false,
@@ -1544,6 +1571,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       // where isOtpVerifying=false AND isOtpVerified=false simultaneously, which
       // would cause it to route back to /login.
       console.log("[OTP_FINAL_ROUTE] releasing layout guard — isOtpVerified=true, isOtpVerifying=false, nextRoute =", nextRoute);
+      // Full session is now established (post-set-pin for the PIN flow). Re-enable
+      // the onAuthStateChanged hydration path for any future auth events.
+      pinSetupInProgressRef.current = false;
       setIsOtpVerified(true);
       setIsOtpVerifying(false);
       // Persist the verified uid so session survives app backgrounding / cold start.
@@ -1598,15 +1628,55 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       return { ok: true, profileComplete, nextRoute, debugLog };
     } catch (err) {
       // Release the layout route-guard on any failure so normal auth routing resumes.
+      pinSetupInProgressRef.current = false;
       setIsOtpVerifying(false);
       const msg = err instanceof Error ? err.message : "Sign-in failed.";
       return { ok: false, profileComplete: false, error: msg };
     }
   };
 
-  // OTP path — first-time PIN setup and forgot/reset only. Verifies the OTP,
-  // claims this device with the server-minted session id, then establishes the
-  // Firebase session and routing.
+  // ── Sign in to Firebase ONLY — OTP → PIN-setup / forgot-reset flow ─────────
+  // The driver has just passed OTP but has NOT set a PIN yet. OTP is the
+  // AUTHORIZATION to set a PIN — it must NOT establish a full session: no
+  // /drivers/me profile fetch, no onboarding routing, and isOtpVerified stays
+  // FALSE. We DO sign into Firebase (signInWithCustomToken) because the set-pin
+  // request on /create-pin is Firebase-Bearer-gated and needs an ID token.
+  // isOtpVerifying is held TRUE so _layout.tsx's route-guard does not bounce the
+  // driver to /login while driverUid is set but isOtpVerified is not. The full
+  // session + routing is established AFTER set-pin succeeds (create-pin →
+  // confirmPin), i.e. only once drivers.pin_hash is true.
+  const signInForSession = async (
+    token: string,
+    phone: string,
+  ): Promise<{ ok: boolean; error?: string }> => {
+    console.log("[OTP_VERIFY_START] (pin-setup) blocking layout route-guard; signInWithCustomToken only — NO profile fetch, isOtpVerified stays false");
+    setIsOtpVerifying(true);
+    // Suppress the onAuthStateChanged hydration/navigation triggered by the
+    // sign-in below until set-pin completes (cleared inside establishSession).
+    pinSetupInProgressRef.current = true;
+    try {
+      const credential = await signInWithCustomToken(firebaseAuth, token);
+      const uid        = credential.user.uid;
+      console.log("[FLOW] signInForSession — signInWithCustomToken SUCCESS, uid:", uid);
+      setDriverUid(uid);
+      setPhoneState(phone);
+      return { ok: true };
+    } catch (err) {
+      // Release the guard so normal auth routing resumes on a sign-in failure.
+      pinSetupInProgressRef.current = false;
+      setIsOtpVerifying(false);
+      const msg = err instanceof Error ? err.message : "Sign-in failed.";
+      console.error("[FLOW] signInForSession — sign-in failed:", msg);
+      return { ok: false, error: msg };
+    }
+  };
+
+  // OTP path — first-time PIN setup and forgot/reset only. Verifies the OTP and
+  // claims this device with the server-minted session id, then signs into
+  // Firebase WITHOUT establishing a full session. The /create-pin screen calls
+  // confirmPin AFTER set-pin succeeds to fetch the profile, route, and release
+  // the layout guard (isOtpVerified=true) — so /drivers/me is never called
+  // before the PIN is set.
   const confirmOtp = async (
     phone: string,
     otp:   string,
@@ -1620,7 +1690,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     } else {
       console.warn("[FLOW] DriverContext.confirmOtp — verify-otp returned NO sessionId; keeping existing session");
     }
-    return establishSession(apiResult.token, phone);
+    // OTP verified → sign into Firebase ONLY (Bearer for set-pin). Do NOT fetch
+    // /drivers/me, do NOT route, leave isOtpVerified=false. login.tsx routes to
+    // /create-pin; the full session is established post-set-pin via confirmPin.
+    const signIn = await signInForSession(apiResult.token, phone);
+    if (!signIn.ok) return { ok: false, profileComplete: false, error: signIn.error };
+    return { ok: true, profileComplete: false };
   };
 
   // PIN path — the daily login factor (phone + 6-digit PIN). Same single-device
@@ -1733,6 +1808,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
     setDriverUid(null);
     setIsOtpVerified(false);   // ← reset OTP gate so next cold start forces /login
+    pinSetupInProgressRef.current = false;  // defensive: never leave the PIN-setup guard wedged on
     setPhoneState(null);
     setProfileState(null);
     setVehicleState(null);

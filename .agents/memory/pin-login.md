@@ -89,11 +89,36 @@ suppressed — a short single-device-lockout delay, never a permanent bypass.
 guard a plain boolean. Only suppress SESSION_REPLACED while rotating; outside the
 window, real replacements must still sign out.
 
+## OTP authorizes PIN setup ONLY — establish the session AFTER set-pin (current model)
+**Rule:** in the OTP→set-PIN flow (New User + Forgot), verify-otp must NOT establish
+a full session and must NOT call `/drivers/me`. `confirmOtp` does verify-otp →
+`setSessionId` → `signInForSession` (signInWithCustomToken + setDriverUid/phone ONLY;
+`isOtpVerified` stays false, `isOtpVerifying` held true) and routes straight to
+`/create-pin` (NO `next` param). The first `/drivers/me` happens only AFTER set-pin
+succeeds: `create-pin.tsx` calls `confirmPin(phone, pin)` (the unchanged daily-login
+path = verify-pin → adopt session → `establishSession` profile fetch + routing +
+`setIsOtpVerified(true)`), then `router.replace(login.nextRoute)`. Required order:
+verify-otp 200 → set-pin 200 → pin_hash true → THEN /drivers/me.
+**Why:** the prod "set PIN → bounce to /login" bug was a premature `/drivers/me`
+**403** during establishSession BEFORE the PIN was ever set (403≠404 → returns
+ok:false → isOtpVerified never flips true → guard bounces to /login; set-pin never
+called → verify-pin later 404s). Deferring all profile I/O until after set-pin fixes
+it frontend-only (no backend change). Daily login is untouched (never calls
+signInForSession).
+**How to apply:** the killer subtlety — `signInWithCustomToken` ALWAYS fires
+`onAuthStateChanged`, whose async IIFE calls `getDriverProfile()` regardless. A
+`pinSetupInProgressRef` (a **ref**, because the listener is registered once at mount
+and its closure can't see state) is set true in `signInForSession` and checked as the
+FIRST statement of that IIFE (`if (ref.current) return;`) — placed BEFORE the
+session-restore check so a stale `SESSION_VERIFIED_KEY` can't make sessionValid=true
+and bypass create-pin in the Forgot flow. Cleared in `establishSession` (success +
+both failure exits) and defensively in `signOut`. Never convert it to state.
+
 ## `/create-pin` continuation
-`/create-pin` takes the intended route as a `next` param and `router.replace(next)`
-after `set-pin` succeeds — it adds NO routing logic. `set-pin` requires an existing
-driver row (404 otherwise); the mobile flow has already created the row
-(ensureDriverSignup) by the time PIN setup runs.
+`set-pin` requires an existing driver row (404 otherwise); the mobile flow has already
+created the row (ensureDriverSignup) by the time PIN setup runs. NOTE (superseded):
+`/create-pin` no longer takes a `next` param — the onboarding/Home route is computed by
+`confirmPin` from the live profile AFTER set-pin (see OTP-authorizes section above).
 
 ## set-pin must send x-session-id EXPLICITLY (not rely on the global interceptor)
 **Rule:** `setPin()` (mobile `utils/auth-api.ts`) must attach the `x-session-id`
@@ -113,6 +138,10 @@ critical auth steps. Proven flow (dev): send-otp 200 → verify-otp 200 → set-
 (with header) → verify-pin 200; set-pin WITHOUT header reproducibly 401s.
 
 ## set-pin completion must ADOPT the rotated session, or login loops back to OTP
+**(SUPERSEDED by the "OTP authorizes PIN setup ONLY" section above — `create-pin` now
+calls `confirmPin` after set-pin, which does verify-pin and adopts the current session
+as a side effect, so the bespoke set-pin sessionId-read / verify-pin re-sync machinery
+below was REMOVED. Kept for historical context on WHY adoption matters.)**
 **Rule:** after a successful `set-pin`, the mobile client MUST end up holding the
 server's *current* `active_session_id` before navigating off `/create-pin`. The
 single-device model rotates the session on set-pin; if the client keeps the old

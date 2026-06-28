@@ -604,9 +604,12 @@ export default function LoginScreen() {
     // onboarding/Home routing (nextRoute). OTP is the authorization; the PIN is
     // always entered AFTER verification (never before).
     setVerifying(false);
-    const nextRoute = result.nextRoute ?? (result.profileComplete ? "/(tabs)" : "/registration");
-    console.log("[FLOW] login:", otpIntent, "— route after OTP → /create-pin (next =", nextRoute, ")");
-    router.replace({ pathname: "/create-pin", params: { next: nextRoute } });
+    // OTP only AUTHORIZED the PIN setup — no full session was established and
+    // /drivers/me was NOT called. Route straight to Create PIN. The onboarding/
+    // Home route is computed AFTER set-pin succeeds (create-pin → confirmPin),
+    // so no next param is passed here.
+    console.log("[FLOW] login:", otpIntent, "— OTP verified (no session yet) → /create-pin; route computed AFTER set-pin");
+    router.replace("/create-pin");
   }
 
   console.log("[SCREEN_MOUNT] login — authLoading =", authLoading, "driverUid =", driverUid);
