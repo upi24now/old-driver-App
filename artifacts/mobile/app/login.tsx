@@ -26,6 +26,7 @@ import Svg, {
 } from "react-native-svg";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Dimensions,
   Easing,
@@ -516,13 +517,21 @@ export default function LoginScreen() {
 
     if (!result.ok) {
       setPin("");
-      // No PIN set for this number yet → send the driver straight into the OTP
-      // verification + first-time PIN setup flow. No error is shown and no
-      // anonymous "does a PIN exist?" lookup is made — the verify-pin 404
-      // response alone drives this branch.
+      // No PIN set for this number yet → surface a small dialog instead of
+      // silently bouncing back to login. "Set PIN" starts the first-time
+      // OTP → Create PIN flow; "Cancel" leaves the driver on the login screen.
+      // The verify-pin 404 response alone drives this branch (no anonymous
+      // "does a PIN exist?" lookup is made).
       if (result.pinNotFound) {
-        console.log("[FLOW] login: pinNotFound branch → startOtpFlow('setup') (open OTP for first-time PIN)");
-        startOtpFlow("setup");
+        console.log("[FLOW] login: pinNotFound branch → show 'No PIN found' dialog");
+        Alert.alert(
+          "No PIN found",
+          "This mobile number is not registered for PIN login yet.",
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Set PIN", onPress: () => startOtpFlow("setup") },
+          ],
+        );
         return;
       }
       setPinErr(result.error ?? "Incorrect PIN. Please try again.");
@@ -785,7 +794,9 @@ export default function LoginScreen() {
                   hitSlop={8}
                   disabled={!isValid}
                 >
-                  <Text style={[ss.authLink, !isValid && { color: D.placeholder }]}>New User? Set PIN</Text>
+                  <Text style={ss.authLinkMuted}>
+                    New User? <Text style={[ss.authLink, !isValid && { color: D.placeholder }]}>Set PIN</Text>
+                  </Text>
                 </TouchableOpacity>
                 <Text style={ss.authLinkDot}>•</Text>
                 <TouchableOpacity
@@ -1414,6 +1425,11 @@ const ss = StyleSheet.create({
     justifyContent: "center",
     gap:            10,
     marginBottom:   14,
+  },
+  authLinkMuted: {
+    fontSize:   13,
+    fontWeight: "500",
+    color:      D.textSecondary,
   },
   authLink: {
     fontSize:   13,
