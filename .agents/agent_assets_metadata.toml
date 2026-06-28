@@ -233,3 +233,9 @@ id = "eS_dAS-HG-KuWsMETPZvz"
 uri = "file://production-baseline/driver-delivery-live-fix/bike-courier-driver-delivery-fix.tar.gz"
 type = "unspecified"
 title = "bike-courier-driver-delivery-fix.tar.gz (with active-orders route)"
+
+[[outputs]]
+id = "-VBFLJVtpg9pg34YUa7Wn"
+uri = "file://production-baseline/driver-daily-plan-12h-fix/bike-courier-daily-plan-12h-fix.tar.gz"
+type = "unspecified"
+title = "bike-courier-daily-plan-12h-fix.tar.gz (Daily plan → 12h)"
