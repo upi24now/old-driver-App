@@ -285,7 +285,31 @@
       }
     });
 
-    try { (typeof logger !== "undefined" ? logger : console).info({}, "[BCD-PG] PG-authoritative driver-plans guard registered (create-order + verify-payment)"); } catch (_e) {}
+    // ---- GET /api/driver-plans/status  (alias: /current) --------------------------------------
+    // SINGLE SOURCE OF TRUTH for the app's plan display + Duty-ON gate. Reads PG driver_plans
+    // (status='active' AND expires_at>NOW()); Firestore subscription fields are NOT consulted.
+    // active=true ONLY when a live PG row exists; otherwise active=false, plan=null. The mobile
+    // client parses { active, plan:{ id, status, expiresAt } } and clears any cached plan on false.
+    const __pgPlanStatusHandler = async (req, res) => {
+      const uid = await __pgRequireDriver(req, res);
+      if (!uid) return;
+      try {
+        const row = await __pgGetActivePlan(uid);
+        if (!row) { res.json({ active: false, plan: null }); return; }
+        const expiresIso = row.expires_at ? new Date(row.expires_at).toISOString() : null;
+        res.json({
+          active: true,
+          plan: { id: row.plan_id, planId: row.plan_id, status: "active", expiresAt: expiresIso },
+        });
+      } catch (err) {
+        try { req.log.error({ err, uid }, "[BCD-PG] driver-plans/status failed"); } catch (_e) {}
+        if (!res.headersSent) res.status(500).json({ error: "server_error", message: "Failed to read plan status." });
+      }
+    };
+    app.get("/api/driver-plans/status", __pgPlanStatusHandler);
+    app.get("/api/driver-plans/current", __pgPlanStatusHandler);
+
+    try { (typeof logger !== "undefined" ? logger : console).info({}, "[BCD-PG] PG-authoritative driver-plans guard registered (create-order + verify-payment + status)"); } catch (_e) {}
   } catch (e) {
     try { (typeof logger !== "undefined" ? logger : console).error({ err: e }, "[BCD-PG] additive override failed to register (server continues)"); } catch (_e) {}
   }

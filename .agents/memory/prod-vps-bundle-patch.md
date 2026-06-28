@@ -139,3 +139,15 @@ anchor; the block adds a second → assertion trips. Fix = reword the block comm
 never contains the exact anchor literal; do NOT relax the assertion (it is also what
 prevents accidental double-registration). The real byte-safety guarantee is the
 prefix/suffix/length invariant: `strip(inserted_block) == base` byte-for-byte.
+
+## Behavior-preserving backup port ≠ fix pre-existing security gaps
+When a task says port a backup subsystem "preserving behavior / identical to backup",
+do NOT add hardening the backup lacked (e.g. Razorpay verify is HMAC-only with no
+anti-replay/amount-binding). A code review will flag the replay gap as "serious" — it is
+a KNOWN pre-existing property of the ported module, intentionally preserved, NOT a
+regression. The hardening (one-active 409 guard + payment idempotency) lives in the
+SEPARATE PG-authoritative driver-plans guard layer that is applied on top, not in the
+behavior-preserving port. **Why:** changing verify semantics in the port would violate
+the "behavior identical to backup / no edits to existing handlers" acceptance criteria.
+**How to apply:** surface the review finding in the delivery note so the operator decides,
+but ship the port faithful to the backup.

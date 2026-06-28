@@ -269,3 +269,9 @@ id = "ChgyHHmOwmcqO5qEFN9Bc"
 uri = "file://production-baseline/driver-plan-pg-guard/bike-courier-driver-plan-pg-guard.tar.gz"
 type = "unspecified"
 title = "Driver-Plans PG-Authoritative Money-Path Patch"
+
+[[outputs]]
+id = "wj-gjeCnCfrlgUBty3-z0"
+uri = "file://production-baseline/bike-courier-combined-453c9c4c.tar.gz"
+type = "unspecified"
+title = "Bike Courier — Combined Driver Patch (base 453c9c4c)"
