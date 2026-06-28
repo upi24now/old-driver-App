@@ -28,7 +28,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { setPin as setPinApi, verifyPinApi } from "@/utils/auth-api";
-import { setSessionId } from "@/utils/session";
+import { setSessionId, beginSessionRotation, endSessionRotation } from "@/utils/session";
 import { useDriver } from "@/contexts/DriverContext";
 
 // ─── Design tokens (mirror login.tsx) ───────────────────────────────────────────
@@ -121,12 +121,13 @@ export default function CreatePinScreen() {
     return () => clearTimeout(t);
   }, [step]);
 
+  // NOTE: no auto-advance / auto-submit. Each step requires an explicit button
+  // tap (Continue → Save) — matching the Customer App and the user requirement.
   function handlePinChange(t: string) {
     if (saving) return;
     setError("");
     const cleaned = t.replace(/\D/g, "").slice(0, PIN_LENGTH);
     setPin(cleaned);
-    if (cleaned.length === PIN_LENGTH) setStep("confirm");
   }
 
   function handleConfirmChange(t: string) {
@@ -134,7 +135,19 @@ export default function CreatePinScreen() {
     setError("");
     const cleaned = t.replace(/\D/g, "").slice(0, PIN_LENGTH);
     setConfirm(cleaned);
-    if (cleaned.length === PIN_LENGTH) void handleSave(cleaned);
+  }
+
+  // Explicit primary action: on the "create" step it advances to "confirm";
+  // on the "confirm" step it saves. Never fires automatically on the 6th digit.
+  function handlePrimaryPress() {
+    if (saving) return;
+    if (step === "create") {
+      if (pin.length !== PIN_LENGTH) return;
+      setError("");
+      setStep("confirm");
+      return;
+    }
+    void handleSave(confirm);
   }
 
   function resetToCreate() {
@@ -160,58 +173,76 @@ export default function CreatePinScreen() {
 
     console.log("[FLOW] create-pin: set-pin request start");
     setSaving(true);
-    const result = await setPinApi(pin);
-    setSaving(false);
-    console.log("[FLOW] create-pin: set-pin result — ok:", result.ok, "| sessionId returned:", result.ok ? !!result.sessionId : false, "| error:", result.ok ? "none" : result.error);
+    // Suppress self-inflicted SESSION_REPLACED while set-pin rotates OUR session.
+    // A background request (profile hydration / account-status poll) still in
+    // flight with the OLD id would otherwise 401 → signOut → bounce to /login
+    // mid-flow. We keep the guard up briefly AFTER adopting the new id so any
+    // already-dispatched request resolving late is absorbed silently too.
+    beginSessionRotation();
+    try {
+      const result = await setPinApi(pin);
+      setSaving(false);
+      console.log("[FLOW] create-pin: set-pin result — ok:", result.ok, "| sessionId returned:", result.ok ? !!result.sessionId : false, "| error:", result.ok ? "none" : result.error);
 
-    if (!result.ok) {
-      setError(result.error ?? "Could not save PIN. Please try again.");
-      setConfirm("");
-      setTimeout(() => confirmRef.current?.focus(), 100);
-      return;
-    }
-
-    // Single-device login — set-pin mints a NEW active session on the server,
-    // superseding the one from verify-otp. This device MUST adopt the new session
-    // id or the very next authenticated request 401s SESSION_REPLACED against
-    // itself → the app auto-signs-out → bounces back to the OTP/login screen.
-    let sessionAdopted = false;
-    if (result.sessionId) {
-      console.log("[create-pin] set-pin returned sessionId — adopting it");
-      await setSessionId(result.sessionId);
-      sessionAdopted = true;
-    } else if (phone) {
-      // Some backend builds return set-pin success WITHOUT the rotated session id.
-      // The server session is now ahead of ours, so re-login with the PIN we just
-      // set to obtain and adopt the current active session before navigating.
-      console.warn("[create-pin] set-pin returned NO sessionId — re-syncing via verify-pin");
-      const reSync = await verifyPinApi(phone, pin);
-      if (reSync.ok && reSync.sessionId) {
-        console.log("[create-pin] re-sync OK — adopted fresh session from verify-pin");
-        await setSessionId(reSync.sessionId);
-        sessionAdopted = true;
-      } else {
-        console.error("[create-pin] re-sync FAILED:", reSync.ok ? "no sessionId" : reSync.error);
+      if (!result.ok) {
+        setError(result.error ?? "Could not save PIN. Please try again.");
+        setConfirm("");
+        setTimeout(() => confirmRef.current?.focus(), 100);
+        return;
       }
-    }
 
-    // Fail-safe: if we could not establish a current session, navigating forward
-    // would 401 SESSION_REPLACED on the next request and bounce back to login.
-    // Keep the driver on this screen with a retryable error instead of looping.
-    if (!sessionAdopted) {
-      setError("Couldn't finish setting up your PIN. Please try again.");
-      setConfirm("");
-      setTimeout(() => confirmRef.current?.focus(), 100);
-      return;
-    }
+      // Single-device login — set-pin mints a NEW active session on the server,
+      // superseding the one from verify-otp. This device MUST adopt the new session
+      // id or the very next authenticated request 401s SESSION_REPLACED against
+      // itself → the app auto-signs-out → bounces back to the OTP/login screen.
+      let sessionAdopted = false;
+      if (result.sessionId) {
+        console.log("[create-pin] set-pin returned sessionId — adopting it");
+        await setSessionId(result.sessionId);
+        sessionAdopted = true;
+      } else if (phone) {
+        // Some backend builds return set-pin success WITHOUT the rotated session id.
+        // The server session is now ahead of ours, so re-login with the PIN we just
+        // set to obtain and adopt the current active session before navigating.
+        console.warn("[create-pin] set-pin returned NO sessionId — re-syncing via verify-pin");
+        const reSync = await verifyPinApi(phone, pin);
+        if (reSync.ok && reSync.sessionId) {
+          console.log("[create-pin] re-sync OK — adopted fresh session from verify-pin");
+          await setSessionId(reSync.sessionId);
+          sessionAdopted = true;
+        } else {
+          console.error("[create-pin] re-sync FAILED:", reSync.ok ? "no sessionId" : reSync.error);
+        }
+      }
 
-    // PIN saved + session in lockstep — continue the EXISTING onboarding/Home
-    // routing unchanged.
-    console.log("[create-pin] navigating forward to:", nextRoute);
-    router.replace(nextRoute as never);
+      // Fail-safe: if we could not establish a current session, navigating forward
+      // would 401 SESSION_REPLACED on the next request and bounce back to login.
+      // Keep the driver on this screen with a retryable error instead of looping.
+      if (!sessionAdopted) {
+        setError("Couldn't finish setting up your PIN. Please try again.");
+        setConfirm("");
+        setTimeout(() => confirmRef.current?.focus(), 100);
+        return;
+      }
+
+      // PIN saved + session in lockstep — continue the EXISTING onboarding/Home
+      // routing unchanged.
+      console.log("[create-pin] navigating forward to:", nextRoute);
+      router.replace(nextRoute as never);
+    } finally {
+      // Hold the suppression ~3 s past completion so late-arriving stale requests
+      // (e.g. the in-flight account-status poll) don't bounce us after we leave.
+      setTimeout(() => { endSessionRotation(); }, 3000);
+    }
   }
 
-  const canConfirmManually = step === "confirm" && confirm.length === PIN_LENGTH && !saving;
+  // Primary button is enabled only when the active step's 6 digits are entered.
+  // It NEVER fires on its own — the driver must tap it (Continue → Save).
+  const primaryEnabled = !saving && (
+    step === "create"
+      ? pin.length === PIN_LENGTH
+      : confirm.length === PIN_LENGTH
+  );
 
   return (
     <KeyboardAwareScrollViewCompat
@@ -319,10 +350,10 @@ export default function CreatePinScreen() {
 
         {/* Primary button */}
         <TouchableOpacity
-          style={[ss.saveBtn, !canConfirmManually && ss.saveBtnDisabled]}
-          onPress={() => void handleSave(confirm)}
+          style={[ss.saveBtn, !primaryEnabled && ss.saveBtnDisabled]}
+          onPress={handlePrimaryPress}
           activeOpacity={0.85}
-          disabled={!canConfirmManually}
+          disabled={!primaryEnabled}
         >
           {saving ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -330,8 +361,8 @@ export default function CreatePinScreen() {
               <Text style={ss.saveBtnText}>Saving PIN...</Text>
             </View>
           ) : (
-            <Text style={[ss.saveBtnText, !canConfirmManually && ss.saveBtnTextDisabled]}>
-              {step === "create" ? "Enter PIN to continue" : "Save PIN & Continue"}
+            <Text style={[ss.saveBtnText, !primaryEnabled && ss.saveBtnTextDisabled]}>
+              {step === "create" ? "Continue" : "Save PIN & Continue"}
             </Text>
           )}
         </TouchableOpacity>

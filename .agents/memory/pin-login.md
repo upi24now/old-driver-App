@@ -42,22 +42,52 @@ purely from the verify-pin response. No backend/bundle change is needed for this
 (verify-pin already 404s for no-PIN). Optional future hardening: stable
 `PIN_NOT_FOUND` code in the 404 body to decouple the UI from the raw status.
 
-## Forgot/Reset flow — new PIN collected BEFORE OTP, saved AFTER, returns to login
-**Rule:** "Forgot PIN" and "New User Sign Up" are two ungated text tabs on the login
-screen (don't require a valid phone to tap). Setup intent still goes phone → OTP →
-`/create-pin`. Forgot intent collects mobile + new 6-digit PIN + confirm on the
-phone screen, and ONLY after `confirmOtp` succeeds does it call `setPin(newPin)`
-(Bearer-gated PG route), then `signOut()` and return to the login screen so the
-driver re-logs in with the new PIN. All of this lives in `login.tsx` only — no
-backend / DriverContext / create-pin / auth-api change.
-**Why:** the OTP in forgot mode is purely authorization for the in-place PIN reset,
-never a login (user spec: "back to login, log in with new PIN"). Collecting the PIN
-before OTP + gating `setPin` strictly inside the `result.ok` branch guarantees a
-wrong/expired OTP can NEVER write the PIN (the hard requirement). After `signOut`
-the `_layout` guard sees `!driverUid` and lands on `/login` (no bounce to Home).
-**How to apply:** keep `setPin` calls strictly downstream of `confirmOtp` success;
-never persist reset PIN optimistically. `setPin` works post-OTP because
-`firebaseAuth.currentUser` + `getSessionIdSync()` are populated by `confirmOtp`.
+## Forgot/Reset flow — OTP-FIRST, then set new PIN on /create-pin (final spec)
+**Rule:** BOTH "New User Sign Up" (setup) and "Forgot PIN" (forgot) are OTP-FIRST and
+END IDENTICALLY: phone → OTP → `/create-pin` (where the new PIN is entered + saved).
+The PIN is NEVER collected before OTP. In `login.tsx`, after `confirmOtp` succeeds
+both intents `router.replace({pathname:"/create-pin", params:{next}})`; there is no
+separate forgot branch, no pre-OTP reset-PIN cards, no `setPin` call in `login.tsx`.
+`otpIntent` now only toggles copy ("Reset your PIN" vs "Set up your PIN").
+**Why:** supersedes the earlier "collect PIN before OTP, save after, return to login"
+design — user changed the spec to match the Customer App: OTP always first, PIN set
+afterward on its own screen. Routing forgot through `/create-pin` reuses the proven
+set-pin + session-adoption path (and its rotation guard, below) instead of a bespoke
+in-place reset.
+**How to apply:** keep forgot and setup converged after OTP; don't reintroduce a
+reset-PIN card on the phone screen or a `setPinApi` import in `login.tsx`. Any
+"save new PIN" still happens only in `create-pin.tsx`, strictly after OTP auth.
+
+## NO auto-submit on OTP / Set-MPIN — explicit button only (daily PIN login keeps it)
+**Rule:** the OTP input (`login.tsx`) and BOTH create-pin steps must NOT auto-submit
+on the 6th digit — the driver taps "Verify & Continue" (OTP), "Continue" (enter PIN
+→ confirm step), then "Save PIN & Continue" (confirm → save). The ONLY auto-submit
+left is the DAILY PIN login on the login phase (`handleConfirmPin` fires when the
+6-digit PIN fills with a valid phone) — that is intentional and must stay.
+**Why:** user spec ("NO auto-submit on 6th digit") + matches Customer App, but daily
+login UX (the unchanged path) relies on its auto-submit. Easy to break one while
+fixing the other.
+**How to apply:** in create-pin use a single `handlePrimaryPress` (advances on
+"create", saves on "confirm") wired to the button; `handlePinChange`/`handleConfirmChange`
+only set state. In login OTP `onChangeText`, set state only — never call `handleVerify`.
+
+## set-pin rotation guard — suppress SELF-inflicted SESSION_REPLACED during set-pin
+**Rule:** set-pin rotates THIS device's server session; an in-flight request still
+holding the OLD id (background profile hydration / the ~5s account-status poll) comes
+back `401 SESSION_REPLACED` and the api-client interceptor would `signOut()→/login`
+mid-flow (the new-user "Set MPIN bounces to login" bug). Fix: a module-level guard in
+`utils/session.ts` (`beginSessionRotation`/`endSessionRotation`/`isSessionRotating`);
+`create-pin.tsx` wraps set-pin + session adoption with it (`begin` before, `setTimeout(end,3000)`
+in `finally`); the interceptor SUPPRESSES SESSION_REPLACED (logs, no signOut) while
+`isSessionRotating()`.
+**Why:** the replacement is self-inflicted, not another device — signing out is wrong.
+The guard is a COUNTER, not a boolean: overlapping rotations (a second begin before the
+first's delayed end-timer fires) must not let the older timer re-enable sign-out early.
+Tradeoff (accepted): during the window a GENUINE cross-device replacement is also
+suppressed — a short single-device-lockout delay, never a permanent bypass.
+**How to apply:** keep `begin` paired with exactly one delayed `end`; never make the
+guard a plain boolean. Only suppress SESSION_REPLACED while rotating; outside the
+window, real replacements must still sign out.
 
 ## `/create-pin` continuation
 `/create-pin` takes the intended route as a `next` param and `router.replace(next)`

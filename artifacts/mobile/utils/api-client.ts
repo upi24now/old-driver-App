@@ -21,7 +21,7 @@
  * fetch, so it injects `x-session-id` itself — see utils/order-stream.ts.
  */
 
-import { getSessionIdSync, clearSessionId } from "@/utils/session";
+import { getSessionIdSync, clearSessionId, isSessionRotating } from "@/utils/session";
 
 const _rawDomain = process.env["EXPO_PUBLIC_DOMAIN"] ?? "";
 const _cleanDomain = _rawDomain
@@ -101,9 +101,17 @@ export function installSessionFetchInterceptor(): void {
       try {
         const data = (await res.clone().json()) as { error?: string };
         if (data && data.error === "SESSION_REPLACED") {
-          console.warn("[INTERCEPTOR] 401 SESSION_REPLACED on:", url, "→ signOut trigger: yes");
-          await clearSessionId();
-          if (_onReplaced) _onReplaced();
+          // Self-inflicted replacement during our OWN set-pin / re-sync session
+          // rotation — a stale in-flight request lost the race to the new id.
+          // Ignore it (do NOT sign out) so the new-user / forgot Set-MPIN flow
+          // is not bounced back to /login while it is finishing.
+          if (isSessionRotating()) {
+            console.warn("[INTERCEPTOR] 401 SESSION_REPLACED during local session rotation on:", url, "→ suppressed (no signOut)");
+          } else {
+            console.warn("[INTERCEPTOR] 401 SESSION_REPLACED on:", url, "→ signOut trigger: yes");
+            await clearSessionId();
+            if (_onReplaced) _onReplaced();
+          }
         } else if (isAuthEndpoint) {
           console.log("[INTERCEPTOR] 401 on:", url, "| error:", data?.error ?? "(none)", "→ signOut trigger: no");
         }

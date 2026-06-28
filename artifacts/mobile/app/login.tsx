@@ -10,7 +10,7 @@
 
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState } from "react";
 import Svg, {
   Ellipse,
   Line,
@@ -44,7 +44,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useDriver } from "@/contexts/DriverContext";
-import { sendOtp, setPin as setPinApi } from "@/utils/auth-api";
+import { sendOtp } from "@/utils/auth-api";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const D = {
@@ -420,7 +420,7 @@ export default function LoginScreen() {
   const phoneRef = useRef<TextInput>(null);
   const otpRef   = useRef<TextInput>(null);
 
-  const { setPhone: setDriverPhone, driverUid, authLoading, isOtpVerified, confirmOtp, confirmPin, signOut } = useDriver();
+  const { setPhone: setDriverPhone, driverUid, authLoading, isOtpVerified, confirmOtp, confirmPin } = useDriver();
 
   // Phase state — "login" (phone + PIN) is the daily-login surface and the
   // default. "phone" → "otp" is the OTP flow, used ONLY for first-time PIN
@@ -440,17 +440,10 @@ export default function LoginScreen() {
   const [verifyingPin, setVerifyingPin] = useState(false);
   const [pinErr,       setPinErr]       = useState("");
 
-  // OTP intent — "setup" (new user) lands on /create-pin after OTP; "forgot"
-  // updates the PIN in place after OTP and returns to the login screen.
+  // OTP intent — both "setup" (new user) and "forgot" (reset) land on
+  // /create-pin AFTER a successful OTP, where the new PIN is entered & saved.
+  // OTP always comes FIRST; the PIN is never collected before verification.
   const [otpIntent, setOtpIntent] = useState<"setup" | "forgot">("setup");
-
-  // Forgot/Reset PIN — collected on the phone screen BEFORE OTP, but saved only
-  // AFTER a successful OTP verification (a wrong OTP never updates the PIN).
-  const resetPinRef     = useRef<TextInput>(null);
-  const resetConfirmRef = useRef<TextInput>(null);
-  const [resetPin,     setResetPin]     = useState("");
-  const [resetConfirm, setResetConfirm] = useState("");
-  const [resetPinErr,  setResetPinErr]  = useState("");
 
   // OTP phase
   const [otp,       setOtp]      = useState("");
@@ -498,9 +491,6 @@ export default function LoginScreen() {
     setSendErr("");
     setOtp("");
     setOtpErr("");
-    setResetPin("");
-    setResetConfirm("");
-    setResetPinErr("");
     transitionTo("phone");
   }
 
@@ -510,9 +500,6 @@ export default function LoginScreen() {
     setPinErr("");
     setOtp("");
     setOtpErr("");
-    setResetPin("");
-    setResetConfirm("");
-    setResetPinErr("");
     transitionTo("login");
   }
 
@@ -559,19 +546,6 @@ export default function LoginScreen() {
   // ── Send OTP ──────────────────────────────────────────────────────────────
   async function handleSendOtp() {
     if (sending || !isValid) return;
-    // Forgot/Reset: the new PIN + confirmation are entered on this screen and
-    // must be valid before we send the OTP. They are saved only after OTP
-    // success, so a wrong OTP can never change the stored PIN.
-    if (otpIntent === "forgot") {
-      if (resetPin.length !== PIN_LENGTH) {
-        setResetPinErr("Enter a 6-digit PIN.");
-        return;
-      }
-      if (resetConfirm !== resetPin) {
-        setResetPinErr("PINs do not match.");
-        return;
-      }
-    }
     console.log("[FLOW] login: phone submitted (send-otp) — digits:", digits.length, "| intent:", otpIntent);
     setSendErr("");
     setSending(true);
@@ -624,108 +598,15 @@ export default function LoginScreen() {
       return;
     }
 
-    // ── FORGOT / RESET ────────────────────────────────────────────────────────
-    // OTP success only AUTHORIZES the reset — it is never a login. Use the
-    // Firebase session just established to update the PIN in PostgreSQL via the
-    // Bearer-gated set-pin route, then sign out so the driver returns to the
-    // login screen and signs in with the new PIN.
-    if (otpIntent === "forgot") {
-      console.log("[FLOW] login: forgot — OTP verified, updating PIN then returning to login");
-      const setRes = await setPinApi(resetPin);
-      console.log("[FLOW] login: forgot set-pin result — ok:", setRes.ok);
-      await signOut();
-      setVerifying(false);
-      setOtp("");
-      setResetPin("");
-      setResetConfirm("");
-      setResetPinErr("");
-      if (!setRes.ok) {
-        Alert.alert("Couldn't reset PIN", setRes.error ?? "Please try again.");
-      } else {
-        Alert.alert("PIN reset successful", "Please log in with your new PIN.");
-      }
-      transitionTo("login");
-      return;
-    }
-
-    // ── SETUP (new user) ──────────────────────────────────────────────────────
-    // First-time PIN: continue to the Create PIN screen, which saves the PIN and
-    // then resumes the existing onboarding/Home routing (nextRoute).
+    // ── SETUP (new user) and FORGOT (reset) ───────────────────────────────────
+    // Both intents are identical AFTER OTP: continue to the Create PIN screen,
+    // which collects + saves the new PIN and then resumes the existing
+    // onboarding/Home routing (nextRoute). OTP is the authorization; the PIN is
+    // always entered AFTER verification (never before).
     setVerifying(false);
     const nextRoute = result.nextRoute ?? (result.profileComplete ? "/(tabs)" : "/registration");
-    console.log("[FLOW] login: setup — route after OTP → /create-pin (next =", nextRoute, ")");
+    console.log("[FLOW] login:", otpIntent, "— route after OTP → /create-pin (next =", nextRoute, ")");
     router.replace({ pathname: "/create-pin", params: { next: nextRoute } });
-  }
-
-  // ── Reset-PIN field handlers (forgot flow, phone phase) ───────────────────
-  function handleResetPinChange(t: string) {
-    setResetPinErr("");
-    const cleaned = t.replace(/\D/g, "").slice(0, PIN_LENGTH);
-    setResetPin(cleaned);
-    if (cleaned.length === PIN_LENGTH) setTimeout(() => resetConfirmRef.current?.focus(), 80);
-  }
-  function handleResetConfirmChange(t: string) {
-    setResetPinErr("");
-    const cleaned = t.replace(/\D/g, "").slice(0, PIN_LENGTH);
-    setResetConfirm(cleaned);
-  }
-
-  // A labelled 6-cell masked PIN entry card (reuses the login PIN cell styles).
-  function renderResetPinCard(
-    label: string,
-    value: string,
-    onChange: (t: string) => void,
-    inputRef: RefObject<TextInput | null>,
-    showError: boolean,
-  ) {
-    const cells = value.split("").concat(Array(PIN_LENGTH - value.length).fill(""));
-    return (
-      <View style={ss.floatCard}>
-        <Text style={ss.cardLabelText}>{label}</Text>
-        <Pressable onPress={() => inputRef.current?.focus()} style={ss.pinCellsRow}>
-          {cells.map((d, i) => {
-            const isFilled = i < value.length;
-            const isActive = i === value.length;
-            return (
-              <View
-                key={i}
-                style={[
-                  ss.pinCellShell,
-                  {
-                    borderColor:     showError ? D.error : isActive ? D.primary : D.inputBorder,
-                    borderWidth:     isActive || showError ? 2 : 1,
-                    backgroundColor: isActive ? D.primarySoft : D.white,
-                  },
-                  isActive && ss.pinCellActiveGlow,
-                ]}
-              >
-                {isFilled ? (
-                  <Text style={[ss.pinDot, { color: D.navy }]}>●</Text>
-                ) : isActive ? (
-                  <Text style={ss.pinCursor}>|</Text>
-                ) : null}
-              </View>
-            );
-          })}
-        </Pressable>
-        <TextInput
-          ref={inputRef}
-          value={value}
-          onChangeText={onChange}
-          keyboardType="number-pad"
-          maxLength={PIN_LENGTH}
-          secureTextEntry
-          style={ss.hiddenInput}
-          caretHidden
-          selectionColor="transparent"
-          underlineColorAndroid="transparent"
-          autoComplete="off"
-          textContentType="none"
-          importantForAutofill="no"
-          autoCorrect={false}
-        />
-      </View>
-    );
   }
 
   console.log("[SCREEN_MOUNT] login — authLoading =", authLoading, "driverUid =", driverUid);
@@ -738,10 +619,9 @@ export default function LoginScreen() {
     );
   }
 
-  // Forgot/Reset PIN readiness (phone phase, forgot intent only).
-  const resetMismatch = resetConfirm.length === PIN_LENGTH && resetConfirm !== resetPin;
-  const resetReady    = resetPin.length === PIN_LENGTH && resetConfirm === resetPin;
-  const canContinue   = otpIntent === "forgot" ? (isValid && resetReady) : isValid;
+  // Phone phase: a valid 10-digit number is all that's needed to send the OTP
+  // (the PIN is always set AFTER verification, on /create-pin).
+  const canContinue = isValid;
 
   const formattedPhone = digits
     ? `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`
@@ -969,7 +849,7 @@ export default function LoginScreen() {
             </Text>
             <Text style={ss.setupSubtitle}>
               {otpIntent === "forgot"
-                ? "Enter your number and a new PIN, then verify with OTP"
+                ? "Verify your number with OTP, then set a new PIN"
                 : "Verify your number with OTP to create your PIN"}
             </Text>
 
@@ -1014,20 +894,6 @@ export default function LoginScreen() {
                 </View>
               )}
             </View>
-
-            {/* ── New PIN + Confirm (forgot/reset only — saved after OTP) ── */}
-            {otpIntent === "forgot" && (
-              <>
-                {renderResetPinCard("New 6-digit PIN", resetPin, handleResetPinChange, resetPinRef, !!resetPinErr)}
-                {renderResetPinCard("Confirm PIN", resetConfirm, handleResetConfirmChange, resetConfirmRef, !!resetPinErr || resetMismatch)}
-                {(!!resetPinErr || resetMismatch) && (
-                  <View style={ss.errorRow}>
-                    <Feather name="alert-circle" size={13} color={D.error} />
-                    <Text style={ss.errorText}>{resetPinErr || "PINs do not match."}</Text>
-                  </View>
-                )}
-              </>
-            )}
 
             {/* ── Trust note ── */}
             <View style={ss.setupTrustRow}>
@@ -1158,7 +1024,7 @@ export default function LoginScreen() {
                 setOtpErr("");
                 const cleaned = t.replace(/\D/g, "").slice(0, OTP_LENGTH);
                 setOtp(cleaned);
-                if (cleaned.length === OTP_LENGTH) void handleVerify(cleaned);
+                // No auto-submit: the driver must tap "Verify" explicitly.
               }}
               keyboardType="number-pad"
               maxLength={OTP_LENGTH}

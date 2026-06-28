@@ -58,3 +58,32 @@ export async function clearSessionId(): Promise<void> {
     // Non-fatal.
   }
 }
+
+// ── Local session-rotation guard ────────────────────────────────────────────
+// set-pin (and the verify-pin re-sync) intentionally rotate THIS device's own
+// server session to a fresh id. During that brief window a request that was
+// already in flight with the OLD id can come back 401 SESSION_REPLACED — a
+// SELF-inflicted replacement, not another device claiming the account. While
+// this flag is set, the fetch interceptor (utils/api-client.ts) ignores that
+// 401 instead of signing the driver out and bouncing them to /login.
+//
+// This is a COUNTER, not a boolean: each begin pairs with exactly one (delayed)
+// end. If a second rotation starts before the first one's end-timer fires, the
+// older timer must NOT prematurely re-enable sign-out while the newer rotation
+// is still in flight — so suppression stays on until every rotation has ended.
+let _rotationCount = 0;
+
+/** Begin a local session rotation — suppresses self-inflicted SESSION_REPLACED. */
+export function beginSessionRotation(): void {
+  _rotationCount += 1;
+}
+
+/** End one local session rotation suppression window. */
+export function endSessionRotation(): void {
+  _rotationCount = Math.max(0, _rotationCount - 1);
+}
+
+/** True while THIS device is rotating its own session (set-pin / re-sync). */
+export function isSessionRotating(): boolean {
+  return _rotationCount > 0;
+}
