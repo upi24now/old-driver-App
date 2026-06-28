@@ -239,3 +239,9 @@ id = "-VBFLJVtpg9pg34YUa7Wn"
 uri = "file://production-baseline/driver-daily-plan-12h-fix/bike-courier-daily-plan-12h-fix.tar.gz"
 type = "unspecified"
 title = "bike-courier-daily-plan-12h-fix.tar.gz (Daily plan → 12h)"
+
+[[outputs]]
+id = "EDhmofjLN77O4RChLWh-G"
+uri = "file://production-baseline/driver-final-combined-b2f1643f/bike-courier-final-combined-b2f1643f.tar.gz"
+type = "unspecified"
+title = "Final combined patch — Driver Plan + Delivery (bike-courier-final-combined-b2f1643f.tar.gz)"
