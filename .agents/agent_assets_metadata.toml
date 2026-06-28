@@ -263,3 +263,9 @@ id = "9LWihB5KTMtQCZegUBnEV"
 uri = "file://dist/driver-app-expo-qr.png"
 type = "image"
 title = "Driver App — Expo Go QR (exp://qo-o_su-bikeapp-18115.exp.direct)"
+
+[[outputs]]
+id = "ChgyHHmOwmcqO5qEFN9Bc"
+uri = "file://production-baseline/driver-plan-pg-guard/bike-courier-driver-plan-pg-guard.tar.gz"
+type = "unspecified"
+title = "Driver-Plans PG-Authoritative Money-Path Patch"
