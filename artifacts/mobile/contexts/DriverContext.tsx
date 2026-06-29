@@ -1948,12 +1948,37 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       console.log("[DriverOnline] location update started:");
       // (1) Immediate heartbeat; (3)(4) revert to Offline on any GPS/permission/
       // post failure so we never show Online without a coordinate on the backend.
+      // ONLY this first go-online poll reverts — a fake Online with no coordinate
+      // is what we guard against at the moment duty is switched on.
       void pollLocationAndUpload((reason) => revertToOffline(reason)).then(() => {
         console.log("[DriverOnline] location update completed:");
       });
       // Heartbeat every 30s while online — well within the backend's 90s stale window.
+      //
+      // CRITICAL: ongoing ticks must be RESILIENT. A single transient GPS read or
+      // network blip on one tick must NOT tear down the interval — doing so would
+      // stop every future heartbeat and let the backend's 90s stale-cleanup mark
+      // the driver offline (lat/lng NULL). So tick failures are logged and the
+      // interval is RETAINED; the next tick (30s later) self-heals. The interval is
+      // only ever cleared by an explicit duty-off, sign-out, or account block.
+      let heartbeatTick = 0;
       locationIntervalRef.current = setInterval(() => {
-        void pollLocationAndUpload((reason) => revertToOffline(reason));
+        heartbeatTick += 1;
+        console.log("[LOCATION_HEARTBEAT_TICK]", JSON.stringify({
+          tick:       heartbeatTick,
+          intervalMs: 30000,
+          at:         new Date().toISOString(),
+          uid:        driverUidRef.current,
+        }));
+        void pollLocationAndUpload((reason) => {
+          // Resilient: log the failure but KEEP the heartbeat alive so the next
+          // tick can recover. Do NOT call revertToOffline here.
+          console.log("[LOCATION_HEARTBEAT_TICK_FAILURE]", JSON.stringify({
+            tick:   heartbeatTick,
+            reason,
+            note:   "transient — heartbeat retained, retrying next tick",
+          }));
+        });
       }, 30_000);
     } else {
       // (2) Going offline — stop heartbeat and clear pending ride. PATCH status
