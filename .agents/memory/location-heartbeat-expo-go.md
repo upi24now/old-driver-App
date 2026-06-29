@@ -5,9 +5,17 @@ description: Why the driver 30s location heartbeat dies and the foreground-resum
 
 # Driver location heartbeat (DriverContext.tsx)
 
-The driver app posts location every 30s while Duty is ON so the backend's 90s
-stale-cleanup keeps the driver online (lat/lng non-NULL). The heartbeat is a plain
-JS `setInterval`.
+The driver app posts location every 10s while Duty is ON (was 30s) so the backend's
+90s stale-cleanup keeps the driver online (lat/lng non-NULL). The heartbeat is a
+plain JS `setInterval`. The ONLY live mobile app is `artifacts/mobile` (manifest:
+name "Driver App", slug/scheme "mobile", EAS projectId 3222bc75-...); there is no
+`artifacts/driver-app` directory — don't be misled into hunting for another tree.
+
+`lastLocationSyncAt` (epoch ms) is set ONLY on a successful `/location` POST
+(`result.ok`), surfaced as "Last sync <time>" in the home header, and RESET to null
+on duty-off / revertToOffline / fresh go-online so it only ever reflects the current
+online session. Payload sends BOTH `latitude/longitude` AND `lat/lng` (different
+bundles read different keys).
 
 ## The trap
 Android/Expo Go **pauses the JS thread (and all `setInterval` timers) when the app

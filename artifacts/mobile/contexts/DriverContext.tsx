@@ -202,6 +202,7 @@ type DriverState = {
   blacklistReason:     string | null;  // admin-supplied reason shown on the blocked screen
 
   isOnline:         boolean;
+  lastLocationSyncAt: number | null;  // epoch ms of last successful /location POST
 
   // ── Multi-order foundation (Phase 1/2: max 1 order; Phase 4 lifts cap) ──────
   activeOrders:          ActiveRide[];   // array of in-progress orders
@@ -450,6 +451,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const [kycDocuments,       setKycDocuments]       = useState<NonNullable<DriverDoc['documents']> | null>(null);
 
   const [isOnline,        setOnlineState]    = useState(false);
+  const [lastLocationSyncAt, setLastLocationSyncAt] = useState<number | null>(null);
   const [accountStatus,   setAccountStatus]  = useState<string | null>(null);
   const [suspendReason,   setSuspendReason]   = useState<string | null>(null);
   const [blacklistReason, setBlacklistReason] = useState<string | null>(null);
@@ -940,7 +942,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       if (nextState === "active" && driverUidRef.current) {
         registerDriverPushToken(driverUidRef.current).catch(console.error);
         // FOREGROUND-RESUME HEARTBEAT WATCHDOG ───────────────────────────────
-        // Android pauses JS timers while the app is backgrounded, so the 30 s
+        // Android pauses JS timers while the app is backgrounded, so the 10 s
         // setInterval heartbeat silently stops firing and the backend's 90 s
         // stale-cleanup flips the driver offline (lat/lng NULL). The instant the
         // app returns to the foreground while duty is ON, fire an immediate
@@ -1914,6 +1916,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       });
       console.log("[LOCATION_HEARTBEAT_RESPONSE]", JSON.stringify(result));
       if (result.ok) {
+        setLastLocationSyncAt(Date.now());
         console.log("[GPS_UPLOAD_OK] lat=", latitude, "lon=", longitude, "acc=", accuracy);
       } else {
         // (4) POST /location rejected → revert to Offline.
@@ -1930,7 +1933,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   };
 
   // Resilient heartbeat starter. Clears any existing interval, optionally fires
-  // ONE immediate heartbeat, then starts the 30 s repeating tick. A failed tick
+  // ONE immediate heartbeat, then starts the 10 s repeating tick. A failed tick
   // is LOGGED but the interval is RETAINED (it self-heals on the next tick) — only
   // an explicit duty-off / sign-out / account-block ever clears it. Uses refs
   // only, so it is safe to call from go-online OR from the AppState foreground
@@ -1950,7 +1953,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       locationIntervalRef.current = null;
     }
     console.log("[LOCATION_HEARTBEAT_START]", JSON.stringify({
-      intervalMs: 30000,
+      intervalMs: 10000,
       uid:        driverUidRef.current,
       immediate:  opts?.immediate ?? false,
     }));
@@ -1967,7 +1970,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       heartbeatTickRef.current += 1;
       console.log("[LOCATION_HEARTBEAT_TICK]", JSON.stringify({
         tick:       heartbeatTickRef.current,
-        intervalMs: 30000,
+        intervalMs: 10000,
         at:         new Date().toISOString(),
         uid:        driverUidRef.current,
       }));
@@ -1980,7 +1983,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           note:   "transient — heartbeat retained, retrying next tick",
         }));
       });
-    }, 30_000);
+    }, 10_000);
   };
   // Keep the "latest" ref pointed at the current closure so the once-registered
   // AppState foreground watchdog always invokes an up-to-date version.
@@ -2009,6 +2012,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         locationIntervalRef.current = null;
         console.log("[LOCATION_HEARTBEAT_STOP]", JSON.stringify({ reason }));
       }
+      setLastLocationSyncAt(null);
       setIncomingRide(null);
     };
     // Make duty state authoritative SYNCHRONOUSLY (not a render-tick later via the
@@ -2035,6 +2039,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         clearInterval(locationIntervalRef.current);
         locationIntervalRef.current = null;
       }
+      // Fresh duty session: drop any previous session's sync timestamp so the
+      // "Last sync" UI only ever shows a sync from the current online run.
+      setLastLocationSyncAt(null);
       console.log("[GPS_STATUS] tracking started");
       console.log("[DriverOnline] location update started:");
       // (1) Immediate heartbeat; (3)(4) revert to Offline on any GPS/permission/
@@ -2044,7 +2051,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       void pollLocationAndUpload((reason) => revertToOffline(reason)).then(() => {
         console.log("[DriverOnline] location update completed:");
       });
-      // Start the resilient 30 s heartbeat (interval only — the guarded initial
+      // Start the resilient 10 s heartbeat (interval only — the guarded initial
       // poll above already sent the first coordinate). Ongoing ticks NEVER tear
       // the interval down on a transient GPS/network blip; they self-heal on the
       // next tick. The AppState foreground watchdog restarts this if Android
@@ -2060,6 +2067,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         console.log("[LOCATION_HEARTBEAT_STOP]", JSON.stringify({ reason: "duty_off" }));
         console.log("[GPS_STATUS] tracking stopped");
       }
+      setLastLocationSyncAt(null);
       setIncomingRide(null);
       lastSeenOrderId.current = null;
     }
@@ -2684,6 +2692,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         suspendReason,
         blacklistReason,
         isOnline,
+        lastLocationSyncAt,
         // Multi-order foundation
         activeOrders,
         currentActiveOrderId,

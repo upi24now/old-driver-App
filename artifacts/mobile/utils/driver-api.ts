@@ -51,7 +51,7 @@ export async function patchDriverStatus(
 /**
  * POST /api/drivers/:uid/location
  * Posts the driver's current GPS coordinates to the server.
- * Called every ~15 s while the driver is online (foreground only).
+ * Called every ~10 s while the driver is online (foreground only).
  * Fire-and-forget safe — returns { ok: false } on any error.
  */
 export async function postDriverLocation(

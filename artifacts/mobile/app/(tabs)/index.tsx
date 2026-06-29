@@ -204,6 +204,7 @@ export default function HomeScreen() {
     authLoading,
     driverUid,
     isOnline: online,
+    lastLocationSyncAt,
     setOnline: setDriverOnline,
     subscriptionActive,
     subscriptionPlan,
@@ -308,6 +309,11 @@ export default function HomeScreen() {
                   : "Offline"}
               </Text>
             </View>
+            {online && lastLocationSyncAt != null && (
+              <Text style={s.lastSyncTxt}>
+                Last sync {new Date(lastLocationSyncAt).toLocaleTimeString()}
+              </Text>
+            )}
           </View>
         </View>
         <View style={s.headerRight}>
@@ -551,6 +557,7 @@ const s = StyleSheet.create({
   statusLine: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
   statusLineDot: { width: 7, height: 7, borderRadius: 4 },
   statusLineTxt: { fontSize: 11, fontWeight: "600", color: MUTED },
+  lastSyncTxt: { fontSize: 10, fontWeight: "500", color: MUTED, marginTop: 1 },
   headerRight: { flexDirection: "row", alignItems: "center", gap: 10 },
   planChip: {
     flexDirection: "row",
