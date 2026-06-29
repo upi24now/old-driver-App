@@ -70,3 +70,4 @@
 - [/drivers/me 403 admin-gate](drivers-me-403-admin-gate.md) — "PIN rejected/bounce to login" on prod is actually GET /drivers/me 403 "no admin access"; PIN persists (verify-pin 200); Replit replica ≠ VPS DB.
 - [Driver location VPS contract](driver-location-vps-contract.md) — VPS /location & /status return 200 for ANY body (no readable verify channel); client now sends both lat/lng AND latitude/longitude; setOnline reverts on status failure.
 - [Driver App permanent link](driver-app-permanent-link.md) — driver-app-upi24now.replit.app = autoscale deploy of Expo Go static bundle; API force-pinned to VPS in build.js; flat .replit.app avoids carrier DNS NXDOMAIN on nested dev expo domain.
+- [Expo static deploy snapshot](expo-static-deploy-snapshot.md) — live Expo Go static deploy serves the last "Published your App" git snapshot; a fix committed above it stays invisible until a NEW publish snapshots HEAD; diagnose via git log lineage + manifest createdAt.
