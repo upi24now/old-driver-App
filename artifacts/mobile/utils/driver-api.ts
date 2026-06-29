@@ -23,19 +23,27 @@ export async function patchDriverStatus(
   isOnline: boolean,
 ): Promise<{ ok: boolean }> {
   const idToken = await getIdToken();
-  if (!idToken) return { ok: false };
+  const url  = `${BASE_URL}/drivers/${uid}/status`;
+  const body = { isOnline };
+  console.log("[DRIVER_STATUS_REQUEST]", JSON.stringify({ url, body, hasToken: !!idToken }));
+  if (!idToken) {
+    console.log("[DRIVER_STATUS_RESPONSE]", JSON.stringify({ status: 0, body: "no_id_token" }));
+    return { ok: false };
+  }
   try {
-    const res  = await fetch(`${BASE_URL}/drivers/${uid}/status`, {
+    const res  = await fetch(url, {
       method:  "PATCH",
       headers: {
         "Content-Type":  "application/json",
         "Authorization": `Bearer ${idToken}`,
       },
-      body: JSON.stringify({ isOnline }),
+      body: JSON.stringify(body),
     });
     const json = (await res.json()) as { ok?: boolean };
+    console.log("[DRIVER_STATUS_RESPONSE]", JSON.stringify({ status: res.status, body: json }));
     return { ok: !!json.ok };
-  } catch {
+  } catch (err) {
+    console.log("[DRIVER_STATUS_RESPONSE]", JSON.stringify({ status: -1, body: err instanceof Error ? err.message : String(err) }));
     return { ok: false };
   }
 }
@@ -56,7 +64,7 @@ export async function postDriverLocation(
   },
 ): Promise<{ ok: boolean }> {
   const idToken = await getIdToken();
-  if (!idToken) return { ok: false };
+  const url = `${BASE_URL}/drivers/${uid}/location`;
   // Send BOTH coordinate field-name conventions so the position persists
   // regardless of which the production API reads. The api-server contract
   // expects { latitude, longitude }; other bundles read { lat, lng }. Sending
@@ -71,9 +79,13 @@ export async function postDriverLocation(
     accuracy:  coords.accuracy,
     isOnline:  coords.isOnline,
   };
+  console.log("[DRIVER_LOCATION_REQUEST]", JSON.stringify({ url, body: payload, hasToken: !!idToken }));
+  if (!idToken) {
+    console.log("[DRIVER_LOCATION_RESPONSE]", JSON.stringify({ status: 0, body: "no_id_token" }));
+    return { ok: false };
+  }
   try {
-    console.log("[DriverLocation] update payload:", JSON.stringify(payload));
-    const res  = await fetch(`${BASE_URL}/drivers/${uid}/location`, {
+    const res  = await fetch(url, {
       method:  "POST",
       headers: {
         "Content-Type":  "application/json",
@@ -82,10 +94,10 @@ export async function postDriverLocation(
       body: JSON.stringify(payload),
     });
     const json = (await res.json()) as { ok?: boolean };
-    console.log("[DriverLocation] update response:", res.status, JSON.stringify(json));
+    console.log("[DRIVER_LOCATION_RESPONSE]", JSON.stringify({ status: res.status, body: json }));
     return { ok: !!json.ok };
   } catch (err) {
-    console.log("[DriverLocation] update error:", err instanceof Error ? err.message : String(err));
+    console.log("[DRIVER_LOCATION_RESPONSE]", JSON.stringify({ status: -1, body: err instanceof Error ? err.message : String(err) }));
     return { ok: false };
   }
 }

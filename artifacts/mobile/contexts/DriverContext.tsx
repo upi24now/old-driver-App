@@ -1855,6 +1855,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       return;
     }
     const { latitude, longitude, accuracy } = loc.coords;
+    console.log("[DRIVER_GPS_RESULT]", JSON.stringify(loc));
     console.log("[DriverLocation] raw GPS:", JSON.stringify({ latitude, longitude, accuracy }));
     try {
       const result = await postDriverLocation(uid, {
@@ -1898,10 +1899,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         .then((r) => {
           console.log("[DriverOnline] status API response:", JSON.stringify(r));
           if (v && !r.ok) revertOnline();
+          console.log("[DRIVER_ONLINE_FINAL_STATE]", JSON.stringify({ requested: v, backendOk: r.ok, localOnline: v ? r.ok : false }));
         })
         .catch((err) => {
           console.error(err);
           if (v) revertOnline();
+          console.log("[DRIVER_ONLINE_FINAL_STATE]", JSON.stringify({ requested: v, backendOk: false, localOnline: false }));
         });
     }
     if (v) {
