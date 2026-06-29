@@ -507,6 +507,13 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const driverUidRef         = useRef<string | null>(null);
   // GPS location interval — cleared on go-offline and on sign-out
   const locationIntervalRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Monotonic heartbeat tick counter (ref so it survives interval restarts on
+  // foreground resume) and a "latest" ref to the resilient heartbeat starter so
+  // the once-registered AppState listener can (re)start the heartbeat without a
+  // stale closure. isOnlineRef lets that same listener read duty state safely.
+  const heartbeatTickRef     = useRef(0);
+  const isOnlineRef          = useRef(false);
+  const startLocationHeartbeatRef = useRef<((opts?: { immediate?: boolean }) => void) | null>(null);
   // Navigation guard — ensures router.replace("/account-blocked") fires AT MOST
   // ONCE per session regardless of how many times onAuthStateChanged or the
   // subscribeDriverDoc listener fires. Prevents remount blinks on reconnect.
@@ -523,6 +530,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const driverTripsRef  = useRef<number>(0);
   useEffect(() => { incomingRideRef.current  = incomingRide;   }, [incomingRide]);
   useEffect(() => { driverUidRef.current     = driverUid;      }, [driverUid]);
+  useEffect(() => { isOnlineRef.current       = isOnline;       }, [isOnline]);
   useEffect(() => { profileRef.current       = profile;        }, [profile]);
   useEffect(() => { driverRatingRef.current  = driverRating;   }, [driverRating]);
   useEffect(() => { driverTripsRef.current   = driverTrips;    }, [driverTrips]);
@@ -931,6 +939,22 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     const sub = AppState.addEventListener("change", (nextState) => {
       if (nextState === "active" && driverUidRef.current) {
         registerDriverPushToken(driverUidRef.current).catch(console.error);
+        // FOREGROUND-RESUME HEARTBEAT WATCHDOG ───────────────────────────────
+        // Android pauses JS timers while the app is backgrounded, so the 30 s
+        // setInterval heartbeat silently stops firing and the backend's 90 s
+        // stale-cleanup flips the driver offline (lat/lng NULL). The instant the
+        // app returns to the foreground while duty is ON, fire an immediate
+        // heartbeat AND (re)start the repeating interval so the backend sees a
+        // fresh coordinate right away and the timer is guaranteed alive for as
+        // long as the app stays open. Gated on isOnlineRef so we never post
+        // location while the driver is Offline.
+        if (isOnlineRef.current) {
+          console.log("[LOCATION_HEARTBEAT_RESUME]", JSON.stringify({
+            at:  new Date().toISOString(),
+            uid: driverUidRef.current,
+          }));
+          startLocationHeartbeatRef.current?.({ immediate: true });
+        }
       }
     });
     return () => sub.remove();
@@ -955,6 +979,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // drops to 0, this effect re-fires and sets the driver offline).
   useEffect(() => {
     if (!subscriptionActive && isOnline && activeOrders.length === 0) {
+      isOnlineRef.current = false;
       setOnlineState(false);
       if (driverUid) {
         patchDriverStatus(driverUid, false).catch(console.error);
@@ -1012,6 +1037,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         }
         hasEnforcedBlock = true;
         console.log("[ACCOUNT_STATUS_POLL] blocked — accountStatus =", profile.accountStatus, "→ enforcing ONCE");
+        isOnlineRef.current = false;
         setOnlineState(false);
         patchDriverStatus(driverUid, false).catch(console.error);
         if (locationIntervalRef.current !== null) {
@@ -1813,6 +1839,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     setPhoneState(null);
     setProfileState(null);
     setVehicleState(null);
+    isOnlineRef.current = false;
     setOnlineState(false);
     setActiveOrders([]);
     setCurrentActiveOrderId(null);
@@ -1902,6 +1929,63 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Resilient heartbeat starter. Clears any existing interval, optionally fires
+  // ONE immediate heartbeat, then starts the 30 s repeating tick. A failed tick
+  // is LOGGED but the interval is RETAINED (it self-heals on the next tick) — only
+  // an explicit duty-off / sign-out / account-block ever clears it. Uses refs
+  // only, so it is safe to call from go-online OR from the AppState foreground
+  // watchdog without a stale closure. Immediate (resume) ticks DO NOT revert to
+  // Offline — a transient resume blip must never knock the driver off duty.
+  const startLocationHeartbeat = (opts?: { immediate?: boolean }) => {
+    // Defense-in-depth: never run the heartbeat while the driver is Offline.
+    // setOnline(true) sets isOnlineRef.current = true synchronously BEFORE calling
+    // this, so a legitimate go-online is never blocked; this only stops a stray
+    // resume/restart from posting location after duty was turned off.
+    if (!isOnlineRef.current) {
+      console.log("[LOCATION_HEARTBEAT_SKIP]", JSON.stringify({ reason: "offline" }));
+      return;
+    }
+    if (locationIntervalRef.current !== null) {
+      clearInterval(locationIntervalRef.current);
+      locationIntervalRef.current = null;
+    }
+    console.log("[LOCATION_HEARTBEAT_START]", JSON.stringify({
+      intervalMs: 30000,
+      uid:        driverUidRef.current,
+      immediate:  opts?.immediate ?? false,
+    }));
+    if (opts?.immediate) {
+      void pollLocationAndUpload((reason) => {
+        console.log("[LOCATION_HEARTBEAT_TICK_FAILURE]", JSON.stringify({
+          tick:   heartbeatTickRef.current,
+          reason,
+          note:   "immediate (resume) — heartbeat retained, retrying next tick",
+        }));
+      });
+    }
+    locationIntervalRef.current = setInterval(() => {
+      heartbeatTickRef.current += 1;
+      console.log("[LOCATION_HEARTBEAT_TICK]", JSON.stringify({
+        tick:       heartbeatTickRef.current,
+        intervalMs: 30000,
+        at:         new Date().toISOString(),
+        uid:        driverUidRef.current,
+      }));
+      void pollLocationAndUpload((reason) => {
+        // Resilient: log the failure but KEEP the heartbeat alive so the next
+        // tick can recover. Do NOT call revertToOffline here.
+        console.log("[LOCATION_HEARTBEAT_TICK_FAILURE]", JSON.stringify({
+          tick:   heartbeatTickRef.current,
+          reason,
+          note:   "transient — heartbeat retained, retrying next tick",
+        }));
+      });
+    }, 30_000);
+  };
+  // Keep the "latest" ref pointed at the current closure so the once-registered
+  // AppState foreground watchdog always invokes an up-to-date version.
+  startLocationHeartbeatRef.current = startLocationHeartbeat;
+
   const setOnline: DriverState["setOnline"] = (v) => {
     if (v && (accountStatus === "suspended" || accountStatus === "blacklisted" || accountStatus === "blocked")) {
       return { ok: false, reason: "Your account has been suspended. Please contact support." };
@@ -1915,6 +1999,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     // prevents a "fake Online" with no coordinates (which the dispatcher ignores).
     const revertToOffline = (reason: string) => {
       console.log("[ONLINE_REVERT_REASON]", JSON.stringify({ reason }));
+      // Authoritative synchronous flip so the AppState resume watchdog can never
+      // post a heartbeat after we've decided the driver is offline (the effect
+      // that mirrors isOnline → isOnlineRef runs a tick later).
+      isOnlineRef.current = false;
       setOnlineState(false);
       if (locationIntervalRef.current !== null) {
         clearInterval(locationIntervalRef.current);
@@ -1923,6 +2011,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       }
       setIncomingRide(null);
     };
+    // Make duty state authoritative SYNCHRONOUSLY (not a render-tick later via the
+    // mirroring effect) so the once-registered AppState resume watchdog reads the
+    // correct value the instant duty is toggled — closes the offline-resume race.
+    isOnlineRef.current = v;
     setOnlineState(v);
     if (driverUid) {
       patchDriverStatus(driverUid, v)
@@ -1943,7 +2035,6 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         clearInterval(locationIntervalRef.current);
         locationIntervalRef.current = null;
       }
-      console.log("[LOCATION_HEARTBEAT_START]", JSON.stringify({ intervalMs: 30000, uid: driverUid }));
       console.log("[GPS_STATUS] tracking started");
       console.log("[DriverOnline] location update started:");
       // (1) Immediate heartbeat; (3)(4) revert to Offline on any GPS/permission/
@@ -1953,33 +2044,13 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       void pollLocationAndUpload((reason) => revertToOffline(reason)).then(() => {
         console.log("[DriverOnline] location update completed:");
       });
-      // Heartbeat every 30s while online — well within the backend's 90s stale window.
-      //
-      // CRITICAL: ongoing ticks must be RESILIENT. A single transient GPS read or
-      // network blip on one tick must NOT tear down the interval — doing so would
-      // stop every future heartbeat and let the backend's 90s stale-cleanup mark
-      // the driver offline (lat/lng NULL). So tick failures are logged and the
-      // interval is RETAINED; the next tick (30s later) self-heals. The interval is
-      // only ever cleared by an explicit duty-off, sign-out, or account block.
-      let heartbeatTick = 0;
-      locationIntervalRef.current = setInterval(() => {
-        heartbeatTick += 1;
-        console.log("[LOCATION_HEARTBEAT_TICK]", JSON.stringify({
-          tick:       heartbeatTick,
-          intervalMs: 30000,
-          at:         new Date().toISOString(),
-          uid:        driverUidRef.current,
-        }));
-        void pollLocationAndUpload((reason) => {
-          // Resilient: log the failure but KEEP the heartbeat alive so the next
-          // tick can recover. Do NOT call revertToOffline here.
-          console.log("[LOCATION_HEARTBEAT_TICK_FAILURE]", JSON.stringify({
-            tick:   heartbeatTick,
-            reason,
-            note:   "transient — heartbeat retained, retrying next tick",
-          }));
-        });
-      }, 30_000);
+      // Start the resilient 30 s heartbeat (interval only — the guarded initial
+      // poll above already sent the first coordinate). Ongoing ticks NEVER tear
+      // the interval down on a transient GPS/network blip; they self-heal on the
+      // next tick. The AppState foreground watchdog restarts this if Android
+      // paused the timer while the app was backgrounded. Cleared only by an
+      // explicit duty-off, sign-out, or account block.
+      startLocationHeartbeat();
     } else {
       // (2) Going offline — stop heartbeat and clear pending ride. PATCH status
       // offline already fired above via patchDriverStatus(driverUid, false).
