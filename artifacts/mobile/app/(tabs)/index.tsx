@@ -231,12 +231,16 @@ export default function HomeScreen() {
   if (!driverUid) return <Redirect href="/login" />;
 
   async function setOnline(v: boolean) {
+    console.log("[ONLINE_ROUTE] button pressed:", v);
+    console.log("[ONLINE_ROUTE] driver uid:", driverUid);
+    console.log("[ONLINE_ROUTE] API base URL:", process.env["EXPO_PUBLIC_DOMAIN"] ?? "(unset)");
     if (v && Platform.OS !== "web") {
       const [notifOk, locStatus] = await Promise.all([
         checkNotificationPermissions().catch(() => false),
         Location.getForegroundPermissionsAsync().catch(() => ({ granted: false })),
       ]);
       const locOk = locStatus.granted;
+      console.log("[ONLINE_ROUTE] permission status: notif=", notifOk, "location=", locOk);
       if (!notifOk || !locOk) {
         const missing = [!notifOk ? "Notifications" : null, !locOk ? "GPS Location" : null].filter(Boolean).join(" & ");
         Alert.alert(
@@ -249,6 +253,7 @@ export default function HomeScreen() {
       }
     }
     const r = setDriverOnline(v);
+    console.log("[ONLINE_ROUTE] final local UI online state:", v, "setDriverOnline result:", JSON.stringify(r));
     if (!r.ok && r.reason) {
       Alert.alert("Can't go online", r.reason, [
         { text: "Not now", style: "cancel" },
