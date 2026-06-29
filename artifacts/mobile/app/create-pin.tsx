@@ -107,6 +107,7 @@ export default function CreatePinScreen() {
   const [saving,  setSaving]  = useState(false);
 
   useEffect(() => {
+    console.log("[BUILD_SENTINEL] create-pin = ORDER-FIX build — set-pin runs BEFORE confirmPin/(drivers/me)");
     console.log("[FLOW] create-pin: screen mounted — phone:", phone ? "present" : "ABSENT");
   }, []);
 

@@ -1681,6 +1681,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     phone: string,
     otp:   string,
   ): Promise<ConfirmOtpResult> => {
+    console.log("[BUILD_SENTINEL] confirmOtp = ORDER-FIX build — signInForSession only; NO /drivers/me before set-pin");
     const apiResult = await verifyOtpApi(phone, otp);
     console.log("[FLOW] DriverContext.confirmOtp — verifyOtpApi ok:", apiResult.ok, "| token present:", apiResult.ok ? !!apiResult.token : false, "| sessionId returned:", apiResult.ok ? !!apiResult.sessionId : false);
     if (!apiResult.ok) return { ok: false, profileComplete: false, error: apiResult.error };
