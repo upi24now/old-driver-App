@@ -293,3 +293,9 @@ id = "8FTKBA0jyDsAP3BmUdmfN"
 uri = "file://production-baseline/driver-auth-routes-patch/driver-auth-routes-patch-246519b9.tar.gz"
 type = "unspecified"
 title = "verify-otp fix — bike-courier-api VPS patch (.tar.gz)"
+
+[[outputs]]
+id = "Gs7hfPHGgzFWb2PsLvBZf"
+uri = "file://production-baseline/driver-self-profile-patch.tar.gz"
+type = "unspecified"
+title = "driver-self-profile-patch.tar.gz"
