@@ -23,6 +23,13 @@ import { useNotifications } from "@/hooks/useNotifications";
 import { firebaseAuth } from "@/utils/firebase";
 import { PERMISSION_SETUP_VERSION } from "@/utils/firestore";
 
+// Build marker — printed once at bundle evaluation so the live deployment can be
+// verified as the latest source from the JS console / Expo Go logs. Update the
+// build date whenever a fresh production bundle is published.
+console.log(
+  "[BUILD_CHECK] Driver App | build=2026-06-29 | location-payload=lat/lng | api=api.bikecourierservice.com",
+);
+
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
