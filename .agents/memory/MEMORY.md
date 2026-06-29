@@ -65,6 +65,7 @@
 - [Driver Daily plan expiry (12h)](driver-plan-daily-expiry.md) — Daily expiry computed in pgActivatePlanByOrderId; branch on planId (not the integer duration_days col); status reads stored expires_at; no FS expiry mirror.
 - [VPS bundle patch verification](vps-bundle-patch-verification.md) — prove byte-safe additive splice via apply-patch SHA-reproduction + node --check parse + mock harness (no full boot); ESM harness ignores NODE_PATH.
 - [driver_plans has no active column](driver-plans-no-active-column.md) — verify-payment 42703; activation = text status col, never a boolean; drop active from writes (no migration), literals keep params aligned.
+- [Driver location heartbeat](driver-location-heartbeat.md) — VPS reaps drivers offline + clears lat/lng if last_seen_at >90s; POST /location (numeric coords) every 30s, PATCH /status alone writes NO coords.
 - [/drivers/me 403 admin-gate](drivers-me-403-admin-gate.md) — "PIN rejected/bounce to login" on prod is actually GET /drivers/me 403 "no admin access"; PIN persists (verify-pin 200); Replit replica ≠ VPS DB.
 - [Driver location VPS contract](driver-location-vps-contract.md) — VPS /location & /status return 200 for ANY body (no readable verify channel); client now sends both lat/lng AND latitude/longitude; setOnline reverts on status failure.
 - [Driver App permanent link](driver-app-permanent-link.md) — driver-app-upi24now.replit.app = autoscale deploy of Expo Go static bundle; API force-pinned to VPS in build.js; flat .replit.app avoids carrier DNS NXDOMAIN on nested dev expo domain.

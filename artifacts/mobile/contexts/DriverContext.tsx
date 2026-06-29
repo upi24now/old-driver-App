@@ -1839,12 +1839,20 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
   // Polls GPS and uploads to the server. Uses refs to avoid stale closures
   // inside the setInterval callback (registered once per go-online call).
-  const pollLocationAndUpload = async (): Promise<void> => {
+  const pollLocationAndUpload = async (
+    onFailure?: (reason: string) => void,
+  ): Promise<void> => {
     const uid = driverUidRef.current;
     if (!uid) return;
     console.log("[GPS_STATUS] polling uid=", uid);
     const perm = await Location.getForegroundPermissionsAsync().catch(() => null);
     console.log("[DriverLocation] permission status:", perm?.status ?? "unknown");
+    // (3) Permission denied → never show fake Online; revert to Offline.
+    if (perm?.status !== "granted") {
+      console.log("[ONLINE_REVERT_REASON]", JSON.stringify({ reason: "location_permission_denied", status: perm?.status ?? "unknown" }));
+      onFailure?.("location_permission_denied");
+      return;
+    }
     let loc: Location.LocationObject;
     try {
       loc = await Location.getCurrentPositionAsync({
@@ -1852,11 +1860,24 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       });
     } catch (err) {
       console.log("[GPS_UPLOAD_FAIL] getCurrentPositionAsync error:", err instanceof Error ? err.message : String(err));
+      console.log("[ONLINE_REVERT_REASON]", JSON.stringify({ reason: "gps_failed", error: err instanceof Error ? err.message : String(err) }));
+      onFailure?.("gps_failed");
       return;
     }
     const { latitude, longitude, accuracy } = loc.coords;
     console.log("[DRIVER_GPS_RESULT]", JSON.stringify(loc));
     console.log("[DriverLocation] raw GPS:", JSON.stringify({ latitude, longitude, accuracy }));
+    // Guard against non-numeric coords so we never POST a heartbeat the backend
+    // would reject (which would leave lat/lng NULL and the driver un-dispatchable).
+    if (
+      typeof latitude !== "number" || typeof longitude !== "number" ||
+      Number.isNaN(latitude) || Number.isNaN(longitude)
+    ) {
+      console.log("[ONLINE_REVERT_REASON]", JSON.stringify({ reason: "invalid_coordinates", latitude, longitude }));
+      onFailure?.("invalid_coordinates");
+      return;
+    }
+    console.log("[LOCATION_HEARTBEAT_PAYLOAD]", JSON.stringify({ uid, latitude, longitude, accuracy: accuracy ?? null, isOnline: true }));
     try {
       const result = await postDriverLocation(uid, {
         latitude,
@@ -1864,13 +1885,20 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         isOnline: true,
         accuracy: accuracy ?? undefined,
       });
+      console.log("[LOCATION_HEARTBEAT_RESPONSE]", JSON.stringify(result));
       if (result.ok) {
         console.log("[GPS_UPLOAD_OK] lat=", latitude, "lon=", longitude, "acc=", accuracy);
       } else {
+        // (4) POST /location rejected → revert to Offline.
         console.log("[GPS_UPLOAD_FAIL] server returned ok:false");
+        console.log("[ONLINE_REVERT_REASON]", JSON.stringify({ reason: "location_post_rejected" }));
+        onFailure?.("location_post_rejected");
       }
     } catch (err) {
       console.log("[GPS_UPLOAD_FAIL] fetch error:", err instanceof Error ? err.message : String(err));
+      console.log("[LOCATION_HEARTBEAT_RESPONSE]", JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+      console.log("[ONLINE_REVERT_REASON]", JSON.stringify({ reason: "location_post_error", error: err instanceof Error ? err.message : String(err) }));
+      onFailure?.("location_post_error");
     }
   };
 
@@ -1881,51 +1909,59 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     if (v && !subscriptionActive) {
       return { ok: false, reason: "Your subscription has expired. Activate a plan to go online." };
     }
+    // Shared revert: roll local state back to Offline whenever the backend never
+    // recorded the driver as online — missing token, failed PATCH /status, GPS
+    // failure, permission denied, or a rejected /location heartbeat. This is what
+    // prevents a "fake Online" with no coordinates (which the dispatcher ignores).
+    const revertToOffline = (reason: string) => {
+      console.log("[ONLINE_REVERT_REASON]", JSON.stringify({ reason }));
+      setOnlineState(false);
+      if (locationIntervalRef.current !== null) {
+        clearInterval(locationIntervalRef.current);
+        locationIntervalRef.current = null;
+        console.log("[LOCATION_HEARTBEAT_STOP]", JSON.stringify({ reason }));
+      }
+      setIncomingRide(null);
+    };
     setOnlineState(v);
     if (driverUid) {
-      const revertOnline = () => {
-        // Never leave the UI showing "online" when the backend never recorded it
-        // (e.g. missing Firebase ID token → patchDriverStatus returns ok:false
-        // without reaching the server). Roll the local state back so the switch
-        // reflects the true backend state instead of a fake/local-only online.
-        console.log("[DriverOnline] status update failed — reverting local online state");
-        setOnlineState(false);
-        if (locationIntervalRef.current !== null) {
-          clearInterval(locationIntervalRef.current);
-          locationIntervalRef.current = null;
-        }
-      };
       patchDriverStatus(driverUid, v)
         .then((r) => {
           console.log("[DriverOnline] status API response:", JSON.stringify(r));
-          if (v && !r.ok) revertOnline();
+          if (v && !r.ok) revertToOffline("status_update_failed");
           console.log("[DRIVER_ONLINE_FINAL_STATE]", JSON.stringify({ requested: v, backendOk: r.ok, localOnline: v ? r.ok : false }));
         })
         .catch((err) => {
           console.error(err);
-          if (v) revertOnline();
+          if (v) revertToOffline("status_update_error");
           console.log("[DRIVER_ONLINE_FINAL_STATE]", JSON.stringify({ requested: v, backendOk: false, localOnline: false }));
         });
     }
     if (v) {
-      // Going online — clear any stale interval, then start fresh GPS tracking
+      // Going online — clear any stale interval, then start fresh GPS tracking.
       if (locationIntervalRef.current !== null) {
         clearInterval(locationIntervalRef.current);
         locationIntervalRef.current = null;
       }
+      console.log("[LOCATION_HEARTBEAT_START]", JSON.stringify({ intervalMs: 30000, uid: driverUid }));
       console.log("[GPS_STATUS] tracking started");
       console.log("[DriverOnline] location update started:");
-      void pollLocationAndUpload().then(() => {
+      // (1) Immediate heartbeat; (3)(4) revert to Offline on any GPS/permission/
+      // post failure so we never show Online without a coordinate on the backend.
+      void pollLocationAndUpload((reason) => revertToOffline(reason)).then(() => {
         console.log("[DriverOnline] location update completed:");
       });
+      // Heartbeat every 30s while online — well within the backend's 90s stale window.
       locationIntervalRef.current = setInterval(() => {
-        void pollLocationAndUpload();
-      }, 15_000);
+        void pollLocationAndUpload((reason) => revertToOffline(reason));
+      }, 30_000);
     } else {
-      // Going offline — stop GPS tracking and clear pending ride
+      // (2) Going offline — stop heartbeat and clear pending ride. PATCH status
+      // offline already fired above via patchDriverStatus(driverUid, false).
       if (locationIntervalRef.current !== null) {
         clearInterval(locationIntervalRef.current);
         locationIntervalRef.current = null;
+        console.log("[LOCATION_HEARTBEAT_STOP]", JSON.stringify({ reason: "duty_off" }));
         console.log("[GPS_STATUS] tracking stopped");
       }
       setIncomingRide(null);
