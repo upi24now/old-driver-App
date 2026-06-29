@@ -41,7 +41,6 @@ const SUCCESS      = "#059669";
 const SUCCESS_SOFT = "#ECFDF5";
 const INFO         = "#2563EB";
 const INFO_SOFT    = "#EFF6FF";
-const LOCK_BG      = "#F1F5F9";
 // Soft action-card palette
 const MINT          = "#0EA372";
 const MINT_SOFT     = "#E9FBF2";
@@ -283,9 +282,6 @@ export default function HomeScreen() {
     activeOrders.find((o) => o.id === currentActiveOrderId) ?? activeOrders[0] ?? null;
   const slots = Array.from({ length: maxActiveOrders }, (_, i) => activeOrders[i] ?? null);
 
-  // Available Deliveries section availability ──────────────────────────────────
-  const availLocked = !online || isAtCapacity;
-
   return (
     <View style={{ flex: 1, backgroundColor: BG }}>
 
@@ -346,18 +342,34 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        <TouchableOpacity style={s.hubCard} activeOpacity={0.85} onPress={openHub}>
-          <View style={s.hubCardIcon}>
-            <Feather name="grid" size={16} color={PRIMARY} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={s.hubCardLabel}>Delivery Hub</Text>
-            <Text style={[s.hubCardValue, isAtCapacity && s.hubCardValueFull]}>
+        <View style={s.splitCard}>
+          {/* My Deliveries (moved from former floating card) */}
+          <TouchableOpacity style={s.splitHalf} activeOpacity={0.85} onPress={openHub}>
+            <View style={s.splitIcon}>
+              <Feather name="package" size={15} color={MINT} />
+            </View>
+            <Text style={[s.splitCount, { color: MINT }]} numberOfLines={1}>
+              {activeOrderCount}
+            </Text>
+            <Text style={s.splitLabel} numberOfLines={1}>My Deliveries</Text>
+          </TouchableOpacity>
+
+          <View style={s.splitDivider} />
+
+          {/* Delivery Hub */}
+          <TouchableOpacity style={s.splitHalf} activeOpacity={0.85} onPress={openHub}>
+            <View style={s.splitIcon}>
+              <Feather name="grid" size={15} color={PRIMARY} />
+            </View>
+            <Text
+              style={[s.splitCount, { color: PRIMARY }, isAtCapacity && s.hubCardValueFull]}
+              numberOfLines={1}
+            >
               {activeOrderCount}/{maxActiveOrders}
             </Text>
-          </View>
-          <Feather name="chevron-right" size={16} color={PRIMARY} />
-        </TouchableOpacity>
+            <Text style={s.splitLabel} numberOfLines={1}>Delivery Hub</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* ── PINNED ACTIVE RIDE DOCK (impossible to miss, above fold) ────────── */}
@@ -496,54 +508,7 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          <View style={s.mapHeroWrap}>
-            <LiveMap online={online} />
-
-            {/* Floating deliveries card overlapping the bottom of the map */}
-            <View style={s.deliveriesFloat}>
-              <View style={s.floatHandle} />
-              <View style={s.floatRow}>
-                {/* Available */}
-                <TouchableOpacity
-                  style={[s.floatPill, s.floatPillAvail, availLocked && s.floatPillLocked]}
-                  activeOpacity={availLocked ? 1 : 0.85}
-                  onPress={openAvailable}
-                  disabled={availLocked}
-                >
-                  <View style={[s.floatPillIcon, availLocked && s.floatPillIconLocked]}>
-                    <Feather
-                      name={availLocked ? "lock" : "inbox"}
-                      size={16}
-                      color={availLocked ? MUTED : PRIMARY}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[s.floatCount, { color: availLocked ? MUTED : PRIMARY }]}>
-                      {incomingRide ? 1 : 0}
-                    </Text>
-                    <Text style={s.floatLabel}>Available</Text>
-                  </View>
-                  {!availLocked && <Feather name="chevron-right" size={16} color={PRIMARY} />}
-                </TouchableOpacity>
-
-                {/* My Deliveries */}
-                <TouchableOpacity
-                  style={[s.floatPill, s.floatPillMine]}
-                  activeOpacity={0.85}
-                  onPress={openHub}
-                >
-                  <View style={[s.floatPillIcon, s.floatPillIconMine]}>
-                    <Feather name="package" size={16} color={MINT} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[s.floatCount, { color: MINT }]}>{activeOrderCount}</Text>
-                    <Text style={s.floatLabel}>My Deliveries</Text>
-                  </View>
-                  <Feather name="chevron-right" size={16} color={MINT} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
+          <LiveMap online={online} />
 
           <HotZoneStrip online={online} />
         </View>
@@ -633,29 +598,43 @@ const s = StyleSheet.create({
   },
   earnedCardLabel: { fontSize: 11, fontWeight: "700", color: MUTED },
   earnedCardValue: { fontSize: 18, fontWeight: "900", color: SUCCESS, marginTop: 1, letterSpacing: -0.4 },
-  hubCard: {
+  hubCardValueFull: { color: DANGER },
+
+  // Two-column split card (My Deliveries | Delivery Hub)
+  splitCard: {
     flex: 1,
     flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+    alignItems: "stretch",
     backgroundColor: PRIMARY_SOFT,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "#FFD9C2",
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 2,
   },
-  hubCardIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 11,
+  splitHalf: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+    paddingHorizontal: 2,
+  },
+  splitIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
     backgroundColor: CARD,
     alignItems: "center",
     justifyContent: "center",
   },
-  hubCardLabel: { fontSize: 11, fontWeight: "700", color: MUTED },
-  hubCardValue: { fontSize: 18, fontWeight: "900", color: PRIMARY, marginTop: 1, letterSpacing: -0.4 },
-  hubCardValueFull: { color: DANGER },
+  splitDivider: {
+    width: 1,
+    alignSelf: "stretch",
+    marginVertical: 6,
+    backgroundColor: "#FFD9C2",
+  },
+  splitCount: { fontSize: 15, fontWeight: "900", letterSpacing: -0.3 },
+  splitLabel: { fontSize: 10, fontWeight: "700", color: MUTED },
 
   // Active ride dock (pinned)
   dock: {
@@ -815,58 +794,6 @@ const s = StyleSheet.create({
   bannerCtaText: { fontSize: 11, fontWeight: "700", color: "#fff" },
   bannerSoftTitle: { fontSize: 13, fontWeight: "700", color: TEXT, marginBottom: 1 },
   bannerSoftSub: { fontSize: 11, fontWeight: "500", color: MUTED },
-
-  // Hero map + floating deliveries card
-  mapHeroWrap: { position: "relative" },
-  deliveriesFloat: {
-    position: "absolute",
-    left: 10,
-    right: 10,
-    bottom: 10,
-    backgroundColor: CARD,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BORDER,
-    padding: 8,
-    gap: 6,
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.14,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
-  },
-  floatHandle: {
-    alignSelf: "center",
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#D7DEE8",
-  },
-  floatRow: { flexDirection: "row", gap: 8 },
-  floatPill: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-  },
-  floatPillAvail: { backgroundColor: PRIMARY_SOFT },
-  floatPillMine: { backgroundColor: MINT_SOFT },
-  floatPillLocked: { backgroundColor: LOCK_BG },
-  floatPillIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
-    backgroundColor: CARD,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  floatPillIconMine: { backgroundColor: CARD },
-  floatPillIconLocked: { backgroundColor: "#E2E8F0" },
-  floatCount: { fontSize: 16, fontWeight: "900", letterSpacing: -0.3 },
-  floatLabel: { fontSize: 11, fontWeight: "700", color: MUTED, marginTop: 1 },
 
   // Hot zones / map card
   mapCard: {
