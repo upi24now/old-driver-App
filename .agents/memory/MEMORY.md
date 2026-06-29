@@ -63,4 +63,5 @@
 - [Driver App read-fallback model](driver-app-read-fallback-model.md) — active-orders is now PG-AUTHORITATIVE (any HTTP 200 incl. empty wins, ignores ok flag, non-200 throws, NO Firestore fallback; restore clears on empty); offer-stream/order-stream SSE REPLACE Firestore (empty=valid). Don't conflate.
 - [Driver Daily plan expiry (12h)](driver-plan-daily-expiry.md) — Daily expiry computed in pgActivatePlanByOrderId; branch on planId (not the integer duration_days col); status reads stored expires_at; no FS expiry mirror.
 - [VPS bundle patch verification](vps-bundle-patch-verification.md) — prove byte-safe additive splice via apply-patch SHA-reproduction + node --check parse + mock harness (no full boot); ESM harness ignores NODE_PATH.
+- [driver_plans has no active column](driver-plans-no-active-column.md) — verify-payment 42703; activation = text status col, never a boolean; drop active from writes (no migration), literals keep params aligned.
 - [/drivers/me 403 admin-gate](drivers-me-403-admin-gate.md) — "PIN rejected/bounce to login" on prod is actually GET /drivers/me 403 "no admin access"; PIN persists (verify-pin 200); Replit replica ≠ VPS DB.

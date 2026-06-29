@@ -299,3 +299,9 @@ id = "Gs7hfPHGgzFWb2PsLvBZf"
 uri = "file://production-baseline/driver-self-profile-patch.tar.gz"
 type = "unspecified"
 title = "driver-self-profile-patch.tar.gz"
+
+[[outputs]]
+id = "TrT6MBCuWHMNSto_r0C7T"
+uri = "file://production-baseline/driver-plan-active-column-fix.tar.gz"
+type = "unspecified"
+title = "driver-plan-active-column-fix.tar.gz"
