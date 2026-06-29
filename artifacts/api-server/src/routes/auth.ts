@@ -12,7 +12,7 @@ const router = Router();
 // ─── OTP send rate limit ────────────────────────────────────────────────────
 // At most OTP_SEND_MAX OTP requests per rolling OTP_SEND_WINDOW_MS per phone.
 const OTP_SEND_MAX       = 3;
-const OTP_SEND_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
+const OTP_SEND_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 // ─── Test phone bypass ────────────────────────────────────────────────────────
 // Format: TEST_OTP_PHONES="phone1:otp1,phone2:otp2"
@@ -74,7 +74,7 @@ router.post("/auth/send-otp", async (req, res) => {
     if (recent.length >= OTP_SEND_MAX) {
       req.log.warn({ phoneSuffix: phone.slice(-4), count: recent.length }, "send-otp: rate limit exceeded");
       res.status(429).json({
-        error: "Too many OTP requests. Please try again after 24 hours or log in with your PIN.",
+        error: "Too many OTP requests. Please try again after 2 hours or log in with your PIN.",
       });
       return;
     }
