@@ -1882,9 +1882,27 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     }
     setOnlineState(v);
     if (driverUid) {
+      const revertOnline = () => {
+        // Never leave the UI showing "online" when the backend never recorded it
+        // (e.g. missing Firebase ID token → patchDriverStatus returns ok:false
+        // without reaching the server). Roll the local state back so the switch
+        // reflects the true backend state instead of a fake/local-only online.
+        console.log("[DriverOnline] status update failed — reverting local online state");
+        setOnlineState(false);
+        if (locationIntervalRef.current !== null) {
+          clearInterval(locationIntervalRef.current);
+          locationIntervalRef.current = null;
+        }
+      };
       patchDriverStatus(driverUid, v)
-        .then((r) => console.log("[DriverOnline] status API response:", JSON.stringify(r)))
-        .catch(console.error);
+        .then((r) => {
+          console.log("[DriverOnline] status API response:", JSON.stringify(r));
+          if (v && !r.ok) revertOnline();
+        })
+        .catch((err) => {
+          console.error(err);
+          if (v) revertOnline();
+        });
     }
     if (v) {
       // Going online — clear any stale interval, then start fresh GPS tracking

@@ -57,16 +57,19 @@ export async function postDriverLocation(
 ): Promise<{ ok: boolean }> {
   const idToken = await getIdToken();
   if (!idToken) return { ok: false };
-  // The backend route POST /api/drivers/:uid/location reads
-  // { lat, lng, accuracy, isOnline } from the body. Map the GPS coordinates to
-  // the lat/lng field names the server expects — sending latitude/longitude
-  // leaves lat/lng NULL in driver_locations and the dispatcher then treats the
-  // driver as having no position (totalOnline: 0).
+  // Send BOTH coordinate field-name conventions so the position persists
+  // regardless of which the production API reads. The api-server contract
+  // expects { latitude, longitude }; other bundles read { lat, lng }. Sending
+  // both is additive — whichever the server ignores is harmless — and prevents
+  // driver_locations from staying NULL (which makes the dispatcher treat the
+  // driver as having no position → totalOnline: 0).
   const payload = {
-    lat:      coords.latitude,
-    lng:      coords.longitude,
-    accuracy: coords.accuracy,
-    isOnline: coords.isOnline,
+    latitude:  coords.latitude,
+    longitude: coords.longitude,
+    lat:       coords.latitude,
+    lng:       coords.longitude,
+    accuracy:  coords.accuracy,
+    isOnline:  coords.isOnline,
   };
   try {
     console.log("[DriverLocation] update payload:", JSON.stringify(payload));
