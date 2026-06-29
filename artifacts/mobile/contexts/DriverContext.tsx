@@ -1843,6 +1843,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     const uid = driverUidRef.current;
     if (!uid) return;
     console.log("[GPS_STATUS] polling uid=", uid);
+    const perm = await Location.getForegroundPermissionsAsync().catch(() => null);
+    console.log("[DriverLocation] permission status:", perm?.status ?? "unknown");
     let loc: Location.LocationObject;
     try {
       loc = await Location.getCurrentPositionAsync({
@@ -1853,6 +1855,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       return;
     }
     const { latitude, longitude, accuracy } = loc.coords;
+    console.log("[DriverLocation] raw GPS:", JSON.stringify({ latitude, longitude, accuracy }));
     try {
       const result = await postDriverLocation(uid, {
         latitude,
@@ -1879,7 +1882,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     }
     setOnlineState(v);
     if (driverUid) {
-      patchDriverStatus(driverUid, v).catch(console.error);
+      patchDriverStatus(driverUid, v)
+        .then((r) => console.log("[DriverOnline] status API response:", JSON.stringify(r)))
+        .catch(console.error);
     }
     if (v) {
       // Going online — clear any stale interval, then start fresh GPS tracking
@@ -1888,7 +1893,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         locationIntervalRef.current = null;
       }
       console.log("[GPS_STATUS] tracking started");
-      void pollLocationAndUpload();
+      console.log("[DriverOnline] location update started:");
+      void pollLocationAndUpload().then(() => {
+        console.log("[DriverOnline] location update completed:");
+      });
       locationIntervalRef.current = setInterval(() => {
         void pollLocationAndUpload();
       }, 15_000);

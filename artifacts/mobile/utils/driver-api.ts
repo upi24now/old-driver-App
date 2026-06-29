@@ -57,18 +57,32 @@ export async function postDriverLocation(
 ): Promise<{ ok: boolean }> {
   const idToken = await getIdToken();
   if (!idToken) return { ok: false };
+  // The backend route POST /api/drivers/:uid/location reads
+  // { lat, lng, accuracy, isOnline } from the body. Map the GPS coordinates to
+  // the lat/lng field names the server expects — sending latitude/longitude
+  // leaves lat/lng NULL in driver_locations and the dispatcher then treats the
+  // driver as having no position (totalOnline: 0).
+  const payload = {
+    lat:      coords.latitude,
+    lng:      coords.longitude,
+    accuracy: coords.accuracy,
+    isOnline: coords.isOnline,
+  };
   try {
+    console.log("[DriverLocation] update payload:", JSON.stringify(payload));
     const res  = await fetch(`${BASE_URL}/drivers/${uid}/location`, {
       method:  "POST",
       headers: {
         "Content-Type":  "application/json",
         "Authorization": `Bearer ${idToken}`,
       },
-      body: JSON.stringify(coords),
+      body: JSON.stringify(payload),
     });
     const json = (await res.json()) as { ok?: boolean };
+    console.log("[DriverLocation] update response:", res.status, JSON.stringify(json));
     return { ok: !!json.ok };
-  } catch {
+  } catch (err) {
+    console.log("[DriverLocation] update error:", err instanceof Error ? err.message : String(err));
     return { ok: false };
   }
 }
