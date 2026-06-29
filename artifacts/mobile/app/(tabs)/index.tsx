@@ -349,7 +349,7 @@ export default function HomeScreen() {
 
         <View style={s.splitCard}>
           {/* My Deliveries (moved from former floating card) */}
-          <TouchableOpacity style={s.splitHalf} activeOpacity={0.85} onPress={openHub}>
+          <TouchableOpacity style={s.splitHalf} activeOpacity={0.85} onPress={openAvailable}>
             <View style={s.splitIcon}>
               <Feather name="package" size={15} color={MINT} />
             </View>
