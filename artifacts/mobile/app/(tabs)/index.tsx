@@ -527,41 +527,12 @@ export default function HomeScreen() {
         {/* ── PERMISSION HEALTH (lowest priority) ───────────────────────────── */}
         <PermissionHealthCard />
 
-        {/* ── RIDE FLOW DEMO (TEMP) — remove this whole block to delete demo ── */}
-        <TouchableOpacity
-          style={s.demoEntryBtn}
-          activeOpacity={0.85}
-          onPress={() => router.push("/ride-flow-demo")}
-        >
-          <View style={s.demoEntryIcon}>
-            <Feather name="play-circle" size={16} color="#92400E" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={s.demoEntryTitle}>Ride Flow Demo</Text>
-            <Text style={s.demoEntrySub}>Temporary · preview only · no real order</Text>
-          </View>
-          <Feather name="chevron-right" size={16} color="#92400E" />
-        </TouchableOpacity>
-
       </ScrollView>
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  // ── RIDE FLOW DEMO (TEMP) — remove with the demo entry block above ──
-  demoEntryBtn: {
-    flexDirection: "row", alignItems: "center", gap: 12,
-    backgroundColor: "#FEF3C7", borderRadius: 14, borderWidth: 1, borderColor: "#FDE68A",
-    paddingHorizontal: 14, paddingVertical: 12,
-  },
-  demoEntryIcon: {
-    width: 34, height: 34, borderRadius: 17, backgroundColor: "#FDE68A",
-    alignItems: "center", justifyContent: "center",
-  },
-  demoEntryTitle: { fontSize: 14, fontWeight: "800", color: "#92400E" },
-  demoEntrySub: { fontSize: 11, fontWeight: "600", color: "#B45309", marginTop: 1 },
-
   // Header
   header: {
     flexDirection: "row",
