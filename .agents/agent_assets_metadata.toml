@@ -311,3 +311,9 @@ id = "bJKz6qaYaMz0EgwYKi-Iq"
 uri = "file://production-baseline/driver-plans-restore/driver-plans-restore.zip"
 type = "unspecified"
 title = "driver-plans-restore.zip (PG-only, no Firestore) — apply-patch.py + INSERTED-BLOCK.js + README_DEPLOY.md + install-driver-plans-restore.sh"
+
+[[outputs]]
+id = "mvs-JtnzPA9X3qpNl7boq"
+uri = "file://production-baseline/driver-auth-routes-restore/driver-auth-routes-restore.zip"
+type = "unspecified"
+title = "driver-auth-routes-restore.zip"
