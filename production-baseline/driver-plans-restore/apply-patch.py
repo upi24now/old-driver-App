@@ -11,9 +11,11 @@ WHAT IT DOES
 SAFETY (never breaks a working server)
   - Idempotent: aborts with exit 0 if the restore marker is already present.
   - Self-locating: finds the exact pino-http splice anchor; aborts if not found.
-  - Self-verifying: confirms every binding the block reuses (app, pool, import_razorpay,
-    auth/verifyIdToken, db2, FieldValue) actually exists in the target; aborts if any
-    is missing rather than producing a broken bundle.
+  - Self-verifying: confirms the two HARD-required bindings (Express `app`, pg `pool`)
+    actually exist in the target; aborts if either is missing rather than producing a
+    broken bundle. The block is PG-ONLY (no Firestore db2/FieldValue) and resolves auth +
+    Razorpay defensively at runtime (typeof-guarded), so those are detected for INFO only,
+    never hard-required.
   - Non-destructive: writes a NEW file (production-api.PATCHED.js); never edits in place.
   - Prints sha256 before/after and byte delta for an auditable diff.
 
@@ -73,22 +75,39 @@ if not m:
            "Send me the ~30 lines around the Express app setup (the app.use(...) block) "
            "so the anchor/bindings can be matched to this build.")
 
-# 3) Verify required bindings exist in the target ----------------------------
+# 3) Verify HARD-required bindings exist in the target -----------------------
+#    The block is PG-only and resolves auth + Razorpay defensively at runtime
+#    (typeof-guarded, with require() fallbacks), so the ONLY bindings it truly
+#    needs to exist at the splice scope are the Express `app` and the pg `pool`.
+#    It does NOT use Firestore (db2 / FieldValue) at all.
 required = {
     "express app (app.post/get/use)": re.compile(r'\bapp\.(post|get|use)\('),
     "pg Pool binding `pool`":          re.compile(r'\bpool\b'),
-    "razorpay import `import_razorpay`":re.compile(r'\bimport_razorpay\b'),
-    "Firebase auth verifyIdToken":     re.compile(r'verifyIdToken'),
-    "Firestore binding `db2`":         re.compile(r'\bdb2\b'),
-    "Firestore `FieldValue`":          re.compile(r'\bFieldValue\b'),
 }
 missing = [name for name, rx in required.items() if not rx.search(code)]
 if missing:
     die(4, "the block reuses bindings that are NOT present in this build:\n  - "
            + "\n  - ".join(missing)
-           + "\nThis bundle differs from the lineage the block was authored against. "
-             "Send me the Express setup region + the `var pool =` / firebase-admin init lines "
-             "so the block can be rebound safely.")
+           + "\nThis bundle is missing the Express app/pg pool the block needs. "
+             "Send me the Express setup region + the `var pool =` line so it can be rebound.")
+
+# 3b) Informational only (NEVER fatal): report which auth / Razorpay patterns
+#     the runtime resolver is expected to bind to in this build.
+auth_signals = [
+    ("__dsRequireDriver gate", r'__dsRequireDriver'),
+    ("auth.verifyIdToken",     r'verifyIdToken'),
+    ("firebase-admin present", r'firebase-admin'),
+]
+razorpay_signals = [
+    ("import_razorpay binding", r'\bimport_razorpay\b'),
+    ('require("razorpay")',     r'razorpay'),
+]
+auth_found = [name for name, rx in auth_signals if re.search(rx, code)]
+rzp_found  = [name for name, rx in razorpay_signals if re.search(rx, code)]
+print("INFO: auth verify patterns detected in target : "
+      + (", ".join(auth_found) if auth_found else "NONE (runtime require(\"firebase-admin\") fallback will be used)"))
+print("INFO: Razorpay patterns detected in target     : "
+      + (", ".join(rzp_found) if rzp_found else "NONE (runtime require(\"razorpay\") fallback will be used)"))
 
 # 4) Splice ------------------------------------------------------------------
 insert_at = m.end()

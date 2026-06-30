@@ -1,4 +1,4 @@
-// ==== [BCD-PLANS-RESTORE] BEGIN driver-plans route restore (additive) ====
+// ==== [BCD-PLANS-RESTORE] BEGIN driver-plans route restore (additive, PG-only) ====
 // PURPOSE: the live VPS bundle (api-pkg/dist/production-api.js, PM2 bike-courier-api)
 // was rebuilt WITHOUT the driver-plans router, so the Driver App's "Activate Plan"
 // flow gets 404 "Not found". This block RE-REGISTERS only the driver-plans routes the
@@ -11,35 +11,31 @@
 //   GET  /api/driver-plans/status           (read live PG driver_plans row)
 //   GET  /api/driver-plans/current          (identical alias of /status)
 //
-// TABLES: driver_plans (order row stored as status='created' -> 'active') + drivers (Firestore
-//   mirror only). The original production routes do NOT use a separate driver_plan_orders table;
-//   the plan order and the active plan are the SAME driver_plans row keyed by razorpay_order_id.
+// STORAGE: PostgreSQL `driver_plans` ONLY. The plan order and the active plan are the SAME
+//   driver_plans row keyed by razorpay_order_id (status 'created' -> 'active'). There is NO
+//   Firestore write of any kind in this build — the live bundle has no Firestore (db2 /
+//   FieldValue) binding, so the previous best-effort mirror has been REMOVED. PG is the
+//   single source of truth; the app already reads plan state from GET /status.
 //
-// REUSES ONLY pre-existing top-level bindings at the splice point:
-//   app, pool (pg Pool), import_razorpay, auth (Firebase Admin), db2 (Firestore), FieldValue.
-//   Prefers the canonical driver gate __dsRequireDriver when present (typeof-guarded, safe).
-// Each route is wrapped in a try/catch IIFE so a registration failure can NEVER crash boot.
+// BINDINGS — this block NEVER hard-references a Firestore binding. It reuses only:
+//   app   (Express)        — the splice point's `app`.
+//   pool  (pg Pool)        — required.
+//   auth/verifyIdToken     — resolved defensively from whatever the bundle exposes
+//                            (canonical __dsRequireDriver gate -> auth.verifyIdToken ->
+//                             firebase-admin getAuth()/auth() -> require("firebase-admin")).
+//   Razorpay constructor   — resolved defensively (import_razorpay.default ->
+//                             require("razorpay")); node:crypto via require for HMAC.
+//   Every external identifier is `typeof`-guarded so an undeclared binding never throws at
+//   boot; each route registers inside a try/catch IIFE so a failure can never crash startup.
 // TOUCHES NOTHING ELSE: not dispatch, orders, FCM, wallet, KYC/onboarding-fee, OTP, MPIN,
 //   login, sessions, customer app, or any existing route path.
 // === BEGIN [BCD-PG] driver-plans PostgreSQL-authoritative one-active guard (additive override) ===
-// Re-registers POST /api/driver-plans/create-order and POST /api/driver-plans/verify-payment
-// IMMEDIATELY BEFORE the earlier [BCD] driver-plans block, so Express first-match-wins serves
-// THESE PostgreSQL-authoritative handlers instead of the earlier Firestore-only ones.
-//
-// WHY: the earlier block checked Firestore for the active-plan guard, but the real source of
-// truth is the PG `driver_plans` table — so a driver with an active PG row could still mint a
-// new Razorpay order (double-charge). These handlers make `driver_plans` authoritative:
+// Re-registers POST /api/driver-plans/create-order and POST /api/driver-plans/verify-payment.
+// `driver_plans` is the source of truth:
 //   create-order : PG guard (status='active' AND expires_at>NOW()) -> 409, NO Razorpay, NO row.
 //   verify-payment: HMAC verify -> ONE tx that cancels every OTHER active row then activates ONLY
 //                   the paid row with strict expiry (daily +12h, weekly +7d, monthly +30d).
-// Firestore drivers/{uid} is still mirrored (best-effort) so the app's subscription display and
-// session-restore keep working unchanged. PG commit is authoritative; a Firestore mirror failure
-// never fails the request.
-//
-// Reuses ONLY in-scope top-level bindings already used by the earlier block at this splice point:
-//   app, auth (Firebase Admin), pool (pg Pool), import_razorpay, db2 (Firestore), FieldValue.
-// Prefers the canonical driver gate `__dsRequireDriver` when present (keeps single-device session
-// enforcement); `typeof` on an undeclared identifier is safe (returns "undefined").
+// No Firestore mirror is performed (this build has no Firestore binding); PG commit is final.
 // Touches NOTHING else: not /status, /current, onboarding-fee, OTP, MPIN, login, sessions, wallet,
 // orders, delivery routes, customer booking, Razorpay keys, or UI.
 ;(() => {
@@ -60,6 +56,50 @@
     // whole money path for one driver is mutually exclusive.
     const __pgLockKey = (uid) => "dpa:" + uid;
 
+    // Defensive Firebase Admin token verifier. Every candidate is typeof-guarded so an
+    // undeclared identifier returns "undefined" instead of throwing; falls back to requiring
+    // firebase-admin directly. This makes the block independent of the exact bundle binding name.
+    async function __pgVerifyIdToken(idToken) {
+      if (typeof auth !== "undefined" && auth && typeof auth.verifyIdToken === "function") {
+        return await auth.verifyIdToken(idToken);
+      }
+      if (typeof getAuth === "function") {
+        return await getAuth().verifyIdToken(idToken);
+      }
+      if (typeof import_auth !== "undefined" && import_auth && typeof import_auth.getAuth === "function") {
+        const a = (typeof _app !== "undefined" && _app) ? import_auth.getAuth(_app) : import_auth.getAuth();
+        return await a.verifyIdToken(idToken);
+      }
+      if (typeof admin !== "undefined" && admin && typeof admin.auth === "function") {
+        return await admin.auth().verifyIdToken(idToken);
+      }
+      if (typeof import_app !== "undefined" && import_app && import_app.default && typeof import_app.default.auth === "function") {
+        return await import_app.default.auth().verifyIdToken(idToken);
+      }
+      try {
+        const fa = globalThis.require("firebase-admin");
+        if (fa && typeof fa.auth === "function") return await fa.auth().verifyIdToken(idToken);
+      } catch (_e) {}
+      try {
+        const faAuth = globalThis.require("firebase-admin/auth");
+        if (faAuth && typeof faAuth.getAuth === "function") {
+          const a = (typeof _app !== "undefined" && _app) ? faAuth.getAuth(_app) : faAuth.getAuth();
+          return await a.verifyIdToken(idToken);
+        }
+      } catch (_e) {}
+      throw new Error("no_admin_auth_binding");
+    }
+
+    // Defensive Razorpay constructor resolver: prefer the bundle's import_razorpay, else require it.
+    const __getRazorpayCtor = () => {
+      if (typeof import_razorpay !== "undefined" && import_razorpay) {
+        if (typeof import_razorpay.default === "function") return import_razorpay.default;
+        if (typeof import_razorpay === "function") return import_razorpay;
+      }
+      try { const R = globalThis.require("razorpay"); if (R) return (R.default || R); } catch (_e) {}
+      return null;
+    };
+
     async function __pgRequireDriver(req, res) {
       try { if (typeof __dsRequireDriver === "function") return await __dsRequireDriver(req, res); } catch (_e) {}
       try {
@@ -67,7 +107,7 @@
         const hdr = Array.isArray(raw) ? raw[0] : raw;
         const m = /^Bearer\s+(.+)$/i.exec(hdr || "");
         if (!m) { res.status(401).json({ error: "unauthorized", message: "Missing bearer token." }); return null; }
-        const decoded = await auth.verifyIdToken(m[1]);
+        const decoded = await __pgVerifyIdToken(m[1]);
         const uid = decoded && decoded.uid;
         if (!uid) { res.status(401).json({ error: "unauthorized" }); return null; }
         return uid;
@@ -93,24 +133,6 @@
         [driverUid]
       );
       return r.rows[0] || null;
-    };
-
-    const __pgMirrorFirestore = async (uid, planId, startedAtMs, expiresAtMs, razorpayOrderId, razorpayPaymentId, amountInr) => {
-      try {
-        const doc = {
-          subscriptionPlan: planId,
-          subscriptionExpiresAt: expiresAtMs,
-          planType: planId,
-          planStatus: "active",
-          planStartAt: startedAtMs,
-          planExpiryAt: expiresAtMs,
-          razorpayOrderId: razorpayOrderId,
-          razorpayPaymentId: razorpayPaymentId,
-          updatedAt: FieldValue.serverTimestamp(),
-        };
-        if (amountInr != null) doc.lastPlanAmount = amountInr;
-        await db2.doc("drivers/" + uid).set(doc, { merge: true });
-      } catch (_e) { /* PG is authoritative; mirror is best-effort */ throw _e; }
     };
 
     // ---- POST /api/driver-plans/create-order --------------------------------------------------
@@ -151,10 +173,13 @@
         const keySecret = process.env["RAZORPAY_KEY_SECRET"];
         if (!keyId || !keySecret) { res.status(503).json({ error: "Payment service not configured" }); return; }
 
+        const RazorpayCtor = __getRazorpayCtor();
+        if (!RazorpayCtor) { res.status(503).json({ error: "Payment service not configured" }); return; }
+
         const receipt = (driverUid + "-" + plan.id + "-" + Date.now()).slice(0, 40);
         let order = null;
         try {
-          const rzp = new import_razorpay.default({ key_id: keyId, key_secret: keySecret });
+          const rzp = new RazorpayCtor({ key_id: keyId, key_secret: keySecret });
           order = await rzp.orders.create({ amount: plan.amountPaise, currency: "INR", receipt, notes: { driver_uid: uid, plan_id: plan.id } });
         } catch (rzpErr) {
           try { req.log.error({ err: rzpErr }, "[BCD-PG] create-order razorpay failed"); } catch (_e) {}
@@ -221,13 +246,16 @@
           let planKey = null;
           try {
             const keyId = process.env["RAZORPAY_KEY_ID"];
-            const rzp = new import_razorpay.default({ key_id: keyId, key_secret: keySecret });
-            const rOrder = await rzp.orders.fetch(razorpayOrderId);
-            const noteUid = rOrder && rOrder.notes && rOrder.notes.driver_uid;
-            if (noteUid && noteUid !== uid) { res.status(403).json({ error: "forbidden", message: "Order does not belong to this driver." }); return; }
-            const notePlan = rOrder && rOrder.notes && rOrder.notes.plan_id;
-            if (notePlan && Object.prototype.hasOwnProperty.call(__PG_PLANS, notePlan)) planKey = notePlan;
-            else if (rOrder && rOrder.amount != null && __PG_AMOUNT_TO_PLAN[String(rOrder.amount)]) planKey = __PG_AMOUNT_TO_PLAN[String(rOrder.amount)];
+            const RazorpayCtor = __getRazorpayCtor();
+            if (RazorpayCtor) {
+              const rzp = new RazorpayCtor({ key_id: keyId, key_secret: keySecret });
+              const rOrder = await rzp.orders.fetch(razorpayOrderId);
+              const noteUid = rOrder && rOrder.notes && rOrder.notes.driver_uid;
+              if (noteUid && noteUid !== uid) { res.status(403).json({ error: "forbidden", message: "Order does not belong to this driver." }); return; }
+              const notePlan = rOrder && rOrder.notes && rOrder.notes.plan_id;
+              if (notePlan && Object.prototype.hasOwnProperty.call(__PG_PLANS, notePlan)) planKey = notePlan;
+              else if (rOrder && rOrder.amount != null && __PG_AMOUNT_TO_PLAN[String(rOrder.amount)]) planKey = __PG_AMOUNT_TO_PLAN[String(rOrder.amount)];
+            }
           } catch (fe) {
             try { req.log.error({ err: fe, orderId: razorpayOrderId }, "[BCD-PG] verify-payment self-heal razorpay fetch failed"); } catch (_e) {}
           }
@@ -293,13 +321,7 @@
         }
 
         const expMs = new Date(activatedExpiry).getTime();
-        // Mirror to Firestore so the app's subscription display/session-restore keeps working
-        // (best-effort; only on a fresh activation — an idempotent replay leaves Firestore as-is).
-        if (!alreadyActive) {
-          try { await __pgMirrorFirestore(uid, ord.plan_id, startedAt.getTime(), expMs, razorpayOrderId, razorpayPaymentId, meta ? meta.amountInr : null); }
-          catch (fsErr) { try { req.log.warn({ err: fsErr, uid }, "[BCD-PG] firestore mirror failed (PG authoritative, non-fatal)"); } catch (_e) {} }
-        }
-
+        // PG is the single source of truth in this build; no Firestore mirror is written.
         try { req.log.info({ uid, planId: ord.plan_id, orderId: razorpayOrderId, idempotent: alreadyActive }, "[BCD-PG] verify-payment activated"); } catch (_e) {}
         res.json({ ok: true, active: true, planStartAt: startedAt.getTime(), planExpiryAt: expMs, plan: { planId: ord.plan_id, status: "active", expiresAt: new Date(activatedExpiry).toISOString() } });
       } catch (err) {
@@ -324,14 +346,43 @@
 // Active ONLY when a live PG row exists (status='active' AND expires_at > NOW()). Otherwise
 // { active:false, plan:null } so the app clears its cache. Firestore is NOT consulted.
 //
-// Reuses ONLY in-scope top-level bindings already present at this splice point:
-//   app (L203779), auth (Firebase Admin, L199857), pool (pg Pool, L199755).
-// Prefers the canonical driver gate __dsRequireDriver when present (keeps single-device
-// session enforcement); `typeof` on an undeclared identifier is safe (returns "undefined").
+// Reuses ONLY `app` and `pool`; the token verifier is resolved defensively (same as the
+// money block) so it never hard-references a Firestore or specific auth binding.
 // Touches NOTHING else: not create-order, verify-payment, onboarding-fee, Razorpay, delivery
 // routes, OTP, MPIN, login, sessions, wallet, customer booking, or UI.
 ;(() => {
   try {
+    async function __psVerifyIdToken(idToken) {
+      if (typeof auth !== "undefined" && auth && typeof auth.verifyIdToken === "function") {
+        return await auth.verifyIdToken(idToken);
+      }
+      if (typeof getAuth === "function") {
+        return await getAuth().verifyIdToken(idToken);
+      }
+      if (typeof import_auth !== "undefined" && import_auth && typeof import_auth.getAuth === "function") {
+        const a = (typeof _app !== "undefined" && _app) ? import_auth.getAuth(_app) : import_auth.getAuth();
+        return await a.verifyIdToken(idToken);
+      }
+      if (typeof admin !== "undefined" && admin && typeof admin.auth === "function") {
+        return await admin.auth().verifyIdToken(idToken);
+      }
+      if (typeof import_app !== "undefined" && import_app && import_app.default && typeof import_app.default.auth === "function") {
+        return await import_app.default.auth().verifyIdToken(idToken);
+      }
+      try {
+        const fa = globalThis.require("firebase-admin");
+        if (fa && typeof fa.auth === "function") return await fa.auth().verifyIdToken(idToken);
+      } catch (_e) {}
+      try {
+        const faAuth = globalThis.require("firebase-admin/auth");
+        if (faAuth && typeof faAuth.getAuth === "function") {
+          const a = (typeof _app !== "undefined" && _app) ? faAuth.getAuth(_app) : faAuth.getAuth();
+          return await a.verifyIdToken(idToken);
+        }
+      } catch (_e) {}
+      throw new Error("no_admin_auth_binding");
+    }
+
     const __psRequireDriver = async (req, res) => {
       // Prefer the canonical gate (session-aware) when available.
       if (typeof __dsRequireDriver === "function") {
@@ -342,7 +393,7 @@
         const hdr = Array.isArray(raw) ? raw[0] : raw;
         const m = /^Bearer\s+(.+)$/i.exec(hdr || "");
         if (!m) { res.status(401).json({ error: "unauthorized", message: "Missing bearer token." }); return null; }
-        const decoded = await auth.verifyIdToken(m[1]);
+        const decoded = await __psVerifyIdToken(m[1]);
         const uid = decoded && decoded.uid;
         if (!uid) { res.status(401).json({ error: "unauthorized", message: "Invalid token." }); return null; }
         return uid;

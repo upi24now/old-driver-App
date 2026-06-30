@@ -27,13 +27,14 @@ Dispatch, orders, FCM, customer/driver delivery routes, KYC / onboarding-fee, wa
 login, sessions, and every existing route path. The restore is two self-contained `try/catch`
 IIFEs; a registration failure can never crash boot.
 
-## Tables used
+## Storage used — PostgreSQL only (no Firestore)
 
 - **`driver_plans`** — the order row is stored here as `status='created'` at create-order, then
-  flipped to `status='active'` at verify-payment, keyed by `razorpay_order_id`.
-- **`drivers`** (Firestore `drivers/{uid}` doc) — best-effort mirror only, so the app's
-  subscription display / session-restore keeps working. PG is authoritative; a mirror failure
-  never fails the request.
+  flipped to `status='active'` at verify-payment, keyed by `razorpay_order_id`. This is the single
+  source of truth; the app already reads plan state from `GET /status`.
+- **No Firestore writes.** This live bundle has **no Firestore binding** (`db2` / `FieldValue` are
+  absent), so the previous best-effort `drivers/{uid}` mirror has been **removed**. The block never
+  references `db2` or `FieldValue` — it would otherwise throw at runtime in this build.
 
 > **About `driver_plan_orders`:** the original/proven production routes do **not** use a separate
 > `driver_plan_orders` table. The plan *order* and the *active plan* are the **same** `driver_plans`
@@ -86,10 +87,13 @@ pm2 restart bike-courier-api
 pm2 logs bike-courier-api --lines 50   # expect the [BCD-PG] + [BCD-PG-STATUS] "registered" log lines
 ```
 
-`apply-patch.py` **aborts without writing** if it can't find the splice anchor (exit 3) or any
-reused binding is missing (exit 4) — it will never produce a broken bundle. If it aborts, send the
-~30 lines around the Express `app.use(...)` setup and the `var pool =` / firebase-admin init lines
-so the block can be rebound to this build.
+`apply-patch.py` **aborts without writing** if it can't find the splice anchor (exit 3) or the
+Express `app` / pg `pool` are missing (exit 4) — it will never produce a broken bundle. It only
+hard-requires `app` and `pool`; **auth and Razorpay are resolved defensively at runtime**
+(typeof-guarded, with `require("firebase-admin")` / `require("razorpay")` fallbacks), so it does
+**not** require a Firestore (`db2`/`FieldValue`) or any specific auth binding. The patcher prints
+which auth/Razorpay patterns it detected for your info. If it aborts on the anchor, send the ~30
+lines around the Express `app.use(...)` setup and the `var pool =` line.
 
 ### Rollback
 ```bash
@@ -142,5 +146,5 @@ means the route is registered and reachable (auth/guard responding) — i.e. the
 
 ```bash
 node --check INSERTED-BLOCK.js   # SYNTAX OK
-node harness.mjs                 # ALL CHECKS PASSED (17 assertions: registration, shapes, guard, HMAC, expiry)
+node harness.mjs                 # 18 passed, 0 failed (PG-only: no db2/FieldValue; registration, shapes, guard, HMAC, activation)
 ```

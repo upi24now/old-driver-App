@@ -25,10 +25,19 @@ app calls for plan activation + display.
 
 **How to apply:** splice the two IIFEs immediately AFTER the pino-http middleware
 (`app.use((0, import_pino_http*.default)({ logger }))`) so they win Express first-match.
-Reused bindings: app, pool (pg), import_razorpay, auth (Firebase Admin), db2 (Firestore),
-FieldValue; __dsRequireDriver/logger are typeof-guarded. The block calls
-`globalThis.require("node:crypto")` at registration — fine on the VPS runtime but undefined
-in Node ESM, so any local harness must shim `globalThis.require = createRequire(...)`.
+The block calls `globalThis.require("node:crypto")` at registration — fine on the VPS runtime
+but undefined in Node ESM, so any local harness must shim `globalThis.require = createRequire(...)`.
+
+**Bindings are NOT all stable across VPS rebuilds.** A later live rebuild dropped the Firestore
+binding entirely (no `db2` / `FieldValue` at module scope). The restore is now **PG-only**: the
+old best-effort `drivers/{uid}` Firestore mirror was REMOVED. Only HARD deps are `app` + `pool`
+(the apply-patch verify-or-abort checks just these two). Auth and Razorpay are resolved
+**defensively at runtime**: a typeof-guarded chain (`__dsRequireDriver` → `auth.verifyIdToken`
+→ `getAuth()` → `import_auth.getAuth(_app)` → `admin.auth()` → `require("firebase-admin")`) and
+`import_razorpay.default` → `require("razorpay")`. typeof on an undeclared identifier is safe
+("undefined"), so a missing binding never throws at boot — it just 401s/503s at request time.
+Lesson: never hard-require Firestore (or any specific auth/razorpay symbol) in a VPS bundle patch;
+resolve defensively, because a rebuild can silently remove a binding the previous build had.
 
 **Tables:** uses `driver_plans` ONLY — the order row is stored there as `status='created'`
 then flipped to `'active'`, keyed by `razorpay_order_id`. There is NO `driver_plan_orders`
