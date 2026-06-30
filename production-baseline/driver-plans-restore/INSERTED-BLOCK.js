@@ -188,11 +188,11 @@
         }
         if (!order || !order.id) { res.status(502).json({ error: "Failed to create payment order" }); return; }
 
-        // Persist the SELECTED plan against this razorpay_order_id as 'created' (active=false) so
+        // Persist the SELECTED plan against this razorpay_order_id as 'created' so
         // verify-payment can resolve the exact paid row and never default to monthly.
         try {
           await lockClient.query(
-            "INSERT INTO driver_plans (driver_uid, plan_id, plan_label, amount, duration_days, status, active, razorpay_order_id, created_at) VALUES ($1, $2, $3, $4, $5, 'created', false, $6, NOW())",
+            "INSERT INTO driver_plans (driver_uid, plan_id, plan_label, amount, duration_days, status, razorpay_order_id, created_at) VALUES ($1, $2, $3, $4, $5, 'created', $6, NOW())",
             [uid, plan.id, plan.label, plan.amountPaise, plan.durationDays, order.id]
           );
         } catch (insErr) {
@@ -262,7 +262,7 @@
           if (!planKey) { res.status(404).json({ error: "order_not_found", message: "Plan order not found for this driver." }); return; }
           const meta0 = __PG_PLANS[planKey];
           await pool.query(
-            "INSERT INTO driver_plans (driver_uid, plan_id, plan_label, amount, duration_days, status, active, razorpay_order_id, created_at) VALUES ($1,$2,$3,$4,$5,'created',false,$6,NOW()) ON CONFLICT DO NOTHING",
+            "INSERT INTO driver_plans (driver_uid, plan_id, plan_label, amount, duration_days, status, razorpay_order_id, created_at) VALUES ($1,$2,$3,$4,$5,'created',$6,NOW()) ON CONFLICT DO NOTHING",
             [uid, planKey, meta0.label, meta0.amountPaise, meta0.durationDays, razorpayOrderId]
           );
           ordRes = await pool.query("SELECT * FROM driver_plans WHERE razorpay_order_id = $1 LIMIT 1", [razorpayOrderId]);
@@ -301,12 +301,12 @@
           } else {
             // One active row per driver: cancel every OTHER active row first.
             await client.query(
-              "UPDATE driver_plans SET status = 'cancelled', active = false WHERE driver_uid = $1 AND status = 'active' AND razorpay_order_id <> $2",
+              "UPDATE driver_plans SET status = 'cancelled' WHERE driver_uid = $1 AND status = 'active' AND razorpay_order_id <> $2",
               [uid, razorpayOrderId]
             );
             // Activate ONLY the paid row; assert exactly one row updated or roll back.
             const upd = await client.query(
-              "UPDATE driver_plans SET status = 'active', active = true, razorpay_payment_id = $1, started_at = $2, expires_at = $3 WHERE razorpay_order_id = $4 AND driver_uid = $5 RETURNING expires_at",
+              "UPDATE driver_plans SET status = 'active', razorpay_payment_id = $1, started_at = $2, expires_at = $3 WHERE razorpay_order_id = $4 AND driver_uid = $5 RETURNING expires_at",
               [razorpayPaymentId, startedAt.toISOString(), expiresAt.toISOString(), razorpayOrderId, uid]
             );
             if (upd.rowCount !== 1) { throw new Error("activation_row_mismatch:" + upd.rowCount); }
