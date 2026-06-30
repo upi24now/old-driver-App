@@ -131,25 +131,36 @@ const upload = multer({
 router.post("/kyc/upload",
   // Step 0 — lock gate. Runs BEFORE multer so a verified driver's existing file
   // on disk is never overwritten. Uses the token's uid (header), independent of
-  // the multipart body. On any token/lookup failure we fall through and let the
-  // existing handler return the correct 401 — we only hard-block confirmed locks.
+  // the multipart body. A bad/expired token falls through to the main handler's
+  // existing 401 path. For an AUTHENTICATED driver we FAIL CLOSED: a verified
+  // driver gets 403, and if the lock status cannot be determined (DB error) we
+  // return 503 rather than risk letting an approved driver replace a document.
   async (req, res, next) => {
+    let tokenUid = "";
     try {
       const authHeader  = req.headers["authorization"] ?? "";
       const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
       if (!bearerToken) { next(); return; }
       const auth    = await adminAuth();
       const decoded = await auth.verifyIdToken(bearerToken);
-      if (await isDriverVerificationLocked(decoded.uid)) {
-        req.log.warn({ uid: decoded.uid }, "kyc/upload blocked — documents locked after verification");
+      tokenUid = decoded.uid;
+    } catch {
+      // Token invalid/expired — defer to the main handler's existing 401 path.
+      next();
+      return;
+    }
+    try {
+      if (await isDriverVerificationLocked(tokenUid)) {
+        req.log.warn({ uid: tokenUid }, "kyc/upload blocked — documents locked after verification");
         res.status(403).json({ ok: false, error: "documents_locked", message: DOCUMENTS_LOCKED_MESSAGE });
         return;
       }
       next();
-    } catch {
-      // Token invalid/expired or lookup failed — defer to the main handler's
-      // existing 401 path; never let a verified-lock check swallow that.
-      next();
+    } catch (err) {
+      // Lock status indeterminate for an authenticated driver → fail closed.
+      req.log.error({ err: err instanceof Error ? err.message : err, uid: tokenUid }, "kyc/upload lock-check failed");
+      res.status(503).json({ ok: false, error: "lock_check_failed", message: "Could not verify document lock status. Please try again." });
+      return;
     }
   },
 
