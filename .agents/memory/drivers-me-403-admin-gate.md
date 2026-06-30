@@ -17,5 +17,8 @@ Driver completes verify-otp → create-PIN → presses Continue → app returns 
 1. **Replit "production" replica ≠ the live VPS database.** has_pin=false on the Replit replica is meaningless for this app; the live VPS DB is authoritative. Confirm PIN persistence via verify-pin 200, not a replica SELECT.
 2. **Frontend treats any non-404 /drivers/me error as fatal** (`DriverContext.tsx` OTP_PROFILE_GATE: "source ≠ 404 — skipping ensureDriverSignup"), so a 403 from the profile endpoint silently bounces the user to /login and looks like "PIN rejected".
 
-# Root cause to fix
-Live prod VPS `GET /api/drivers/me` is gated behind an admin-access check and rejects a normal driver's own token with 403. PIN system (verify-otp/set-pin/verify-pin) is fine.
+# Root cause (mechanism)
+The bundle's drivers router has NO `/me` route, so `GET /api/drivers/me` falls through to `router.get("/:uid", adminAuth, ...)` with `:uid="me"`; `adminAuth` verifies the token fine then 403s the non-admin driver. PIN system (verify-otp/set-pin/verify-pin) is fine.
+
+# Fix (shipped)
+Additive prod-bundle patch `production-baseline/driver-me-route-restore/` inserts a top-level `app.get("/api/drivers/me", ...)` BEFORE `app.use("/api", routes_default)` so it wins over the admin `/:uid` route. Auth via `auth.verifyIdToken` (401 not 403), PG-authoritative read of drivers+driver_documents, returns PgDriverProfile shape with server-computed onboardingStep/nextRoute. Known deviations from canonical: omits the optional Firestore→PG verification heal (PG-only) and does NOT enforce single-device `x-session-id` on this read (avoids re-introducing a bounce). Same anchor-splice/byte-safe/idempotent pattern as the auth-routes restore; both compose (insert before same anchor, 0 deletions).

@@ -317,3 +317,9 @@ id = "mvs-JtnzPA9X3qpNl7boq"
 uri = "file://production-baseline/driver-auth-routes-restore/driver-auth-routes-restore.zip"
 type = "unspecified"
 title = "driver-auth-routes-restore.zip"
+
+[[outputs]]
+id = "UiLGJMATZBNtdXF2SRrRx"
+uri = "file://production-baseline/driver-me-route-restore.zip"
+type = "unspecified"
+title = "GET /api/drivers/me restore patch (VPS bundle)"
