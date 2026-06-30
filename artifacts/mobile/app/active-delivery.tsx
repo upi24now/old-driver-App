@@ -1,12 +1,14 @@
 /**
  * active-delivery.tsx — Real logistics delivery flow
  *
- * 5-stage workflow:
- *   to_pickup → Navigate to Pickup (Google Maps) + "Arrived" CTA
- *   at_pickup → "Parcel Picked Up" CTA
- *   to_drop   → Navigate to Drop   (Google Maps) + "Arrived" CTA
- *   at_drop   → OTP bottom sheet + "Deliver Parcel" button
+ * Ride flow (navigate → mark → payment → OTP):
+ *   to_pickup → "Navigate to Pickup" (Maps) then "Mark Pickup"
+ *   at_pickup → "Navigate to Drop"   (Maps) then "Mark Drop"
+ *   at_drop   → Payment Collection sheet, THEN OTP bottom sheet (OTP never shows
+ *               before payment is confirmed) + "Deliver Parcel" button
  *   delivered → Celebration + earnings
+ * Stage writes are unchanged (to_pickup/at_pickup/to_drop/at_drop mirrored to the
+ * backend); only OTP success completes the order via the existing complete API.
  *
  * Call: Linking.openURL("tel:+91XXXXXXXXXX") — opens Android dialer, no permission needed.
  * Maps: Linking.openURL("https://www.google.com/maps/dir/?api=1&destination=…")
@@ -507,6 +509,11 @@ export default function ActiveDeliveryScreen() {
   const [cancelVisible,  setCancelVisible]  = useState(false);
   const [selectedReason, setSelectedReason] = useState<string | null>(null);
   const [otpSheetVisible, setOtpSheetVisible] = useState(false);
+  // New ride-flow UI state (navigate → mark → payment → OTP)
+  const [pickupNavigated,  setPickupNavigated]  = useState(false);
+  const [dropNavigated,    setDropNavigated]    = useState(false);
+  const [paymentVisible,   setPaymentVisible]   = useState(false);
+  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
 
   // Card slide-in on stage change
   const cardY    = useRef(new Animated.Value(60)).current;
@@ -524,11 +531,18 @@ export default function ActiveDeliveryScreen() {
   }
   useEffect(() => { animateIn(); }, [stage]);
 
-  // Auto-open OTP sheet when entering at_drop
+  // Payment-first at drop: when entering at_drop, open the Payment Collection
+  // sheet. OTP only auto-opens AFTER payment is confirmed (req: never show OTP
+  // before payment). Leaving at_drop closes both sheets.
   useEffect(() => {
-    if (stage === "at_drop") setOtpSheetVisible(true);
-    if (stage !== "at_drop") setOtpSheetVisible(false);
-  }, [stage]);
+    if (stage === "at_drop") {
+      if (paymentConfirmed) { setOtpSheetVisible(true); setPaymentVisible(false); }
+      else                  { setPaymentVisible(true);  setOtpSheetVisible(false); }
+    } else {
+      setOtpSheetVisible(false);
+      setPaymentVisible(false);
+    }
+  }, [stage, paymentConfirmed]);
 
   // ─── External cancellation guard ───────────────────────────────────────────
   useEffect(() => {
@@ -647,20 +661,18 @@ export default function ActiveDeliveryScreen() {
     }
   }, [stage]);
 
-  // ─── Stage/CTA metadata ─────────────────────────────────────────────────────
-  const CTA_META: Record<Stage, { label: string; icon: string; color: string; hint?: string }> = {
-    to_pickup: { label: "I've Reached Pickup",  icon: "map-pin",    color: PRIMARY, hint: "Tap after reaching the location" },
-    at_pickup: { label: "Parcel Picked Up",      icon: "package",    color: GREEN },
-    to_drop:   { label: "I've Reached Drop",     icon: "map-pin",    color: PRIMARY, hint: "Tap after reaching the location" },
-    at_drop:   { label: "Enter OTP to Deliver",  icon: "shield",     color: "#7C3AED" },
-    delivered: { label: "Back to Home",          icon: "home",       color: GREEN },
-  };
-  const cta = CTA_META[stage];
+  // ─── Payment classification (frontend display only; fail-safe to cash) ───────
+  // ONLINE allow-list mirrors the backend's isCashPayment philosophy: anything
+  // unknown/empty is treated as cash (COD), never as already-paid.
+  const isOnlinePaid = /^(online|prepaid|paid|upi|razorpay|wallet)$/i.test(String(paymentMode).trim());
+  const isCod        = !isOnlinePaid;
 
   // ─── Handlers ───────────────────────────────────────────────────────────────
   const handleCall      = () => callNumber(phone);
-  const handleNavPickup = () => openGoogleMaps(pickup, pickupCity);
-  const handleNavDrop   = () => openGoogleMaps(drop, dropCity);
+  // Navigate buttons ONLY open Maps and unlock the matching "Mark" CTA — they
+  // never advance the delivery stage (state changes happen on Mark taps only).
+  const handleNavPickup = () => { openGoogleMaps(pickup, pickupCity); setPickupNavigated(true); };
+  const handleNavDrop   = () => { openGoogleMaps(drop, dropCity);     setDropNavigated(true);   };
 
   async function advance() {
     if (!activeOrders.some((o) => o.id === orderId) && stage !== "delivered") return;
@@ -737,14 +749,63 @@ export default function ActiveDeliveryScreen() {
     }
   }
 
-  // ─── CTA tap handler ────────────────────────────────────────────────────────
-  function onCtaPress() {
-    if (stage === "at_drop") {
-      setOtpSheetVisible(true);
-      return;
+  // ─── Mark Drop: driver reached the drop point. Records to_drop+at_drop stages
+  // (preserving the existing tracking progression) but NEVER calls the completion
+  // API. The Payment Collection sheet opens next; OTP only opens once payment is
+  // confirmed. ─────────────────────────────────────────────────────────────────
+  async function markDrop() {
+    if (!activeOrders.some((o) => o.id === orderId) && stage !== "delivered") return;
+    haptic("success");
+    // Move UI to at_drop immediately (payment sheet opens via effect).
+    setStage("at_drop");
+    if (orderId) {
+      // Await sequentially so the backend records to_drop BEFORE at_drop. This
+      // guarantees the server is in at_drop when the later OTP /complete call
+      // arrives (which requires at_drop), avoiding an invalid_stage race.
+      // updateOrderStageViaApi is fire-and-forget safe — it never throws.
+      if (stage === "at_pickup") {
+        await updateOrderStageViaApi(orderId, "to_drop");
+      }
+      await updateOrderStageViaApi(orderId, "at_drop");
     }
-    void advance();
   }
+
+  // ─── Payment Collection confirm handlers ─────────────────────────────────────
+  function onCashCollected() {
+    haptic("light");
+    Alert.alert(
+      "Confirm Cash Received",
+      `Have you received full ₹${fareAmount} from the customer?`,
+      [
+        { text: "No", style: "cancel" },
+        { text: "Yes, Received", onPress: () => setPaymentConfirmed(true) },
+      ],
+    );
+  }
+  function onConfirmOnlinePayment() {
+    haptic("light");
+    setPaymentConfirmed(true);
+  }
+
+  // ─── Sticky CTA descriptor (navigate → mark → payment → OTP) ─────────────────
+  const cta: { label: string; icon: string; color: string; hint?: string; onPress: () => void } = (() => {
+    if (stage === "to_pickup") {
+      return pickupNavigated
+        ? { label: "Mark Pickup",        icon: "package",    color: GREEN,   onPress: () => void advance() }
+        : { label: "Navigate to Pickup", icon: "navigation", color: PRIMARY, hint: "Opens Google Maps", onPress: handleNavPickup };
+    }
+    if (stage === "at_pickup" || stage === "to_drop") {
+      return dropNavigated
+        ? { label: "Mark Drop",        icon: "map-pin",    color: GREEN,   onPress: () => void markDrop() }
+        : { label: "Navigate to Drop", icon: "navigation", color: PRIMARY, hint: "Opens Google Maps", onPress: handleNavDrop };
+    }
+    if (stage === "at_drop") {
+      return paymentConfirmed
+        ? { label: "Enter OTP to Deliver", icon: "shield",      color: "#7C3AED", onPress: () => setOtpSheetVisible(true) }
+        : { label: "Collect Payment",      icon: "dollar-sign", color: PRIMARY,   onPress: () => setPaymentVisible(true) };
+    }
+    return { label: "Back to Home", icon: "home", color: GREEN, onPress: () => void advance() };
+  })();
 
   // ─── Stage pill label ───────────────────────────────────────────────────────
   const STAGE_PILL: Record<Stage, string> = {
@@ -865,7 +926,7 @@ export default function ActiveDeliveryScreen() {
       {/* ── STICKY CTA ──────────────────────────────────────────────────────── */}
       <View style={[st.ctaWrap, { paddingBottom: insets.bottom + 12 }]}>
         <TouchableOpacity
-          onPress={onCtaPress}
+          onPress={cta.onPress}
           activeOpacity={0.87}
           style={[st.ctaBtn, { backgroundColor: cta.color }]}
         >
@@ -879,6 +940,56 @@ export default function ActiveDeliveryScreen() {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* ── PAYMENT COLLECTION SHEET (shows before OTP at drop) ─────────────── */}
+      <Modal
+        visible={paymentVisible && stage === "at_drop"}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPaymentVisible(false)}
+        statusBarTranslucent
+      >
+        <Pressable style={st.otpBackdrop} onPress={() => setPaymentVisible(false)}>
+          <Pressable style={[st.otpSheet, { paddingBottom: insets.bottom + 16 }]} onPress={() => {}}>
+            <View style={st.otpHandle} />
+
+            <View style={st.otpSheetHeader}>
+              <View style={[st.otpSheetIcon, { backgroundColor: (isCod ? PRIMARY : GREEN) + "18" }]}>
+                <Feather name={isCod ? "dollar-sign" : "check-circle"} size={20} color={isCod ? PRIMARY : GREEN} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={st.otpSheetTitle}>{isCod ? "Collect Payment" : "Payment Received"}</Text>
+                <Text style={st.otpSheetSub}>{isCod ? "Cash on delivery" : "Prepaid / online order"}</Text>
+              </View>
+            </View>
+
+            <View style={[st.payAmountBox, { borderColor: (isCod ? PRIMARY : GREEN) + "30", backgroundColor: (isCod ? PRIMARY : GREEN) + "0D" }]}>
+              <Text style={st.payAmountLabel}>Amount to Collect</Text>
+              <Text style={[st.payAmountValue, { color: isCod ? PRIMARY : GREEN }]}>
+                {isCod ? `₹${fareAmount}` : "₹0"}
+              </Text>
+              <Text style={st.payAmountHint}>
+                {isCod ? `Collect ₹${fareAmount} from customer` : "Payment already received"}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={[st.deliverBtn, { backgroundColor: isCod ? PRIMARY : GREEN }]}
+              onPress={isCod ? onCashCollected : onConfirmOnlinePayment}
+              activeOpacity={0.85}
+            >
+              <Feather name="check-circle" size={18} color="#fff" />
+              <Text style={[st.deliverBtnText, { color: "#fff" }]}>
+                {isCod ? "Cash Collected" : "Confirm Payment"}
+              </Text>
+            </TouchableOpacity>
+
+            <Text style={st.otpNote}>
+              {isCod ? "⚠️ Confirm only after receiving the full cash amount" : "Tap confirm to proceed to delivery OTP"}
+            </Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* ── OTP BOTTOM SHEET ────────────────────────────────────────────────── */}
       <Modal
@@ -1187,6 +1298,15 @@ const st = StyleSheet.create({
   },
   deliverBtnText: { fontSize: 16, fontWeight: "900" },
   otpNote: { textAlign: "center", fontSize: 11, color: MUTED, paddingBottom: 4 },
+
+  // Payment collection sheet
+  payAmountBox: {
+    borderRadius: 16, borderWidth: 1.5, paddingVertical: 20, paddingHorizontal: 16,
+    alignItems: "center", gap: 4, marginVertical: 4,
+  },
+  payAmountLabel: { fontSize: 12, fontWeight: "700", color: MUTED, textTransform: "uppercase", letterSpacing: 0.5 },
+  payAmountValue: { fontSize: 36, fontWeight: "900", fontVariant: ["tabular-nums"] },
+  payAmountHint: { fontSize: 13, fontWeight: "600", color: TEXT },
 
   // Cancel modal
   csBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.58)", justifyContent: "center", alignItems: "center" },
