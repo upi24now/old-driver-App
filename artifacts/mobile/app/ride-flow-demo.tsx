@@ -562,7 +562,7 @@ export default function RideFlowDemoScreen() {
     }
     if (stage === "to_drop") {
       return dropNavigated
-        ? { label: "Mark Drop",        icon: "map-pin",    color: GREEN,   onPress: markDrop }
+        ? { label: "Mark Drop",        icon: "map-pin",    color: RED,     onPress: markDrop }
         : { label: "Navigate to Drop", icon: "navigation", color: PRIMARY, hint: "Opens Google Maps", onPress: handleNavDrop };
     }
     if (stage === "at_drop") {
