@@ -9,13 +9,12 @@ import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Slot, Stack, useRouter, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import { AnimatedSplash } from "@/components/AnimatedSplash";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { DriverProvider, useDriver } from "@/contexts/DriverContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
@@ -194,10 +193,8 @@ export default function RootLayout() {
     ...MaterialCommunityIcons.font,
   });
 
-  const [splashVisible, setSplashVisible] = useState(true);
   const isReady = !!(fontsLoaded || fontError);
 
-  console.log("[BOOT] showSplash =",    splashVisible);
   console.log("[BOOT] fontsLoaded =",   fontsLoaded, "fontError =", !!fontError);
 
   useEffect(() => {
@@ -213,12 +210,6 @@ export default function RootLayout() {
               <ThemeProvider>
                 <DriverProvider>
                   <RootLayoutNav />
-                  {splashVisible && (
-                    <AnimatedSplash
-                      isReady={isReady}
-                      onAnimationComplete={() => setSplashVisible(false)}
-                    />
-                  )}
                 </DriverProvider>
               </ThemeProvider>
             </KeyboardProvider>
