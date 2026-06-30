@@ -305,3 +305,9 @@ id = "TrT6MBCuWHMNSto_r0C7T"
 uri = "file://production-baseline/driver-plan-active-column-fix.tar.gz"
 type = "unspecified"
 title = "driver-plan-active-column-fix.tar.gz"
+
+[[outputs]]
+id = "bJKz6qaYaMz0EgwYKi-Iq"
+uri = "file://production-baseline/driver-plans-restore/driver-plans-restore.zip"
+type = "unspecified"
+title = "driver-plans-restore.zip — apply-patch.py + INSERTED-BLOCK.js + README_DEPLOY.md + install-driver-plans-restore.sh"
