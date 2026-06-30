@@ -31,6 +31,7 @@ import { requireAuth } from "../lib/require-auth";
 import { db, driversTable, driverDocumentsTable } from "@workspace/db";
 import { eq, and, isNotNull } from "drizzle-orm";
 import { adminFirestore } from "../lib/firebase-admin";
+import { isDriverVerificationLocked, DOCUMENTS_LOCKED_MESSAGE } from "../lib/kyc-lock";
 
 const router = Router();
 
@@ -520,6 +521,13 @@ router.patch("/drivers/vehicle", async (req, res) => {
 router.post("/drivers/documents", async (req, res) => {
   const uid = await requireAuth(req, res);
   if (!uid) return;
+
+  // ── Verified drivers are locked — documents are read-only after approval ──
+  if (await isDriverVerificationLocked(uid)) {
+    req.log.warn({ uid }, "driver-profile: POST /drivers/documents blocked — documents locked after verification");
+    res.status(403).json({ ok: false, error: "documents_locked", message: DOCUMENTS_LOCKED_MESSAGE });
+    return;
+  }
 
   const body = (req.body ?? {}) as {
     documents?:       unknown;

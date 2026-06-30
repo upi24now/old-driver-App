@@ -34,6 +34,7 @@ import path from "path";
 import fs from "fs";
 import type { Request } from "express";
 import { adminAuth } from "../lib/firebase-admin";
+import { isDriverVerificationLocked, DOCUMENTS_LOCKED_MESSAGE } from "../lib/kyc-lock";
 
 const router = Router();
 
@@ -128,6 +129,30 @@ const upload = multer({
  * Response 500: { ok: false; error: string }
  */
 router.post("/kyc/upload",
+  // Step 0 — lock gate. Runs BEFORE multer so a verified driver's existing file
+  // on disk is never overwritten. Uses the token's uid (header), independent of
+  // the multipart body. On any token/lookup failure we fall through and let the
+  // existing handler return the correct 401 — we only hard-block confirmed locks.
+  async (req, res, next) => {
+    try {
+      const authHeader  = req.headers["authorization"] ?? "";
+      const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+      if (!bearerToken) { next(); return; }
+      const auth    = await adminAuth();
+      const decoded = await auth.verifyIdToken(bearerToken);
+      if (await isDriverVerificationLocked(decoded.uid)) {
+        req.log.warn({ uid: decoded.uid }, "kyc/upload blocked — documents locked after verification");
+        res.status(403).json({ ok: false, error: "documents_locked", message: DOCUMENTS_LOCKED_MESSAGE });
+        return;
+      }
+      next();
+    } catch {
+      // Token invalid/expired or lookup failed — defer to the main handler's
+      // existing 401 path; never let a verified-lock check swallow that.
+      next();
+    }
+  },
+
   // Step 1 — parse the multipart body
   (req, res, next) => {
     upload.single("file")(req, res, (err) => {

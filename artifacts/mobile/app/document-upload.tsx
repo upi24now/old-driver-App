@@ -363,7 +363,7 @@ function DocStatusChip({ lock }: { lock: NormalizedDocLock }) {
   const colors = useColors();
   type ChipCfg = { bg: string; color: string; label: string; icon: SafeIconName | null };
   const CFG: Record<NormalizedDocLock, ChipCfg> = {
-    locked:   { bg: colors.successSoft,  color: colors.success,         label: "Verified", icon: "lock"    },
+    locked:   { bg: colors.successSoft,  color: colors.success,         label: "Verified • Locked", icon: "lock"    },
     waiting:  { bg: colors.warningSoft,  color: colors.warning,         label: "Pending",  icon: "clock"   },
     reupload: { bg: colors.errorSoft,    color: colors.error,           label: "Rejected", icon: "warning" },
     upload:   { bg: colors.muted,        color: colors.mutedForeground, label: "Required", icon: null      },
@@ -670,7 +670,13 @@ export default function DocumentUploadScreen() {
   const colors     = useColors();
   const insets     = useSafeAreaInsets();
   const router     = useRouter();
-  const { driverUid, onboardingFeeApplies, onboardingFeeStatus, phone, profile, refreshKycStatus } = useDriver();
+  const { driverUid, onboardingFeeApplies, onboardingFeeStatus, phone, profile, refreshKycStatus, verificationStatus } = useDriver();
+
+  // Company policy: once a driver is approved/verified, ALL documents are
+  // read-only — no edit, replace, delete, re-upload, or picker. This driver-
+  // level lock overrides the per-document status so even docs without an
+  // individual "approved" flag are locked once the account is verified.
+  const driverLocked = verificationStatus === "approved" || verificationStatus === "verified";
   const [submitting,        setSubmitting]        = useState(false);
   const [uploadStatusText,  setUploadStatusText]  = useState<string>("");
 
@@ -757,6 +763,8 @@ export default function DocumentUploadScreen() {
   }
 
   function removeDoc(id: DocId) {
+    // Driver-level lock — verified driver cannot delete/clear any doc.
+    if (driverLocked) return;
     setDocs((prev) => ({
       ...prev,
       [id]: { ...blankDoc(), status: prev[id].status, freshUpload: false },
@@ -796,6 +804,11 @@ export default function DocumentUploadScreen() {
 
   function handleUpload(doc: DocSpec) {
     console.log("[UPLOAD_FLOW] button pressed, doc id =", doc.id);
+    // Driver-level lock — verified driver cannot open the picker for any doc.
+    if (driverLocked) {
+      console.log("[UPLOAD_FLOW] blocked — driver verified, documents locked");
+      return;
+    }
     const st = docs[doc.id];
     const lock = normalizeLock(st.status, !!st.uri);
     console.log("[UPLOAD_FLOW] lock =", lock);
@@ -1141,7 +1154,7 @@ export default function DocumentUploadScreen() {
                 <DocumentCard
                   doc={doc}
                   state={st}
-                  lockState={normalizeLock(st.status, !!st.uri)}
+                  lockState={driverLocked ? "locked" : normalizeLock(st.status, !!st.uri)}
                   onUpload={() => handleUpload(doc)}
                   onRemove={() => removeDoc(doc.id)}
                 />
