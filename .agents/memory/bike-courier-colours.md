@@ -41,3 +41,6 @@ const RED    = "#DC2626"; // error
 All StyleSheet entries reference these constants; JSX uses them directly. Update constants only — never the StyleSheet entries individually.
 
 **How to apply:** Any new screen that needs colours in both StyleSheet and JSX should follow this same bridge pattern rather than trying to call `useColors()` inside `StyleSheet.create`.
+
+## Theme detection (dark vs light)
+To branch on the active scheme inside a component, use `const { isDark } = useTheme()` from `@/contexts/ThemeContext` (the same source `useColors()` reads). Do NOT sniff `colors.foreground === "#F5F5F5"` — that hex check is brittle and silently breaks if a token value changes.
