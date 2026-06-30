@@ -22,6 +22,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
+import type { ComponentProps } from "react";
 import { useEffect, useRef, useState } from "react";
 import {
   Alert,
@@ -44,7 +45,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 const GREEN  = "#059669";
 const PINK   = "#E8336C";
 const ORANGE = "#D97706";
-const BLUE   = "#2563EB";
 const NAVY   = "#0F172A";
 const RED    = "#DC2626";
 
@@ -224,20 +224,13 @@ function RouteCard({ pickup, pickupCity, drop, dropCity, distanceKm, durationMin
   );
 }
 
-// ─── Action row (Call + Navigate) ─────────────────────────────────────────────
-function ActionRow({ onCall, onNavigate, navigateLabel }: {
-  onCall: () => void; onNavigate: () => void; navigateLabel: string;
-}) {
+// ─── Action row (Call only — navigation is handled by the bottom orange CTA) ───
+function ActionRow({ onCall }: { onCall: () => void }) {
   return (
     <View style={st.actionRow}>
       <TouchableOpacity onPress={onCall} activeOpacity={0.85} style={st.callBtn}>
         <Feather name="phone" size={16} color={GREEN} />
         <Text style={st.callTxt}>Call</Text>
-      </TouchableOpacity>
-      <TouchableOpacity onPress={onNavigate} activeOpacity={0.85} style={st.navBtn}>
-        <Feather name="map-pin" size={14} color="#fff" />
-        <Text style={st.navTxt} numberOfLines={1}>{navigateLabel}</Text>
-        <Feather name="external-link" size={11} color="rgba(255,255,255,0.75)" />
       </TouchableOpacity>
     </View>
   );
@@ -558,7 +551,7 @@ export default function RideFlowDemoScreen() {
   }
 
   // ─── Sticky CTA ─────────────────────────────────────────────────────────────
-  const cta: { label: string; icon: string; color: string; hint?: string; onPress: () => void } = (() => {
+  const cta: { label: string; icon: "rupee" | ComponentProps<typeof Feather>["name"]; color: string; hint?: string; onPress: () => void } = (() => {
     if (stage === "to_pickup") {
       return pickupNavigated
         ? { label: "Mark Pickup",        icon: "package",    color: GREEN,   onPress: markPickup }
@@ -575,7 +568,7 @@ export default function RideFlowDemoScreen() {
     if (stage === "at_drop") {
       return paymentConfirmed
         ? { label: "Enter OTP to Deliver", icon: "shield",      color: "#7C3AED", onPress: () => setOtpSheetVisible(true) }
-        : { label: "Collect Payment",      icon: "dollar-sign", color: PRIMARY,   onPress: () => setPaymentVisible(true) };
+        : { label: "Collect Payment",      icon: "rupee",       color: PRIMARY,   onPress: () => setPaymentVisible(true) };
     }
     return { label: "Restart Demo", icon: "refresh-cw", color: GREEN, onPress: resetDemo };
   })();
@@ -642,7 +635,7 @@ export default function RideFlowDemoScreen() {
           <Text style={st.toggleLabel}>Preview payment type</Text>
           <View style={st.toggleRow}>
             {([
-              { mode: "cod" as PayMode,    label: "COD / Cash",  icon: "dollar-sign" as const },
+              { mode: "cod" as PayMode,    label: "COD / Cash",  icon: "rupee" as const },
               { mode: "online" as PayMode, label: "Online / Paid", icon: "check-circle" as const },
             ]).map((opt) => {
               const sel = payMode === opt.mode;
@@ -653,7 +646,9 @@ export default function RideFlowDemoScreen() {
                   style={[st.toggleBtn, sel && { backgroundColor: PRIMARY, borderColor: PRIMARY }]}
                   onPress={() => { haptic("light"); setPayMode(opt.mode); setPaymentConfirmed(false); }}
                 >
-                  <Feather name={opt.icon} size={14} color={sel ? "#fff" : MUTED} />
+                  {opt.icon === "rupee"
+                    ? <Text style={[st.toggleRupee, { color: sel ? "#fff" : MUTED }]}>₹</Text>
+                    : <Feather name={opt.icon} size={14} color={sel ? "#fff" : MUTED} />}
                   <Text style={[st.toggleBtnTxt, { color: sel ? "#fff" : MUTED }]}>{opt.label}</Text>
                 </TouchableOpacity>
               );
@@ -670,7 +665,7 @@ export default function RideFlowDemoScreen() {
             <>
               <RouteCard pickup={o.pickup} pickupCity={o.pickupCity} drop={o.drop} dropCity={o.dropCity}
                 distanceKm={o.distKm} durationMin={o.durMin} leg="pickup" />
-              <ActionRow onCall={handleCall} onNavigate={handleNavPickup} navigateLabel="Navigate to Pickup" />
+              <ActionRow onCall={handleCall} />
               <CustomerCard customer={o.customer} phone={o.phone} pickup={o.pickup} pickupCity={o.pickupCity}
                 emoji={o.emoji} parcel={o.parcel} weight={o.weight} />
             </>
@@ -679,14 +674,14 @@ export default function RideFlowDemoScreen() {
             <>
               <PickupConfirmCard pickup={o.pickup} pickupCity={o.pickupCity} customer={o.customer}
                 phone={o.phone} emoji={o.emoji} parcel={o.parcel} weight={o.weight} />
-              <ActionRow onCall={handleCall} onNavigate={handleNavPickup} navigateLabel="Re-navigate" />
+              <ActionRow onCall={handleCall} />
             </>
           )}
           {stage === "to_drop" && (
             <>
               <RouteCard pickup={o.pickup} pickupCity={o.pickupCity} drop={o.drop} dropCity={o.dropCity}
                 distanceKm={o.distKm} durationMin={o.durMin} leg="drop" />
-              <ActionRow onCall={handleCall} onNavigate={handleNavDrop} navigateLabel="Navigate to Drop" />
+              <ActionRow onCall={handleCall} />
               <DropInfoCard drop={o.drop} dropCity={o.dropCity} customer={o.customer} phone={o.phone} />
             </>
           )}
@@ -694,7 +689,7 @@ export default function RideFlowDemoScreen() {
             <>
               <DeliverCard drop={o.drop} dropCity={o.dropCity} customer={o.customer} phone={o.phone}
                 earning={earning} emoji={o.emoji} parcel={o.parcel} />
-              <ActionRow onCall={handleCall} onNavigate={handleNavDrop} navigateLabel="Re-navigate" />
+              <ActionRow onCall={handleCall} />
             </>
           )}
           {stage === "delivered" && (
@@ -709,7 +704,9 @@ export default function RideFlowDemoScreen() {
       {/* ── STICKY CTA ──────────────────────────────────────────────────────── */}
       <View style={[st.ctaWrap, { paddingBottom: insets.bottom + 12 }]}>
         <TouchableOpacity onPress={cta.onPress} activeOpacity={0.87} style={[st.ctaBtn, { backgroundColor: cta.color }]}>
-          <Feather name={cta.icon as any} size={20} color="#fff" />
+          {cta.icon === "rupee"
+            ? <Text style={st.ctaRupee}>₹</Text>
+            : <Feather name={cta.icon} size={20} color="#fff" />}
           <Text style={st.ctaTxt}>{cta.label}</Text>
         </TouchableOpacity>
         {cta.hint && <Text style={st.ctaHint}>{cta.hint}</Text>}
@@ -727,7 +724,9 @@ export default function RideFlowDemoScreen() {
             <View style={st.otpHandle} />
             <View style={st.otpSheetHeader}>
               <View style={[st.otpSheetIcon, { backgroundColor: (isCod ? PRIMARY : GREEN) + "18" }]}>
-                <Feather name={isCod ? "dollar-sign" : "check-circle"} size={20} color={isCod ? PRIMARY : GREEN} />
+                {isCod
+                  ? <Text style={[st.sheetRupee, { color: PRIMARY }]}>₹</Text>
+                  : <Feather name="check-circle" size={20} color={GREEN} />}
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={st.otpSheetTitle}>{isCod ? "Collect Payment" : "Payment Received"}</Text>
@@ -894,6 +893,10 @@ const st = StyleSheet.create({
   routeStatusRow: { flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 10, paddingVertical: 7 },
   routeStatusTxt: { fontSize: 12, fontWeight: "700" },
 
+  toggleRupee: { fontSize: 15, fontWeight: "900", lineHeight: 16 },
+  ctaRupee: { fontSize: 22, fontWeight: "900", color: "#fff", lineHeight: 24 },
+  sheetRupee: { fontSize: 20, fontWeight: "900", lineHeight: 22 },
+
   actionRow: { flexDirection: "row", gap: 10 },
   callBtn: {
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7,
@@ -902,12 +905,6 @@ const st = StyleSheet.create({
     shadowColor: GREEN, shadowOpacity: 0.1, shadowRadius: 8, elevation: 2,
   },
   callTxt: { fontSize: 14, fontWeight: "800", color: GREEN },
-  navBtn: {
-    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
-    backgroundColor: BLUE, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 10,
-    shadowColor: BLUE, shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 5,
-  },
-  navTxt: { fontSize: 13, fontWeight: "800", color: "#fff", flex: 1, textAlign: "center" },
 
   card: {
     backgroundColor: CARD, borderRadius: 16, borderWidth: 1, borderColor: BORDER, padding: 16, gap: 13,
