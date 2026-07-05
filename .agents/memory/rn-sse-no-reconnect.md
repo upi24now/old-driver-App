@@ -1,24 +1,45 @@
 ---
-name: react-native-sse silent death on proxy 300s close
-description: Why the Driver App's /offer-stream SSE dies after ~5 min and never reconnects, so foreground drivers get no in-app order popup.
+name: react-native-sse silent death on Android — RESOLVED via polling
+description: Why the Driver App's /offer-stream SSE opened but never delivered messages on Android, and why it was replaced with polling rather than patched further.
 ---
 
-# react-native-sse@1.2.1 + pollingInterval:0 silently dies on a clean server/proxy close
+# RESOLVED: replaced SSE receive layer with polling (2026-07-05)
 
-**Symptom:** foreground, online, eligible driver gets NO in-app order popup; server shows the offer + sse_events generated instantly but ZERO `GET /api/drivers/me/offer-stream` reaching the server during the window. Earlier in the same session offer-stream connections DID exist (so library/Expo/Android all work), each ending at exactly `responseTime≈300000ms`, then NONE reappear for 40+ min even though the GPS location interval keeps posting `isOnline=true` (JS session alive + online the whole time).
+**Final symptom (superseded the earlier 300s-clean-close bug below):** even with
+the connection-age watchdog in place, production logs showed `OFFER_STREAM_OPEN`
+firing but `OFFER_STREAM_MESSAGE` **never** firing, while the server logged
+`OFFER_STREAM_SEND` repeatedly on that same connection (dispatch fully correct:
+`active_offer_driver_uids` populated, `DISPATCH OFFER ADDED` fired). This is a
+different failure mode than the 300s clean-close: the socket never went through
+a close/error at all — the client-side EventSource (built on RN's XHR) never
+surfaced ANY incremental body chunk to JS on Android, not even the first one.
 
-**Root cause (deterministic from library source):**
-- The Replit infra proxy caps long-lived SSE connections at ~300s and ends them as a normal HTTP completion → on the client XHR this is `readyState=DONE` + `status=200`.
-- In `react-native-sse@1.2.1` `EventSource.js`: the 200/DONE branch dispatches NO `error` event; it only calls `_pollAgain(this.interval, false)`. Reconnect is gated `if (time > 0 || allowZero)`. The app passes `pollingInterval: 0` (to manage reconnect itself) → `this.interval = 0` → `_pollAgain(0, false)` is a NO-OP.
-- `error` is dispatched ONLY for `status>=400`/`status!=0` or `onerror` (true network reset). The `close` event fires ONLY from the explicit `.close()` method, never on a server/proxy-initiated close.
-- The app (`utils/order-stream.ts subscribe()`) puts its manual reconnect ONLY in the `"error"` listener → on a clean proxy close, no `error` fires → reconnect never runs → EventSource silently dead.
+**Root cause:** react-native-sse is implemented entirely on top of
+`XMLHttpRequest`, reading `xhr.responseText` growth on `readystatechange`
+(readyState 3/LOADING) events. React Native's Android XHR (OkHttp-backed) does
+not reliably deliver incremental `responseText` progress for a long-lived
+chunked keep-alive stream — data only surfaces to JS when the response ends,
+which never happens for an intentionally-never-closing SSE stream. iOS's XHR
+does not have this limitation. No amount of client-side reconnect/watchdog
+logic can fix this because the problem is chunk delivery, not connection
+liveness.
 
-**Why it stays dead:** the DriverContext offer-listener effect (`DriverContext.tsx`, deps `[isOnline, driverUid, isAtCapacity, subscriptionActive]`) only re-subscribes when a dep CHANGES. A continuously-online session has no dep change, so the dead stream is never revived until a manual offline→online toggle. (Compounding: `setOnlineState(false)` is forced on every launch/auth-refresh — "always start offline" — so cold-starts also need a manual toggle to subscribe.)
+**Fix:** replaced the receive layer only (`artifacts/mobile/utils/order-stream.ts`)
+with a plain polling loop (~3s interval) against JSON REST endpoints instead of
+EventSource:
+- `GET /api/drivers/me/offers` (new, in `artifacts/api-server/src/routes/sse.ts`) —
+  same `pgGetOffersForDriver` + `pgOrderToOrderDoc` data the SSE stream pushed.
+- `GET /api/orders/:orderId` (already existed) — reused for single-order status.
 
-**A–F classification:** C — EventSource never (re)created during the offer window. NOT A (gate was open: uid set, isOnline true, subscriptionActive true to 2026-07-24, 0 active orders), NOT B (token works — REST calls authed fine same window), NOT D/E (no request reaches server), F is only the downstream symptom of C.
+**Durable rule:** on Android RN, never rely on EventSource/XHR streaming for a
+connection meant to stay open indefinitely and deliver more than one chunk —
+prefer short-interval polling against a plain JSON endpoint. The SSE
+routes/hub (`sse.ts`, `sse-hub.ts`) were kept server-side (harmless, other
+consumers may still work e.g. iOS/web), only the Driver App's Android
+consumption path was swapped.
 
-**Fix (APPLIED in `utils/order-stream.ts subscribe()`):** a connection-AGE watchdog, NOT a message/ping-silence watchdog. **Why not message-silence:** the server heartbeat is a COMMENT frame `: ping\n\n`, which react-native-sse's parser ignores → it fires NO `message` event → a "no message for 45–60s" watchdog cannot see heartbeats and would false-fire every ~50s in quiet periods. So liveness must key off connection age, not frames. Watchdog (15s tick) proactively recycles at `CONNECTION_MAX_MS=270s` (before the ~300s proxy cap, so the silent clean-close is preempted, never reached) and also recycles if `"open"` never arrives within 30s. Kept `pollingInterval:0` + manual fresh-token reconnect + error-path reconnect with backoff. **Async zombie guard (REQUIRED):** `connect()` is async (awaits `freshIdToken()`); without a guard an unsubscribe/recycle during that await still constructs an orphan EventSource → duplicate streams/popups. Fixed via a `generation` counter bumped in `teardownEs()`; `connect()` captures it before the await and bails if it changed (plus a post-await `closed` recheck). Keep FCM enabled as the wake path.
+---
 
-**`"close"` listener is useless for reconnect** here — the lib dispatches `close` ONLY from our own `.close()`, never on a server/proxy close, so it can only react to closes we initiated. Don't wire reconnect to it.
+# (superseded) earlier bug: silent death on proxy 300s close
 
-**How to confirm fast:** server request logs — offer-stream conns ending at exactly ~300000ms then never reappearing while other driver REST calls (location/fcm-token) keep landing = this bug. If `error`-path were happening you'd see periodic reconnect GETs.
+**Symptom:** foreground, online, eligible driver gets NO in-app order popup; server shows the offer + sse_events generated instantly but ZERO `GET /api/drivers/me/offer-stream` reaching the server during the window... (see git history for full original note — connection-age watchdog was applied but did not fix the deeper Android XHR chunk-delivery issue above, which is now the documented root cause and the reason polling replaced SSE entirely for this receive path).

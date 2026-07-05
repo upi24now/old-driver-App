@@ -1,28 +1,55 @@
 /**
- * PG-backed SSE realtime listeners (Phase 5J-Tier-6).
+ * PG-backed realtime-ish listeners for the Driver App's incoming-order flow
+ * (Phase 5J-Tier-6, receive-layer fix).
  *
- * Drop-in replacements for the two Firestore onSnapshot listeners that the
- * Driver App relied on:
+ * Drop-in replacements for the two Firestore onSnapshot listeners the Driver
+ * App originally relied on:
  *   • listenToAllDispatchedOrders — was firestore.ts L1 (offer set)
  *   • listenToActiveOrder         — was firestore.ts L2 (single order status)
  *
- * Both expose the EXACT same signatures and callback contracts as the Firestore
- * versions, so DriverContext only needs to swap the import path. Under the hood
- * they consume the api-server SSE streams:
- *   GET /api/drivers/me/offer-stream
- *   GET /api/orders/:orderId/stream
+ * Both expose the EXACT same signatures and callback contracts as the
+ * Firestore versions (and the prior SSE versions), so callers (DriverContext)
+ * needed NO changes.
  *
- * Connection management:
- *   • A fresh Firebase ID token is fetched before every (re)connect — long-lived
- *     SSE connections must not pin a token that expires after ~1h.
- *   • Auto-reconnect is handled manually (react-native-sse's own polling is
- *     disabled with pollingInterval: 0) so each retry gets a fresh token and
- *     resumes from the last seen event id via the Last-Event-ID header.
- *   • The server always re-emits current state on connect, so every reconnect is
- *     self-healing — the callback always converges on true current state.
+ * ── Why polling instead of SSE ──────────────────────────────────────────────
+ * This used to be an EventSource (react-native-sse) stream against
+ * GET /api/drivers/me/offer-stream / GET /api/orders/:orderId/stream.
+ *
+ * Root cause of "no popup" confirmed in production logs:
+ *   • Backend dispatch is correct: active_offer_driver_uids contains the
+ *     driver uid, "DISPATCH OFFER ADDED" fires, and the server repeatedly
+ *     logs OFFER_STREAM_SEND (i.e. it IS writing SSE frames to the socket).
+ *   • The Driver App logs OFFER_STREAM_OPEN (the EventSource reaches
+ *     readyState OPEN — the HTTP response headers were received) but NEVER
+ *     logs OFFER_STREAM_MESSAGE — no "message" event is ever dispatched by
+ *     react-native-sse, even though the server is actively writing frames on
+ *     that same open connection.
+ *   • This is a known limitation of React Native's XHR implementation on
+ *     Android: react-native-sse is built entirely on XMLHttpRequest, reading
+ *     incremental data from `xhr.responseText` on readyState-3 (LOADING)
+ *     progress events. On Android, RN's XHR (backed by OkHttp) does not
+ *     reliably deliver incremental `responseText` growth for a long-lived,
+ *     chunked, keep-alive connection — the socket opens (readyState reaches
+ *     OPEN/3), but no further "readystatechange" progress fires until the
+ *     response ends, which never happens for a stream that is designed to
+ *     stay open indefinitely. iOS's XHR does not have this limitation, which
+ *     is consistent with this being an Android-only symptom.
+ *   • This exactly matches the evidence: proxy/server-side writes succeed
+ *     (OFFER_STREAM_SEND, dispatch logs all correct), the socket opens
+ *     client-side (OFFER_STREAM_OPEN), but body chunks never surface to JS
+ *     (no OFFER_STREAM_MESSAGE) — a client-side receive-layer defect, not a
+ *     backend dispatch defect.
+ *
+ * Fix: replace ONLY the receive layer with short-interval polling against
+ * plain JSON REST endpoints that return the exact same PG-backed data the SSE
+ * streams were pushing:
+ *   • GET /api/drivers/me/offers   (new — mirrors the offer-stream snapshot)
+ *   • GET /api/orders/:orderId     (already existed — used for L2 status)
+ *
+ * No backend dispatch, FCM, PG write paths, or any other working flow (login,
+ * KYC, duty toggle, subscription, location heartbeat) are touched.
  */
 
-import EventSource from "react-native-sse";
 import { firebaseAuth } from "@/utils/firebase";
 import { getSessionIdSync } from "@/utils/session";
 import type { OrderDoc, OrderStatus } from "@/utils/firestore";
@@ -30,23 +57,12 @@ import type { OrderDoc, OrderStatus } from "@/utils/firestore";
 const DOMAIN   = process.env["EXPO_PUBLIC_DOMAIN"] ?? "";
 const BASE_URL = DOMAIN ? `https://${DOMAIN}/api` : "/api";
 
-const RECONNECT_MIN_MS = 2_000;
-const RECONNECT_MAX_MS = 30_000;
-
-// The infra/proxy in front of the SSE endpoint terminates long-lived streams at
-// ~300s as a CLEAN HTTP completion (readyState DONE, status 200). react-native-sse
-// (with pollingInterval:0) dispatches NEITHER "error" NOR "close" on that path, so
-// the stream silently dies and the app's error-only reconnect never fires.
-//
-// To survive that, a watchdog proactively recycles the connection a bit BEFORE the
-// proxy's cap so we never reach the silent clean-close. It also recycles a
-// connection that never reaches "open" (a stalled connect). NOTE: the server
-// heartbeat is a comment frame (": ping"), which react-native-sse ignores — it
-// produces no "message" event — so liveness cannot be tracked from heartbeats;
-// connection age is the reliable signal instead.
-const CONNECTION_MAX_MS = 270_000; // recycle before the ~300s infra cap
-const OPEN_TIMEOUT_MS   = 30_000;  // recycle if "open" never arrives after connect
-const WATCHDOG_TICK_MS  = 15_000;  // how often the watchdog checks
+// Fast enough that a new offer surfaces almost instantly (backend dispatch is
+// already instant; this interval is the only added latency), slow enough to
+// stay well within normal REST-call budgets for a single lightweight query.
+const POLL_INTERVAL_MS      = 3_000;
+const ERROR_BACKOFF_MS      = 8_000;
+const TOKEN_RETRY_MS        = 2_000;
 
 async function freshIdToken(): Promise<string | null> {
   const user = firebaseAuth.currentUser;
@@ -58,185 +74,105 @@ async function freshIdToken(): Promise<string | null> {
   }
 }
 
+async function authedGet<T>(path: string): Promise<T | null> {
+  const token = await freshIdToken();
+  if (!token) return null;
+
+  const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+  const sid = getSessionIdSync();
+  if (sid) headers["x-session-id"] = sid;
+
+  const res = await fetch(`${BASE_URL}${path}`, { headers });
+  // 404 (e.g. an order that no longer exists) still carries a meaningful JSON
+  // body ({ ok: false, error: "not_found" }) that callers use to converge on
+  // "gone" — only genuine transport/server failures should trip the error
+  // backoff below.
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`GET ${path} → ${res.status}`);
+  }
+  return (await res.json()) as T;
+}
+
 /**
- * Generic SSE subscription with token refresh, exponential-backoff reconnect,
- * Last-Event-ID resume, and an age/stall watchdog that recovers from the infra
- * proxy's silent ~300s clean-close. `onData` receives each parsed message
- * payload. Returns an unsubscribe function.
+ * Generic polling loop: repeatedly GETs `path`, and calls `onData` with the
+ * parsed payload whenever a fetch succeeds. Errors (network blip, transient
+ * 401 before a token refresh, etc.) are swallowed and retried on a slightly
+ * longer backoff — the next successful poll always re-syncs full state, so a
+ * missed tick never causes a stuck UI. Returns an unsubscribe function.
  */
-function subscribe<T>(
+function poll<T>(
   path: string,
-  parse: (raw: string) => T,
   onData: (value: T) => void,
 ): () => void {
-  let es: EventSource | null = null;
-  let closed = false;
-  let lastId: string | null = null;
-  let backoff = RECONNECT_MIN_MS;
-  let retryTimer: ReturnType<typeof setTimeout> | null = null;
-  let watchdog: ReturnType<typeof setInterval> | null = null;
-  let connectedAt = 0;      // when the current EventSource was constructed
-  let openedAt = 0;         // when "open" fired for the current connection (0 = not yet)
-  let lastMessageAt = 0;    // last "message" frame timestamp (diagnostic)
-  let generation = 0;       // bumped on every (re)connect/teardown; guards stale async connects
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let inFlight = false;
 
-  const teardownEs = (reason: string) => {
-    generation += 1; // invalidate any in-flight connect() for the old connection
-    if (!es) return;
-    console.log("OFFER_STREAM_CLOSED", { path, reason });
-    es.removeAllEventListeners();
-    es.close();
-    es = null;
-    openedAt = 0;
-  };
-
-  const scheduleReconnect = (reason: string) => {
-    if (closed || retryTimer) return;
-    console.log("OFFER_STREAM_RETRY", { path, reason, inMs: backoff });
-    retryTimer = setTimeout(() => {
-      retryTimer = null;
-      void connect();
-    }, backoff);
-    backoff = Math.min(backoff * 2, RECONNECT_MAX_MS);
-  };
-
-  const startWatchdog = () => {
-    if (watchdog) return;
-    watchdog = setInterval(() => {
-      if (closed || !es) return;
-      const now = Date.now();
-      // Stalled connect: constructed but never reached "open".
-      if (openedAt === 0 && now - connectedAt >= OPEN_TIMEOUT_MS) {
-        console.log("OFFER_STREAM_WATCHDOG_RECONNECT", { path, reason: "open-timeout" });
-        teardownEs("open-timeout");
-        scheduleReconnect("open-timeout");
-        return;
+  const tick = async () => {
+    if (stopped || inFlight) return;
+    inFlight = true;
+    let nextDelay = POLL_INTERVAL_MS;
+    try {
+      const data = await authedGet<T>(path);
+      if (stopped) return;
+      if (data === null) {
+        // Not authenticated yet — retry soon without treating it as an error.
+        nextDelay = TOKEN_RETRY_MS;
+      } else {
+        onData(data);
       }
-      // Proactively recycle before the proxy's silent ~300s clean-close.
-      if (now - connectedAt >= CONNECTION_MAX_MS) {
-        console.log("OFFER_STREAM_WATCHDOG_RECONNECT", {
-          path,
-          reason: "max-age",
-          ageMs: now - connectedAt,
-          lastMessageAgoMs: lastMessageAt ? now - lastMessageAt : null,
-        });
-        teardownEs("max-age");
-        scheduleReconnect("max-age");
-      }
-    }, WATCHDOG_TICK_MS);
-  };
-
-  const stopWatchdog = () => {
-    if (watchdog) {
-      clearInterval(watchdog);
-      watchdog = null;
+    } catch (err) {
+      console.log("OFFER_POLL_ERROR", { path, err: err instanceof Error ? err.message : String(err) });
+      nextDelay = ERROR_BACKOFF_MS;
+    } finally {
+      inFlight = false;
+      if (!stopped) timer = setTimeout(() => { void tick(); }, nextDelay);
     }
   };
 
-  const connect = async () => {
-    if (closed) return;
-
-    // Capture the generation BEFORE awaiting so we can detect an unsubscribe or
-    // recycle that happened while the token was being fetched — otherwise the
-    // resolved promise would construct an orphan EventSource (zombie connection).
-    const myGeneration = generation;
-
-    const token = await freshIdToken();
-    if (closed || generation !== myGeneration) return;
-    if (!token) {
-      // Not authenticated yet — retry shortly without escalating backoff hard.
-      console.log("OFFER_STREAM_TOKEN_NULL", { path });
-      scheduleReconnect("token-null");
-      return;
-    }
-
-    const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
-    if (lastId) headers["Last-Event-ID"] = lastId;
-    // Single-device login — the SSE stream is requireAuth-gated server-side, so
-    // it must echo the active session id like every other authenticated call.
-    // (EventSource bypasses the global fetch interceptor in utils/api-client.ts.)
-    const sid = getSessionIdSync();
-    if (sid) headers["x-session-id"] = sid;
-
-    connectedAt = Date.now();
-    openedAt = 0;
-
-    es = new EventSource(`${BASE_URL}${path}`, {
-      headers,
-      pollingInterval: 0, // disable built-in reconnect; we manage it manually (fresh token per retry)
-    });
-    console.log("OFFER_STREAM_EVENTSOURCE_CREATED", { path });
-
-    es.addEventListener("open", () => {
-      openedAt = Date.now();
-      backoff = RECONNECT_MIN_MS; // healthy connection resets backoff
-      console.log("OFFER_STREAM_OPEN", { path });
-    });
-
-    es.addEventListener("message", (event) => {
-      lastMessageAt = Date.now();
-      if (event.lastEventId) lastId = event.lastEventId;
-      if (!event.data) return;
-      console.log("OFFER_STREAM_MESSAGE", { path, bytes: event.data.length });
-      try {
-        onData(parse(event.data));
-      } catch {
-        // Ignore malformed frames; the next event re-syncs state.
-      }
-    });
-
-    es.addEventListener("error", (event) => {
-      console.log("OFFER_STREAM_ERROR", { path, event });
-      teardownEs("error");
-      scheduleReconnect("error");
-    });
-
-    startWatchdog();
-  };
-
-  void connect();
+  void tick();
 
   return () => {
-    closed = true;
-    if (retryTimer) {
-      clearTimeout(retryTimer);
-      retryTimer = null;
+    stopped = true;
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
     }
-    stopWatchdog();
-    teardownEs("unsubscribe");
   };
 }
 
 /**
  * Listen for ALL orders currently offered to this driver (replaces L1).
- * Calls back with the full OrderDoc array on every change. Returns unsubscribe.
+ * Calls back with the full OrderDoc array on every poll. Returns unsubscribe.
  */
 export function listenToAllDispatchedOrders(
   uid:      string,
   onOrders: (orders: OrderDoc[]) => void,
 ): () => void {
-  // uid is implied by the authenticated token server-side; kept in the signature
-  // for drop-in parity with the Firestore version.
+  // uid is implied by the authenticated token server-side; kept in the
+  // signature for drop-in parity with the Firestore/SSE versions.
   void uid;
-  return subscribe<OrderDoc[]>(
-    "/drivers/me/offer-stream",
-    (raw) => JSON.parse(raw) as OrderDoc[],
-    onOrders,
+  return poll<{ orders: OrderDoc[] }>(
+    "/drivers/me/offers",
+    (payload) => onOrders(payload.orders ?? []),
   );
 }
 
 /**
  * Subscribe to a single order's status (replaces L2).
- * Calls back with the live status string, or null if the order no longer exists
- * or is not assigned to this driver. Returns unsubscribe.
+ * Calls back with the live status string, or null if the order no longer
+ * exists or is not assigned to this driver. Returns unsubscribe.
  */
 export function listenToActiveOrder(
   orderId:  string,
   onChange: (status: OrderStatus | null) => void,
 ): () => void {
-  return subscribe<{ status: OrderStatus | null }>(
-    `/orders/${orderId}/stream`,
-    (raw) => JSON.parse(raw) as { status: OrderStatus | null },
-    (msg) => onChange(msg.status),
+  // GET /api/orders/:orderId responds { ok, order } — same shape already
+  // consumed elsewhere (see utils/firestore.ts fetchOrderById). A non-ok / 404
+  // response means the order no longer exists — reported as null, matching
+  // the previous SSE/Firestore "gone" signal.
+  return poll<{ ok?: boolean; order?: { status?: OrderStatus } }>(
+    `/orders/${orderId}`,
+    (payload) => onChange((payload.ok && payload.order?.status) ?? null),
   );
 }

@@ -37,6 +37,30 @@ function lastEventId(req: Request): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
+// ── GET /api/drivers/me/offers (POLLING fallback for the offer-stream) ───────
+//
+// Plain JSON snapshot, same payload shape/content as the SSE offer-stream's
+// per-event data (pgGetOffersForDriver → pgOrderToOrderDoc). Added because
+// react-native-sse on Android does not reliably deliver incremental SSE
+// "message" frames over a long-lived keep-alive connection — the connection
+// opens (readyState reaches OPEN) but the OkHttp-backed XHR never surfaces
+// body chunks to JS until the response ends, which never happens for a
+// streaming endpoint. This endpoint lets the Driver App poll for the exact
+// same PG-backed offer state instead. Read-only — does not touch dispatch,
+// FCM, or any write path.
+router.get("/drivers/me/offers", async (req: Request, res: Response) => {
+  const uid = await requireAuth(req, res);
+  if (!uid) return;
+
+  try {
+    const orders = await pgGetOffersForDriver(uid);
+    res.json({ orders: orders.map(pgOrderToOrderDoc) });
+  } catch (err) {
+    req.log.error({ err, uid }, "[OFFERS_POLL] snapshot failed");
+    res.status(500).json({ error: "OFFERS_POLL_FAILED" });
+  }
+});
+
 // ── GET /api/drivers/me/offer-stream (replaces L1) ───────────────────────────
 router.get("/drivers/me/offer-stream", async (req: Request, res: Response) => {
   const uid = await requireAuth(req, res);
