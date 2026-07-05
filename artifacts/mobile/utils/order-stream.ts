@@ -173,6 +173,6 @@ export function listenToActiveOrder(
   // the previous SSE/Firestore "gone" signal.
   return poll<{ ok?: boolean; order?: { status?: OrderStatus } }>(
     `/orders/${orderId}`,
-    (payload) => onChange((payload.ok && payload.order?.status) ?? null),
+    (payload) => onChange(payload.ok && payload.order?.status ? payload.order.status : null),
   );
 }
