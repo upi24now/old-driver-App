@@ -801,7 +801,7 @@ export default function ActiveDeliveryScreen() {
     }
     if (stage === "at_drop") {
       return paymentConfirmed
-        ? { label: "Enter OTP to Deliver", icon: "shield",      color: "#7C3AED", onPress: () => setOtpSheetVisible(true) }
+        ? { label: "Enter OTP to Deliver", icon: "shield",      color: RED,       onPress: () => setOtpSheetVisible(true) }
         : { label: "Collect Payment",      icon: "dollar-sign", color: PRIMARY,   onPress: () => setPaymentVisible(true) };
     }
     return { label: "Back to Home", icon: "home", color: GREEN, onPress: () => void advance() };

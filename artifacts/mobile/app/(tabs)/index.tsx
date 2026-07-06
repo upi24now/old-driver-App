@@ -41,12 +41,12 @@ const INFO         = "#2563EB";
 const INFO_SOFT    = "#EFF6FF";
 // Soft action-card palette
 const MINT          = "#0EA372";
-const MINT_SOFT     = "#D2F5E3";
-const MINT_BORDER   = "#98E0BC";
+const MINT_SOFT     = "#DCFCE7";
+const MINT_BORDER   = "#86EFAC";
 // Home dashboard "My Deliveries" / "Delivery Hub" premium lemon theme
-const LEMON_SOFT    = "#FDF6D8";
-const LEMON_BORDER  = "#F0E1A0";
-const LEMON_ACCENT  = "#92400E";
+const LEMON_SOFT    = "#FEF9C3";
+const LEMON_BORDER  = "#FDE68A";
+const LEMON_ACCENT  = "#78350F";
 // Duty-toggle bridge constants (ON = green, OFF = red)
 const SUCCESS_TRACK = "#86EFAC";
 const DANGER        = "#DC2626";
