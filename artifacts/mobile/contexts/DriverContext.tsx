@@ -1964,6 +1964,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           reason,
           note:   "immediate (resume) — heartbeat retained, retrying next tick",
         }));
+        console.log("[GPS_UPLOAD_FAIL_RETAIN_ONLINE]", JSON.stringify({ reason }));
+        console.log("[ONLINE_RETAINED_AFTER_GPS_FAIL]", JSON.stringify({ reason }));
       });
     }
     locationIntervalRef.current = setInterval(() => {
@@ -1982,6 +1984,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           reason,
           note:   "transient — heartbeat retained, retrying next tick",
         }));
+        console.log("[GPS_UPLOAD_FAIL_RETAIN_ONLINE]", JSON.stringify({ reason }));
+        console.log("[ONLINE_RETAINED_AFTER_GPS_FAIL]", JSON.stringify({ reason }));
       });
     }, 10_000);
   };
@@ -2044,11 +2048,18 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       setLastLocationSyncAt(null);
       console.log("[GPS_STATUS] tracking started");
       console.log("[DriverOnline] location update started:");
-      // (1) Immediate heartbeat; (3)(4) revert to Offline on any GPS/permission/
-      // post failure so we never show Online without a coordinate on the backend.
-      // ONLY this first go-online poll reverts — a fake Online with no coordinate
-      // is what we guard against at the moment duty is switched on.
-      void pollLocationAndUpload((reason) => revertToOffline(reason)).then(() => {
+      // (1) Immediate heartbeat. GPS/location failures (permission denied, GPS
+      // timeout, invalid coords, or a rejected /location POST) are transient
+      // and must NEVER take the driver offline — duty stays ON as long as the
+      // driver manually turned it on. We surface a non-blocking, logged
+      // warning and keep retrying on the regular 10 s heartbeat below. Duty is
+      // only ever forced offline elsewhere for manual toggle-off, an invalid
+      // session, a suspension/subscription block, or an explicit rejection of
+      // the online status itself (patchDriverStatus failure, handled above).
+      void pollLocationAndUpload((reason) => {
+        console.log("[GPS_UPLOAD_FAIL_RETAIN_ONLINE]", JSON.stringify({ reason }));
+        console.log("[ONLINE_RETAINED_AFTER_GPS_FAIL]", JSON.stringify({ reason }));
+      }).then(() => {
         console.log("[DriverOnline] location update completed:");
       });
       // Start the resilient 10 s heartbeat (interval only — the guarded initial
