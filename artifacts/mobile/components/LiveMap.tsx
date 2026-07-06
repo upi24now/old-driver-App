@@ -868,8 +868,8 @@ export default function LiveMap({ online }: { online: boolean }) {
 const strip = StyleSheet.create({
   wrap: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    marginTop:      12,
-    paddingTop:     10,
+    marginTop:      4,
+    paddingTop:     8,
   },
   header: {
     flexDirection:  "row",
@@ -959,11 +959,11 @@ const strip = StyleSheet.create({
 
 const mapStyles = StyleSheet.create({
   wrap: {
-    height:         190,
+    height:         230,
     borderRadius:   12,
     overflow:       "hidden",
     borderWidth:    StyleSheet.hairlineWidth,
-    marginTop:      4,
+    marginTop:      0,
     position:       "relative",
     alignItems:     "center",
     justifyContent: "center",
