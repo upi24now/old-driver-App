@@ -41,8 +41,12 @@ const INFO         = "#2563EB";
 const INFO_SOFT    = "#EFF6FF";
 // Soft action-card palette
 const MINT          = "#0EA372";
-const MINT_SOFT     = "#E9FBF2";
-const MINT_BORDER   = "#C7F0DD";
+const MINT_SOFT     = "#D2F5E3";
+const MINT_BORDER   = "#98E0BC";
+// Home dashboard "My Deliveries" / "Delivery Hub" premium lemon theme
+const LEMON_SOFT    = "#FDF6D8";
+const LEMON_BORDER  = "#F0E1A0";
+const LEMON_ACCENT  = "#92400E";
 // Duty-toggle bridge constants (ON = green, OFF = red)
 const SUCCESS_TRACK = "#86EFAC";
 const DANGER        = "#DC2626";
@@ -319,9 +323,9 @@ export default function HomeScreen() {
           {/* My Deliveries (moved from former floating card) */}
           <TouchableOpacity style={s.splitHalf} activeOpacity={0.85} onPress={openAvailable}>
             <View style={s.splitIcon}>
-              <Feather name="package" size={15} color={MINT} />
+              <Feather name="package" size={15} color={LEMON_ACCENT} />
             </View>
-            <Text style={[s.splitCount, { color: MINT }]} numberOfLines={1}>
+            <Text style={[s.splitCount, { color: LEMON_ACCENT }]} numberOfLines={1}>
               {activeOrderCount}
             </Text>
             <Text style={s.splitLabel} numberOfLines={1}>My Deliveries</Text>
@@ -332,10 +336,10 @@ export default function HomeScreen() {
           {/* Delivery Hub */}
           <TouchableOpacity style={s.splitHalf} activeOpacity={0.85} onPress={openHub}>
             <View style={s.splitIcon}>
-              <Feather name="grid" size={15} color={PRIMARY} />
+              <Feather name="grid" size={15} color={LEMON_ACCENT} />
             </View>
             <Text
-              style={[s.splitCount, { color: PRIMARY }, isAtCapacity && s.hubCardValueFull]}
+              style={[s.splitCount, { color: LEMON_ACCENT }, isAtCapacity && s.hubCardValueFull]}
               numberOfLines={1}
             >
               {activeOrderCount}/{maxActiveOrders}
@@ -579,10 +583,10 @@ const s = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     alignItems: "stretch",
-    backgroundColor: PRIMARY_SOFT,
+    backgroundColor: LEMON_SOFT,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#FFD9C2",
+    borderColor: LEMON_BORDER,
     paddingVertical: 10,
     paddingHorizontal: 2,
   },
@@ -605,7 +609,7 @@ const s = StyleSheet.create({
     width: 1,
     alignSelf: "stretch",
     marginVertical: 6,
-    backgroundColor: "#FFD9C2",
+    backgroundColor: LEMON_BORDER,
   },
   splitCount: { fontSize: 15, fontWeight: "900", letterSpacing: -0.3 },
   splitLabel: { fontSize: 10, fontWeight: "700", color: MUTED },
