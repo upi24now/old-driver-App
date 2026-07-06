@@ -6,7 +6,6 @@ import { checkNotificationPermissions } from "@/utils/notifications";
 import {
   type AllPermissionsStatus,
   checkAllPermissions,
-  openBatterySettings,
   openNotificationSettings,
   openPermissionSettings,
 } from "@/utils/permissions";
@@ -15,7 +14,6 @@ import {
   Alert,
   AppState,
   type AppStateStatus,
-  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -60,8 +58,7 @@ const DEFAULT_PERMS: AllPermissionsStatus = {
 };
 
 function PermissionHealthCard() {
-  const [perms, setPerms]                       = useState<AllPermissionsStatus | null>(null);
-  const [showBatteryModal, setShowBatteryModal] = useState(false);
+  const [perms, setPerms] = useState<AllPermissionsStatus | null>(null);
 
   async function refresh() {
     if (Platform.OS !== "android") return;
@@ -87,10 +84,16 @@ function PermissionHealthCard() {
     onFix: () => Promise<void>;
   };
 
+  // Foreground location is the ONLY permission that actually blocks GPS/online/
+  // offers — see the retain-online fix in DriverContext. Background Location and
+  // Battery Optimization cannot be read reliably from JS (no native module) and
+  // going online never depends on them, so they must never be presented as
+  // blocking "issues" once foreground location works. Both are opt-in advisory
+  // setup steps handled entirely by Profile › background-setup instead of
+  // nagging on the dashboard.
   const rows: Row[] = [
-    { key: "notif", icon: "bell",       label: "Notifications",       granted: perms.notifications.granted,      onFix: openNotificationSettings },
-    { key: "loc",   icon: "map-pin",    label: "Location",            granted: perms.location.granted,           onFix: openPermissionSettings },
-    { key: "bgloc", icon: "navigation", label: "Background Location", granted: perms.backgroundLocation.granted, onFix: openPermissionSettings },
+    { key: "notif", icon: "bell",    label: "Notifications", granted: perms.notifications.granted, onFix: openNotificationSettings },
+    { key: "loc",   icon: "map-pin", label: "Location",      granted: perms.location.granted,      onFix: openPermissionSettings },
   ];
 
   const issueRows = rows.filter((r) => !r.granted);
@@ -102,7 +105,7 @@ function PermissionHealthCard() {
         <Feather name="alert-triangle" size={15} color="#DC2626" />
         <Text style={ph.headerText}>Permission Issues</Text>
         <View style={ph.issueBadge}>
-          <Text style={ph.issueBadgeText}>{issueRows.length + 1} issues</Text>
+          <Text style={ph.issueBadgeText}>{issueRows.length} issue{issueRows.length === 1 ? "" : "s"}</Text>
         </View>
       </View>
 
@@ -115,39 +118,6 @@ function PermissionHealthCard() {
           </TouchableOpacity>
         </View>
       ))}
-
-      <View style={ph.row}>
-        <Feather name="battery-charging" size={14} color="#D97706" />
-        <Text style={ph.rowLabel}>Battery Optimization</Text>
-        <TouchableOpacity style={ph.fixBtn} onPress={() => setShowBatteryModal(true)} activeOpacity={0.75}>
-          <Text style={ph.fixText}>Fix</Text>
-        </TouchableOpacity>
-      </View>
-
-      <Modal visible={showBatteryModal} transparent animationType="fade" onRequestClose={() => setShowBatteryModal(false)}>
-        <View style={ph.modalOverlay}>
-          <View style={ph.modalCard}>
-            <Text style={ph.modalTitle}>Battery Optimization बंद करें</Text>
-            <View style={{ gap: 10 }}>
-              <Text style={ph.modalStep}>1. Battery या App battery usage खोलें</Text>
-              <Text style={ph.modalStep}>2. Unrestricted / Don't optimize select करें</Text>
-              <Text style={ph.modalStep}>3. Back दबाकर app में वापस आएं</Text>
-            </View>
-            <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
-              <TouchableOpacity style={ph.modalCancel} onPress={() => setShowBatteryModal(false)} activeOpacity={0.75}>
-                <Text style={ph.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={ph.modalConfirm}
-                onPress={async () => { setShowBatteryModal(false); await openBatterySettings(); }}
-                activeOpacity={0.75}
-              >
-                <Text style={ph.modalConfirmText}>Continue →</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -165,14 +135,6 @@ const ph = StyleSheet.create({
   rowLabel: { flex: 1, fontSize: 13, color: TEXT },
   fixBtn: { backgroundColor: "#FFF3EC", paddingHorizontal: 12, paddingVertical: 5, borderRadius: 8 },
   fixText: { fontSize: 12, fontWeight: "700", color: PRIMARY },
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "center", alignItems: "center", paddingHorizontal: 28 },
-  modalCard: { width: "100%", backgroundColor: CARD, borderRadius: 16, borderWidth: 1, borderColor: BORDER, padding: 20, gap: 14 },
-  modalTitle: { fontSize: 16, fontWeight: "700", color: TEXT },
-  modalStep: { fontSize: 14, lineHeight: 22, color: MUTED },
-  modalCancel: { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: "center", backgroundColor: "#F1F5F9" },
-  modalCancelText: { fontSize: 14, fontWeight: "700", color: MUTED },
-  modalConfirm: { flex: 2, paddingVertical: 12, borderRadius: 10, alignItems: "center", backgroundColor: PRIMARY },
-  modalConfirmText: { fontSize: 14, fontWeight: "700", color: "#fff" },
 });
 
 // ─── Helpers (presentation only) ──────────────────────────────────────────────
