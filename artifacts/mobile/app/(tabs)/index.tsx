@@ -781,7 +781,7 @@ const s = StyleSheet.create({
     borderColor: BORDER,
     paddingTop: 12,
     paddingBottom: 14,
-    paddingHorizontal: 12,
+    paddingHorizontal: 7,
     gap: 8,
     shadowColor: "#0F172A",
     shadowOpacity: 0.04,
