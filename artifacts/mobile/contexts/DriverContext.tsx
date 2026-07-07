@@ -745,14 +745,52 @@ export function DriverProvider({ children }: { children: ReactNode }) {
                 shouldRestore: dutyRaw === "true" && sessionValid && !isSuspended,
               }));
               if (dutyRaw === "true" && sessionValid && !isSuspended) {
-                // ── Immediate UI restore ───────────────────────────────────
-                // Set the UI online RIGHT NOW — before GPS, before backend
-                // roundtrip. The driver sees "Searching" immediately.
+                // ── Load subscription cache FIRST, before setting online ───
+                // CRITICAL: setOnlineState(true) and setSubPlan/setSubExp must
+                // be called in the same synchronous block (no await between
+                // them) so React batches them into a single render. If the sub
+                // cache is not set first, the planExpiredNoOrders effect fires
+                // on the first render where isOnline=true but
+                // subscriptionActive=false, immediately calling
+                // setOnlineState(false) and blocking the DriverOfferListener.
+                const subCacheRaw = await AsyncStorage.getItem(LOCAL_SUBSCRIPTION_KEY).catch(() => null);
+                let restoredSubPlan: string | null = null;
+                let restoredSubExp: number | null = null;
+                if (subCacheRaw) {
+                  try {
+                    const sc = JSON.parse(subCacheRaw) as { plan?: string; expiresAt?: number };
+                    if (sc.plan)      restoredSubPlan = sc.plan;
+                    if (sc.expiresAt) restoredSubExp  = sc.expiresAt;
+                  } catch {}
+                }
+                console.log("[DUTY_RESTORE_DECISION]", JSON.stringify({
+                  subCacheFound:   !!subCacheRaw,
+                  subPlan:         restoredSubPlan,
+                  subExpiresAt:    restoredSubExp,
+                  subStillActive:  restoredSubExp ? restoredSubExp > Date.now() : false,
+                  note: "sub state set synchronously with setOnlineState to prevent planExpiredEffect false-fire",
+                }));
+                // ── Set subscription state + online in ONE synchronous block ─
+                // No await between these calls — React batches them into a
+                // single render so subscriptionActive is true when the
+                // DriverOfferListener effect re-runs.
+                if (restoredSubPlan) setSubPlan(restoredSubPlan as SubPlan);
+                if (restoredSubExp)  setSubExp(restoredSubExp);
                 isOnlineRef.current = true;
                 setOnlineState(true);
                 console.log("[DUTY_RESTORE_SUCCESS]", JSON.stringify({
                   uid: uidForRestore,
                   at:  new Date().toISOString(),
+                }));
+                // ── Restart offer polling immediately ──────────────────────
+                // DriverOfferListener useEffect re-runs automatically because
+                // isOnline just changed to true (with subscriptionActive
+                // already true in the same batch). Log here so the timeline
+                // is traceable end-to-end.
+                console.log("[OFFER_POLLING_RESTORED_AFTER_RESUME]", JSON.stringify({
+                  uid:          uidForRestore,
+                  subPlan:      restoredSubPlan,
+                  subExpiresAt: restoredSubExp,
                 }));
                 // ── Start heartbeat immediately ────────────────────────────
                 // Do NOT wait for patchDriverStatus. GPS/location failures
@@ -1064,15 +1102,21 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // Force offline when plan expires with no active orders (Rule 3), or when
   // the last active order completes after expiry (Rule 5 — activeOrders.length
   // drops to 0, this effect re-fires and sets the driver offline).
+  //
+  // GUARD: !!subscriptionPlan is required — without it, this effect fires
+  // during duty restore while subscriptionPlan is still null (not yet loaded
+  // from cache or server), incorrectly forcing the driver offline the instant
+  // setOnlineState(true) is called. Only force offline when we positively
+  // know a plan existed and has since expired (matches planExpiredNoOrders).
   useEffect(() => {
-    if (!subscriptionActive && isOnline && activeOrders.length === 0) {
+    if (!!subscriptionPlan && !subscriptionActive && isOnline && activeOrders.length === 0) {
       isOnlineRef.current = false;
       setOnlineState(false);
       if (driverUid) {
         patchDriverStatus(driverUid, false).catch(console.error);
       }
     }
-  }, [subscriptionActive, isOnline, activeOrders.length]);
+  }, [subscriptionPlan, subscriptionActive, isOnline, activeOrders.length]);
 
   // ─── Account-status polling ────────────────────────────────────────────────
   // Replaces the Firestore subscribeDriverDoc real-time listener.
