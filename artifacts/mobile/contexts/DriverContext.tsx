@@ -719,52 +719,82 @@ export function DriverProvider({ children }: { children: ReactNode }) {
                 pgProfile.accountStatus === "blacklisted" ||
                 pgProfile.accountStatus === "blocked";
               // ── Duty restore ──────────────────────────────────────────────
-              // Only restore duty for a fully valid session (sessionValid guards
-              // against applying stale local state during account transitions).
-              // Read the persisted duty key. The subscription cache is read a
-              // few lines below; capture it here so we can compute sub-active
-              // from local vars (state setters are async — subscriptionActive
-              // derived value won't reflect the just-set values until the next
-              // render, so we cannot call setOnline() which checks that value).
+              // Gate: only attempt restore for a fully valid OTP session so
+              // we never apply stale local state during account transitions.
+              // Subscription expiry is intentionally NOT checked here — the
+              // planExpiredNoOrders effect handles forced-offline when the plan
+              // lapses; gating here would silently block restore whenever the
+              // subscription cache is absent or stale.
               const uidForRestore = user.uid;
+              const dutyKey = getDutyKey(uidForRestore);
               const dutyRaw = sessionValid
-                ? await AsyncStorage.getItem(getDutyKey(uidForRestore)).catch(() => null)
+                ? await AsyncStorage.getItem(dutyKey).catch(() => null)
                 : null;
-              const subCacheRaw = await AsyncStorage.getItem(LOCAL_SUBSCRIPTION_KEY).catch(() => null);
-              let cachedSubActive = false;
-              if (subCacheRaw) {
-                try {
-                  const sc = JSON.parse(subCacheRaw) as { expiresAt?: number };
-                  cachedSubActive = !!(sc.expiresAt && sc.expiresAt > Date.now());
-                } catch {}
-              }
-              const shouldRestoreDuty = dutyRaw === "true" && !isSuspended && cachedSubActive;
-              if (shouldRestoreDuty) {
-                console.log("[DUTY_RESTORE] duty was ON — restoring online state");
+              console.log("[DUTY_PERSIST_READ]", JSON.stringify({
+                uid:          uidForRestore,
+                key:          dutyKey,
+                value:        dutyRaw,
+                sessionValid,
+              }));
+              // Log every condition so failures are diagnosable from logs alone.
+              console.log("[DUTY_RESTORE_DECISION]", JSON.stringify({
+                dutyRaw,
+                sessionValid,
+                isSuspended,
+                accountStatus: pgProfile.accountStatus ?? null,
+                shouldRestore: dutyRaw === "true" && sessionValid && !isSuspended,
+              }));
+              if (dutyRaw === "true" && sessionValid && !isSuspended) {
+                // ── Immediate UI restore ───────────────────────────────────
+                // Set the UI online RIGHT NOW — before GPS, before backend
+                // roundtrip. The driver sees "Searching" immediately.
                 isOnlineRef.current = true;
                 setOnlineState(true);
-                // Sync status to backend and start heartbeat. Both are guarded
-                // so a backend rejection reverts duty cleanly.
+                console.log("[DUTY_RESTORE_SUCCESS]", JSON.stringify({
+                  uid: uidForRestore,
+                  at:  new Date().toISOString(),
+                }));
+                // ── Start heartbeat immediately ────────────────────────────
+                // Do NOT wait for patchDriverStatus. GPS/location failures
+                // are already handled by the retain-online callback and must
+                // never revert duty state.
+                startLocationHeartbeatRef.current?.({ immediate: true });
+                // ── Backend sync in background ─────────────────────────────
+                // Notify backend of restored online status. Only a hard
+                // rejection (ok:false) reverts duty and clears the key.
+                // A network error is treated as transient — duty is retained
+                // (the heartbeat will re-sync coordinates on the next tick).
                 void patchDriverStatus(uidForRestore, true)
                   .then((r) => {
                     if (!r.ok) {
-                      console.log("[DUTY_RESTORE] backend rejected — reverting offline");
+                      console.log("[DUTY_RESTORE_SKIPPED]", JSON.stringify({
+                        reason:    "backend_rejected_online_status",
+                        backendOk: r.ok,
+                        uid:       uidForRestore,
+                      }));
                       isOnlineRef.current = false;
                       setOnlineState(false);
-                      void AsyncStorage.removeItem(getDutyKey(uidForRestore)).catch(() => {});
+                      console.log("[DUTY_PERSIST_CLEAR]", JSON.stringify({ reason: "backend_rejected", uid: uidForRestore }));
+                      void AsyncStorage.removeItem(dutyKey).catch(() => {});
                     } else {
-                      console.log("[DUTY_RESTORE] backend confirmed — starting heartbeat");
-                      startLocationHeartbeatRef.current?.({ immediate: true });
+                      console.log("[DUTY_RESTORE] backend confirmed restored online status");
                     }
                   })
-                  .catch(() => {
-                    console.log("[DUTY_RESTORE] backend error — reverting offline");
-                    isOnlineRef.current = false;
-                    setOnlineState(false);
-                    void AsyncStorage.removeItem(getDutyKey(uidForRestore)).catch(() => {});
+                  .catch((err) => {
+                    // Network error — duty is retained; heartbeat will recover.
+                    console.log("[DUTY_RESTORE] backend sync failed (network) — duty retained, heartbeat will recover:", err instanceof Error ? err.message : String(err));
                   });
               } else {
-                setOnlineState(false); // not stored in PG; always start offline unless restored
+                const skipReason =
+                  !sessionValid   ? "session_not_valid" :
+                  isSuspended     ? "account_suspended_or_blocked" :
+                  dutyRaw !== "true" ? `duty_key_not_set (value=${JSON.stringify(dutyRaw)})` :
+                  "unknown";
+                console.log("[DUTY_RESTORE_SKIPPED]", JSON.stringify({
+                  reason: skipReason,
+                  uid:    uidForRestore,
+                }));
+                setOnlineState(false); // start offline — no persisted duty to restore
               }
             }
             // Subscription: restore from AsyncStorage cache (subscriptionPlan not yet in PG).
@@ -1098,6 +1128,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         setOnlineState(false);
         // Clear persisted duty so a cold-start after an account block does not
         // re-enable duty that was force-killed by the block enforcement.
+        console.log("[DUTY_PERSIST_CLEAR]", JSON.stringify({ reason: "account_blocked", uid: driverUid, accountStatus: profile.accountStatus }));
         void AsyncStorage.removeItem(getDutyKey(driverUid)).catch(() => {});
         patchDriverStatus(driverUid, false).catch(console.error);
         if (locationIntervalRef.current !== null) {
@@ -1872,7 +1903,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     // Clear persisted duty state — a fresh login must always start offline.
     // UID-scoped: clear this driver's key specifically (driverUid still set here,
     // cleared a few lines later in the state-reset block below).
-    if (driverUid) void AsyncStorage.removeItem(getDutyKey(driverUid)).catch(() => {});
+    if (driverUid) {
+      console.log("[DUTY_PERSIST_CLEAR]", JSON.stringify({ reason: "sign_out", uid: driverUid }));
+      void AsyncStorage.removeItem(getDutyKey(driverUid)).catch(() => {});
+    }
     // Reset blocked-screen navigation guard so a re-login session starts fresh.
     hasNavigatedToBlockedRef.current = false;
     try {
@@ -2077,7 +2111,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       setOnlineState(false);
       // Clear persisted duty so a future cold-start does not re-enable a duty
       // that was never confirmed by the backend.
-      if (driverUid) void AsyncStorage.removeItem(getDutyKey(driverUid)).catch(() => {});
+      if (driverUid) {
+        console.log("[DUTY_PERSIST_CLEAR]", JSON.stringify({ reason, uid: driverUid }));
+        void AsyncStorage.removeItem(getDutyKey(driverUid)).catch(() => {});
+      }
       if (locationIntervalRef.current !== null) {
         clearInterval(locationIntervalRef.current);
         locationIntervalRef.current = null;
@@ -2091,16 +2128,25 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     // correct value the instant duty is toggled — closes the offline-resume race.
     isOnlineRef.current = v;
     setOnlineState(v);
+    if (v && driverUid) {
+      // ── Persist duty IMMEDIATELY on go-online ────────────────────────────
+      // Write BEFORE the backend roundtrip so the key exists even if the app
+      // is backgrounded or killed while patchDriverStatus is in flight.
+      // A backend rejection will clear the key in the .then() branch below.
+      const dutyKeyNow = getDutyKey(driverUid);
+      void AsyncStorage.setItem(dutyKeyNow, "true").catch(() => {});
+      console.log("[DUTY_PERSIST_WRITE]", JSON.stringify({
+        uid: driverUid,
+        key: dutyKeyNow,
+        at:  new Date().toISOString(),
+      }));
+    }
     if (driverUid) {
       patchDriverStatus(driverUid, v)
         .then((r) => {
           console.log("[DriverOnline] status API response:", JSON.stringify(r));
           if (v && !r.ok) {
             revertToOffline("status_update_failed");
-          } else if (v && r.ok) {
-            // Backend confirmed online — persist duty so a cold-start restores it.
-            // UID-scoped so drivers on a shared device can't inherit each other's state.
-            if (driverUid) void AsyncStorage.setItem(getDutyKey(driverUid), "true").catch(() => {});
           }
           console.log("[DRIVER_ONLINE_FINAL_STATE]", JSON.stringify({ requested: v, backendOk: r.ok, localOnline: v ? r.ok : false }));
         })
@@ -2147,7 +2193,10 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       // offline already fired above via patchDriverStatus(driverUid, false).
       // Clear persisted duty so a cold-start does not re-enable duty that was
       // manually turned off by the driver.
-      if (driverUid) void AsyncStorage.removeItem(getDutyKey(driverUid)).catch(() => {});
+      if (driverUid) {
+        console.log("[DUTY_PERSIST_CLEAR]", JSON.stringify({ reason: "manual_duty_off", uid: driverUid }));
+        void AsyncStorage.removeItem(getDutyKey(driverUid)).catch(() => {});
+      }
       if (locationIntervalRef.current !== null) {
         clearInterval(locationIntervalRef.current);
         locationIntervalRef.current = null;
