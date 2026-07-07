@@ -2062,10 +2062,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     if (v && !subscriptionActive) {
       return { ok: false, reason: "Your subscription has expired. Activate a plan to go online." };
     }
-    // Shared revert: roll local state back to Offline whenever the backend never
-    // recorded the driver as online — missing token, failed PATCH /status, GPS
-    // failure, permission denied, or a rejected /location heartbeat. This is what
-    // prevents a "fake Online" with no coordinates (which the dispatcher ignores).
+    // Revert to Offline ONLY when the backend explicitly rejects the online status
+    // (PATCH /status returns ok:false, or throws). This is the ONLY caller of this
+    // function — GPS failure, location permission failure, heartbeat network errors,
+    // and /location POST failures all use the retain-online path (onFailure callback)
+    // and must NEVER reach here. Duty key is cleared here because the backend never
+    // recorded the driver as online in the first place.
     const revertToOffline = (reason: string) => {
       console.log("[ONLINE_REVERT_REASON]", JSON.stringify({ reason }));
       // Authoritative synchronous flip so the AppState resume watchdog can never
