@@ -2028,8 +2028,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         accuracy: Location.Accuracy.Balanced,
       });
     } catch (err) {
+      // GPS unavailable — retain online, let heartbeat retry on next tick.
+      // [ONLINE_REVERT_REASON] must NOT be logged here: the onFailure callback
+      // is the heartbeat's retain-online handler, which logs
+      // [GPS_UPLOAD_FAIL_RETAIN_ONLINE] and [ONLINE_RETAINED_AFTER_GPS_FAIL].
+      // It never calls revertToOffline and never clears the duty key.
       console.log("[GPS_UPLOAD_FAIL] getCurrentPositionAsync error:", err instanceof Error ? err.message : String(err));
-      console.log("[ONLINE_REVERT_REASON]", JSON.stringify({ reason: "gps_failed", error: err instanceof Error ? err.message : String(err) }));
       onFailure?.("gps_failed");
       return;
     }
