@@ -141,50 +141,109 @@ function pollWith<T>(
   };
 }
 
-/**
- * Fetch a single order's status for the active-order poller, with explicit
- * terminal handling for 404 (order no longer exists) and 403 (driver no
- * longer owns/has access to this order — e.g. the customer cancelled and the
- * backend revoked the driver's assignment before this poll tick landed).
- *
- * Both cases previously fell through to `authedGet`'s generic "non-200 !=
- * 404 → throw" path for 403, which surfaced as a transient OFFER_POLL_ERROR
- * and was retried forever on the error backoff — the driver app never
- * learned the order was gone, so the active-order screen stayed stuck
- * showing the last known in-flight stage (e.g. "En Route to Pickup") even
- * though the order was already cancelled server-side. Treating 403 as a
- * terminal "gone" signal (same as 404) fixes that: the caller
- * (`listenToActiveOrder`) always converges on `status: null`, driving the
- * same terminal cleanup path as a real cancelled/customer_cancelled status.
- */
-async function fetchOrderStatus(
-  orderId: string,
-): Promise<{ status: OrderStatus | null } | null> {
-  const token = await freshIdToken();
-  if (!token) return null;
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
+// Confirmation window applied to a bare 403/404 before it is trusted as a
+// real cancellation. Immediately after Accept, the backend's ownership/status
+// sync can lag the driver's very first GET /orders/:id poll tick, causing a
+// transient 403/404 even though the order is live — without this buffer that
+// false-negative was indistinguishable from a genuine customer cancellation
+// and cleared the order instantly (regression: "Order Cancelled" popup right
+// after tapping Accept). Explicit status strings (cancelled, expired, etc.)
+// returned in a normal 200 body are NOT subject to this buffer — those are
+// authoritative and clear immediately (requirement 4).
+const REVOKE_CONFIRM_RETRIES    = 2;      // additional attempts after the first 403/404
+const REVOKE_CONFIRM_DELAY_MS   = 1_700;  // spacing between confirm attempts (~3.4s total)
+
+async function fetchOrderOnce(
+  orderId: string,
+  token: string,
+): Promise<{ httpStatus: number; ok: boolean; order?: { status?: OrderStatus } }> {
   const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
   const sid = getSessionIdSync();
   if (sid) headers["x-session-id"] = sid;
 
   const res = await fetch(`${BASE_URL}/orders/${orderId}`, { headers });
-
-  if (res.status === 404) {
-    console.log("[DRIVER_ORDER_FETCH_TERMINAL_CANCELLED]", { orderId, httpStatus: res.status });
-    return { status: null };
-  }
-  if (res.status === 403) {
-    console.log("[DRIVER_ORDER_ACCESS_REVOKED_CLEAR]", { orderId, httpStatus: res.status });
-    return { status: null };
+  if (res.status === 403 || res.status === 404) {
+    return { httpStatus: res.status, ok: false };
   }
   if (!res.ok) {
-    // Genuine transport/server failure — not a terminal signal. Throw so the
-    // caller's error backoff retries instead of clearing a possibly-live order.
+    // Genuine transport/server failure — not a terminal signal. Caller throws
+    // so the poll loop's error backoff retries instead of clearing a
+    // possibly-live order.
     throw new Error(`GET /orders/${orderId} → ${res.status}`);
   }
-
   const payload = await res.json() as { ok?: boolean; order?: { status?: OrderStatus } };
-  return { status: payload.ok && payload.order?.status ? payload.order.status : null };
+  return { httpStatus: res.status, ok: true, order: payload.order };
+}
+
+/**
+ * Fetch a single order's status for the active-order poller.
+ *
+ * Explicit terminal statuses (cancelled, cancelled_by_customer, expired,
+ * no_driver_found, …) arriving in a normal 200 body are authoritative and
+ * reported immediately — no confirmation delay.
+ *
+ * A bare 403/404 (driver access revoked / order missing) is NOT trusted on
+ * the first sighting: it enters a short confirm window (2 extra attempts over
+ * ~3.4s) to rule out a transient post-Accept ownership-sync race. Only if the
+ * 403/404 persists across every attempt is it treated as a real cancellation.
+ * If any retry during the window comes back with a normal order, the
+ * cleanup is cancelled and the live status flows through as usual.
+ */
+async function fetchOrderStatus(
+  orderId: string,
+  isUnsubscribed: () => boolean,
+): Promise<{ status: OrderStatus | null } | null> {
+  const token = await freshIdToken();
+  if (!token) return null;
+
+  const first = await fetchOrderOnce(orderId, token);
+  if (first.httpStatus !== 403 && first.httpStatus !== 404) {
+    return { status: first.order?.status ?? null };
+  }
+
+  // ── Confirmation window ────────────────────────────────────────────────
+  console.log("[DRIVER_ORDER_ACCESS_REVOKED_PENDING_CONFIRM]", {
+    orderId,
+    httpStatus: first.httpStatus,
+  });
+
+  let lastStatus = first.httpStatus;
+  for (let attempt = 1; attempt <= REVOKE_CONFIRM_RETRIES; attempt++) {
+    // If the caller has already unsubscribed (screen unmounted, order ended
+    // locally, etc.) mid-confirmation, stop making network calls — there is
+    // no listener left to deliver the result to anyway.
+    if (isUnsubscribed()) return { status: null };
+
+    await sleep(REVOKE_CONFIRM_DELAY_MS);
+    if (isUnsubscribed()) return { status: null };
+
+    const retry = await fetchOrderOnce(orderId, token);
+    lastStatus = retry.httpStatus;
+    if (retry.httpStatus !== 403 && retry.httpStatus !== 404) {
+      // Access restored — this was the post-Accept sync race, not a real
+      // cancellation. Cancel the pending cleanup and resume normal flow.
+      console.log("[DRIVER_ORDER_ACCESS_REVOKED_CONFIRM_RECOVERED]", {
+        orderId,
+        attempt,
+        httpStatus: retry.httpStatus,
+      });
+      return { status: retry.order?.status ?? null };
+    }
+  }
+
+  // 403/404 persisted through every retry — genuine terminal cleanup. Report
+  // the most recently observed status (not necessarily the first) for
+  // accurate incident debugging.
+  if (lastStatus === 404) {
+    console.log("[DRIVER_ORDER_FETCH_TERMINAL_CANCELLED]", { orderId, httpStatus: lastStatus });
+  } else {
+    console.log("[DRIVER_ORDER_ACCESS_REVOKED_CLEAR]", { orderId, httpStatus: lastStatus });
+  }
+  return { status: null };
 }
 
 /**
@@ -264,12 +323,19 @@ export function listenToActiveOrder(
   // GET /api/orders/:orderId responds { ok, order } — same shape already
   // consumed elsewhere (see utils/firestore.ts fetchOrderById). A non-ok / 404
   // response means the order no longer exists, and a 403 means the driver no
-  // longer owns/has access to it (e.g. the customer cancelled) — both are
-  // reported as null, matching the previous SSE/Firestore "gone" signal. See
-  // `fetchOrderStatus` for why 403 must be treated as terminal here rather
-  // than a transient poll error.
-  return pollWith<{ status: OrderStatus | null }>(
-    () => fetchOrderStatus(orderId),
+  // longer owns/has access to it (e.g. the customer cancelled) — both go
+  // through `fetchOrderStatus`'s confirmation window before being reported as
+  // null (terminal), matching the previous SSE/Firestore "gone" signal.
+  let unsubscribed = false;
+  const isUnsubscribed = () => unsubscribed;
+
+  const stopPolling = pollWith<{ status: OrderStatus | null }>(
+    () => fetchOrderStatus(orderId, isUnsubscribed),
     (result) => onChange(result.status),
   );
+
+  return () => {
+    unsubscribed = true;
+    stopPolling();
+  };
 }
