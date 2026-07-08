@@ -431,6 +431,7 @@ const MAX_ACTIVE_ORDERS = 3;
 const ORDER_TERMINAL = new Set<OrderStatus>(["delivered", "rejected"]);
 const ORDER_CANCEL_VARIANTS = new Set([
   "cancelled", "canceled", "customer_cancelled", "order_cancelled",
+  "cancelled_by_customer", "expired", "no_driver_found",
 ]);
 function isOrderTerminal(status: OrderStatus | null): boolean {
   return (
@@ -2691,7 +2692,21 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         // a cancellation of Order A.
         setOrderRemovalReasons((prev) => ({ ...prev, [order.id]: reason }));
 
+        // Terminal cleanup for a customer-initiated cancellation (or the order
+        // becoming inaccessible to this driver, surfaced as a null status by
+        // listenToActiveOrder on 403/404). Driver online/duty state is
+        // intentionally left untouched here — this only clears the active
+        // order so the UI stops showing a stale "En Route to Pickup" screen.
+        if (reason === "cancelled" || reason === "deleted") {
+          console.log("[DRIVER_ACTIVE_ORDER_CLEARED_AFTER_CUSTOMER_CANCEL]", {
+            orderId: order.id,
+            status,
+          });
+        }
+
         // Remove only this order from the array (leaves other orders intact).
+        // This also stops the order's poller: the sync effect below unsubscribes
+        // any listener whose order id is no longer in `activeOrders`.
         setActiveOrders((prev) => prev.filter((o) => o.id !== order.id));
 
         // If the completed order was the focused one, shift focus to the next

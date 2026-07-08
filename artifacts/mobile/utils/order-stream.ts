@@ -94,6 +94,100 @@ async function authedGet<T>(path: string): Promise<T | null> {
 }
 
 /**
+ * Generic polling loop, parameterised on a fetcher instead of a fixed path.
+ * Identical scheduling/backoff behaviour to `poll` below — extracted so
+ * `listenToActiveOrder` can supply a fetcher with bespoke terminal-status
+ * handling (see `fetchOrderStatus`) while `listenToAllDispatchedOrders` keeps
+ * using the plain `authedGet` path-based fetcher via `poll`.
+ */
+function pollWith<T>(
+  fetcher: () => Promise<T | null>,
+  onData: (value: T) => void,
+): () => void {
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let inFlight = false;
+
+  const tick = async () => {
+    if (stopped || inFlight) return;
+    inFlight = true;
+    let nextDelay = POLL_INTERVAL_MS;
+    try {
+      const data = await fetcher();
+      if (stopped) return;
+      if (data === null) {
+        // Not authenticated yet — retry soon without treating it as an error.
+        nextDelay = TOKEN_RETRY_MS;
+      } else {
+        onData(data);
+      }
+    } catch (err) {
+      console.log("OFFER_POLL_ERROR", { err: err instanceof Error ? err.message : String(err) });
+      nextDelay = ERROR_BACKOFF_MS;
+    } finally {
+      inFlight = false;
+      if (!stopped) timer = setTimeout(() => { void tick(); }, nextDelay);
+    }
+  };
+
+  void tick();
+
+  return () => {
+    stopped = true;
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+}
+
+/**
+ * Fetch a single order's status for the active-order poller, with explicit
+ * terminal handling for 404 (order no longer exists) and 403 (driver no
+ * longer owns/has access to this order — e.g. the customer cancelled and the
+ * backend revoked the driver's assignment before this poll tick landed).
+ *
+ * Both cases previously fell through to `authedGet`'s generic "non-200 !=
+ * 404 → throw" path for 403, which surfaced as a transient OFFER_POLL_ERROR
+ * and was retried forever on the error backoff — the driver app never
+ * learned the order was gone, so the active-order screen stayed stuck
+ * showing the last known in-flight stage (e.g. "En Route to Pickup") even
+ * though the order was already cancelled server-side. Treating 403 as a
+ * terminal "gone" signal (same as 404) fixes that: the caller
+ * (`listenToActiveOrder`) always converges on `status: null`, driving the
+ * same terminal cleanup path as a real cancelled/customer_cancelled status.
+ */
+async function fetchOrderStatus(
+  orderId: string,
+): Promise<{ status: OrderStatus | null } | null> {
+  const token = await freshIdToken();
+  if (!token) return null;
+
+  const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+  const sid = getSessionIdSync();
+  if (sid) headers["x-session-id"] = sid;
+
+  const res = await fetch(`${BASE_URL}/orders/${orderId}`, { headers });
+
+  if (res.status === 404) {
+    console.log("[DRIVER_ORDER_FETCH_TERMINAL_CANCELLED]", { orderId, httpStatus: res.status });
+    return { status: null };
+  }
+  if (res.status === 403) {
+    console.log("[DRIVER_ORDER_ACCESS_REVOKED_CLEAR]", { orderId, httpStatus: res.status });
+    return { status: null };
+  }
+  if (!res.ok) {
+    // Genuine transport/server failure — not a terminal signal. Throw so the
+    // caller's error backoff retries instead of clearing a possibly-live order.
+    throw new Error(`GET /orders/${orderId} → ${res.status}`);
+  }
+
+  const payload = await res.json() as { ok?: boolean; order?: { status?: OrderStatus } };
+  return { status: payload.ok && payload.order?.status ? payload.order.status : null };
+}
+
+/**
  * Generic polling loop: repeatedly GETs `path`, and calls `onData` with the
  * parsed payload whenever a fetch succeeds. Errors (network blip, transient
  * 401 before a token refresh, etc.) are swallowed and retried on a slightly
@@ -169,10 +263,13 @@ export function listenToActiveOrder(
 ): () => void {
   // GET /api/orders/:orderId responds { ok, order } — same shape already
   // consumed elsewhere (see utils/firestore.ts fetchOrderById). A non-ok / 404
-  // response means the order no longer exists — reported as null, matching
-  // the previous SSE/Firestore "gone" signal.
-  return poll<{ ok?: boolean; order?: { status?: OrderStatus } }>(
-    `/orders/${orderId}`,
-    (payload) => onChange(payload.ok && payload.order?.status ? payload.order.status : null),
+  // response means the order no longer exists, and a 403 means the driver no
+  // longer owns/has access to it (e.g. the customer cancelled) — both are
+  // reported as null, matching the previous SSE/Firestore "gone" signal. See
+  // `fetchOrderStatus` for why 403 must be treated as terminal here rather
+  // than a transient poll error.
+  return pollWith<{ status: OrderStatus | null }>(
+    () => fetchOrderStatus(orderId),
+    (result) => onChange(result.status),
   );
 }

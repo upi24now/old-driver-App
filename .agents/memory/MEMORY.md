@@ -74,3 +74,4 @@
 - [pgListOnlineDrivers prod fix & bundle drift](pg-online-drivers-fix.md) — live VPS bundle drifts ahead of all local copies; ship a self-locating patcher; online-driver vehicle product fields arent in PG (derive bike→2w).
 - [Driver-plans route restore](driver-plans-route-restore.md) — restore ONLY the self-contained [BCD-PG] (create-order/verify-payment) + [BCD-PG-STATUS] IIFEs; the middle combined [BCD] IIFE fuses onboarding-fee with forbidden order/FCM/wallet routes.
 - [Prod bundle express-var drift](prod-bundle-express-var-drift.md) — esbuild import_expressNN drifts between builds; never pass it by name into an inserted IIFE; resolve express via globalThis.require shim; app/pool/auth names ARE stable.
+- [Driver order poll 403 terminal](driver-order-poll-403-terminal.md) — active-order polling must treat HTTP 403 (access revoked) same as 404 (gone) as terminal, not generic error backoff, or stale order UI never clears after cancel.
