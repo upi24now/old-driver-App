@@ -732,19 +732,31 @@ export default function ActiveDeliveryScreen() {
 
   function handleCancelOrder() {
     haptic("light");
+    console.log("[DRIVER_CANCEL_REASON_MODAL_OPEN]", { orderId, stage });
     setSelectedReason(null);
     setCancelVisible(true);
   }
 
   async function confirmCancel(reason: string) {
+    // Defensive: the modal's Confirm button is disabled when no reason is
+    // selected, so this guard should never fire in normal usage.  It protects
+    // against any direct call path that bypasses the UI gate.
+    if (!reason || !reason.trim()) {
+      console.warn("[DRIVER_CANCEL_REASON_MISSING] confirmCancel called without a reason — aborting");
+      Alert.alert("Select a reason", "Please select a cancellation reason before confirming.");
+      return;
+    }
     setCancelVisible(false);
     if (!orderId) return;
     haptic("light");
+    console.log("[DRIVER_CANCEL_REQUEST]", { orderId, cancelReason: reason, stage });
     try {
       await driverCancelOrder(orderId, driverUid ?? "", reason);
+      console.log("[DRIVER_CANCEL_SUCCESS]", { orderId, cancelReason: reason });
       endRide(orderId);
       router.replace("/(tabs)");
     } catch (err) {
+      console.error("[DRIVER_CANCEL_FAILED]", { orderId, cancelReason: reason, err: String(err) });
       Alert.alert("Cancel failed", "Could not cancel this order. Please try again.");
     }
   }

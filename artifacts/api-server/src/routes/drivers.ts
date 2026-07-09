@@ -610,6 +610,11 @@ router.post("/drivers/:uid/location", async (req, res) => {
 //
 // Auth: Bearer token uid must match :uid param.
 
+// [ORDER_ACTIVE_QUERY_EXCLUDES_CANCELLED] — this set is the authoritative
+// definition of "in-progress" for a driver.  It intentionally excludes every
+// terminal or pool status ("pending", "finding_driver", "cancelled", etc.) so
+// that return-to-pool orders (driver-cancel → pending) and terminal cancels are
+// NEVER served back to the driver as active orders.
 const ACTIVE_ORDER_STATUSES = [
   "driver_assigned", "accepted", "to_pickup", "at_pickup", "to_drop", "at_drop",
 ] as const;

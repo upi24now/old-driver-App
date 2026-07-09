@@ -668,7 +668,18 @@ router.post("/orders/:orderId/driver-cancel", async (req: Request, res: Response
   if (!driverUid) return;
 
   const body   = (req.body ?? {}) as { reason?: unknown };
-  const reason = typeof body.reason === "string" ? body.reason.slice(0, 500) : "";
+  const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 500) : "";
+
+  // ── [ORDER_CANCEL_REASON_GATE] — reject if no reason supplied ─────────────
+  // The driver app must always present the 3-reason modal before calling this
+  // route.  An empty reason means the modal was bypassed (stale client, bug, or
+  // malicious call) — reject with 400 so the API never silently accepts a
+  // reason-less cancellation.
+  if (!reason) {
+    req.log.warn({ orderId, driverUid }, "[DRIVER_CANCEL_REASON_MISSING] cancel rejected — no reason");
+    res.status(400).json({ ok: false, error: "cancel_reason_required" });
+    return;
+  }
 
   const r = await pgDriverCancelOrder(orderId, driverUid, reason);
   if (!r.ok) {
@@ -682,7 +693,7 @@ router.post("/orders/:orderId/driver-cancel", async (req: Request, res: Response
     return;
   }
 
-  req.log.info({ orderId, driverUid }, "[PG_DRIVER_CANCEL] cancelled (returned to pool)");
+  req.log.info({ orderId, driverUid, cancelReason: reason }, "[PG_DRIVER_CANCEL] cancelled (returned to pool)");
   res.json({ ok: true });
 });
 

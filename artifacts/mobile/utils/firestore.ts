@@ -276,8 +276,18 @@ export async function getActiveOrdersForDriver(
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
-    // Non-200 is NOT authoritative — throw so the caller preserves current state.
-    throw new Error(`active-orders: HTTP ${res.status}`);
+    // 403 (uid mismatch / access revoked) and 404 (order/driver not found) are
+    // TERMINAL signals — the server is telling us this driver no longer has an
+    // active order. Return an empty array so the caller clears local state,
+    // just as it does on a genuine HTTP 200 empty response.
+    // All other non-200 codes (5xx, network failure, etc.) are NOT authoritative —
+    // throw so the caller preserves current state rather than clearing it.
+    const status = res.status;
+    if (status === 403 || status === 404) {
+      console.log(`[ORDER_POLL_TERMINAL_CLEAR] HTTP ${status} on active-orders — treating as no-active-order`);
+      return [];
+    }
+    throw new Error(`active-orders: HTTP ${status}`);
   }
   // HTTP 200 is authoritative. Return the server's orders array verbatim (an
   // empty array means the driver has no active order). Never read Firestore.
@@ -378,6 +388,13 @@ export async function driverCancelOrder(
   _driverUid: string,
   reason:     string,
 ): Promise<void> {
+  // Client-side reason guard — must never reach the API without a reason.
+  // The UI already enforces this via disabled button, but this is a defensive
+  // backstop against any direct or legacy call path that bypasses the modal.
+  if (!reason || !reason.trim()) {
+    throw new Error("driver-cancel: reason is required — open the cancel modal to select one");
+  }
+
   const user = firebaseAuth.currentUser;
   if (!user) throw new Error("not authenticated");
   const token = await user.getIdToken();
@@ -387,9 +404,13 @@ export async function driverCancelOrder(
       Authorization:  `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ reason }),
+    body: JSON.stringify({ reason: reason.trim() }),
   });
   if (!res.ok) {
-    throw new Error(`driver-cancel failed (${res.status})`);
+    const status = res.status;
+    if (status === 400) {
+      throw new Error("driver-cancel: API rejected — cancel reason is required");
+    }
+    throw new Error(`driver-cancel failed (${status})`);
   }
 }
