@@ -528,6 +528,11 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // Debounce permission-denied alerts: only show once per 60 s so the heartbeat
   // (which fires every 10 s) never floods the driver with repeated dialogs.
   const lastPermissionAlertRef = useRef<number>(0);
+  // Tracks the single pending duty-restore retry setTimeout ID so it can be
+  // cancelled immediately on logout or manual Duty OFF. Only ONE retry timer
+  // is ever pending at a time — retryStatusSync cancels any previous timer
+  // before scheduling the next step.
+  const dutyRestoreRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Navigation guard — ensures router.replace("/account-blocked") fires AT MOST
   // ONCE per session regardless of how many times onAuthStateChanged or the
   // subscribeDriverDoc listener fires. Prevents remount blinks on reconnect.
@@ -808,13 +813,28 @@ export function DriverProvider({ children }: { children: ReactNode }) {
                 // Retries at 5 s → 30 s → 90 s; the running heartbeat also
                 // re-syncs isOnline on every 10 s location POST as a safety net.
                 const retryStatusSync = (uid: string, delays: number[]) => {
+                  // Cancel any previously-scheduled retry before scheduling the
+                  // next step. Guarantees only ONE timer is pending at any time,
+                  // preventing multiple simultaneous chains if this function is
+                  // ever called more than once per session.
+                  if (dutyRestoreRetryTimerRef.current !== null) {
+                    clearTimeout(dutyRestoreRetryTimerRef.current);
+                    dutyRestoreRetryTimerRef.current = null;
+                  }
+                  // All retries exhausted, or driver already went offline manually.
                   if (delays.length === 0 || !isOnlineRef.current) return;
                   const [nextDelay, ...remaining] = delays;
-                  setTimeout(() => {
-                    if (!isOnlineRef.current) return; // driver went offline manually
+                  // Store the timer ID so logout / manual-off can cancel it.
+                  dutyRestoreRetryTimerRef.current = setTimeout(() => {
+                    // Timer fired — clear the ref so it no longer looks "pending".
+                    dutyRestoreRetryTimerRef.current = null;
+                    // Guard: driver went offline (tap or logout) while timer was
+                    // pending — do not make any backend call.
+                    if (!isOnlineRef.current) return;
                     void patchDriverStatus(uid, true)
                       .then((r) => {
                         if (r.ok) {
+                          // Success — chain ends here, no further retries needed.
                           console.log("[DUTY_RESTORE_RETRY_OK]", JSON.stringify({ uid }));
                         } else {
                           console.log("[DUTY_RESTORE_RETRY_REJECTED]", JSON.stringify({ uid, dutyRetained: true, remainingRetries: remaining.length }));
@@ -1980,6 +2000,14 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       locationIntervalRef.current = null;
       console.log("[GPS_STATUS] tracking stopped (sign-out)");
     }
+    // Cancel any pending duty-restore retry timer so it cannot fire after
+    // the session is cleared (the isOnlineRef guard would stop the HTTP call,
+    // but cancelling here is the authoritative cleanup path).
+    if (dutyRestoreRetryTimerRef.current !== null) {
+      clearTimeout(dutyRestoreRetryTimerRef.current);
+      dutyRestoreRetryTimerRef.current = null;
+      console.log("[DUTY_RESTORE_RETRY_CANCEL]", JSON.stringify({ reason: "sign_out" }));
+    }
 
     // Explicitly drain the listener map before clearing state so no Firestore
     // callbacks can fire after sign-out and attempt to update unmounted state.
@@ -2288,6 +2316,13 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         locationIntervalRef.current = null;
         console.log("[LOCATION_HEARTBEAT_STOP]", JSON.stringify({ reason: "duty_off" }));
         console.log("[GPS_STATUS] tracking stopped");
+      }
+      // Cancel any pending duty-restore retry timer — the driver just
+      // deliberately turned duty OFF, so background sync retries are moot.
+      if (dutyRestoreRetryTimerRef.current !== null) {
+        clearTimeout(dutyRestoreRetryTimerRef.current);
+        dutyRestoreRetryTimerRef.current = null;
+        console.log("[DUTY_RESTORE_RETRY_CANCEL]", JSON.stringify({ reason: "manual_duty_off" }));
       }
       setLastLocationSyncAt(null);
       setIncomingRide(null);
