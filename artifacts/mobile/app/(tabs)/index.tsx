@@ -204,17 +204,30 @@ export default function HomeScreen() {
     if (v && Platform.OS !== "web") {
       const [notifOk, locStatus] = await Promise.all([
         checkNotificationPermissions().catch(() => false),
-        Location.getForegroundPermissionsAsync().catch(() => ({ granted: false })),
+        Location.getForegroundPermissionsAsync().catch(() => ({ granted: false, canAskAgain: false })),
       ]);
-      const locOk = locStatus.granted;
+      let locOk = (locStatus as { granted: boolean }).granted;
       console.log("[ONLINE_ROUTE] permission status: notif=", notifOk, "location=", locOk);
+
+      // If location is not granted, try to request it directly (system dialog).
+      // Only fall back to the setup page if the OS has permanently blocked the
+      // permission (canAskAgain === false).
+      if (!locOk) {
+        const canAsk = (locStatus as { granted: boolean; canAskAgain?: boolean }).canAskAgain !== false;
+        if (canAsk) {
+          const requested = await Location.requestForegroundPermissionsAsync().catch(() => null);
+          locOk = requested?.granted === true;
+          console.log("[ONLINE_ROUTE] permission requested, granted=", locOk);
+        }
+      }
+
       if (!notifOk || !locOk) {
         const missing = [!notifOk ? "Notifications" : null, !locOk ? "GPS Location" : null].filter(Boolean).join(" & ");
         Alert.alert(
           "Permissions Required",
-          `${missing} ${missing.includes("&") ? "permissions are" : "permission is"} required to go online and receive delivery requests. Please enable them in setup.`,
-          [{ text: "Fix Setup", onPress: () => router.push("/background-setup?back=1") }],
-          { cancelable: false },
+          `${missing} ${missing.includes("&") ? "permissions are" : "permission is"} required to go online. Please enable ${missing.includes("&") ? "them" : "it"} in your device settings.`,
+          [{ text: "Open Settings", onPress: () => router.push("/background-setup?back=1") }],
+          { cancelable: true },
         );
         return;
       }

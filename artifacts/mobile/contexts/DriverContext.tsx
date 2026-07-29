@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { AppState, Platform } from "react-native";
+import { Alert, AppState, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   onAuthStateChanged,
@@ -525,6 +525,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const heartbeatTickRef     = useRef(0);
   const isOnlineRef          = useRef(false);
   const startLocationHeartbeatRef = useRef<((opts?: { immediate?: boolean }) => void) | null>(null);
+  // Debounce permission-denied alerts: only show once per 60 s so the heartbeat
+  // (which fires every 10 s) never floods the driver with repeated dialogs.
+  const lastPermissionAlertRef = useRef<number>(0);
   // Navigation guard — ensures router.replace("/account-blocked") fires AT MOST
   // ONCE per session regardless of how many times onAuthStateChanged or the
   // subscribeDriverDoc listener fires. Prevents remount blinks on reconnect.
@@ -1100,24 +1103,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   const planExpiredNoOrders   = !!subscriptionPlan && !subscriptionActive && activeOrders.length === 0;
   const planExpiredWithOrders = !!subscriptionPlan && !subscriptionActive && activeOrders.length > 0;
 
-  // Force offline when plan expires with no active orders (Rule 3), or when
-  // the last active order completes after expiry (Rule 5 — activeOrders.length
-  // drops to 0, this effect re-fires and sets the driver offline).
-  //
-  // GUARD: !!subscriptionPlan is required — without it, this effect fires
-  // during duty restore while subscriptionPlan is still null (not yet loaded
-  // from cache or server), incorrectly forcing the driver offline the instant
-  // setOnlineState(true) is called. Only force offline when we positively
-  // know a plan existed and has since expired (matches planExpiredNoOrders).
-  useEffect(() => {
-    if (!!subscriptionPlan && !subscriptionActive && isOnline && activeOrders.length === 0) {
-      isOnlineRef.current = false;
-      setOnlineState(false);
-      if (driverUid) {
-        patchDriverStatus(driverUid, false).catch(console.error);
-      }
-    }
-  }, [subscriptionPlan, subscriptionActive, isOnline, activeOrders.length]);
+  // NOTE: Subscription expiry no longer auto-forces the driver offline.
+  // Requirement: once duty is ON, it must stay ON until the driver explicitly
+  // taps Duty OFF or logs out. The guard in setOnline() still prevents a driver
+  // from going online WITHOUT an active subscription; it just no longer knocks
+  // them offline mid-session when the plan expires. planExpiredNoOrders and
+  // planExpiredWithOrders are still derived above and used for UI warnings.
 
   // ─── Account-status polling ────────────────────────────────────────────────
   // Replaces the Firestore subscribeDriverDoc real-time listener.
@@ -2017,10 +2008,30 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     console.log("[GPS_STATUS] polling uid=", uid);
     const perm = await Location.getForegroundPermissionsAsync().catch(() => null);
     console.log("[DriverLocation] permission status:", perm?.status ?? "unknown");
-    // (3) Permission denied → never show fake Online; revert to Offline.
+    // (3) Permission denied → keep duty ON (do NOT revert to Offline), but show
+    // a debounced alert so the driver can grant permission. The heartbeat continues
+    // retrying every 10 s; once permission is granted the next tick succeeds.
     if (perm?.status !== "granted") {
-      console.log("[ONLINE_REVERT_REASON]", JSON.stringify({ reason: "location_permission_denied", status: perm?.status ?? "unknown" }));
+      console.log("[LOCATION_PERMISSION_DENIED]", JSON.stringify({ reason: "location_permission_denied", status: perm?.status ?? "unknown" }));
       onFailure?.("location_permission_denied");
+      // Show a non-blocking dialog at most once every 60 s to avoid spam.
+      const now = Date.now();
+      if (now - lastPermissionAlertRef.current > 60_000) {
+        lastPermissionAlertRef.current = now;
+        Alert.alert(
+          "Location Permission Required",
+          "GPS location access is needed while you are on duty. Please grant location permission so your position can be shared with dispatch.",
+          [
+            { text: "Not now", style: "cancel" },
+            {
+              text: "Grant Permission",
+              onPress: () => {
+                void Location.requestForegroundPermissionsAsync().catch(() => null);
+              },
+            },
+          ],
+        );
+      }
       return;
     }
     let loc: Location.LocationObject;
@@ -2195,14 +2206,19 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         .then((r) => {
           console.log("[DriverOnline] status API response:", JSON.stringify(r));
           if (v && !r.ok) {
-            revertToOffline("status_update_failed");
+            // Backend returned ok:false — log the rejection but KEEP the driver
+            // online. Network hiccups and transient server errors must never
+            // force duty OFF. The heartbeat will re-POST location on the next
+            // tick and the backend will re-sync status then.
+            console.log("[STATUS_UPDATE_BACKEND_REJECTED]", JSON.stringify({ reason: "status_update_failed", backendOk: false, dutyRetained: true }));
           }
-          console.log("[DRIVER_ONLINE_FINAL_STATE]", JSON.stringify({ requested: v, backendOk: r.ok, localOnline: v ? r.ok : false }));
+          console.log("[DRIVER_ONLINE_FINAL_STATE]", JSON.stringify({ requested: v, backendOk: r.ok, localOnline: v }));
         })
         .catch((err) => {
-          console.error(err);
-          if (v) revertToOffline("status_update_error");
-          console.log("[DRIVER_ONLINE_FINAL_STATE]", JSON.stringify({ requested: v, backendOk: false, localOnline: false }));
+          // Network or server error — keep duty ON and let the heartbeat retry.
+          console.error("[STATUS_UPDATE_ERROR] duty retained:", err instanceof Error ? err.message : String(err));
+          console.log("[STATUS_UPDATE_BACKEND_REJECTED]", JSON.stringify({ reason: "status_update_error", dutyRetained: true }));
+          console.log("[DRIVER_ONLINE_FINAL_STATE]", JSON.stringify({ requested: v, backendOk: false, localOnline: v }));
         });
     }
     if (v) {
