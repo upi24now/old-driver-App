@@ -802,29 +802,50 @@ export function DriverProvider({ children }: { children: ReactNode }) {
                 // never revert duty state.
                 startLocationHeartbeatRef.current?.({ immediate: true });
                 // ── Backend sync in background ─────────────────────────────
-                // Notify backend of restored online status. Only a hard
-                // rejection (ok:false) reverts duty and clears the key.
-                // A network error is treated as transient — duty is retained
-                // (the heartbeat will re-sync coordinates on the next tick).
+                // Notify backend of restored online status. Backend rejection
+                // (ok:false) AND network failures both retain local duty ON —
+                // only the driver tapping Duty OFF or logging out may clear it.
+                // Retries at 5 s → 30 s → 90 s; the running heartbeat also
+                // re-syncs isOnline on every 10 s location POST as a safety net.
+                const retryStatusSync = (uid: string, delays: number[]) => {
+                  if (delays.length === 0 || !isOnlineRef.current) return;
+                  const [nextDelay, ...remaining] = delays;
+                  setTimeout(() => {
+                    if (!isOnlineRef.current) return; // driver went offline manually
+                    void patchDriverStatus(uid, true)
+                      .then((r) => {
+                        if (r.ok) {
+                          console.log("[DUTY_RESTORE_RETRY_OK]", JSON.stringify({ uid }));
+                        } else {
+                          console.log("[DUTY_RESTORE_RETRY_REJECTED]", JSON.stringify({ uid, dutyRetained: true, remainingRetries: remaining.length }));
+                          retryStatusSync(uid, remaining);
+                        }
+                      })
+                      .catch(() => {
+                        retryStatusSync(uid, remaining);
+                      });
+                  }, nextDelay);
+                };
                 void patchDriverStatus(uidForRestore, true)
                   .then((r) => {
                     if (!r.ok) {
-                      console.log("[DUTY_RESTORE_SKIPPED]", JSON.stringify({
-                        reason:    "backend_rejected_online_status",
-                        backendOk: r.ok,
-                        uid:       uidForRestore,
+                      // Backend returned ok:false — log but KEEP duty ON.
+                      // Never clear the duty key or flip isOnlineRef here.
+                      console.log("[DUTY_RESTORE_BACKEND_REJECTED]", JSON.stringify({
+                        reason:       "backend_rejected_online_status_retained",
+                        backendOk:    false,
+                        dutyRetained: true,
+                        uid:          uidForRestore,
                       }));
-                      isOnlineRef.current = false;
-                      setOnlineState(false);
-                      console.log("[DUTY_PERSIST_CLEAR]", JSON.stringify({ reason: "backend_rejected", uid: uidForRestore }));
-                      void AsyncStorage.removeItem(dutyKey).catch(() => {});
+                      retryStatusSync(uidForRestore, [5_000, 30_000, 90_000]);
                     } else {
                       console.log("[DUTY_RESTORE] backend confirmed restored online status");
                     }
                   })
                   .catch((err) => {
-                    // Network error — duty is retained; heartbeat will recover.
-                    console.log("[DUTY_RESTORE] backend sync failed (network) — duty retained, heartbeat will recover:", err instanceof Error ? err.message : String(err));
+                    // Network error — duty is retained; retry + heartbeat will recover.
+                    console.log("[DUTY_RESTORE] backend sync failed (network) — duty retained, retrying:", err instanceof Error ? err.message : String(err));
+                    retryStatusSync(uidForRestore, [5_000, 30_000, 90_000]);
                   });
               } else {
                 const skipReason =
