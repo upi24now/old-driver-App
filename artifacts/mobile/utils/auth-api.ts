@@ -200,7 +200,7 @@ export async function verifyOtpApi(phone: string, otp: string): Promise<VerifyOt
 
   // The backend returns the Firebase token as `customToken`; some builds use `token`.
   // Accept either so the success contract is stable.
-  const token = json.token ?? json.customToken;
+  const token = json.token ?? json.customToken ?? (json as any).firebase_custom_token;
   if (!token) {
     console.error("[verifyOtp] no token in successful response");
     return { ok: false, error: "No token received from server." };
@@ -291,7 +291,7 @@ export async function verifyPinApi(phone: string, pin: string): Promise<VerifyPi
   }
   // The backend returns the Firebase token as `customToken`; some older builds
   // returned it as `token`. Accept either so the success contract is stable.
-  const token = json.token ?? json.customToken;
+  const token = json.token ?? json.customToken ?? (json as any).firebase_custom_token;
   if (!token) {
     console.error("[verifyPin] no token in successful response");
     return { ok: false, error: "No token received from server." };
