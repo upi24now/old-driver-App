@@ -67,6 +67,7 @@ EXPO_PUBLIC_DOMAIN = "8d87a5af-e82c-4a3b-9696-3ede901f26a1-00-1uvs4s41ult22.sisk
 TEST_OTP_PHONES = "8299013350:123456,0000000020:123456"
 ALLOW_PG_DISPATCH_WRITES = "true"
 PG_PROJECTION_ENABLED = "true"
+FIREBASE_SERVICE_ACCOUNT_JSON = "firebase-adminsdk-fbsvc@bike-1-wap.iam.gserviceaccount.com"
 
 [userenv.production]
 DISPATCH_SOURCE = "firestore"
