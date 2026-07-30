@@ -583,8 +583,13 @@ export default function LoginScreen() {
   async function handleVerify(code: string) {
     // ── PROOF LOG — must appear on every OTP verify attempt ──────────────────
     console.log("[RUNTIME_PROOF_20260730] login.tsx | handleVerify | otpIntent =", otpIntent, "| code.length =", code.length, "| digits =", digits ? "present" : "empty");
+    // ── [FP_TRACE] Step 1: handleVerify entry ─────────────────────────────────
+    console.log(`[FP_TRACE][HANDLE_VERIFY] ENTRY ts=${Date.now()} otpIntent=${otpIntent} code.length=${code.length} digits=${digits ? "present" : "empty"} verifying=${verifying}`);
 
-    if (verifying || code.length !== OTP_LENGTH || !digits) return;
+    if (verifying || code.length !== OTP_LENGTH || !digits) {
+      console.log(`[FP_TRACE][HANDLE_VERIFY] early return — guard: verifying=${verifying} codeLen=${code.length} digits=${!!digits}`);
+      return;
+    }
 
     // ── [OTP_FLOW_START] ──────────────────────────────────────────────────────
     console.log("[OTP_FLOW_START] otpIntent =", otpIntent, "| currentRoute = login (OTP phase)");
@@ -598,8 +603,12 @@ export default function LoginScreen() {
     //            goes directly to Home / onboarding (no PIN creation step).
     const isForgotFlow = otpIntent === "forgot";
     console.log("[OTP_VERIFY_SUCCESS] calling confirmOtp — isForgotFlow:", isForgotFlow, "| otpIntent:", otpIntent);
+    // ── [FP_TRACE] Step 5: about to call confirmOtp ───────────────────────────
+    console.log(`[FP_TRACE][HANDLE_VERIFY] calling confirmOtp ts=${Date.now()} isForgotFlow=${isForgotFlow}`);
 
     const result = await confirmOtp(digits, code, { pinSetupOnly: isForgotFlow });
+    // ── [FP_TRACE] Step 5: confirmOtp returned ────────────────────────────────
+    console.log(`[FP_TRACE][HANDLE_VERIFY] confirmOtp RETURNED ts=${Date.now()} ok=${result.ok} error=${result.error ?? "none"}`);
     console.log("[OTP_VERIFY_SUCCESS] result.ok:", result.ok, "| nextRoute:", result.nextRoute ?? "(none)", "| profileComplete:", result.profileComplete, "| error:", result.error ?? "none");
 
     if (!result.ok) {
@@ -609,6 +618,7 @@ export default function LoginScreen() {
       setOtp("");
       setOtpErr(result.error ?? "Verification failed. Try again.");
       setTimeout(() => otpRef.current?.focus(), 100);
+      console.log(`[FP_TRACE][HANDLE_VERIFY] OTP verify FAILED — staying on screen ts=${Date.now()}`);
       return;
     }
 
@@ -621,7 +631,10 @@ export default function LoginScreen() {
       // ── [PIN_FLOW_DECISION] ───────────────────────────────────────────────
       console.log("[PIN_FLOW_DECISION] otpIntent:", otpIntent, "| hasPin: unknown (no status check) | pinSetupInProgress: true | targetRoute: /create-pin?intent=reset | reason: forgot-PIN requires PIN reset before session");
       console.log("[RUNTIME_NAVIGATION_20260730] login.tsx | handleVerify | forgot branch | destination: /create-pin?intent=reset");
+      // ── [FP_TRACE] Step 10/11: router.replace for forgot-PIN ──────────────
+      console.log(`[FP_TRACE][HANDLE_VERIFY] FORGOT BRANCH — calling router.replace("/create-pin?intent=reset") ts=${Date.now()}`);
       router.replace("/create-pin?intent=reset" as never);
+      console.log(`[FP_TRACE][HANDLE_VERIFY] router.replace CALLED (synchronous call complete) ts=${Date.now()} — if create-pin does NOT appear, _layout.tsx effect redirected AFTER this point`);
     } else {
       // ── Normal OTP login path ──────────────────────────────────────────────
       // Full session already established by confirmOtp (establishSession called).

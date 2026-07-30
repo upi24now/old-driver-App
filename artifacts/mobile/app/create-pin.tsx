@@ -114,6 +114,11 @@ export default function CreatePinScreen() {
   useEffect(() => {
     console.log("[BUILD_SENTINEL] create-pin = ORDER-FIX build — set-pin runs BEFORE confirmPin/(drivers/me)");
     console.log("[FLOW] create-pin: screen mounted — phone:", phone ? "present" : "ABSENT");
+    // ── [FP_TRACE] Step 13: create-pin mount (proves screen was reached) ──────
+    // If this line NEVER appears in the console after OTP verify, router.replace
+    // either was not called or was immediately overwritten before React committed
+    // the navigation to the screen.
+    console.log(`[FP_TRACE][CREATE_PIN_MOUNTED] ts=${Date.now()} intent=${intent ?? "none"} phone=${phone ? "present" : "ABSENT"} ← if missing: create-pin was NEVER rendered`);
   }, []);
 
   // Auto-focus the active field as the step changes.

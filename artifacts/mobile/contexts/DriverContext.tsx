@@ -626,12 +626,15 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     );
 
     const unsub = onAuthStateChanged(firebaseAuth, (user) => {
+      // ── [FP_TRACE] Step 8: onAuthStateChanged entry ───────────────────────
+      console.log(`[FP_TRACE][ON_AUTH_STATE_CHANGED] ts=${Date.now()} uid=${user?.uid ?? "null"} pinSetupInProgress=${pinSetupInProgressRef.current}`);
       console.log("[AUTH_STATE] onAuthStateChanged uid =", user?.uid ?? null);
       console.log("[AUTH_STATE] no user =", !user);
       // ── [AUTH_STATE_CHANGED] debug ────────────────────────────────────────
       console.log("[AUTH_STATE_CHANGED] uid:", user?.uid ?? null, "| pinSetupInProgress:", pinSetupInProgressRef.current, "| isOtpVerified: (checked at next render)");
 
       if (!user) {
+        console.log(`[FP_TRACE][ON_AUTH_STATE_CHANGED] no user — setDriverUid(null) + setAuthLoading(false)`);
         setDriverUid(null);
         setAuthLoading(false);
         return;
@@ -656,10 +659,14 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       // resolves (at that point isOtpVerifying=true is already committed), so
       // driverUid is set correctly — just not here.
       if (pinSetupInProgressRef.current) {
+        // ── [FP_TRACE] Step 8: guard fired — returning early ─────────────
+        console.log(`[FP_TRACE][ON_AUTH_STATE_CHANGED] GUARD HIT — pinSetupInProgress=true → returning WITHOUT setDriverUid ts=${Date.now()}`);
         console.log("[RUNTIME_PROOF_20260730] DriverContext.tsx | onAuthStateChanged | pinSetupInProgress=true — skipping setDriverUid to prevent _layout.tsx race");
         return;
       }
 
+      // ── [FP_TRACE] Step 8: guard NOT fired — proceeding to setDriverUid ──
+      console.log(`[FP_TRACE][ON_AUTH_STATE_CHANGED] guard NOT hit — calling setDriverUid(${user.uid}) ts=${Date.now()}`);
       // Set auth identity synchronously (session restore + normal OTP only).
       setDriverUid(user.uid);
       console.log("AUTH UID =", firebaseAuth.currentUser?.uid);
@@ -1866,16 +1873,35 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     phone: string,
   ): Promise<{ ok: boolean; error?: string }> => {
     console.log("[OTP_VERIFY_START] (pin-setup) blocking layout route-guard; signInWithCustomToken only — NO profile fetch, isOtpVerified stays false");
+
+    // ── [FP_TRACE] Step 6: signInForSession entry ─────────────────────────────
+    console.log(`[FP_TRACE][SIGN_IN_FOR_SESSION] ENTRY ts=${Date.now()} — about to setIsOtpVerifying(true) then pinSetupInProgressRef=true`);
+
     setIsOtpVerifying(true);
+    // ── [FP_TRACE] Step 15: isOtpVerifying change ────────────────────────────
+    console.log(`[FP_TRACE][SIGN_IN_FOR_SESSION] setIsOtpVerifying(true) CALLED ts=${Date.now()} — React state queued, NOT yet committed`);
+
     // Suppress the onAuthStateChanged hydration/navigation triggered by the
     // sign-in below until set-pin completes (cleared inside establishSession).
     pinSetupInProgressRef.current = true;
+    // ── [FP_TRACE] Step 18: pinSetupInProgressRef change ────────────────────
+    console.log(`[FP_TRACE][SIGN_IN_FOR_SESSION] pinSetupInProgressRef.current = true DONE (synchronous ref) ts=${Date.now()}`);
+
     try {
+      // ── [FP_TRACE] Step 7: signInWithCustomToken entry ───────────────────
+      console.log(`[FP_TRACE][SIGN_IN_FOR_SESSION] calling signInWithCustomToken ts=${Date.now()} — onAuthStateChanged will fire during/after this await`);
       const credential = await signInWithCustomToken(firebaseAuth, token);
       const uid        = credential.user.uid;
+      // ── [FP_TRACE] Step 7: signInWithCustomToken resolved ───────────────
+      console.log(`[FP_TRACE][SIGN_IN_FOR_SESSION] signInWithCustomToken RESOLVED uid=${uid} ts=${Date.now()} — about to call setDriverUid`);
       console.log("[FLOW] signInForSession — signInWithCustomToken SUCCESS, uid:", uid);
+
+      // ── [FP_TRACE] Step 17: driverUid change ─────────────────────────────
+      console.log(`[FP_TRACE][SIGN_IN_FOR_SESSION] setDriverUid(${uid}) CALLED ts=${Date.now()} — React state queued, NOT yet committed`);
       setDriverUid(uid);
+      console.log(`[FP_TRACE][SIGN_IN_FOR_SESSION] setDriverUid DONE, setPhoneState next ts=${Date.now()}`);
       setPhoneState(phone);
+      console.log(`[FP_TRACE][SIGN_IN_FOR_SESSION] returning {ok:true} ts=${Date.now()} — control returns to confirmOtp → handleVerify → router.replace will be called next`);
       return { ok: true };
     } catch (err) {
       // Release the guard so normal auth routing resumes on a sign-in failure.
@@ -1883,6 +1909,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       setIsOtpVerifying(false);
       const msg = err instanceof Error ? err.message : "Sign-in failed.";
       console.error("[FLOW] signInForSession — sign-in failed:", msg);
+      console.log(`[FP_TRACE][SIGN_IN_FOR_SESSION] ERROR — pinSetupInProgressRef=false, setIsOtpVerifying(false), returning {ok:false} ts=${Date.now()}`);
       return { ok: false, error: msg };
     }
   };

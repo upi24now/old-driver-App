@@ -41,6 +41,24 @@ function RootLayoutNav() {
   const pathname = usePathname();
   const { authLoading, driverUid, isOtpVerified, isOtpVerifying, localPermissionVersion } = useDriver();
 
+  // ── [FP_TRACE] render counter — increments on every re-render of this component
+  const renderCountRef = useRef(0);
+  renderCountRef.current += 1;
+  const rc = renderCountRef.current;
+
+  // ── [FP_TRACE] dense render log — shows every state snapshot in sequence ──────
+  // Filter on "[FP_TRACE]" in the Expo console to see the forgot-PIN execution path.
+  console.log(
+    `[FP_TRACE][LAYOUT_RENDER #${rc}] ts=${Date.now()}`,
+    `| pathname=${pathname}`,
+    `| authLoading=${authLoading}`,
+    `| driverUid=${driverUid ? "SET" : "null"}`,
+    `| isOtpVerified=${isOtpVerified}`,
+    `| isOtpVerifying=${isOtpVerifying}`,
+    `| localPermVer=${localPermissionVersion}`,
+    `| firebaseUser=${firebaseAuth.currentUser?.uid ? "SET" : "null"}`,
+  );
+
   console.log("[GUARD] pathname =", pathname, "| driverUid =", driverUid ? "present" : "null", "| isOtpVerified =", isOtpVerified, "| isOtpVerifying =", isOtpVerifying, "| authLoading(isLoading) =", authLoading);
   console.log("[BOOT] render");
   console.log("[BOOT] authLoading =",   authLoading);
@@ -75,10 +93,32 @@ function RootLayoutNav() {
   //   otp.tsx calls router.back() + router.replace(nextRoute) after confirmOtp() succeeds.
   //   back() pops /otp; replace() swaps /login with the destination — stack ends as [nextRoute].
   //   isOtpVerified=true → this effect is a no-op.
+  // Capture render count at the time the effect *closure* is created so the
+  // effect log matches the render that scheduled it.
+  const renderCountAtEffect = useRef(0);
+  renderCountAtEffect.current = rc;
+
   useEffect(() => {
-    if (authLoading) return;
+    const effectRc = renderCountAtEffect.current;
+    console.log(
+      `[FP_TRACE][LAYOUT_EFFECT #${effectRc}] ts=${Date.now()}`,
+      `| authLoading=${authLoading}`,
+      `| driverUid=${driverUid ? "SET" : "null"}`,
+      `| isOtpVerified=${isOtpVerified}`,
+      `| isOtpVerifying=${isOtpVerifying}`,
+      `| localPermVer=${localPermissionVersion}`,
+      `| firebaseUser=${firebaseAuth.currentUser?.uid ? "SET" : "null"}`,
+    );
+
+    if (authLoading) {
+      console.log(`[FP_TRACE][LAYOUT_EFFECT #${effectRc}] BRANCH → early-return: authLoading=true`);
+      return;
+    }
     // Block until AsyncStorage boot read completes (resolves in <50 ms).
-    if (localPermissionVersion === null) return;
+    if (localPermissionVersion === null) {
+      console.log(`[FP_TRACE][LAYOUT_EFFECT #${effectRc}] BRANCH → early-return: localPermissionVersion=null`);
+      return;
+    }
 
     // ── Flash guard ───────────────────────────────────────────────────────────
     // confirmOtp() sets isOtpVerifying=true BEFORE calling signInWithCustomToken.
@@ -88,6 +128,7 @@ function RootLayoutNav() {
     // cleared together with setIsOtpVerified(true) in the same React render batch,
     // so the next effect fire sees isOtpVerified=true and becomes a no-op.
     if (isOtpVerifying) {
+      console.log(`[FP_TRACE][LAYOUT_EFFECT #${effectRc}] BRANCH → early-return: isOtpVerifying=true (flash guard active)`);
       console.log("[LAYOUT_SKIP_DURING_OTP]", "[LOGIN_FLASH_BLOCKED]", "— isOtpVerifying=true; route guard suspended to prevent /login flash");
       return;
     }
@@ -96,10 +137,12 @@ function RootLayoutNav() {
       // Not authenticated — show permission onboarding on first install;
       // go to login for returning drivers who have already completed it.
       if (localPermissionVersion < PERMISSION_SETUP_VERSION) {
+        console.log(`[FP_TRACE][LAYOUT_EFFECT #${effectRc}] BRANCH → /background-setup (no driverUid, first install)`);
         console.log("[PERMISSION_GATE] first launch — localVer =", localPermissionVersion, "→ /background-setup");
         console.log("[RUNTIME_NAVIGATION_20260730] _layout.tsx | RootLayoutNav effect | destination: /background-setup");
         router.replace("/background-setup");
       } else {
+        console.log(`[FP_TRACE][LAYOUT_EFFECT #${effectRc}] BRANCH → /login (no driverUid, no_session) | firebaseUser=${firebaseAuth.currentUser?.uid ? "SET" : "null"}`);
         console.log("[BOOT_ROUTE] chosenRoute = /login (no_session)");
         console.log("[RUNTIME_NAVIGATION_20260730] _layout.tsx | RootLayoutNav effect | destination: /login (no_session)");
         router.replace("/login");
@@ -108,6 +151,7 @@ function RootLayoutNav() {
     }
 
     if (!isOtpVerified) {
+      console.log(`[FP_TRACE][LAYOUT_EFFECT #${effectRc}] BRANCH → /login (driverUid=SET but isOtpVerified=false, isOtpVerifying=false) ← THIS KILLS FORGOT-PIN IF IT FIRES`);
       console.log("[GUARD] REDIRECT → /login | reason = otp_required (driverUid present but isOtpVerified=false) | from pathname =", pathname);
       console.log("[BOOT_ROUTE] chosenRoute = /login (otp_required uid =", driverUid, ")");
       console.log("[RUNTIME_NAVIGATION_20260730] _layout.tsx | RootLayoutNav effect | destination: /login (otp_required)");
@@ -117,6 +161,7 @@ function RootLayoutNav() {
 
     // isOtpVerified=true: navigation was already handled upstream by either
     // otp.tsx (fresh OTP) or onAuthStateChanged (session restore).
+    console.log(`[FP_TRACE][LAYOUT_EFFECT #${effectRc}] BRANCH → no-op (isOtpVerified=true, handled upstream)`);
     console.log("[ROUTE_DECISION] handled upstream — session restore or fresh OTP");
   }, [authLoading, driverUid, isOtpVerified, isOtpVerifying, localPermissionVersion]);
 
