@@ -853,15 +853,20 @@ export default function LoginScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* ── [DEV] Try V2 login — remove after V2 testing complete ── */}
-              <TouchableOpacity
-                onPress={() => router.push("/login-v2" as never)}
-                activeOpacity={0.7}
-                hitSlop={8}
-                style={ss.tryV2Btn}
-              >
-                <Text style={ss.tryV2Text}>⚡ Try V2 Login →</Text>
-              </TouchableOpacity>
+              {/* ── [DEV] Try V2 login — __DEV__ only, never shown in production ── */}
+              {__DEV__ && (
+                <TouchableOpacity
+                  onPress={() => {
+                    console.log("[V2_ENTRY]\nNavigating to /login-v2");
+                    router.push("/login-v2" as never);
+                  }}
+                  activeOpacity={0.7}
+                  hitSlop={8}
+                  style={ss.tryV2Btn}
+                >
+                  <Text style={ss.tryV2Text}>⚡ Try V2 Login →</Text>
+                </TouchableOpacity>
+              )}
 
               {/* ── Terms ── */}
               <View style={ss.termsRow}>
