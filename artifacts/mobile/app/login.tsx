@@ -540,6 +540,7 @@ export default function LoginScreen() {
     }
 
     const nextRoute = result.nextRoute ?? (result.profileComplete ? "/(tabs)" : "/registration");
+    console.log("[RUNTIME_NAVIGATION_20260730] login.tsx | handleConfirmPin | destination:", nextRoute);
     router.replace(nextRoute as never);
   }
 
@@ -580,6 +581,9 @@ export default function LoginScreen() {
 
   // ── Verify OTP ────────────────────────────────────────────────────────────
   async function handleVerify(code: string) {
+    // ── PROOF LOG — must appear on every OTP verify attempt ──────────────────
+    console.log("[RUNTIME_PROOF_20260730] login.tsx | handleVerify | otpIntent =", otpIntent, "| code.length =", code.length, "| digits =", digits ? "present" : "empty");
+
     if (verifying || code.length !== OTP_LENGTH || !digits) return;
 
     // ── [OTP_FLOW_START] ──────────────────────────────────────────────────────
@@ -616,7 +620,7 @@ export default function LoginScreen() {
       // must set a new PIN on /create-pin before /drivers/me is called.
       // ── [PIN_FLOW_DECISION] ───────────────────────────────────────────────
       console.log("[PIN_FLOW_DECISION] otpIntent:", otpIntent, "| hasPin: unknown (no status check) | pinSetupInProgress: true | targetRoute: /create-pin?intent=reset | reason: forgot-PIN requires PIN reset before session");
-      console.log("[NAVIGATION_TRIGGER] caller: login.tsx | function: handleVerify | line: ~612 | destination: /create-pin?intent=reset");
+      console.log("[RUNTIME_NAVIGATION_20260730] login.tsx | handleVerify | forgot branch | destination: /create-pin?intent=reset");
       router.replace("/create-pin?intent=reset" as never);
     } else {
       // ── Normal OTP login path ──────────────────────────────────────────────
@@ -625,7 +629,7 @@ export default function LoginScreen() {
       const next = result.nextRoute ?? (result.profileComplete ? "/(tabs)" : "/registration");
       // ── [PIN_FLOW_DECISION] ───────────────────────────────────────────────
       console.log("[PIN_FLOW_DECISION] otpIntent:", otpIntent, "| targetRoute:", next, "| reason: normal OTP login uses full session (no PIN create step)");
-      console.log("[NAVIGATION_TRIGGER] caller: login.tsx | function: handleVerify | line: ~624 | destination:", next);
+      console.log("[RUNTIME_NAVIGATION_20260730] login.tsx | handleVerify | normal branch | destination:", next);
       router.replace(next as never);
     }
   }

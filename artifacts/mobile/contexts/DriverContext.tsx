@@ -609,6 +609,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       console.log("[FLOW] DriverContext: SESSION_REPLACED handler fired → signOut() → router.replace('/login') (THIS is the bounce to login)");
       void signOut().finally(() => {
         try {
+          console.log("[RUNTIME_NAVIGATION_20260730] DriverContext.tsx | SESSION_REPLACED | destination: /login");
           router.replace("/login");
         } catch {
           // Navigation may fail if the router is not mounted yet — _layout.tsx
@@ -1066,6 +1067,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             if (nextRoute === "/account-blocked") {
               hasNavigatedToBlockedRef.current = true;
             }
+            console.log("[RUNTIME_NAVIGATION_20260730] DriverContext.tsx | onAuthStateChanged session-restore | destination:", nextRoute);
             router.replace(nextRoute as never);
           }
           console.log("[AUTH_RESTORE] setAuthLoading false (session restore complete)");
@@ -1219,6 +1221,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           console.log("[ACCOUNT_ENFORCEMENT_REFRESH] blocked screen already mounted — navigation suppressed");
         } else {
           hasNavigatedToBlockedRef.current = true;
+          console.log("[RUNTIME_NAVIGATION_20260730] DriverContext.tsx | account-enforcement poll | destination: /account-blocked");
           router.replace("/account-blocked");
         }
       }

@@ -26,8 +26,9 @@ import { PERMISSION_SETUP_VERSION } from "@/utils/firestore";
 // verified as the latest source from the JS console / Expo Go logs. Update the
 // build date whenever a fresh production bundle is published.
 console.log(
-  "[BUILD_CHECK] Driver App | build=2026-06-29 | location-payload=lat/lng | api=api.bikecourierservice.com",
+  "[BUILD_CHECK] Driver App | build=2026-07-30 | location-payload=lat/lng | api=api.bikecourierservice.com",
 );
+console.log("[RUNTIME_PROOF_20260730] _layout.tsx — RootLayout module evaluated — if you see this date the new bundle is loaded");
 
 SplashScreen.preventAutoHideAsync();
 
@@ -96,9 +97,11 @@ function RootLayoutNav() {
       // go to login for returning drivers who have already completed it.
       if (localPermissionVersion < PERMISSION_SETUP_VERSION) {
         console.log("[PERMISSION_GATE] first launch — localVer =", localPermissionVersion, "→ /background-setup");
+        console.log("[RUNTIME_NAVIGATION_20260730] _layout.tsx | RootLayoutNav effect | destination: /background-setup");
         router.replace("/background-setup");
       } else {
         console.log("[BOOT_ROUTE] chosenRoute = /login (no_session)");
+        console.log("[RUNTIME_NAVIGATION_20260730] _layout.tsx | RootLayoutNav effect | destination: /login (no_session)");
         router.replace("/login");
       }
       return;
@@ -107,6 +110,7 @@ function RootLayoutNav() {
     if (!isOtpVerified) {
       console.log("[GUARD] REDIRECT → /login | reason = otp_required (driverUid present but isOtpVerified=false) | from pathname =", pathname);
       console.log("[BOOT_ROUTE] chosenRoute = /login (otp_required uid =", driverUid, ")");
+      console.log("[RUNTIME_NAVIGATION_20260730] _layout.tsx | RootLayoutNav effect | destination: /login (otp_required)");
       router.replace("/login");
       return;
     }
