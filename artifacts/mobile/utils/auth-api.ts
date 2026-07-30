@@ -227,7 +227,7 @@ export async function verifyOtpApi(phone: string, otp: string): Promise<VerifyOt
  * seamlessly redirected to set up a new PIN via OTP.
  */
 export async function verifyPinApi(phone: string, pin: string): Promise<VerifyPinResult> {
-  const url  = `${BASE_URL}/auth/verify-pin`;
+  const url  = `${BASE_URL}/v2/auth/verify-pin`;
   const body = JSON.stringify({ phone, pin });
   const headers = { "Content-Type": "application/json" };
 
