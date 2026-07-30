@@ -212,6 +212,9 @@ export async function verifyOtpApi(phone: string, otp: string): Promise<VerifyOt
     "| sessionId:", json.sessionId ? "present" : "absent",
   );
 
+  // ── [V2_TOKEN_RAW_RESPONSE] Full raw API response ──────────────────────────
+  console.log("[V2_TOKEN_RAW_RESPONSE]", JSON.stringify(json));
+
   if (!res.ok) {
     const errMsg = normalizeError(json.error, `Server error (${res.status}).`);
     console.error("[verifyOtp] server returned error:", res.status, errMsg);
@@ -220,11 +223,35 @@ export async function verifyOtpApi(phone: string, otp: string): Promise<VerifyOt
 
   // The backend returns the Firebase token as `customToken`; some builds use `token`.
   // Accept either so the success contract is stable.
+  const raw_r = json as Record<string, unknown>;
+  const usedField =
+    typeof raw_r["token"]                === "string" ? "token"                :
+    typeof raw_r["customToken"]          === "string" ? "customToken"          :
+    typeof raw_r["firebase_custom_token"] === "string" ? "firebase_custom_token" :
+    "NONE";
   const token = json.token ?? json.customToken ?? (json as any).firebase_custom_token;
+
+  // ── [V2_TOKEN_FIELD] Which field was selected ──────────────────────────────
+  console.log("[V2_TOKEN_FIELD] usedField =", usedField,
+    "| typeof token =", typeof token,
+    "| token is null?", token === null,
+    "| token is undefined?", token === undefined);
+
   if (!token) {
     console.error("[verifyOtp] no token in successful response");
+    console.error("[V2_TOKEN_FIELD] all fields checked: token=", raw_r["token"],
+      "customToken=", raw_r["customToken"],
+      "firebase_custom_token=", raw_r["firebase_custom_token"]);
     return { ok: false, error: "No token received from server." };
   }
+
+  // ── [V2_TOKEN_LENGTH] + [V2_TOKEN_SEGMENTS] ────────────────────────────────
+  const tokenStr     = token as string;
+  const tokenSegs    = tokenStr.split(".").length;
+  console.log("[V2_TOKEN_LENGTH]   length =", tokenStr.length);
+  console.log("[V2_TOKEN_SEGMENTS] segments =", tokenSegs,
+    "| valid JWT needs 3, got", tokenSegs,
+    tokenSegs === 3 ? "✅" : "❌ INVALID — Firebase will reject this");
 
   // Clear the pending otp_id — it has been consumed successfully.
   _pendingOtpId = null;

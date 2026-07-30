@@ -121,6 +121,15 @@ export default function CreatePinV2() {
 
     try {
       // Step 1: Sign in to Firebase to get ID token (needed for set-pin API)
+
+      // ── [V2_TOKEN_BEFORE_FIREBASE] Inspect token immediately before Firebase ──
+      const _tSegs = pendingToken.split(".").length;
+      console.log("[V2_TOKEN_BEFORE_FIREBASE]",
+        "typeof =", typeof pendingToken,
+        "| length =", pendingToken.length,
+        "| segments =", _tSegs,
+        _tSegs === 3 ? "✅ valid JWT format" : "❌ INVALID — not a 3-segment JWT");
+
       console.log("[V2_CREATE_PIN] signInWithCustomToken — start");
       const userCred = await signInWithCustomToken(firebaseAuth, pendingToken);
       const idToken  = await userCred.user.getIdToken();
