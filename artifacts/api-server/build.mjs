@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
 import { rm, readdir, readFile, writeFile } from "node:fs/promises";
@@ -9,6 +10,38 @@ import { rm, readdir, readFile, writeFile } from "node:fs/promises";
 globalThis.require = createRequire(import.meta.url);
 
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
+const workspaceRoot = path.resolve(artifactDir, "../..");
+
+/**
+ * Resolves @workspace/* package imports to their TypeScript source files.
+ * Required because pnpm workspace symlinks are not created in this environment
+ * (pnpm install is blocked by the package firewall for certain transitive deps).
+ * Each @workspace package exports its .ts source directly in package.json#exports,
+ * so we read those mappings at build time and hand the resolved path to esbuild.
+ */
+const workspaceResolverPlugin = {
+  name: "workspace-resolver",
+  setup(build) {
+    build.onResolve({ filter: /^@workspace\// }, (args) => {
+      // args.path e.g. "@workspace/db" or "@workspace/db/schema"
+      const withoutScope = args.path.slice("@workspace/".length); // e.g. "db" or "db/schema"
+      const parts = withoutScope.split("/");
+      const pkgName = parts[0]; // e.g. "db"
+      const subpath = parts.length > 1 ? "./" + parts.slice(1).join("/") : ".";
+
+      const pkgDir = path.join(workspaceRoot, "lib", pkgName);
+      const pkgJson = JSON.parse(readFileSync(path.join(pkgDir, "package.json"), "utf8"));
+      const exports = pkgJson.exports ?? {};
+      const relPath = exports[subpath];
+
+      if (!relPath) {
+        return { errors: [{ text: `No export "${subpath}" in @workspace/${pkgName}` }] };
+      }
+
+      return { path: path.resolve(pkgDir, relPath) };
+    });
+  },
+};
 
 async function buildAll() {
   const distDir = path.resolve(artifactDir, "dist");
@@ -103,8 +136,10 @@ async function buildAll() {
     ],
     sourcemap: "linked",
     plugins: [
+      // Resolves @workspace/* packages to their TypeScript source (pnpm symlinks unavailable)
+      workspaceResolverPlugin,
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
-      esbuildPluginPino({ transports: ["pino-pretty"] })
+      esbuildPluginPino({ transports: ["pino-pretty"] }),
     ],
     // Make sure packages that are cjs only (e.g. express) but are bundled continue to work in our esm output file
     banner: {
