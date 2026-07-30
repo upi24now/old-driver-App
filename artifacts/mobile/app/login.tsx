@@ -853,6 +853,16 @@ export default function LoginScreen() {
                 </TouchableOpacity>
               </View>
 
+              {/* ── [DEV] Try V2 login — remove after V2 testing complete ── */}
+              <TouchableOpacity
+                onPress={() => router.push("/login-v2" as never)}
+                activeOpacity={0.7}
+                hitSlop={8}
+                style={ss.tryV2Btn}
+              >
+                <Text style={ss.tryV2Text}>⚡ Try V2 Login →</Text>
+              </TouchableOpacity>
+
               {/* ── Terms ── */}
               <View style={ss.termsRow}>
                 <Text style={ss.termsText}>By continuing, you agree to our </Text>
@@ -1877,6 +1887,24 @@ const ss = StyleSheet.create({
     marginTop:         16,
     paddingVertical:   9,
     paddingHorizontal: 14,
+  },
+
+  // ── [DEV] V2 entry point — remove after V2 testing ──────────────────────
+  tryV2Btn: {
+    alignSelf:         "center",
+    marginTop:         12,
+    marginBottom:      4,
+    paddingVertical:   6,
+    paddingHorizontal: 14,
+    borderRadius:      20,
+    backgroundColor:   "#FFF3CD",
+    borderWidth:       1,
+    borderColor:       "#FFC107",
+  },
+  tryV2Text: {
+    fontSize:   13,
+    fontWeight: "600",
+    color:      "#856404",
   },
 
 });
