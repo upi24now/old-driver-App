@@ -338,6 +338,47 @@ export type SetPinResult =
   | { ok: true;  sessionId?: string }
   | { ok: false; error: string };
 
+export type CheckPinStatusResult =
+  | { ok: true;  hasPin: boolean }
+  | { ok: false; error: string };
+
+/**
+ * GET /auth/pin-status — check whether this driver already has a PIN set.
+ *
+ * Called immediately after OTP verification to decide whether to route the
+ * driver to "Create PIN" (no existing PIN) or "Reset PIN" (existing PIN,
+ * forgot-PIN flow). Requires a valid Firebase session (Bearer token).
+ */
+export async function checkPinStatus(): Promise<CheckPinStatusResult> {
+  const idToken = await getIdToken();
+  if (!idToken) return { ok: false, error: "Not signed in." };
+
+  const sessionId = getSessionIdSync();
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${idToken}`,
+  };
+  if (sessionId) headers["x-session-id"] = sessionId;
+
+  console.log("[checkPinStatus] GET /auth/pin-status — Authorization: present | x-session-id:", sessionId ? "present" : "ABSENT");
+
+  try {
+    const res = await fetch(`${BASE_URL}/auth/pin-status`, {
+      method:  "GET",
+      headers,
+    });
+    const json = (await res.json()) as { hasPin?: boolean; error?: unknown };
+    console.log("[checkPinStatus] response status:", res.status, "| hasPin:", json.hasPin ?? "(absent)");
+    if (!res.ok) {
+      return { ok: false, error: normalizeError(json.error, `Server error (${res.status}).`) };
+    }
+    return { ok: true, hasPin: !!json.hasPin };
+  } catch (err) {
+    const e = err as Error;
+    console.error("[checkPinStatus] fetch THREW:", e?.message);
+    return { ok: false, error: `Could not check PIN status (${e?.message ?? String(err)}).` };
+  }
+}
+
 /**
  * POST /auth/set-pin — store the driver's 6-digit PIN (server hashes it).
  * Requires a valid Firebase session from the just-completed OTP login.

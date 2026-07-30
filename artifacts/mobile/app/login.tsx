@@ -44,7 +44,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useDriver } from "@/contexts/DriverContext";
-import { sendOtp } from "@/utils/auth-api";
+import { checkPinStatus, sendOtp } from "@/utils/auth-api";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const D = {
@@ -599,17 +599,21 @@ export default function LoginScreen() {
     }
 
     // ── SETUP (new user) and FORGOT (reset) ───────────────────────────────────
-    // Both intents are identical AFTER OTP: continue to the Create PIN screen,
-    // which collects + saves the new PIN and then resumes the existing
-    // onboarding/Home routing (nextRoute). OTP is the authorization; the PIN is
-    // always entered AFTER verification (never before).
+    // OTP is the authorization; the PIN is always entered AFTER verification.
+    // Check the server to determine whether this driver already has a PIN:
+    //   hasPin=false  → "Create PIN" (new user or existing driver without PIN)
+    //   hasPin=true   → "Reset PIN"  (forgot-PIN flow for an existing PIN)
+    // On check failure we fall back to the client-side intent heuristic:
+    //   "setup" intent means the driver hit a PIN-not-found 404, so no PIN.
+    //   "forgot" intent means the driver explicitly said they forgot, so there is one.
+    // Spinner stays visible while the check runs (user sees "Verifying…" briefly).
+    const pinStatus = await checkPinStatus();
+    const hasPin    = pinStatus.ok ? pinStatus.hasPin : (otpIntent === "forgot");
+    const pinIntent: "create" | "reset" = hasPin ? "reset" : "create";
+
     setVerifying(false);
-    // OTP only AUTHORIZED the PIN setup — no full session was established and
-    // /drivers/me was NOT called. Route straight to Create PIN. The onboarding/
-    // Home route is computed AFTER set-pin succeeds (create-pin → confirmPin),
-    // so no next param is passed here.
-    console.log("[FLOW] login:", otpIntent, "— OTP verified (no session yet) → /create-pin; route computed AFTER set-pin");
-    router.replace("/create-pin");
+    console.log("[FLOW] login:", otpIntent, "— OTP verified (no session yet) → /create-pin?intent=" + pinIntent, "| hasPin:", hasPin, "| statusCheck:", pinStatus.ok ? "ok" : "fallback heuristic");
+    router.replace(`/create-pin?intent=${pinIntent}` as never);
   }
 
   console.log("[SCREEN_MOUNT] login — authLoading =", authLoading, "driverUid =", driverUid);

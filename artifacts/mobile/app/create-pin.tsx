@@ -14,7 +14,7 @@
  */
 
 import { Feather } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -96,6 +96,11 @@ export default function CreatePinScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { phone, confirmPin } = useDriver();
+
+  // intent=create → brand-new PIN  (new driver, existing driver without PIN)
+  // intent=reset  → replacing a PIN (forgot-PIN OTP flow)
+  const { intent } = useLocalSearchParams<{ intent?: string }>();
+  const isReset = intent === "reset";
 
   const pinRef     = useRef<TextInput>(null);
   const confirmRef = useRef<TextInput>(null);
@@ -272,11 +277,15 @@ export default function CreatePinScreen() {
             <Feather name="lock" size={22} color={D.primary} />
           </View>
           <Text style={ss.headline}>
-            {step === "create" ? "Create a 6-digit PIN" : "Confirm your PIN"}
+            {step === "create"
+              ? (isReset ? "Reset your PIN" : "Create a 6-digit PIN")
+              : "Confirm your PIN"}
           </Text>
           <Text style={ss.subline}>
             {step === "create"
-              ? "Set a PIN for faster, secure logins next time."
+              ? (isReset
+                  ? "Set a new 6-digit PIN to replace your existing one."
+                  : "Set a PIN for faster, secure logins next time.")
               : "Re-enter the 6-digit PIN to confirm."}
           </Text>
         </View>
@@ -359,7 +368,9 @@ export default function CreatePinScreen() {
             </View>
           ) : (
             <Text style={[ss.saveBtnText, !primaryEnabled && ss.saveBtnTextDisabled]}>
-              {step === "create" ? "Continue" : "Save PIN & Continue"}
+              {step === "create"
+                ? "Continue"
+                : (isReset ? "Reset PIN & Continue" : "Save PIN & Continue")}
             </Text>
           )}
         </TouchableOpacity>
