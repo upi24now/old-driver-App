@@ -130,8 +130,29 @@ export default function CreatePinV2() {
         "| segments =", _tSegs,
         _tSegs === 3 ? "✅ valid JWT format" : "❌ INVALID — not a 3-segment JWT");
 
+      // ── [V2_FIREBASE_CURRENT_USER_BEFORE] Firebase auth state before sign-in ──
+      const _cu = firebaseAuth.currentUser;
+      console.log("[V2_FIREBASE_CURRENT_USER_BEFORE]",
+        "uid =", _cu?.uid ?? "null",
+        "| isAnonymous =", _cu?.isAnonymous ?? "null");
+
       console.log("[V2_CREATE_PIN] signInWithCustomToken — start");
-      const userCred = await signInWithCustomToken(firebaseAuth, pendingToken);
+      let userCred: Awaited<ReturnType<typeof signInWithCustomToken>>;
+      try {
+        userCred = await signInWithCustomToken(firebaseAuth, pendingToken);
+      } catch (fbErr) {
+        const _e = fbErr as { code?: string; message?: string };
+        console.error("[V2_FIREBASE_SIGNIN_ERROR]",
+          "code =", _e?.code ?? "unknown",
+          "| message =", _e?.message ?? String(fbErr));
+        setBusy(false);
+        setError("Firebase sign-in failed. Please restart the flow.");
+        return;
+      }
+      // ── [V2_FIREBASE_SIGNIN_SUCCESS] ─────────────────────────────────────────
+      console.log("[V2_FIREBASE_SIGNIN_SUCCESS]",
+        "uid =", userCred.user.uid);
+
       const idToken  = await userCred.user.getIdToken();
       console.log("[V2_CREATE_PIN] got ID token — calling setPinV2");
 
