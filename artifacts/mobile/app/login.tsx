@@ -44,7 +44,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useDriver } from "@/contexts/DriverContext";
-import { checkPinStatus, sendOtp } from "@/utils/auth-api";
+import { sendOtp } from "@/utils/auth-api";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const D = {
@@ -600,19 +600,15 @@ export default function LoginScreen() {
 
     // ── SETUP (new user) and FORGOT (reset) ───────────────────────────────────
     // OTP is the authorization; the PIN is always entered AFTER verification.
-    // Check the server to determine whether this driver already has a PIN:
-    //   hasPin=false  → "Create PIN" (new user or existing driver without PIN)
-    //   hasPin=true   → "Reset PIN"  (forgot-PIN flow for an existing PIN)
-    // On check failure we fall back to the client-side intent heuristic:
-    //   "setup" intent means the driver hit a PIN-not-found 404, so no PIN.
-    //   "forgot" intent means the driver explicitly said they forgot, so there is one.
-    // Spinner stays visible while the check runs (user sees "Verifying…" briefly).
-    const pinStatus = await checkPinStatus();
-    const hasPin    = pinStatus.ok ? pinStatus.hasPin : (otpIntent === "forgot");
-    const pinIntent: "create" | "reset" = hasPin ? "reset" : "create";
+    // Route is derived entirely from the client-side otpIntent — no extra API
+    // call is made here because no confirmed backend route exists for a PIN-status
+    // check on the production VPS:
+    //   "setup" intent  → driver hit PIN-not-found 404, has no PIN → "create"
+    //   "forgot" intent → driver explicitly said they forgot      → "reset"
+    const pinIntent: "create" | "reset" = otpIntent === "forgot" ? "reset" : "create";
 
     setVerifying(false);
-    console.log("[FLOW] login:", otpIntent, "— OTP verified (no session yet) → /create-pin?intent=" + pinIntent, "| hasPin:", hasPin, "| statusCheck:", pinStatus.ok ? "ok" : "fallback heuristic");
+    console.log("[FLOW] login:", otpIntent, "— OTP verified (no session yet) → /create-pin?intent=" + pinIntent);
     router.replace(`/create-pin?intent=${pinIntent}` as never);
   }
 
