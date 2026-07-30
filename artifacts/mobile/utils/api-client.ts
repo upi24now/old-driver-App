@@ -70,7 +70,7 @@ export function installSessionFetchInterceptor(): void {
     const isApi = targetsApi(url);
     // Verbose per-request logging is scoped to the auth endpoints so the flow can
     // be traced without flooding the console with every API call.
-    const isAuthEndpoint = /\/auth\/(set-pin|verify-pin|verify-otp|send-otp)/.test(url);
+    const isAuthEndpoint = /\/auth\/(set-pin|verify-pin|verify-otp|send-otp|otp\/send|otp\/verify)/.test(url);
 
     // ── 1. Inject x-session-id on outbound API requests ──────────────────────
     let sessionAttached = false;

@@ -9,14 +9,40 @@ const _cleanDomain = _rawDomain
   .replace(/\/api\/?$/, "")        // remove trailing /api
   .replace(/\/$/, "");             // remove trailing slash
 
-const BASE_URL = _cleanDomain ? `https://${_cleanDomain}/api` : "/api";
+// V1 base — used by set-pin (unchanged path) and verifyPinApi (graceful 404 fallback).
+const BASE_URL    = _cleanDomain ? `https://${_cleanDomain}/api`    : "/api";
+// V2 base — used by all new auth endpoints (send-otp → otp/send, verify-otp → otp/verify).
+const BASE_URL_V2 = _cleanDomain ? `https://${_cleanDomain}/api/v2` : "/api/v2";
 
-// Log both the raw env var and the constructed URL on module load
+// Log both the raw env var and the constructed URLs on module load
 console.log("[auth-api] EXPO_PUBLIC_DOMAIN (raw)  =", _rawDomain || "(not set)");
-console.log("[auth-api] BASE_URL (constructed)     =", BASE_URL);
+console.log("[auth-api] BASE_URL (v1, constructed) =", BASE_URL);
+console.log("[auth-api] BASE_URL_V2 (constructed)  =", BASE_URL_V2);
+
+// ─── otp_id session — module-level ────────────────────────────────────────────
+// sendOtp stores the otp_id returned by POST /auth/otp/send.
+// verifyOtpApi reads it when building the /auth/otp/verify request body.
+// This avoids changing the confirmOtp(phone, otp) signature in DriverContext.
+// Cleared on successful verification or on a fresh sendOtp call.
+let _pendingOtpId: string | null = null;
+
+// ─── Error normaliser ─────────────────────────────────────────────────────────
+// Guarantees the returned value is always a plain string so callers never
+// accidentally pass an object to a React <Text> child (which throws
+// "Objects are not valid as a React child").
+function normalizeError(v: unknown, fallback: string): string {
+  if (typeof v === "string" && v.length > 0) return v;
+  if (v !== null && v !== undefined && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    if (typeof o["message"] === "string") return o["message"];
+    if (typeof o["error"]   === "string") return o["error"];
+    try { return JSON.stringify(v); } catch { return fallback; }
+  }
+  return fallback;
+}
 
 export type SendOtpResult =
-  | { ok: true }
+  | { ok: true;  otpId: string }
   | { ok: false; error: string };
 
 export type VerifyOtpResult =
@@ -27,9 +53,22 @@ export type VerifyPinResult =
   | { ok: true;  token: string; sessionId?: string }
   | { ok: false; error: string; pinNotFound?: boolean };
 
+/**
+ * POST /api/v2/auth/otp/send — request an OTP for the given phone number.
+ *
+ * Backend V2 contract:
+ *   Request  : { phone, user_type: "driver" }
+ *   Response : { otp_id: string, ... }
+ *
+ * The returned otp_id is stored in module state and automatically consumed
+ * by verifyOtpApi on the next call — no signature change needed in callers.
+ */
 export async function sendOtp(phone: string): Promise<SendOtpResult> {
-  const url = `${BASE_URL}/auth/send-otp`;
-  const body = JSON.stringify({ phone });
+  // Reset any stale pending otp_id from a previous attempt.
+  _pendingOtpId = null;
+
+  const url  = `${BASE_URL_V2}/auth/otp/send`;
+  const body = JSON.stringify({ phone, user_type: "driver" });
   const headers = { "Content-Type": "application/json" };
 
   console.log("[sendOtp] ──────────────────────────────────────");
@@ -41,7 +80,7 @@ export async function sendOtp(phone: string): Promise<SendOtpResult> {
   if (!_cleanDomain) {
     console.warn(
       "[sendOtp] WARNING: EXPO_PUBLIC_DOMAIN is not set. " +
-      "BASE_URL is a relative path (\"/api\") which only works in a browser/web context. " +
+      "BASE_URL_V2 is a relative path (\"/api/v2\") which only works in a browser/web context. " +
       "On a real Android/iOS device this will fail with a network error. " +
       "Set EXPO_PUBLIC_DOMAIN to the API server domain (e.g. api.bikecourierservice.com)."
     );
@@ -66,7 +105,7 @@ export async function sendOtp(phone: string): Promise<SendOtpResult> {
 
   console.log("[sendOtp] response status :", res.status, res.statusText);
 
-  let json: { sent?: boolean; error?: string };
+  let json: { otp_id?: string; sent?: boolean; error?: unknown };
   try {
     json = (await res.json()) as typeof json;
   } catch (parseErr) {
@@ -76,22 +115,48 @@ export async function sendOtp(phone: string): Promise<SendOtpResult> {
   }
 
   if (!res.ok) {
-    console.error("[sendOtp] server returned error:", res.status, json.error);
-    return { ok: false, error: json.error ?? `Server error (${res.status}).` };
+    const errMsg = normalizeError(json.error, `Server error (${res.status}).`);
+    console.error("[sendOtp] server returned error:", res.status, errMsg);
+    return { ok: false, error: errMsg };
   }
 
-  console.log("[sendOtp] SUCCESS");
-  return { ok: true };
+  const otpId = typeof json.otp_id === "string" ? json.otp_id : "";
+  if (!otpId) {
+    console.warn("[sendOtp] WARNING: server did not return otp_id — verify step will send empty otp_id");
+  }
+
+  // Store for verifyOtpApi to consume.
+  _pendingOtpId = otpId;
+
+  console.log("[sendOtp] SUCCESS — otp_id:", otpId ? "received" : "MISSING");
+  return { ok: true, otpId };
 }
 
+/**
+ * POST /api/v2/auth/otp/verify — verify the OTP received by the driver.
+ *
+ * Backend V2 contract:
+ *   Request  : { otp_id, phone, otp, user_type: "driver" }
+ *   Response : { token/customToken: string, sessionId?: string }
+ *
+ * otp_id is read from module state written by the preceding sendOtp call.
+ * Signature is intentionally unchanged (phone, otp) so DriverContext.confirmOtp
+ * requires no modification.
+ */
 export async function verifyOtpApi(phone: string, otp: string): Promise<VerifyOtpResult> {
-  const url = `${BASE_URL}/auth/verify-otp`;
-  const body = JSON.stringify({ phone, otp });
+  const url  = `${BASE_URL_V2}/auth/otp/verify`;
+  const body = JSON.stringify({
+    otp_id:    _pendingOtpId ?? "",
+    phone,
+    otp,
+    user_type: "driver",
+  });
   const headers = { "Content-Type": "application/json" };
 
   console.log("[verifyOtp] ──────────────────────────────────────");
-  console.log("[verifyOtp] URL     :", url);
-  console.log("[verifyOtp] method  : POST");
+  console.log("[verifyOtp] URL      :", url);
+  console.log("[verifyOtp] method   : POST");
+  console.log("[verifyOtp] otp_id   :", _pendingOtpId ? "present" : "MISSING — sendOtp may not have been called");
 
   let res: Response;
   try {
@@ -111,7 +176,7 @@ export async function verifyOtpApi(phone: string, otp: string): Promise<VerifyOt
 
   console.log("[verifyOtp] response status :", res.status, res.statusText);
 
-  let json: { token?: string; customToken?: string; sessionId?: string; error?: string };
+  let json: { token?: string; customToken?: string; sessionId?: string; error?: unknown };
   try {
     json = (await res.json()) as typeof json;
   } catch (parseErr) {
@@ -128,16 +193,21 @@ export async function verifyOtpApi(phone: string, otp: string): Promise<VerifyOt
   );
 
   if (!res.ok) {
-    console.error("[verifyOtp] server returned error:", res.status, json.error);
-    return { ok: false, error: json.error ?? `Server error (${res.status}).` };
+    const errMsg = normalizeError(json.error, `Server error (${res.status}).`);
+    console.error("[verifyOtp] server returned error:", res.status, errMsg);
+    return { ok: false, error: errMsg };
   }
-  // The backend returns the Firebase token as `customToken`; some older builds
-  // returned it as `token`. Accept either so the success contract is stable.
+
+  // The backend returns the Firebase token as `customToken`; some builds use `token`.
+  // Accept either so the success contract is stable.
   const token = json.token ?? json.customToken;
   if (!token) {
     console.error("[verifyOtp] no token in successful response");
     return { ok: false, error: "No token received from server." };
   }
+
+  // Clear the pending otp_id — it has been consumed successfully.
+  _pendingOtpId = null;
 
   console.log("[verifyOtp] SUCCESS — token received");
   return { ok: true, token, sessionId: json.sessionId };
@@ -149,9 +219,15 @@ export async function verifyOtpApi(phone: string, otp: string): Promise<VerifyOt
  * Mirrors verify-otp's success contract (returns a Firebase custom token plus
  * the minted single-device sessionId), but uses no Firebase session — the
  * driver is signing in fresh. Server enforces a 3-attempt / 24h lockout.
+ *
+ * NOTE: The Backend V2 does not expose a dedicated /api/v2/auth/verify-pin
+ * endpoint. This function intentionally targets the legacy path (/api/auth/verify-pin).
+ * A 404 response is handled gracefully — it returns { pinNotFound: true } which
+ * routes the login screen to the OTP flow. Drivers who hit this path are
+ * seamlessly redirected to set up a new PIN via OTP.
  */
 export async function verifyPinApi(phone: string, pin: string): Promise<VerifyPinResult> {
-  const url = `${BASE_URL}/auth/verify-pin`;
+  const url  = `${BASE_URL}/auth/verify-pin`;
   const body = JSON.stringify({ phone, pin });
   const headers = { "Content-Type": "application/json" };
 
@@ -186,7 +262,8 @@ export async function verifyPinApi(phone: string, pin: string): Promise<VerifyPi
   if (res.status === 404) {
     let serverMsg: string | undefined;
     try {
-      serverMsg = ((await res.json()) as { error?: string })?.error;
+      serverMsg = ((await res.json()) as { error?: unknown })?.error as string | undefined;
+      if (typeof serverMsg !== "string") serverMsg = undefined;
     } catch {
       // Non-JSON 404 body (e.g. an Express "Cannot POST" HTML page) — ignore.
     }
@@ -198,7 +275,7 @@ export async function verifyPinApi(phone: string, pin: string): Promise<VerifyPi
     };
   }
 
-  let json: { token?: string; customToken?: string; sessionId?: string; error?: string };
+  let json: { token?: string; customToken?: string; sessionId?: string; error?: unknown };
   try {
     json = (await res.json()) as typeof json;
   } catch (parseErr) {
@@ -208,8 +285,9 @@ export async function verifyPinApi(phone: string, pin: string): Promise<VerifyPi
   }
 
   if (!res.ok) {
-    console.error("[verifyPin] server returned error:", res.status, json.error);
-    return { ok: false, error: json.error ?? `Server error (${res.status}).` };
+    const errMsg = normalizeError(json.error, `Server error (${res.status}).`);
+    console.error("[verifyPin] server returned error:", res.status, errMsg);
+    return { ok: false, error: errMsg };
   }
   // The backend returns the Firebase token as `customToken`; some older builds
   // returned it as `token`. Accept either so the success contract is stable.
@@ -279,7 +357,7 @@ export async function setPin(pin: string): Promise<SetPinResult> {
       ok?: boolean;
       sessionId?: string;
       customSessionId?: string;
-      error?: string;
+      error?: unknown;
     };
     const newSessionId = json.sessionId ?? json.customSessionId;
     console.log("[setPin] response status:", res.status, "| body keys:", Object.keys(json).join(","), "| sessionId:", newSessionId ? "present" : "ABSENT");
@@ -288,8 +366,9 @@ export async function setPin(pin: string): Promise<SetPinResult> {
     // 200 with a semantic failure) as an error. A missing `ok` field is fine —
     // not every build sends one — so only `=== false` counts as failure.
     if (!res.ok || json.ok === false) {
-      console.error("[setPin] server returned error:", res.status, json.error);
-      return { ok: false, error: json.error ?? `Server error (${res.status}).` };
+      const errMsg = normalizeError(json.error, `Server error (${res.status}).`);
+      console.error("[setPin] server returned error:", res.status, errMsg);
+      return { ok: false, error: errMsg };
     }
     return { ok: true, sessionId: newSessionId };
   } catch (err) {

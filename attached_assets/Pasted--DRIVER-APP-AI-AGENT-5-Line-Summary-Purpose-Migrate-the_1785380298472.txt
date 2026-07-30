@@ -1,0 +1,219 @@
+# DRIVER APP AI AGENT
+
+## 5-Line Summary
+
+Purpose:
+Migrate the Driver App authentication from the legacy authentication API to the new Backend V2 Authentication API.
+
+Scope:
+Update only the Driver App authentication layer and login flow to match the backend contract.
+
+What Changes:
+Authentication endpoints, OTP request/response handling, otp_id flow, session handling, and login integration.
+
+What Will NOT Change:
+Driver Home, Duty, Orders, GPS, Notifications, Offer flow, Firebase FCM flow, Driver Context, Subscription logic, UI/UX, Navigation, Backend code, or any unrelated functionality.
+
+Expected Result:
+Driver App successfully authenticates using Backend V2 Authentication APIs without any 404 errors while preserving all existing working functionality.
+
+--------------------------------------------------
+WORKING FUNCTIONALITY — DO NOT TOUCH
+--------------------------------------------------
+
+DO NOT modify or refactor anything outside authentication.
+
+DO NOT CHANGE:
+
+- Driver Home
+- Duty ON/OFF
+- Offer Listener
+- Offer Accept / Reject
+- GPS
+- Background Tasks
+- Notifications
+- Firebase Custom Token login after backend verification
+- Driver Context
+- Subscription Logic
+- Existing UI
+- Navigation
+- Backend
+- Any unrelated feature
+
+Authentication migration ONLY.
+
+--------------------------------------------------
+PROBLEM
+--------------------------------------------------
+
+The Driver App still uses legacy authentication endpoints.
+
+Current endpoints:
+
+POST /api/auth/send-otp
+POST /api/auth/verify-otp
+POST /api/auth/verify-pin
+
+Backend has already migrated.
+
+Backend now exposes ONLY:
+
+POST /api/v2/auth/otp/send
+POST /api/v2/auth/otp/verify
+POST /api/v2/auth/refresh
+GET  /api/v2/auth/me
+POST /api/v2/auth/logout
+
+Current application receives:
+
+404 Route POST /api/auth/send-otp not found
+
+404 Route POST /api/auth/verify-pin not found
+
+Backend has already been verified.
+
+DO NOT MODIFY BACKEND.
+
+--------------------------------------------------
+REQUIRED CHANGES
+--------------------------------------------------
+
+1.
+
+Replace legacy authentication endpoints with Backend V2 endpoints.
+
+Legacy:
+
+/auth/send-otp
+/auth/verify-otp
+/auth/verify-pin
+
+New:
+
+/auth/otp/send
+/auth/otp/verify
+/auth/refresh
+/auth/me
+/auth/logout
+
+(BASE_URL already includes /api/v2.)
+
+--------------------------------------------------
+
+2.
+
+Update Send OTP request body.
+
+Backend expects:
+
+{
+  "phone": "...",
+  "user_type": "driver"
+}
+
+--------------------------------------------------
+
+3.
+
+Update Verify OTP request body.
+
+Backend expects:
+
+{
+  "otp_id": "...",
+  "phone": "...",
+  "otp": "...",
+  "user_type": "driver"
+}
+
+--------------------------------------------------
+
+4.
+
+Store otp_id returned from Send OTP.
+
+Reuse the same otp_id during Verify OTP.
+
+Do not invent values.
+
+--------------------------------------------------
+
+5.
+
+Update session handling only where required for Backend V2.
+
+Keep existing Firebase Custom Token login after successful backend verification.
+
+Do NOT change Firebase architecture.
+
+--------------------------------------------------
+
+6.
+
+Update login flow for Backend V2.
+
+Remove dependency on legacy verify-pin if backend no longer supports it.
+
+--------------------------------------------------
+
+7.
+
+Fix React rendering error.
+
+Current error:
+
+Objects are not valid as a React child
+
+Never render raw error objects.
+
+Render readable strings only.
+
+--------------------------------------------------
+
+8.
+
+Keep existing logs.
+
+Add logs only if absolutely necessary.
+
+Do not remove existing debugging logs.
+
+--------------------------------------------------
+VERIFICATION
+--------------------------------------------------
+
+Before finishing verify:
+
+✓ No remaining references to
+
+/auth/send-otp
+
+/auth/verify-pin
+
+✓ OTP request succeeds
+
+✓ OTP verification succeeds
+
+✓ Session creation succeeds
+
+✓ Firebase Custom Token login still works
+
+✓ No React rendering error
+
+✓ No unrelated files modified
+
+--------------------------------------------------
+DELIVERABLES
+--------------------------------------------------
+
+Provide:
+
+1. Files modified.
+
+2. API changes made.
+
+3. Authentication flow summary.
+
+4. Verification report.
+
+5. Confirmation that NO unrelated functionality was modified.
