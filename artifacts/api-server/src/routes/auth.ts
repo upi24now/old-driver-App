@@ -122,6 +122,17 @@ router.post("/auth/send-otp", async (req, res) => {
 
   // devOtp: only in non-production environments (never expose real OTPs in prod).
   const isDev = process.env["NODE_ENV"] !== "production";
+
+  // DEV ONLY — print the actual OTP to the server console so developers can
+  // complete the login flow without an SMS provider.
+  // This block is compiled out in production (NODE_ENV === "production" skips it).
+  // OTP verification logic, expiry, and API response are completely unchanged.
+  if (isDev) {
+    console.log(
+      `\n[SMS] DEV OTP\nPhone: +91${phone}\nOTP: ${otp}\n`,
+    );
+  }
+
   res.json({ sent: true, ...(isDev ? { devOtp: otp } : {}) });
 });
 
