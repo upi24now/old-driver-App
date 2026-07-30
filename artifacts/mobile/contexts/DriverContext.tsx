@@ -637,22 +637,39 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Set auth identity synchronously.
+      const phoneFromUid = user.uid.startsWith("91") ? user.uid.slice(2) : user.uid;
+
+      // ── 0. PIN-setup guard — MUST run before setDriverUid ────────────────
+      // signInForSession (forgot-PIN / first-time PIN setup) calls
+      // signInWithCustomToken, which fires this listener. We MUST NOT call
+      // setDriverUid here in that case.
+      //
+      // WHY: setDriverUid triggers a _layout.tsx re-render. If isOtpVerifying
+      // was queued before the await but hasn't committed yet (React hasn't
+      // flushed the batch), _layout.tsx sees:
+      //   driverUid=uid  isOtpVerified=false  isOtpVerifying=false
+      // and immediately routes to /login — wiping the pending
+      // router.replace("/create-pin?intent=reset") that handleVerify is about
+      // to call.
+      //
+      // signInForSession calls setDriverUid directly after signInWithCustomToken
+      // resolves (at that point isOtpVerifying=true is already committed), so
+      // driverUid is set correctly — just not here.
+      if (pinSetupInProgressRef.current) {
+        console.log("[RUNTIME_PROOF_20260730] DriverContext.tsx | onAuthStateChanged | pinSetupInProgress=true — skipping setDriverUid to prevent _layout.tsx race");
+        return;
+      }
+
+      // Set auth identity synchronously (session restore + normal OTP only).
       setDriverUid(user.uid);
       console.log("AUTH UID =", firebaseAuth.currentUser?.uid);
       console.log("DRIVER UID =", user.uid);
-      const phoneFromUid = user.uid.startsWith("91") ? user.uid.slice(2) : user.uid;
       setPhoneState(phoneFromUid);
 
       void (async () => {
-        // ── 0. PIN-setup guard ───────────────────────────────────────────────
-        // signInForSession (OTP → set-PIN flow) signs into Firebase to obtain an
-        // ID token for the Bearer-gated set-pin request, which fires this
-        // listener. During that window we must NOT hydrate the profile
-        // (/drivers/me) or navigate — OTP only authorizes PIN setup. The full
-        // session is established AFTER set-pin via confirmPin → establishSession,
-        // which clears this flag. This guarantees the required ordering:
-        // verify-otp → set-pin → pin_hash true → then /drivers/me.
+        // ── Belt-and-suspenders IIFE guard ───────────────────────────────────
+        // pinSetupInProgressRef is already checked above (before setDriverUid),
+        // so we should never reach here with it true. Guard kept for safety.
         if (pinSetupInProgressRef.current) {
           console.log("[AUTH_STATE] pin-setup in progress — skipping profile hydration + navigation (no premature /drivers/me)");
           return;
