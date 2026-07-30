@@ -120,15 +120,31 @@ export async function sendOtp(phone: string): Promise<SendOtpResult> {
     return { ok: false, error: errMsg };
   }
 
-  const otpId = typeof json.otp_id === "string" ? json.otp_id : "";
+  // Log the full response so the exact field names are visible in dev logs.
+  console.log("[sendOtp] FULL response body:", JSON.stringify(json));
+
+  // Accept whichever field name the backend uses for the OTP session ID.
+  // snake_case (otp_id) is the primary convention; camelCase and plain "id"
+  // are tried as fallbacks so the app works across backend versions.
+  const raw = json as Record<string, unknown>;
+  const otpId =
+    typeof raw["otp_id"]    === "string" ? (raw["otp_id"]    as string) :
+    typeof raw["id"]        === "string" ? (raw["id"]        as string) :
+    typeof raw["otpId"]     === "string" ? (raw["otpId"]     as string) :
+    typeof raw["otp_token"] === "string" ? (raw["otp_token"] as string) :
+    "";
+
   if (!otpId) {
-    console.warn("[sendOtp] WARNING: server did not return otp_id — verify step will send empty otp_id");
+    console.warn(
+      "[sendOtp] WARNING: could not find otp_id in response — tried otp_id / id / otpId / otp_token.",
+      "Verify step will proceed without otp_id; backend must support phone-only OTP matching.",
+    );
   }
 
   // Store for verifyOtpApi to consume.
-  _pendingOtpId = otpId;
+  _pendingOtpId = otpId || null;
 
-  console.log("[sendOtp] SUCCESS — otp_id:", otpId ? "received" : "MISSING");
+  console.log("[sendOtp] SUCCESS — otp_id:", otpId ? `received (${otpId.slice(0, 8)}…)` : "MISSING");
   return { ok: true, otpId };
 }
 
@@ -145,18 +161,22 @@ export async function sendOtp(phone: string): Promise<SendOtpResult> {
  */
 export async function verifyOtpApi(phone: string, otp: string): Promise<VerifyOtpResult> {
   const url  = `${BASE_URL_V2}/auth/otp/verify`;
-  const body = JSON.stringify({
-    otp_id:    _pendingOtpId ?? "",
-    phone,
-    otp,
-    user_type: "driver",
-  });
+
+  // Build the request body. otp_id is included only when it is non-empty —
+  // sending otp_id:"" (empty string) causes backends that index OTPs by ID
+  // to throw a catch-all error ("An unexpected error occurred"). If otp_id is
+  // absent the backend must fall back to phone-based OTP matching.
+  const verifyPayload: Record<string, string> = { phone, otp, user_type: "driver" };
+  if (_pendingOtpId) verifyPayload["otp_id"] = _pendingOtpId;
+
+  const body    = JSON.stringify(verifyPayload);
   const headers = { "Content-Type": "application/json" };
 
   console.log("[verifyOtp] ──────────────────────────────────────");
   console.log("[verifyOtp] URL      :", url);
   console.log("[verifyOtp] method   : POST");
-  console.log("[verifyOtp] otp_id   :", _pendingOtpId ? "present" : "MISSING — sendOtp may not have been called");
+  console.log("[verifyOtp] otp_id   :", _pendingOtpId ? `present (${_pendingOtpId.slice(0, 8)}…)` : "ABSENT — will be omitted from request");
+  console.log("[verifyOtp] request body:", body);
 
   let res: Response;
   try {
@@ -214,21 +234,18 @@ export async function verifyOtpApi(phone: string, otp: string): Promise<VerifyOt
 }
 
 /**
- * POST /auth/verify-pin — daily login factor: phone + 6-digit PIN.
+ * POST /api/v2/auth/verify-pin — daily login factor: phone + 6-digit PIN.
  *
- * Mirrors verify-otp's success contract (returns a Firebase custom token plus
- * the minted single-device sessionId), but uses no Firebase session — the
- * driver is signing in fresh. Server enforces a 3-attempt / 24h lockout.
- *
- * NOTE: The Backend V2 does not expose a dedicated /api/v2/auth/verify-pin
- * endpoint. This function intentionally targets the legacy path (/api/auth/verify-pin).
- * A 404 response is handled gracefully — it returns { pinNotFound: true } which
- * routes the login screen to the OTP flow. Drivers who hit this path are
- * seamlessly redirected to set up a new PIN via OTP.
+ * Backend V2 schema: { phone: string, user_type: "driver", pin: string }
+ * Response success:  { token/customToken: string, sessionId?: string }
+ * Response 404:      driver has no PIN — app falls back to OTP setup flow.
+ * Server enforces a 3-attempt / 24h lockout.
  */
 export async function verifyPinApi(phone: string, pin: string): Promise<VerifyPinResult> {
   const url  = `${BASE_URL}/v2/auth/verify-pin`;
-  const body = JSON.stringify({ phone, pin });
+  // user_type is required by the V2 VerifyPinSchema.
+  // Omitting it causes HTTP 422 Validation Error.
+  const body = JSON.stringify({ phone, user_type: "driver", pin });
   const headers = { "Content-Type": "application/json" };
 
   console.log("[verifyPin] ──────────────────────────────────────");
