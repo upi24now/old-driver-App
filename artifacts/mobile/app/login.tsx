@@ -699,8 +699,11 @@ export default function LoginScreen() {
               </View>
             </View>
 
-            {/* ── Build label (temporary — remove after bundle confirmed) ── */}
-            <Text style={ss.buildLabel}>Build: bce26eb</Text>
+            {/* ── BUILD PROOF (temporary — remove after bundle confirmed) ── */}
+            <View style={ss.buildProofRow}>
+              <Text style={ss.buildProofIcon}>❌</Text>
+              <Text style={ss.buildProofText}>BUILD_PROOF_X_20260730</Text>
+            </View>
 
             {/* ── Welcome ── */}
             <Text style={ss.welcomeHeadline}>Welcome Back</Text>
@@ -1153,12 +1156,23 @@ const ss = StyleSheet.create({
     paddingHorizontal: 22,
   },
 
-  // ── Build label (temporary proof marker) ─────────────────────────────────
-  buildLabel: {
-    fontSize:   10,
-    color:      "#aaa",
-    alignSelf:  "flex-end",
-    marginBottom: 2,
+  // ── BUILD PROOF (temporary — remove after bundle confirmed) ─────────────
+  buildProofRow: {
+    flexDirection:  "row",
+    alignItems:     "center",
+    alignSelf:      "flex-end",
+    marginBottom:   4,
+    gap:            6,
+  },
+  buildProofIcon: {
+    fontSize:   28,
+    color:      "#FF0000",
+  },
+  buildProofText: {
+    fontSize:     13,
+    fontWeight:   "700",
+    color:        "#FF0000",
+    letterSpacing: 0.5,
   },
 
   // ── Hero ──────────────────────────────────────────────────────────────────
