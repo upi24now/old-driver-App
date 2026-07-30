@@ -1,56 +1,65 @@
-// Load .env using an explicit path derived from the bundle's own location so
-// this works regardless of PM2's cwd setting.
-// The bundle lands in dist/index.mjs; .env sits one level up at the project root.
+// ── Step 1: Load .env BEFORE any config or service imports are evaluated ─────
+//
+// dotenv must be the very first thing that runs so that all subsequent
+// process.env reads (config.ts, firebase-admin.ts, …) see the loaded values.
+//
+// Path logic: bundle lands at dist/index.mjs; .env sits one level up.
+// This works for PM2, direct node invocation, and the Replit dev workflow.
 import { config as dotenvConfig } from "dotenv";
 import { fileURLToPath } from "url";
 import { dirname, resolve } from "path";
 
-const bundleDir = dirname(fileURLToPath(import.meta.url));
-const envPath   = resolve(bundleDir, "../.env");
+const bundleDir    = dirname(fileURLToPath(import.meta.url));
+const envPath      = resolve(bundleDir, "../.env");
 const dotenvResult = dotenvConfig({ path: envPath });
 
-// ── Import app and services (AFTER dotenv so env vars are available) ─────────
-// NOTE: Firebase Admin reads env vars lazily (inside getAdminApp()), so it
-// correctly picks up values loaded by dotenv above.
+// ── Step 2: Import application modules (all lazy-init; dotenv already ran) ───
 import app, { initStaticUploads } from "./app";
-import { logger } from "./lib/logger";
-import { startFcmDispatcher } from "./lib/fcm-dispatcher";
-import { startRoundRobinDispatcher } from "./lib/round-robin-dispatcher";
-import { startPgShadowWriter } from "./lib/pg-shadow-writer";
+import { logger }  from "./lib/logger";
+import { getConfig, logConfigSummary } from "./lib/config";
+import { startFcmDispatcher }          from "./lib/fcm-dispatcher";
+import { startRoundRobinDispatcher }   from "./lib/round-robin-dispatcher";
+import { startPgShadowWriter }         from "./lib/pg-shadow-writer";
 import {
   logDispatchSource,
   planDispatchStartup,
   resolvePgWriteGates,
   logPgWriteGuard,
 } from "./lib/dispatch-source";
-import { startPgDispatcherDryRun } from "./lib/pg-dispatcher-dry-run";
-import { startPgDispatcher } from "./lib/pg-dispatcher";
-import { startDispatchProjector } from "./lib/pg-firestore-projector";
-import { ensureSseTrigger } from "./lib/sse-trigger";
+import { startPgDispatcherDryRun }  from "./lib/pg-dispatcher-dry-run";
+import { startPgDispatcher }        from "./lib/pg-dispatcher";
+import { startDispatchProjector }   from "./lib/pg-firestore-projector";
+import { ensureSseTrigger }         from "./lib/sse-trigger";
 import { startSseHub, startSseEventsCleanup } from "./lib/sse-hub";
 
-// ── Resolve runtime config (env vars now available from dotenv) ──────────────
-const uploadsDir   = process.env["UPLOADS_DIR"]    ?? resolve(bundleDir, "../uploads");
-const apiPublicUrl = process.env["API_PUBLIC_URL"]  ?? "";
-const rawPort      = process.env["PORT"];
-
-// Pin the resolved uploadsDir back into process.env so that kyc-upload.ts
-// (which calls getUploadsDir() at request time) uses the exact same path
-// that initStaticUploads() will serve from.  Without this, kyc-upload.ts
-// falls back to path.join(process.cwd(), "uploads") which differs from
-// resolve(bundleDir, "../uploads") when PM2's cwd is not the project root —
-// causing files to be written in one directory but served from another (404).
-process.env["UPLOADS_DIR"] = uploadsDir;
-
+// ── Step 3: .env load result ─────────────────────────────────────────────────
 if (dotenvResult.error) {
-  // Not fatal — PM2 env vars take precedence over .env.
-  // Log so the VPS operator can diagnose .env path issues.
+  // Non-fatal: PM2 / Docker / CI inject vars directly; .env is only for local dev.
   logger.warn({ envPath, err: dotenvResult.error.message }, ".env load warning (non-fatal)");
 } else {
   logger.info({ envPath, parsed: Object.keys(dotenvResult.parsed ?? {}).length }, ".env loaded");
 }
 
-// ── Static uploads route (mounted after dotenv so UPLOADS_DIR is correct) ───
+// ── Step 4: Validate all required configuration (fail-fast) ──────────────────
+//
+// getConfig() reads process.env (now populated by dotenv above), validates every
+// required variable, and exits with a descriptive error list if anything is
+// missing.  This replaces the previous scattered PORT / Firebase / SESSION_SECRET
+// checks that were spread across multiple files.
+const cfg = getConfig();
+
+// ── Step 5: Resolve uploadsDir and pin it into process.env ───────────────────
+//
+// kyc-upload.ts reads UPLOADS_DIR via getUploadsDir() at request time.
+// Pinning the resolved path here ensures both multer (write) and express.static
+// (serve) operate on the exact same directory regardless of PM2's cwd.
+const uploadsDir = cfg.server.uploadsDir || resolve(bundleDir, "../uploads");
+process.env["UPLOADS_DIR"] = uploadsDir;
+
+// ── Step 6: Log safe startup summary (no secret values) ──────────────────────
+logConfigSummary((obj, msg) => logger.info(obj, msg));
+
+// ── Static uploads route (mounted after dotenv + config so UPLOADS_DIR is set) 
 initStaticUploads(uploadsDir);
 
 // ── One-time package download route ─────────────────────────────────────────
@@ -65,29 +74,6 @@ app.get("/api/dl", (_req, res) => {
   });
 });
 
-// ── Startup config log ───────────────────────────────────────────────────────
-logger.info(
-  {
-    uploadsDir,
-    publicUrl: apiPublicUrl || "(derived from Host header at request time)",
-  },
-  "Startup config",
-);
-
-// ── Firebase env check (confirms which project is configured) ────────────────
-// Logs project ID and the domain part of the client email only — never the key.
-const fbProjectId   = process.env["FIREBASE_PROJECT_ID"]   ?? "(not set)";
-const fbClientEmail = process.env["FIREBASE_CLIENT_EMAIL"] ?? "(not set)";
-const fbKeyPresent  = !!(process.env["FIREBASE_PRIVATE_KEY"]);
-logger.info(
-  {
-    firebaseProjectId:        fbProjectId,
-    firebaseClientEmailDomain: fbClientEmail.includes("@") ? fbClientEmail.split("@")[1] : fbClientEmail,
-    firebasePrivateKeyPresent: fbKeyPresent,
-  },
-  "[STARTUP_FIREBASE_CONFIG]",
-);
-
 // ── Dispatch source feature flag (Phase 5E-B / 5E-C) ────────────────────────
 // Logging + a read-only PG dry-run gate. The Firestore dispatcher below ALWAYS
 // starts and remains authoritative; pg_shadow additionally runs a read-only PG
@@ -99,25 +85,13 @@ const dispatchPlan = planDispatchStartup(dispatchSource.value, pgWriteGates);
 // no PG writes/FCM can occur unless the gates below are explicitly opened.
 logPgWriteGuard(dispatchPlan);
 
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
-
-const port = Number(rawPort);
-
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
-
-app.listen(port, (err) => {
+app.listen(cfg.server.port, (err) => {
   if (err) {
     logger.error({ err }, "Error listening on port");
     process.exit(1);
   }
 
-  logger.info({ port }, "Server listening");
+  logger.info({ port: cfg.server.port }, "Server listening");
 
   // Start the Firestore → FCM order dispatcher (fire-and-forget; errors logged internally)
   startFcmDispatcher().catch((e) =>
