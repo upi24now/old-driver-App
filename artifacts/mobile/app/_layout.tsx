@@ -129,6 +129,18 @@ function RootLayoutNav() {
       return;
     }
 
+    // ── V2 auth screens manage their own routing — skip global guard ──────────
+    // These are NEW routes; no existing guard logic is changed.
+    if (
+      pathname === "/login-v2"      ||
+      pathname === "/forgot-pin-v2" ||
+      pathname === "/verify-otp-v2" ||
+      pathname === "/create-pin-v2"
+    ) {
+      console.log(`[FP_TRACE][LAYOUT_EFFECT #${effectRc}] BRANCH → V2 early-return: pathname=${pathname}`);
+      return;
+    }
+
     if (!driverUid || !firebaseAuth.currentUser) {
       // Not authenticated — show permission onboarding on first install;
       // go to login for returning drivers who have already completed it.
