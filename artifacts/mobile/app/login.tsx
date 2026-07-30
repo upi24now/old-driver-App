@@ -699,6 +699,9 @@ export default function LoginScreen() {
               </View>
             </View>
 
+            {/* ── Build label (temporary — remove after bundle confirmed) ── */}
+            <Text style={ss.buildLabel}>Build: bce26eb</Text>
+
             {/* ── Welcome ── */}
             <Text style={ss.welcomeHeadline}>Welcome Back</Text>
             <Text style={ss.welcomeSub}>Log in with your mobile number & PIN</Text>
@@ -1148,6 +1151,14 @@ const ss = StyleSheet.create({
     flexGrow:          1,
     alignItems:        "center",
     paddingHorizontal: 22,
+  },
+
+  // ── Build label (temporary proof marker) ─────────────────────────────────
+  buildLabel: {
+    fontSize:   10,
+    color:      "#aaa",
+    alignSelf:  "flex-end",
+    marginBottom: 2,
   },
 
   // ── Hero ──────────────────────────────────────────────────────────────────

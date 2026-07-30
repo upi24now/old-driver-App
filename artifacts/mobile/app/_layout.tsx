@@ -23,12 +23,8 @@ import { firebaseAuth } from "@/utils/firebase";
 import { PERMISSION_SETUP_VERSION } from "@/utils/firestore";
 
 // Build marker — printed once at bundle evaluation so the live deployment can be
-// verified as the latest source from the JS console / Expo Go logs. Update the
-// build date whenever a fresh production bundle is published.
-console.log(
-  "[BUILD_CHECK] Driver App | build=2026-07-30 | location-payload=lat/lng | api=api.bikecourierservice.com",
-);
-console.log("[RUNTIME_PROOF_20260730] _layout.tsx — RootLayout module evaluated — if you see this date the new bundle is loaded");
+// verified as the latest source from the JS console / Expo Go logs.
+console.log("[BUNDLE_PROOF] commit=bce26eb | build=2026-07-30 | Driver App");
 
 SplashScreen.preventAutoHideAsync();
 
