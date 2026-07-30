@@ -248,7 +248,7 @@ type DriverState = {
   transactions:     Txn[];
 
   setPhone:   (p: string) => void;
-  confirmOtp: (phone: string, otp: string) => Promise<ConfirmOtpResult>;
+  confirmOtp: (phone: string, otp: string, options?: { pinSetupOnly?: boolean }) => Promise<ConfirmOtpResult>;
   confirmPin: (phone: string, pin: string) => Promise<ConfirmOtpResult>;
   setProfile: (p: Profile) => void;
   setVehicle: (v: Vehicle) => void;
@@ -627,6 +627,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     const unsub = onAuthStateChanged(firebaseAuth, (user) => {
       console.log("[AUTH_STATE] onAuthStateChanged uid =", user?.uid ?? null);
       console.log("[AUTH_STATE] no user =", !user);
+      // ── [AUTH_STATE_CHANGED] debug ────────────────────────────────────────
+      console.log("[AUTH_STATE_CHANGED] uid:", user?.uid ?? null, "| pinSetupInProgress:", pinSetupInProgressRef.current, "| isOtpVerified: (checked at next render)");
 
       if (!user) {
         setDriverUid(null);
@@ -1872,12 +1874,14 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // the layout guard (isOtpVerified=true) — so /drivers/me is never called
   // before the PIN is set.
   const confirmOtp = async (
-    phone: string,
-    otp:   string,
+    phone:    string,
+    otp:      string,
+    options?: { pinSetupOnly?: boolean },
   ): Promise<ConfirmOtpResult> => {
-    console.log("[BUILD_SENTINEL] confirmOtp = ORDER-FIX build — signInForSession only; NO /drivers/me before set-pin");
+    const pinSetupOnly = options?.pinSetupOnly ?? false;
+    console.log("[BUILD_SENTINEL] confirmOtp = PIN-FLOW-SPLIT build — pinSetupOnly:", pinSetupOnly);
     const apiResult = await verifyOtpApi(phone, otp);
-    console.log("[FLOW] DriverContext.confirmOtp — verifyOtpApi ok:", apiResult.ok, "| token present:", apiResult.ok ? !!apiResult.token : false, "| sessionId returned:", apiResult.ok ? !!apiResult.sessionId : false);
+    console.log("[FLOW] DriverContext.confirmOtp — verifyOtpApi ok:", apiResult.ok, "| token present:", apiResult.ok ? !!apiResult.token : false, "| sessionId returned:", apiResult.ok ? !!apiResult.sessionId : false, "| pinSetupOnly:", pinSetupOnly);
     if (!apiResult.ok) return { ok: false, profileComplete: false, error: apiResult.error };
     if (apiResult.sessionId) {
       await setSessionId(apiResult.sessionId);
@@ -1885,12 +1889,21 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     } else {
       console.warn("[FLOW] DriverContext.confirmOtp — verify-otp returned NO sessionId; keeping existing session");
     }
-    // OTP verified → sign into Firebase ONLY (Bearer for set-pin). Do NOT fetch
-    // /drivers/me, do NOT route, leave isOtpVerified=false. login.tsx routes to
-    // /create-pin; the full session is established post-set-pin via confirmPin.
-    const signIn = await signInForSession(apiResult.token, phone);
-    if (!signIn.ok) return { ok: false, profileComplete: false, error: signIn.error };
-    return { ok: true, profileComplete: false };
+
+    if (pinSetupOnly) {
+      // Forgot-PIN path: sign into Firebase ONLY (Bearer for set-pin). Do NOT fetch
+      // /drivers/me, do NOT route, leave isOtpVerified=false. login.tsx routes to
+      // /create-pin?intent=reset; full session established post-set-pin via confirmPin.
+      console.log("[FLOW] DriverContext.confirmOtp — pinSetupOnly=true → signInForSession (no profile fetch, isOtpVerified stays false)");
+      const signIn = await signInForSession(apiResult.token, phone);
+      if (!signIn.ok) return { ok: false, profileComplete: false, error: signIn.error };
+      return { ok: true, profileComplete: false };
+    } else {
+      // Normal OTP login: full session — fetch profile, compute route, release
+      // layout guard (isOtpVerified=true). login.tsx routes via result.nextRoute.
+      console.log("[FLOW] DriverContext.confirmOtp — pinSetupOnly=false → establishSession (full profile fetch + routing)");
+      return establishSession(apiResult.token, phone);
+    }
   };
 
   // PIN path — the daily login factor (phone + 6-digit PIN). Same single-device

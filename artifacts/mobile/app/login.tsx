@@ -581,16 +581,26 @@ export default function LoginScreen() {
   // ── Verify OTP ────────────────────────────────────────────────────────────
   async function handleVerify(code: string) {
     if (verifying || code.length !== OTP_LENGTH || !digits) return;
-    console.log("[FLOW] login: OTP submitted — intent:", otpIntent);
+
+    // ── [OTP_FLOW_START] ──────────────────────────────────────────────────────
+    console.log("[OTP_FLOW_START] otpIntent =", otpIntent, "| currentRoute = login (OTP phase)");
+
     setVerifying(true);
     setOtpErr("");
 
-    const result = await confirmOtp(digits, code);
-    console.log("[FLOW] login: confirmOtp result — ok:", result.ok, "| nextRoute:", result.nextRoute ?? "(derived)", "| error:", result.error ?? "none");
+    // "forgot" → Firebase-only sign-in (pinSetupOnly=true), full session deferred
+    //            until after the new PIN is saved on /create-pin.
+    // "setup"  → full session (pinSetupOnly=false): profile fetch + routing
+    //            goes directly to Home / onboarding (no PIN creation step).
+    const isForgotFlow = otpIntent === "forgot";
+    console.log("[OTP_VERIFY_SUCCESS] calling confirmOtp — isForgotFlow:", isForgotFlow, "| otpIntent:", otpIntent);
+
+    const result = await confirmOtp(digits, code, { pinSetupOnly: isForgotFlow });
+    console.log("[OTP_VERIFY_SUCCESS] result.ok:", result.ok, "| nextRoute:", result.nextRoute ?? "(none)", "| profileComplete:", result.profileComplete, "| error:", result.error ?? "none");
 
     if (!result.ok) {
-      // Wrong / expired OTP → stay on the OTP screen and surface the error. For
-      // the forgot flow this means the stored PIN is NEVER touched.
+      // Wrong / expired OTP → stay on the OTP screen and surface the error.
+      // For the forgot flow this means the stored PIN is NEVER touched.
       setVerifying(false);
       setOtp("");
       setOtpErr(result.error ?? "Verification failed. Try again.");
@@ -598,18 +608,26 @@ export default function LoginScreen() {
       return;
     }
 
-    // ── SETUP (new user) and FORGOT (reset) ───────────────────────────────────
-    // OTP is the authorization; the PIN is always entered AFTER verification.
-    // Route is derived entirely from the client-side otpIntent — no extra API
-    // call is made here because no confirmed backend route exists for a PIN-status
-    // check on the production VPS:
-    //   "setup" intent  → driver hit PIN-not-found 404, has no PIN → "create"
-    //   "forgot" intent → driver explicitly said they forgot      → "reset"
-    const pinIntent: "create" | "reset" = otpIntent === "forgot" ? "reset" : "create";
-
     setVerifying(false);
-    console.log("[FLOW] login:", otpIntent, "— OTP verified (no session yet) → /create-pin?intent=" + pinIntent);
-    router.replace(`/create-pin?intent=${pinIntent}` as never);
+
+    if (isForgotFlow) {
+      // ── Forgot-PIN path ────────────────────────────────────────────────────
+      // OTP authorized the PIN reset. No full session exists yet — the driver
+      // must set a new PIN on /create-pin before /drivers/me is called.
+      // ── [PIN_FLOW_DECISION] ───────────────────────────────────────────────
+      console.log("[PIN_FLOW_DECISION] otpIntent:", otpIntent, "| hasPin: unknown (no status check) | pinSetupInProgress: true | targetRoute: /create-pin?intent=reset | reason: forgot-PIN requires PIN reset before session");
+      console.log("[NAVIGATION_TRIGGER] caller: login.tsx | function: handleVerify | line: ~612 | destination: /create-pin?intent=reset");
+      router.replace("/create-pin?intent=reset" as never);
+    } else {
+      // ── Normal OTP login path ──────────────────────────────────────────────
+      // Full session already established by confirmOtp (establishSession called).
+      // Route to the profile-derived destination — Home or next onboarding step.
+      const next = result.nextRoute ?? (result.profileComplete ? "/(tabs)" : "/registration");
+      // ── [PIN_FLOW_DECISION] ───────────────────────────────────────────────
+      console.log("[PIN_FLOW_DECISION] otpIntent:", otpIntent, "| targetRoute:", next, "| reason: normal OTP login uses full session (no PIN create step)");
+      console.log("[NAVIGATION_TRIGGER] caller: login.tsx | function: handleVerify | line: ~624 | destination:", next);
+      router.replace(next as never);
+    }
   }
 
   console.log("[SCREEN_MOUNT] login — authLoading =", authLoading, "driverUid =", driverUid);
