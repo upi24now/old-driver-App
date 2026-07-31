@@ -12,7 +12,7 @@
 import { apiSetPin, apiCreateAccount, type CreateAccountParams } from "../api";
 import { firebaseSignIn, firebaseSignOut } from "../firebase";
 import { sessionSave, V3Session }          from "../session";
-import { logOp }                    from "../errors";
+import { logOp, ERR, makeError }    from "../errors";
 import { ok, fail, AuthV3Result }   from "../types";
 
 export type FinishAuthParams = {
