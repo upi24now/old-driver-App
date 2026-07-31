@@ -128,6 +128,17 @@ export default function LoginV2() {
             }
           </Pressable>
 
+          {/* ── Terms & Privacy ── */}
+          <View style={ss.termsRow}>
+            <Text style={ss.termsText}>By continuing, you agree to our </Text>
+            <Pressable hitSlop={6} onPress={() => router.push("/terms-and-conditions" as never)}>
+              <Text style={ss.termsLink}>Terms</Text>
+            </Pressable>
+            <Text style={ss.termsText}> & </Text>
+            <Pressable hitSlop={6} onPress={() => router.push("/privacy-policy" as never)}>
+              <Text style={ss.termsLink}>Privacy Policy</Text>
+            </Pressable>
+          </View>
 
         </View>
       </ScrollView>
@@ -150,10 +161,15 @@ const ss = StyleSheet.create({
   phoneInput:  { flex: 1, fontSize: 16, color: D.text, paddingHorizontal: 14 },
 
   // Primary button
-  btn:         { height: 54, borderRadius: 12, backgroundColor: D.primary, alignItems: "center", justifyContent: "center", marginTop: 4 },
+  btn:         { height: 54, borderRadius: 12, backgroundColor: D.primary, alignItems: "center", justifyContent: "center", marginTop: 16 },
   btnOff:      { opacity: 0.45 },
   btnText:     { color: "#fff", fontSize: 17, fontWeight: "700" },
 
   // Errors
   errText:     { color: D.error, fontSize: 14, marginBottom: 8, textAlign: "center" },
+
+  // Terms & Privacy
+  termsRow:    { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "center", marginTop: 20, gap: 1 },
+  termsText:   { fontSize: 12, color: D.sub },
+  termsLink:   { fontSize: 12, fontWeight: "700", color: D.primary },
 });
