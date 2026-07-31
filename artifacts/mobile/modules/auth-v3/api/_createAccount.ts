@@ -22,7 +22,16 @@ export async function apiCreateAccount(
   params: CreateAccountParams,
 ): Promise<AuthV3VoidResult> {
   try {
-    await ensureDriverSignup(params);
+    const result = await ensureDriverSignup(params);
+    if (!result.ok) {
+      const error: AuthV3Error = {
+        code:        ERR.API_ERROR,
+        userMessage: "Could not create account. Please try again.",
+        diagnostic:  "api.createAccount: ensureDriverSignup returned ok:false",
+      };
+      logOp("api", "createAccount", "error", error);
+      return fail(error);
+    }
     logOp("api", "createAccount", "success");
     return okVoid();
   } catch (raw) {

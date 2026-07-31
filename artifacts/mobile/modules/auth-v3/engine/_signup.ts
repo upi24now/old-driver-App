@@ -4,16 +4,16 @@
  *
  * Completes either the signup or forgot-PIN flow:
  *   1. Sign in with the OTP-issued custom token
- *   2. Save the new PIN via the backend
- *   3. (signup only) Create the driver account
+ *   2. (signup only) Create the driver account so the PG row exists
+ *   3. Save the new PIN via the backend (requires the driver row from step 2)
  *   4. Persist the session
  */
 
 import { apiSetPin, apiCreateAccount, type CreateAccountParams } from "../api";
 import { firebaseSignIn, firebaseSignOut } from "../firebase";
 import { sessionSave, V3Session }          from "../session";
-import { logOp, ERR, makeError }    from "../errors";
-import { ok, fail, AuthV3Result }   from "../types";
+import { logOp }                           from "../errors";
+import { ok, fail, AuthV3Result }          from "../types";
 
 export type FinishAuthParams = {
   verifyToken:     string;
@@ -33,11 +33,9 @@ export async function engineFinishAuth(
   const fbResult = await firebaseSignIn(verifyToken);
   if (!fbResult.success) return fbResult;
 
-  // Step 2 — Save the new PIN
-  const pinResult = await apiSetPin(pin, fbResult.data.idToken, verifySessionId);
-  if (!pinResult.success) return pinResult;
-
-  // Step 3 — Create account (signup path only)
+  // Step 2 — Create account (signup path only)
+  // Must run before set-pin: the backend set-pin route does an UPDATE on the
+  // drivers table, which requires the row to already exist.
   if (signupData) {
     const accountResult = await apiCreateAccount({ phone, ...signupData });
     if (!accountResult.success) {
@@ -47,6 +45,10 @@ export async function engineFinishAuth(
       return accountResult;
     }
   }
+
+  // Step 3 — Save the new PIN
+  const pinResult = await apiSetPin(pin, fbResult.data.idToken, verifySessionId);
+  if (!pinResult.success) return pinResult;
 
   // Step 4 — Persist session
   const saveResult = await sessionSave(fbResult.data.uid, phone);

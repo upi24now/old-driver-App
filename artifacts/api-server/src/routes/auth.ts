@@ -259,40 +259,20 @@ const PIN_MAX_ATTEMPTS = 3;
 const PIN_LOCK_MS      = 24 * 60 * 60 * 1000; // 24 hours
 
 router.post("/auth/set-pin", async (req, res) => {
-  // [DIAG] Log every request that reaches this route for investigation.
-  req.log.info(
-    {
-      method:    req.method,
-      path:      req.path,
-      authHdr:   req.headers["authorization"] ? "present" : "ABSENT",
-      sessionHdr: req.headers["x-session-id"]  ? "present" : "ABSENT",
-      bodyKeys:  Object.keys(req.body ?? {}),
-    },
-    "[DIAG_SET_PIN_ENTRY] set-pin request received",
-  );
-
   // Requires an existing valid Firebase session (driver already OTP-verified).
   const uid = await requireAuth(req, res);
-  if (!uid) {
-    req.log.warn("[DIAG_SET_PIN_AUTH_FAIL] requireAuth rejected the request");
-    return; // requireAuth already wrote a 401 JSON body.
-  }
-
-  req.log.info({ uid }, "[DIAG_SET_PIN_UID] driver uid resolved from token");
+  if (!uid) return; // requireAuth already wrote a 401 JSON body.
 
   const { pin } = req.body as { pin?: string };
   if (!pin || !/^\d{6}$/.test(pin)) {
-    req.log.warn({ pinPresent: !!pin, pinLength: pin?.length }, "[DIAG_SET_PIN_INVALID_PIN] pin validation failed");
     res.status(400).json({ error: "PIN must be exactly 6 digits." });
     return;
   }
 
   try {
-    req.log.info({ uid }, "[DIAG_SET_PIN_HASH_START] hashing PIN");
     const pinHash   = await hashPin(pin); // raw PIN never stored or logged.
     const sessionId = mintSessionId();    // first-time setup also claims this device.
 
-    req.log.info({ uid }, "[DIAG_SET_PIN_UPDATE_START] running UPDATE on drivers table");
     const updated = await db
       .update(driversTable)
       .set({
@@ -307,18 +287,14 @@ router.post("/auth/set-pin", async (req, res) => {
       .where(eq(driversTable.uid, uid))
       .returning({ uid: driversTable.uid });
 
-    req.log.info({ uid, rowsUpdated: updated.length }, "[DIAG_SET_PIN_UPDATE_RESULT] UPDATE complete");
-
     if (updated.length === 0) {
-      req.log.warn({ uid }, "[DIAG_SET_PIN_NO_ROW] driver row does not exist in PG — UPDATE returned 0 rows. Driver must call POST /drivers/signup first.");
       res.status(404).json({ error: "Driver not found. Complete login before setting a PIN." });
       return;
     }
 
-    req.log.info({ uid }, "[DIAG_SET_PIN_SUCCESS] PIN set");
     res.json({ ok: true, sessionId });
   } catch (err) {
-    req.log.error({ err }, "[DIAG_SET_PIN_EXCEPTION] set-pin threw — full error above");
+    req.log.error({ err }, "set-pin: failed");
     res.status(500).json({ error: "Could not set PIN. Please try again." });
   }
 });
