@@ -195,7 +195,7 @@ export default function HomeScreen() {
     );
   }
 
-  if (!driverUid) return <Redirect href="/login" />;
+  if (!driverUid) return <Redirect href="/auth-v3/welcome" />;
 
   async function setOnline(v: boolean) {
     console.log("[ONLINE_ROUTE] button pressed:", v);

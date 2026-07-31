@@ -167,14 +167,8 @@ function RootLayoutNav() {
     }
 
     // ── V3 auth screens manage their own routing — skip global guard ──────────
-    if (
-      pathname === "/login-v3"           ||
-      pathname === "/verify-otp-v3"      ||
-      pathname === "/forgot-pin-v2"      ||
-      pathname === "/create-pin-v2"      ||
-      pathname.startsWith("/auth-v3")    // V3 multi-screen auth stack
-    ) {
-      console.log(`[AUTH_V3][LAYOUT_EFFECT #${effectRc}] BRANCH → V3/V2-auth early-return: pathname=${pathname}`);
+    if (pathname.startsWith("/auth-v3")) {
+      console.log(`[AUTH_V3][LAYOUT_EFFECT #${effectRc}] BRANCH → V3-auth early-return: pathname=${pathname}`);
       console.log("[AUTH_STATE_L5] BRANCH pathname=auth-screen → no routing",
         "| pathname:", pathname,
         "| ts:", Date.now(),
@@ -201,7 +195,7 @@ function RootLayoutNav() {
           "| pathname:", pathname,
           "| ts:", Date.now(),
         );
-        router.replace("/login-v3" as never);
+        router.replace("/auth-v3/welcome" as never);
       }
       return;
     }
@@ -217,7 +211,7 @@ function RootLayoutNav() {
         "| pathname:", pathname,
         "| ts:", Date.now(),
       );
-      router.replace("/login-v3" as never);
+      router.replace("/auth-v3/welcome" as never);
       return;
     }
 
@@ -248,15 +242,10 @@ function RootLayoutNav() {
   return (
     <>
       <Stack
-        initialRouteName="login-v3"
+        initialRouteName="index"
         screenOptions={{ headerShown: false, animation: "slide_from_right" }}
       >
         <Stack.Screen name="index" options={{ animation: "none" }} />
-        <Stack.Screen name="login-v3" />
-        <Stack.Screen name="verify-otp-v3" />
-        <Stack.Screen name="login" />
-        <Stack.Screen name="otp" />
-        <Stack.Screen name="create-pin" />
         <Stack.Screen name="registration" />
         <Stack.Screen name="vehicle-selection" />
         <Stack.Screen name="profile-setup" />

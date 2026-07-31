@@ -193,7 +193,7 @@ export default function SettingsScreen() {
       "Sign out?",
       "You'll need to log in again to receive ride requests.",
       "Sign out",
-      () => { signOut(); router.replace("/login"); },
+      () => { signOut(); router.replace("/auth-v3/welcome" as never); },
       true,
     );
   }

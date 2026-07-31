@@ -235,8 +235,8 @@ export default function PermissionCenterScreen() {
       console.log("[PERMISSION_GATE] background-setup complete — logged in → server nextRoute =", nextRoute);
       router.replace(nextRoute as never);
     } else {
-      console.log("[PERMISSION_GATE] first install complete → /login");
-      router.replace("/login");
+      console.log("[PERMISSION_GATE] first install complete → /auth-v3/welcome");
+      router.replace("/auth-v3/welcome" as never);
     }
   }
 

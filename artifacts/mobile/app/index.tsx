@@ -22,8 +22,8 @@ export default function Index() {
   console.log("[SCREEN_MOUNT] index — authLoading =", authLoading, "driverUid =", driverUid);
 
   if (!authLoading && !driverUid) {
-    console.log("[SCREEN_MOUNT] index — redirecting to /login");
-    return <Redirect href="/login" />;
+    console.log("[SCREEN_MOUNT] index — redirecting to /auth-v3/welcome");
+    return <Redirect href="/auth-v3/welcome" />;
   }
 
   console.log("[SPINNER_PROOF] component = IndexSpinner — reason:", authLoading ? "authLoading=true" : "driverUid=" + driverUid);

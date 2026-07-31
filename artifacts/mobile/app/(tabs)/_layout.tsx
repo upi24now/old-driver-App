@@ -203,7 +203,7 @@ export default function TabLayout() {
     );
   }
   if (!driverUid) {
-    return <Redirect href="/login" />;
+    return <Redirect href="/auth-v3/welcome" />;
   }
 
   return (

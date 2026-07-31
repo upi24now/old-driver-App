@@ -622,7 +622,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       void signOut().finally(() => {
         try {
           console.log("[RUNTIME_NAVIGATION_20260730] DriverContext.tsx | SESSION_REPLACED | destination: /login-v3");
-          router.replace("/login-v3" as never);
+          router.replace("/auth-v3/welcome" as never);
         } catch {
           // Navigation may fail if the router is not mounted yet — _layout.tsx
           // already routes to /login once signOut resets the auth flags.
