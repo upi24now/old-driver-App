@@ -24,7 +24,6 @@ import { PERMISSION_SETUP_VERSION } from "@/utils/firestore";
 
 // Build marker — printed once at bundle evaluation so the live deployment can be
 // verified as the latest source from the JS console / Expo Go logs.
-console.log("[BUNDLE_PROOF]\nBUILD_PROOF_X_20260730");
 
 SplashScreen.preventAutoHideAsync();
 

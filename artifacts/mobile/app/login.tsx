@@ -690,12 +690,6 @@ export default function LoginScreen() {
               </View>
             </View>
 
-            {/* ── BUILD PROOF (temporary — remove after bundle confirmed) ── */}
-            <View style={ss.buildProofRow}>
-              <Text style={ss.buildProofIcon}>❌</Text>
-              <Text style={ss.buildProofText}>BUILD_PROOF_X_20260730</Text>
-            </View>
-
             {/* ── Welcome ── */}
             <Text style={ss.welcomeHeadline}>Welcome Back</Text>
             <Text style={ss.welcomeSub}>Log in with your mobile number & PIN</Text>
@@ -763,21 +757,6 @@ export default function LoginScreen() {
                 </TouchableOpacity>
                 */}
               </View>
-
-              {/* ── [DEV] Try V2 login — __DEV__ only, never shown in production ── */}
-              {__DEV__ && (
-                <TouchableOpacity
-                  onPress={() => {
-                    console.log("[V2_ENTRY]\nNavigating to /login-v2");
-                    router.push("/login-v2" as never);
-                  }}
-                  activeOpacity={0.7}
-                  hitSlop={8}
-                  style={ss.tryV2Btn}
-                >
-                  <Text style={ss.tryV2Text}>⚡ Try V2 Login →</Text>
-                </TouchableOpacity>
-              )}
 
               {/* ── Terms ── */}
               <View style={ss.termsRow}>
@@ -1080,25 +1059,6 @@ const ss = StyleSheet.create({
     flexGrow:          1,
     alignItems:        "center",
     paddingHorizontal: 22,
-  },
-
-  // ── BUILD PROOF (temporary — remove after bundle confirmed) ─────────────
-  buildProofRow: {
-    flexDirection:  "row",
-    alignItems:     "center",
-    alignSelf:      "flex-end",
-    marginBottom:   4,
-    gap:            6,
-  },
-  buildProofIcon: {
-    fontSize:   28,
-    color:      "#FF0000",
-  },
-  buildProofText: {
-    fontSize:     13,
-    fontWeight:   "700",
-    color:        "#FF0000",
-    letterSpacing: 0.5,
   },
 
   // ── Hero ──────────────────────────────────────────────────────────────────
@@ -1805,23 +1765,6 @@ const ss = StyleSheet.create({
     paddingHorizontal: 14,
   },
 
-  // ── [DEV] V2 entry point — remove after V2 testing ──────────────────────
-  tryV2Btn: {
-    alignSelf:         "center",
-    marginTop:         12,
-    marginBottom:      4,
-    paddingVertical:   6,
-    paddingHorizontal: 14,
-    borderRadius:      20,
-    backgroundColor:   "#FFF3CD",
-    borderWidth:       1,
-    borderColor:       "#FFC107",
-  },
-  tryV2Text: {
-    fontSize:   13,
-    fontWeight: "600",
-    color:      "#856404",
-  },
-
 });
+
 
