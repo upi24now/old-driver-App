@@ -615,6 +615,16 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     setSessionReplacedHandler(() => {
       console.warn("[SESSION_REPLACED] account claimed on another device — signing out");
       console.log("[FLOW] DriverContext: SESSION_REPLACED handler fired → signOut() → router.replace('/login') (THIS is the bounce to login)");
+      // ─────────────────────────────────────────────────────────────────────
+      // [AUTH_STATE_SR] SESSION_REPLACED handler fired — this means a 401 with
+      // {error:"SESSION_REPLACED"} was received. signOut() → router.replace('/login').
+      // If this fires during a fresh OTP login, it means the session validation
+      // step received a 401 before the new session was fully established.
+      // ─────────────────────────────────────────────────────────────────────
+      console.log("[AUTH_STATE_SR] SESSION_REPLACED handler fired",
+        "| about to call signOut() then router.replace('/login')",
+        "| ts:", Date.now(),
+      );
       void signOut().finally(() => {
         try {
           console.log("[RUNTIME_NAVIGATION_20260730] DriverContext.tsx | SESSION_REPLACED | destination: /login");
@@ -643,6 +653,19 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
       if (!user) {
         console.log(`[FP_TRACE][ON_AUTH_STATE_CHANGED] no user — setDriverUid(null) + setAuthLoading(false)`);
+        // ─────────────────────────────────────────────────────────────────────
+        // [AUTH_STATE_08] onAuthStateChanged(null) — Firebase signed user OUT.
+        // This fires when: (a) explicit signOut, (b) Firebase signs out the OLD
+        // user before signing in the NEW user during signInWithCustomToken, or
+        // (c) the Firebase session was revoked externally.
+        // If isOtpVerifying=true is NOT yet committed to React, the _layout.tsx
+        // effect will fire after this with driverUid=null → routes to /login-v2.
+        // ─────────────────────────────────────────────────────────────────────
+        console.log("[AUTH_STATE_08] onAuthStateChanged(NULL USER)",
+          "| setDriverUid(null) + setAuthLoading(false) about to be called",
+          "| firebaseAuth.currentUser:", firebaseAuth.currentUser?.uid ?? "null",
+          "| ts:", Date.now(),
+        );
         setDriverUid(null);
         setAuthLoading(false);
         return;
@@ -675,6 +698,18 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
       // ── [FP_TRACE] Step 8: guard NOT fired — proceeding to setDriverUid ──
       console.log(`[FP_TRACE][ON_AUTH_STATE_CHANGED] guard NOT hit — calling setDriverUid(${user.uid}) ts=${Date.now()}`);
+      // ─────────────────────────────────────────────────────────────────────
+      // [AUTH_STATE_09] onAuthStateChanged(USER) — Firebase signed user IN.
+      // setDriverUid is called synchronously in the listener callback.
+      // The isOtpVerifying flash guard must already be committed to React
+      // state, otherwise _layout.tsx will see driverUid=uid + isOtpVerified=false
+      // + isOtpVerifying=false simultaneously and route to /login.
+      // ─────────────────────────────────────────────────────────────────────
+      console.log("[AUTH_STATE_09] onAuthStateChanged(USER) — setDriverUid about to be called",
+        "| uid:", user.uid,
+        "| firebaseAuth.currentUser?.uid:", firebaseAuth.currentUser?.uid ?? "null",
+        "| ts:", Date.now(),
+      );
       // Set auth identity synchronously (session restore + normal OTP only).
       setDriverUid(user.uid);
       console.log("AUTH UID =", firebaseAuth.currentUser?.uid);
@@ -703,7 +738,32 @@ export function DriverProvider({ children }: { children: ReactNode }) {
           console.log("[AUTH_RESTORE] storedVerifiedUid =", storedUid);
           sessionValid = storedUid === user.uid;
           console.log("[SESSION_STATE] sessionValid =", sessionValid);
+          // ───────────────────────────────────────────────────────────────────
+          // [AUTH_STATE_10] sessionKeyRef resolved — shows whether this OTP login
+          // is being treated as a "session restore" (storedUid matches) or a
+          // fresh login.
+          // CRITICAL: sessionKeyRef.current is the AsyncStorage.getItem promise
+          // started at MOUNT TIME. If signOut() removed SESSION_VERIFIED_KEY but
+          // the app did NOT remount (DriverProvider still alive), this promise is
+          // already resolved and ALWAYS returns the uid from the PREVIOUS session.
+          // ───────────────────────────────────────────────────────────────────
+          console.log("[AUTH_STATE_10] onAuthStateChanged IIFE — sessionKeyRef resolved",
+            "| storedUid:", storedUid ?? "null",
+            "| user.uid:", user.uid,
+            "| sessionValid:", sessionValid,
+            "| NOTE: storedUid from MOUNT-TIME snapshot — may be STALE if signOut ran without remount",
+            "| ts:", Date.now(),
+          );
           if (sessionValid) {
+            // ─────────────────────────────────────────────────────────────────
+            // [AUTH_STATE_10A] sessionValid=true → setIsOtpVerified(true) called
+            // from WITHIN onAuthStateChanged IIFE (NOT from establishSession).
+            // This RACES with establishSession's own setIsOtpVerified(true) call.
+            // ─────────────────────────────────────────────────────────────────
+            console.log("[AUTH_STATE_10A] sessionValid=TRUE → setIsOtpVerified(true) called FROM IIFE",
+              "| authLoading stays TRUE (not released here)",
+              "| ts:", Date.now(),
+            );
             setIsOtpVerified(true);
           }
         } catch {
@@ -715,6 +775,17 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         // or permission gate appears.
         if (!sessionValid) {
           console.log("[ROUTE_DECISION] no valid session → handing off to _layout gate");
+          // ───────────────────────────────────────────────────────────────────
+          // [AUTH_STATE_10B] sessionValid=false → setAuthLoading(false) called.
+          // _layout.tsx effect will fire after this. isOtpVerifying flash guard
+          // MUST be committed to React state or _layout sees driverUid=uid +
+          // isOtpVerified=false + isOtpVerifying=false → routes to /login-v2.
+          // ───────────────────────────────────────────────────────────────────
+          console.log("[AUTH_STATE_10B] sessionValid=FALSE → setAuthLoading(false) called FROM IIFE",
+            "| isOtpVerified stays FALSE",
+            "| _layout.tsx effect will fire — flash guard must be committed",
+            "| ts:", Date.now(),
+          );
           setAuthLoading(false);
         }
         // Session restore path: keep authLoading=true (spinner overlay stays up)
@@ -1100,9 +1171,25 @@ export function DriverProvider({ children }: { children: ReactNode }) {
               hasNavigatedToBlockedRef.current = true;
             }
             console.log("[RUNTIME_NAVIGATION_20260730] DriverContext.tsx | onAuthStateChanged session-restore | destination:", nextRoute);
+            // ─────────────────────────────────────────────────────────────────
+            // [AUTH_STATE_10E] IIFE sessionValid=true path — router.replace fired
+            // FROM INSIDE onAuthStateChanged. This happens CONCURRENTLY with
+            // establishSession's own router.replace (from verify-otp-v2.tsx).
+            // Both may call router.replace(nextRoute) — last one wins.
+            // ─────────────────────────────────────────────────────────────────
+            console.log("[AUTH_STATE_10E] IIFE (sessionValid=true) router.replace →", nextRoute,
+              "| ts:", Date.now(),
+            );
             router.replace(nextRoute as never);
           }
           console.log("[AUTH_RESTORE] setAuthLoading false (session restore complete)");
+          // ─────────────────────────────────────────────────────────────────
+          // [AUTH_STATE_10F] IIFE sessionValid=true path — setAuthLoading(false)
+          // called AFTER navigation. _layout.tsx effect fires again here.
+          // ─────────────────────────────────────────────────────────────────
+          console.log("[AUTH_STATE_10F] IIFE (sessionValid=true) setAuthLoading(false) called",
+            "| ts:", Date.now(),
+          );
           setAuthLoading(false);
         }
 
@@ -1537,13 +1624,43 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     // until we clear the flag together with setIsOtpVerified(true) below.
     console.log("[PERF] otp_verify_start ts=" + Date.now());
     console.log("[OTP_VERIFY_START] blocking layout route-guard; about to call signInWithCustomToken");
+    // ─────────────────────────────────────────────────────────────────────────
+    // [AUTH_STATE_06] establishSession: setIsOtpVerifying(true) about to be called.
+    // CRITICAL RACE: this React state update must commit to the render tree
+    // BEFORE onAuthStateChanged fires. If Firebase fires onAuthStateChanged
+    // synchronously during signInWithCustomToken and React hasn't flushed this
+    // batch yet, _layout.tsx sees isOtpVerifying=false → flash guard fails.
+    // ─────────────────────────────────────────────────────────────────────────
+    console.log("[AUTH_STATE_06] establishSession: setIsOtpVerifying(true) called",
+      "| driverUid BEFORE:", firebaseAuth.currentUser?.uid ?? "null",
+      "| isOtpVerified current (stale closure, not real-time):", "(see [AUTH_STATE_L] logs)",
+      "| ts:", Date.now(),
+    );
     setIsOtpVerifying(true);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // [AUTH_STATE_07] signInWithCustomToken about to be called.
+    // onAuthStateChanged will fire during or after this await.
+    // ─────────────────────────────────────────────────────────────────────────
+    console.log("[AUTH_STATE_07] signInWithCustomToken about to be called",
+      "| firebaseAuth.currentUser BEFORE:", firebaseAuth.currentUser?.uid ?? "null (no prior firebase user)",
+      "| ts:", Date.now(),
+    );
 
     try {
       const credential = await signInWithCustomToken(firebaseAuth, token);
       const uid        = credential.user.uid;
       console.log("[FLOW] establishSession — signInWithCustomToken SUCCESS, uid:", uid);
-      console.log("[OTP_VERIFY_SESSION_READY] Firebase session established — uid =", uid, "| isOtpVerifying guard is active");
+      console.log("[OTP_VERIFY_SESSION_READY] Firebase session established — uid =", uid, "| isOtpVerying guard is active");
+      // ───────────────────────────────────────────────────────────────────────
+      // [AUTH_STATE_11] signInWithCustomToken resolved. Firebase user is now set.
+      // onAuthStateChanged has already fired (or will fire as a microtask).
+      // ───────────────────────────────────────────────────────────────────────
+      console.log("[AUTH_STATE_11] signInWithCustomToken RESOLVED",
+        "| uid:", uid,
+        "| firebaseAuth.currentUser?.uid:", firebaseAuth.currentUser?.uid ?? "null (SDK race — should be uid)",
+        "| ts:", Date.now(),
+      );
       setDriverUid(uid);
       console.log("[FLOW] establishSession — setDriverUid called");
       setPhoneState(phone);
@@ -1563,9 +1680,29 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       }
 
       // ── Try PostgreSQL profile first (primary path) ──────────────────────
+      // ─────────────────────────────────────────────────────────────────────
+      // [AUTH_STATE_12] getDriverProfile called in establishSession.
+      // NOTE: onAuthStateChanged IIFE ALSO calls getDriverProfile() in parallel
+      // (at its own line 732, no token, no timeout for !sessionValid path).
+      // ─────────────────────────────────────────────────────────────────────
+      console.log("[AUTH_STATE_12] getDriverProfile(freshIdToken) called in establishSession",
+        "| uid:", uid,
+        "| idToken present:", freshIdToken ? "YES" : "NO (will use firebaseAuth.currentUser)",
+        "| ts:", Date.now(),
+      );
       console.log("[PERF] get_driver_profile_start confirmOtp ts=" + Date.now());
       let pgProfile = await getDriverProfile(freshIdToken);
       console.log("[PERF] get_driver_profile_end confirmOtp ts=" + Date.now() + " pgProfile=" + (pgProfile ? "ok" : "null"));
+      // ─────────────────────────────────────────────────────────────────────
+      // [AUTH_STATE_13] getDriverProfile returned in establishSession.
+      // ─────────────────────────────────────────────────────────────────────
+      console.log("[AUTH_STATE_13] getDriverProfile returned in establishSession",
+        "| result:", pgProfile ? "OK" : "NULL",
+        "| lastFetchDebug.status:", ((): string => {
+          try { const d = (globalThis as Record<string, unknown>).__lastProfileFetch; return d ? String((d as {status?: unknown}).status) : "n/a"; } catch { return "n/a"; }
+        })(),
+        "| ts:", Date.now(),
+      );
 
       // ── Retry once on null (e.g. transient token or network blip) ─────────
       if (!pgProfile) {
@@ -1805,11 +1942,33 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       // Full session is now established (post-set-pin for the PIN flow). Re-enable
       // the onAuthStateChanged hydration path for any future auth events.
       pinSetupInProgressRef.current = false;
+      // ─────────────────────────────────────────────────────────────────────
+      // [AUTH_STATE_14] setIsOtpVerified(true) + setIsOtpVerifying(false)
+      // called in the SAME synchronous block → same React render batch.
+      // After this commits, _layout.tsx sees isOtpVerified=true and becomes
+      // a no-op for all future effect firings.
+      // ─────────────────────────────────────────────────────────────────────
+      console.log("[AUTH_STATE_14] setIsOtpVerified(true) + setIsOtpVerifying(false) called (SAME batch)",
+        "| uid:", uid,
+        "| nextRoute:", nextRoute,
+        "| ts:", Date.now(),
+      );
       setIsOtpVerified(true);
       setIsOtpVerifying(false);
       // Persist the verified uid so session survives app backgrounding / cold start.
       try {
         await AsyncStorage.setItem(SESSION_VERIFIED_KEY, uid);
+        // ───────────────────────────────────────────────────────────────────
+        // [AUTH_STATE_15] SESSION_VERIFIED_KEY written to AsyncStorage.
+        // NOTE: sessionKeyRef.current (the mount-time promise) does NOT
+        // update. Any future onAuthStateChanged IIFE call still sees the
+        // OLD resolved value from mount time.
+        // ───────────────────────────────────────────────────────────────────
+        console.log("[AUTH_STATE_15] SESSION_VERIFIED_KEY written",
+          "| uid:", uid,
+          "| WARNING: sessionKeyRef.current is immutable (mount-time snapshot)",
+          "| ts:", Date.now(),
+        );
         console.log("[OTP_SESSION] saved uid =", uid);
       } catch {
         // Non-fatal — next cold start will require re-OTP.
@@ -1860,6 +2019,16 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       // Release the layout route-guard on any failure so normal auth routing resumes.
       pinSetupInProgressRef.current = false;
+      // ─────────────────────────────────────────────────────────────────────
+      // [AUTH_STATE_EC] establishSession CATCH — setIsOtpVerifying(false)
+      // WITHOUT setIsOtpVerified(true). _layout.tsx will fire with
+      // isOtpVerified=false. pathname=/verify-otp-v2 → V2 guard blocks routing.
+      // ─────────────────────────────────────────────────────────────────────
+      console.log("[AUTH_STATE_EC] establishSession CATCH block",
+        "| err:", err instanceof Error ? err.message : String(err),
+        "| setIsOtpVerifying(false) called WITHOUT setIsOtpVerified",
+        "| ts:", Date.now(),
+      );
       setIsOtpVerifying(false);
       const msg = err instanceof Error ? err.message : "Sign-in failed.";
       return { ok: false, profileComplete: false, error: msg };
@@ -1971,15 +2140,35 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     phone:     string,
     sessionId?: string | null,
   ): Promise<ConfirmOtpResult> => {
+    // ─────────────────────────────────────────────────────────────────────────
+    // [AUTH_STATE_04] confirmOtpV2Direct entry.
+    // This is the bridge between verify-otp-v2.tsx and establishSession.
+    // Execution order: setSessionId → establishSession(setIsOtpVerifying → signInWithCustomToken → getDriverProfile → setIsOtpVerified)
+    // ─────────────────────────────────────────────────────────────────────────
+    console.log("[AUTH_STATE_04] confirmOtpV2Direct ENTRY",
+      "| sessionId:", sessionId ? "PRESENT" : "null/absent",
+      "| firebaseAuth.currentUser BEFORE:", firebaseAuth.currentUser?.uid ?? "null",
+      "| ts:", Date.now(),
+    );
     console.log("[OTP_ONLY] confirmOtpV2Direct — establishing full session from V2 OTP token (PIN bypass active)");
     // TEMPORARILY DISABLED — OTP-only login during stabilization phase.
     // OTP-only login: store session id (same contract as confirmOtp) then go
     // directly to establishSession without calling verifyPinApi.
     if (sessionId) {
       await setSessionId(sessionId);
+      // ───────────────────────────────────────────────────────────────────────
+      // [AUTH_STATE_05] setSessionId completed (writes to AsyncStorage + memory).
+      // ───────────────────────────────────────────────────────────────────────
+      console.log("[AUTH_STATE_05] setSessionId called and awaited",
+        "| sessionId:", sessionId,
+        "| ts:", Date.now(),
+      );
       console.log("[OTP_ONLY] setSessionId called with V2 sessionId");
     } else {
       console.warn("[OTP_ONLY] no sessionId from V2 OTP response — keeping existing session");
+      console.log("[AUTH_STATE_05] setSessionId SKIPPED — no sessionId provided",
+        "| ts:", Date.now(),
+      );
     }
     return establishSession(token, phone);
   };
@@ -2045,6 +2234,20 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async (): Promise<void> => {
+    // ─────────────────────────────────────────────────────────────────────────
+    // [AUTH_STATE_SO1] signOut entry.
+    // CRITICAL: SESSION_VERIFIED_KEY will be removed here. However,
+    // sessionKeyRef.current is a MOUNT-TIME promise that already resolved.
+    // If DriverProvider is still mounted (no full remount), sessionKeyRef.current
+    // returns the OLD uid on the next onAuthStateChanged call — that causes a
+    // false sessionValid=true, and IIFE incorrectly sets setIsOtpVerified(true)
+    // and navigates during the NEXT fresh login.
+    // ─────────────────────────────────────────────────────────────────────────
+    console.log("[AUTH_STATE_SO1] signOut ENTRY",
+      "| driverUid:", driverUid ?? "null",
+      "| firebaseAuth.currentUser?.uid:", firebaseAuth.currentUser?.uid ?? "null",
+      "| ts:", Date.now(),
+    );
     if (driverUid) {
       // Await so the offline status is written before the Firebase session is
       // cleared. Best-effort — logout continues even if the write fails.
@@ -2058,6 +2261,15 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     // between the two calls cannot leave the session key behind.
     try {
       await AsyncStorage.removeItem(SESSION_VERIFIED_KEY);
+      // ───────────────────────────────────────────────────────────────────────
+      // [AUTH_STATE_SO2] SESSION_VERIFIED_KEY removed from AsyncStorage.
+      // sessionKeyRef.current is NOT affected — it resolved at mount time and
+      // is now stale (holds the uid that was verified during this session).
+      // ───────────────────────────────────────────────────────────────────────
+      console.log("[AUTH_STATE_SO2] SESSION_VERIFIED_KEY removed from AsyncStorage",
+        "| WARNING: sessionKeyRef.current still holds old uid (immutable)",
+        "| ts:", Date.now(),
+      );
       console.log("[SIGNOUT_SESSION] cleared");
     } catch {
       // Non-fatal — Firebase session is cleared below regardless.

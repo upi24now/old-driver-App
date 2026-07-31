@@ -95,6 +95,22 @@ function RootLayoutNav() {
 
   useEffect(() => {
     const effectRc = renderCountAtEffect.current;
+    // ─────────────────────────────────────────────────────────────────────────
+    // [AUTH_STATE_L1] _layout.tsx effect fired — full snapshot of all 5 deps
+    // plus pathname (NOT a dep — captured from closure; may be stale if router
+    // navigated without triggering a dep change).
+    // ─────────────────────────────────────────────────────────────────────────
+    console.log("[AUTH_STATE_L1] _layout.tsx useEffect FIRED",
+      "| #:", effectRc,
+      "| authLoading:", authLoading,
+      "| driverUid:", driverUid ? "SET(" + driverUid + ")" : "null",
+      "| isOtpVerified:", isOtpVerified,
+      "| isOtpVerifying:", isOtpVerifying,
+      "| localPermVer:", localPermissionVersion,
+      "| firebaseUser:", firebaseAuth.currentUser?.uid ?? "null",
+      "| pathname:", pathname,
+      "| ts:", Date.now(),
+    );
     console.log(
       `[FP_TRACE][LAYOUT_EFFECT #${effectRc}] ts=${Date.now()}`,
       `| authLoading=${authLoading}`,
@@ -107,11 +123,23 @@ function RootLayoutNav() {
 
     if (authLoading) {
       console.log(`[FP_TRACE][LAYOUT_EFFECT #${effectRc}] BRANCH → early-return: authLoading=true`);
+      // ─────────────────────────────────────────────────────────────────────
+      // [AUTH_STATE_L2] authLoading=true — effect is a no-op. Spinner overlay.
+      // ─────────────────────────────────────────────────────────────────────
+      console.log("[AUTH_STATE_L2] BRANCH authLoading=true → early-return (no routing)",
+        "| ts:", Date.now(),
+      );
       return;
     }
     // Block until AsyncStorage boot read completes (resolves in <50 ms).
     if (localPermissionVersion === null) {
       console.log(`[FP_TRACE][LAYOUT_EFFECT #${effectRc}] BRANCH → early-return: localPermissionVersion=null`);
+      // ─────────────────────────────────────────────────────────────────────
+      // [AUTH_STATE_L3] localPermissionVersion=null — AsyncStorage not yet read.
+      // ─────────────────────────────────────────────────────────────────────
+      console.log("[AUTH_STATE_L3] BRANCH localPermissionVersion=null → early-return (no routing)",
+        "| ts:", Date.now(),
+      );
       return;
     }
 
@@ -125,6 +153,15 @@ function RootLayoutNav() {
     if (isOtpVerifying) {
       console.log(`[FP_TRACE][LAYOUT_EFFECT #${effectRc}] BRANCH → early-return: isOtpVerifying=true (flash guard active)`);
       console.log("[LAYOUT_SKIP_DURING_OTP]", "[LOGIN_FLASH_BLOCKED]", "— isOtpVerifying=true; route guard suspended to prevent /login flash");
+      // ─────────────────────────────────────────────────────────────────────
+      // [AUTH_STATE_L4] isOtpVerifying=true — flash guard ACTIVE. No routing.
+      // If we reach L4, the flash guard is working correctly.
+      // If we NEVER see L4 during the OTP flow, the flash guard is NOT committed
+      // to React state in time → it will appear as L6 or L7 (wrong redirect).
+      // ─────────────────────────────────────────────────────────────────────
+      console.log("[AUTH_STATE_L4] BRANCH isOtpVerifying=true → flash guard ACTIVE (no routing)",
+        "| ts:", Date.now(),
+      );
       return;
     }
 
@@ -137,6 +174,20 @@ function RootLayoutNav() {
       pathname === "/create-pin-v2"
     ) {
       console.log(`[FP_TRACE][LAYOUT_EFFECT #${effectRc}] BRANCH → V2 early-return: pathname=${pathname}`);
+      // ─────────────────────────────────────────────────────────────────────
+      // [AUTH_STATE_L5] V2 screen guard — pathname is a V2 auth screen.
+      // isOtpVerifying=false here (L4 didn't fire). This guard relies on the
+      // CAPTURED pathname being accurate. If the router navigated to a non-V2
+      // route but the closure still holds an old V2 pathname, this fires
+      // incorrectly (false positive — routing skipped when it should run).
+      // If the router has NOT yet navigated to /verify-otp-v2 but the effect
+      // fires, this guard won't fire (false negative → L6 or L7 runs instead).
+      // ─────────────────────────────────────────────────────────────────────
+      console.log("[AUTH_STATE_L5] BRANCH pathname=V2-screen → no routing",
+        "| pathname:", pathname,
+        "| NOTE: isOtpVerifying was FALSE when this guard fired (L4 did not catch it)",
+        "| ts:", Date.now(),
+      );
       return;
     }
 
@@ -152,6 +203,21 @@ function RootLayoutNav() {
         console.log(`[FP_TRACE][LAYOUT_EFFECT #${effectRc}] BRANCH → /login-v2 (no driverUid, no_session) | firebaseUser=${firebaseAuth.currentUser?.uid ? "SET" : "null"}`);
         console.log("[BOOT_ROUTE] chosenRoute = /login-v2 (no_session) [OTP-only bypass active]");
         console.log("[RUNTIME_NAVIGATION_20260730] _layout.tsx | RootLayoutNav effect | destination: /login-v2 (no_session)");
+        // ─────────────────────────────────────────────────────────────────
+        // [AUTH_STATE_L6] !driverUid path → router.replace('/login-v2').
+        // THIS IS THE BOUNCE. If you see this during an OTP login attempt:
+        //   • isOtpVerifying was false (L4 didn't fire → flash guard missed)
+        //   • pathname was not /verify-otp-v2 (L5 didn't fire → stale closure)
+        //   • driverUid=null (onAuthStateChanged(null) fired and wasn't blocked)
+        // Any of those three conditions is the root cause.
+        // ─────────────────────────────────────────────────────────────────
+        console.log("[AUTH_STATE_L6] BRANCH !driverUid → router.replace('/login-v2') ← THIS IS THE BOUNCE",
+          "| driverUid:", driverUid ?? "null",
+          "| firebaseAuth.currentUser:", firebaseAuth.currentUser?.uid ?? "null",
+          "| isOtpVerifying:", isOtpVerifying,
+          "| pathname:", pathname,
+          "| ts:", Date.now(),
+        );
         // TEMPORARILY DISABLED — OTP-only login during stabilization phase.
         // Was: router.replace("/login");
         // OTP-only login: route directly to V2 OTP login screen.
@@ -165,6 +231,21 @@ function RootLayoutNav() {
       console.log("[GUARD] REDIRECT → /login | reason = otp_required (driverUid present but isOtpVerified=false) | from pathname =", pathname);
       console.log("[BOOT_ROUTE] chosenRoute = /login (otp_required uid =", driverUid, ")");
       console.log("[RUNTIME_NAVIGATION_20260730] _layout.tsx | RootLayoutNav effect | destination: /login (otp_required)");
+      // ─────────────────────────────────────────────────────────────────────
+      // [AUTH_STATE_L7] driverUid SET but isOtpVerified=false → router.replace('/login').
+      // This fires when onAuthStateChanged set driverUid (AUTH_STATE_09) but
+      // establishSession hasn't called setIsOtpVerified(true) yet (AUTH_STATE_14).
+      // If you see L7 instead of L4 during OTP flow: isOtpVerifying was false
+      // (the setIsOtpVerifying(true) call from AUTH_STATE_06 wasn't committed
+      // to React state before onAuthStateChanged fired AUTH_STATE_09).
+      // ─────────────────────────────────────────────────────────────────────
+      console.log("[AUTH_STATE_L7] BRANCH driverUid=SET + isOtpVerified=false → router.replace('/login') ← ALTERNATE BOUNCE",
+        "| driverUid:", driverUid,
+        "| firebaseAuth.currentUser:", firebaseAuth.currentUser?.uid ?? "null",
+        "| isOtpVerifying:", isOtpVerifying,
+        "| pathname:", pathname,
+        "| ts:", Date.now(),
+      );
       router.replace("/login");
       return;
     }
@@ -173,6 +254,16 @@ function RootLayoutNav() {
     // otp.tsx (fresh OTP) or onAuthStateChanged (session restore).
     console.log(`[FP_TRACE][LAYOUT_EFFECT #${effectRc}] BRANCH → no-op (isOtpVerified=true, handled upstream)`);
     console.log("[ROUTE_DECISION] handled upstream — session restore or fresh OTP");
+    // ─────────────────────────────────────────────────────────────────────────
+    // [AUTH_STATE_L8] isOtpVerified=true — effect is a no-op.
+    // This is the HAPPY PATH. Every dep-change that fires the effect after a
+    // successful login should land here.
+    // ─────────────────────────────────────────────────────────────────────────
+    console.log("[AUTH_STATE_L8] BRANCH isOtpVerified=true → no-op (happy path)",
+      "| driverUid:", driverUid,
+      "| pathname:", pathname,
+      "| ts:", Date.now(),
+    );
   }, [authLoading, driverUid, isOtpVerified, isOtpVerifying, localPermissionVersion]);
 
   // Auth-loading overlay — disappears when authLoading becomes false.

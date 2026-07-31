@@ -82,27 +82,41 @@ export default function VerifyOtpV2() {
     Keyboard.dismiss();
     setBusy(true);
     setError("");
-    console.log("[AUTH_TRACE_01] handleVerify — intent:", intent, "| phone:", phone.slice(0, 5) + "…");
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // [AUTH_STATE_01] Entry point — capture every relevant value at this moment
+    // ─────────────────────────────────────────────────────────────────────────
+    console.log("[AUTH_STATE_01] handleVerify START",
+      "| intent:", intent,
+      "| phone:", phone.slice(0, 5) + "…",
+      "| ts:", Date.now(),
+    );
 
     // ── Step 1: verify OTP with backend ──────────────────────────────────────
     const result = await verifyOtpV2(phone, code);
-    console.log("[AUTH_TRACE_02] verifyOtpV2 returned — ok:", result.ok);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // [AUTH_STATE_02] verifyOtpV2 response
+    // ─────────────────────────────────────────────────────────────────────────
+    console.log("[AUTH_STATE_02] verifyOtpV2 returned",
+      "| ok:", result.ok,
+      "| token:", "token" in result && result.token ? "PRESENT" : "MISSING",
+      "| sessionId:", "sessionId" in result && result.sessionId ? "PRESENT" : "absent",
+      "| error:", "error" in result ? result.error : "none",
+      "| ts:", Date.now(),
+    );
 
     if (!result.ok) {
       setBusy(false);
-      console.log("[AUTH_TRACE_02_FAIL] verifyOtpV2 failed:", result.error);
       setError(result.error);
       setOtp("");
       inputRef.current?.focus();
       return;
     }
 
-    // ── Step 2: store token + sessionId for potential future PIN re-enable ───
+    // ── Step 2: store token + sessionId ──────────────────────────────────────
     AuthV2Store.setPendingToken(result.token);
     AuthV2Store.setPendingSessionId(result.sessionId ?? null);
-    console.log("[AUTH_TRACE_03] OTP verified — token:", result.token ? "present" : "MISSING",
-      "| sessionId:", result.sessionId ? "present" : "absent",
-      "| intent:", intent);
 
     // TEMPORARILY DISABLED — OTP-only login during stabilization phase.
     // Original PIN routing (restore when PIN is re-enabled):
@@ -112,23 +126,33 @@ export default function VerifyOtpV2() {
     //     router.replace("/login-v2?phase=pin" as never);
     //   }
 
-    // ── Step 3: establish full session directly from the OTP token ───────────
-    // confirmOtpV2Direct → setSessionId → establishSession:
-    //   • setIsOtpVerifying(true)   ← blocks _layout.tsx flash guard
-    //   • signInWithCustomToken     ← fires onAuthStateChanged
-    //   • fetches driver profile    ← GET /api/v2/driver/profile
-    //   • deriveNextRoute           ← determines home / onboarding step
-    //   • setIsOtpVerified(true)    ← batched with next line
-    //   • setIsOtpVerifying(false)  ← released in same React render
-    //   • returns { ok, nextRoute } ← caller MUST navigate (same contract as otp.tsx)
-    console.log("[AUTH_TRACE_04] calling confirmOtpV2Direct — about to setIsOtpVerifying + signInWithCustomToken");
+    // ─────────────────────────────────────────────────────────────────────────
+    // [AUTH_STATE_03] About to call confirmOtpV2Direct
+    // ─────────────────────────────────────────────────────────────────────────
+    console.log("[AUTH_STATE_03] calling confirmOtpV2Direct",
+      "| sessionId:", result.sessionId ?? "(none)",
+      "| ts:", Date.now(),
+    );
+
     const sessionResult = await confirmOtpV2Direct(result.token, phone, result.sessionId ?? null);
-    console.log("[AUTH_TRACE_09] confirmOtpV2Direct returned — ok:", sessionResult.ok, "| nextRoute:", sessionResult.nextRoute ?? "(none)");
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // [AUTH_STATE_16] confirmOtpV2Direct returned — inspect every field
+    // ─────────────────────────────────────────────────────────────────────────
+    console.log("[AUTH_STATE_16] confirmOtpV2Direct returned",
+      "| ok:", sessionResult.ok,
+      "| nextRoute:", sessionResult.nextRoute ?? "(none — will fallback to /(tabs))",
+      "| error:", sessionResult.error ?? "none",
+      "| profileComplete:", sessionResult.profileComplete,
+      "| ts:", Date.now(),
+    );
 
     setBusy(false);
 
     if (!sessionResult.ok) {
-      console.error("[AUTH_TRACE_09_FAIL] confirmOtpV2Direct failed:", sessionResult.error);
+      console.error("[AUTH_STATE_16_FAIL] confirmOtpV2Direct FAILED — showing error, NOT navigating",
+        "| error:", sessionResult.error ?? "(no error field)",
+      );
       setError(sessionResult.error ?? "Login failed. Please try again.");
       return;
     }
@@ -139,7 +163,13 @@ export default function VerifyOtpV2() {
     // restore on cold start).  The caller is always responsible for navigation
     // after a fresh OTP login.  This matches the contract in otp.tsx (V1 flow).
     const nextRoute = sessionResult.nextRoute ?? "/(tabs)";
-    console.log("[AUTH_TRACE_10] navigating to:", nextRoute);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // [AUTH_STATE_17] router.replace — this is the final navigation call
+    // ─────────────────────────────────────────────────────────────────────────
+    console.log("[AUTH_STATE_17] router.replace →", nextRoute,
+      "| ts:", Date.now(),
+    );
     router.replace(nextRoute as never);
   }
 
