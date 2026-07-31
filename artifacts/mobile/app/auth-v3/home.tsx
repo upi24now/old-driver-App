@@ -41,9 +41,12 @@ export default function V3HomeScreen() {
 
   useEffect(() => {
     mountedRef.current = true;
-    sessionLoad().then((s) => {
+    sessionLoad().then((result) => {
       if (!mountedRef.current) return;
-      if (s) { setPhone(s.phone); setUid(s.uid); }
+      if (result.success && result.data) {
+        setPhone(result.data.phone);
+        setUid(result.data.uid);
+      }
     });
     return () => { mountedRef.current = false; };
   }, []);

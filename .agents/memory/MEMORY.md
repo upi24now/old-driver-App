@@ -1,4 +1,4 @@
-- [Authentication V3 architecture](auth-v3-arch.md) — PIN-first auth; single-screen multi-step flow in login-v3.tsx; stale-closure fix pattern for auto-submit.
+- [Authentication V3 architecture](auth-v3-arch.md) — PIN-first auth; 10-compartment module at modules/auth-v3/; AuthV3Result<T>/AuthV3VoidResult standard; ARCHITECTURE.md report; 0 TS errors.
 - [Firebase client email quoting bug](firebase-client-email-quoting.md) — FIREBASE_CLIENT_EMAIL stored with surrounding quotes → INVALID_CUSTOM_TOKEN on signInWithCustomToken; re-enter without quotes.
 - [expo-audio vs expo-av](expo-audio-sdk54.md) — SDK 54 removed expo-av; use expo-audio@1.1.1 with useAudioPlayer hook.
 - [Expo Go Android image picker](expo-go-android.md) — allowsEditing: true causes UCrop silent drop on Android; always use false.

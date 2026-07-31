@@ -86,7 +86,7 @@ export default function ConfirmPinScreen() {
 
     if (!mountedRef.current) return;
 
-    if (!result.ok) {
+    if (!result.success) {
       setBusy(false);
       setError(result.error.userMessage);
       setConfirm("");

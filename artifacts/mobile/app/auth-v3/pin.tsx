@@ -54,7 +54,7 @@ export default function PinScreen() {
     const result = await engineLogin(flow.phone, completedPin);
     if (!mountedRef.current) return;
 
-    if (!result.ok) {
+    if (!result.success) {
       setBusy(false);
       setError(result.error.userMessage);
       setPin("");

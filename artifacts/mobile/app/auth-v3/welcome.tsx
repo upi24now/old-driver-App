@@ -38,10 +38,10 @@ export default function WelcomeScreen() {
     mountedRef.current = true;
 
     async function restore() {
-      const session = await engineRestoreSession();
+      const result = await engineRestoreSession();
       if (!mountedRef.current) return;
       setChecking(false);
-      if (session) navToHome(router);
+      if (result.success && result.data) navToHome(router);
     }
 
     void restore();

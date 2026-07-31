@@ -61,13 +61,13 @@ export default function OtpScreen() {
     if (!mountedRef.current) return;
     setBusy(false);
 
-    if (!result.ok) {
+    if (!result.success) {
       setError(result.error.userMessage);
       setOtp("");
       return;
     }
 
-    setVerifyResult(result.token, result.sessionId);
+    setVerifyResult(result.data.token, result.data.sessionId);
     navToCreatePin(router, intent);
   };
 
@@ -86,7 +86,7 @@ export default function OtpScreen() {
     const result = await engineSendOtp(flow.phone);
     if (!mountedRef.current) return;
     setBusy(false);
-    if (!result.ok) setError(result.error.userMessage);
+    if (!result.success) setError(result.error.userMessage);
   };
 
   return (

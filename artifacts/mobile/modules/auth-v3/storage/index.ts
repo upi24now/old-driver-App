@@ -2,61 +2,78 @@
  * COMPARTMENT 4 — Secure Storage
  *
  * Single responsibility: read, write, and remove values from local persistent
- * storage (AsyncStorage). Owns the storage abstraction boundary — swap the
- * underlying store here without touching any other compartment.
+ * storage. Owns the storage abstraction boundary.
  *
  * Rules:
- *   ✓ May import from: Config, Errors
+ *   ✓ May import from: Config, Errors, Types
  *   ✗ No authentication logic, no Firebase, no navigation, no React
  *
- * Replaceability: replace AsyncStorage with expo-secure-store or encrypted
- *   storage by changing only this file.
- * Debugging scope: if a stored value is missing, stale, or corrupted → this file.
+ * All functions return AuthV3Result / AuthV3VoidResult — never throw.
+ *
+ * Replaceability: swap AsyncStorage for expo-secure-store by changing only
+ *   this file. No other compartment changes.
+ * Debugging scope: stored value missing, stale, or corrupted → this file.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { mapError, logDiagnostic } from "../errors";
+import { mapError, logOp, ERR, makeError } from "../errors";
+import { ok, okVoid, fail, AuthV3Result, AuthV3VoidResult } from "../types";
 
 // ─── Public interface ─────────────────────────────────────────────────────────
 
 /**
  * Write a string value under the given key.
- * Throws if the write fails (caller should wrap in try/catch).
+ * Returns a void success or a typed storage error — never throws.
  */
-export async function storageWrite(key: string, value: string): Promise<void> {
+export async function storageWrite(
+  key:   string,
+  value: string,
+): Promise<AuthV3VoidResult> {
   try {
     await AsyncStorage.setItem(key, value);
+    logOp("storage", "write", "success");
+    return okVoid();
   } catch (raw) {
-    const err = mapError(raw, `storage.write(${key})`);
-    logDiagnostic(err);
-    throw err;
+    const error = mapError(raw, `storage.write(${key})`);
+    logOp("storage", "write", "error", error);
+    return fail({ ...error, code: ERR.STORAGE_ERROR });
   }
 }
 
 /**
  * Read the string value for the given key.
- * Returns null if the key does not exist or if a parse error occurs.
- * Does NOT throw — storage read failures are treated as cache misses.
+ * Returns success with data=null if the key does not exist.
+ * Returns success with data=null on parse error (treated as a cache miss).
+ * Returns a storage error only if the underlying read itself fails.
  */
-export async function storageRead(key: string): Promise<string | null> {
+export async function storageRead(
+  key: string,
+): Promise<AuthV3Result<string | null>> {
   try {
-    return await AsyncStorage.getItem(key);
+    const value = await AsyncStorage.getItem(key);
+    logOp("storage", "read", "success");
+    return ok(value);
   } catch (raw) {
-    const err = mapError(raw, `storage.read(${key})`);
-    logDiagnostic(err);
-    return null;
+    const error = mapError(raw, `storage.read(${key})`);
+    logOp("storage", "read", "error", error);
+    return fail({ ...error, code: ERR.STORAGE_ERROR });
   }
 }
 
 /**
  * Remove the value for the given key.
- * Silent on failure — removal is best-effort (e.g. during logout).
+ * Silent on not-found. Returns a storage error only if the remove itself fails.
  */
-export async function storageRemove(key: string): Promise<void> {
+export async function storageRemove(
+  key: string,
+): Promise<AuthV3VoidResult> {
   try {
     await AsyncStorage.removeItem(key);
+    logOp("storage", "remove", "success");
+    return okVoid();
   } catch (raw) {
-    const err = mapError(raw, `storage.remove(${key})`);
-    logDiagnostic(err);
+    const error = mapError(raw, `storage.remove(${key})`);
+    logOp("storage", "remove", "error", error);
+    return fail({ ...error, code: ERR.STORAGE_ERROR });
   }
 }

@@ -73,7 +73,7 @@ export default function SignupFormScreen() {
     if (!mountedRef.current) return;
     setBusy(false);
 
-    if (!result.ok) {
+    if (!result.success) {
       setError(result.error.userMessage);
       return;
     }
