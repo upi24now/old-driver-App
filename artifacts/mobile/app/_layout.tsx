@@ -17,6 +17,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { DriverProvider, useDriver } from "@/contexts/DriverContext";
+import { AuthV3Provider } from "@/contexts/AuthV3Context";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { useNotifications } from "@/hooks/useNotifications";
 import { firebaseAuth } from "@/utils/firebase";
@@ -165,27 +166,16 @@ function RootLayoutNav() {
       return;
     }
 
-    // ── V2 auth screens manage their own routing — skip global guard ──────────
-    // These are NEW routes; no existing guard logic is changed.
+    // ── V3 auth screens manage their own routing — skip global guard ──────────
     if (
-      pathname === "/login-v2"      ||
+      pathname === "/login-v3"      ||
+      pathname === "/verify-otp-v3" ||
       pathname === "/forgot-pin-v2" ||
-      pathname === "/verify-otp-v2" ||
       pathname === "/create-pin-v2"
     ) {
-      console.log(`[FP_TRACE][LAYOUT_EFFECT #${effectRc}] BRANCH → V2 early-return: pathname=${pathname}`);
-      // ─────────────────────────────────────────────────────────────────────
-      // [AUTH_STATE_L5] V2 screen guard — pathname is a V2 auth screen.
-      // isOtpVerifying=false here (L4 didn't fire). This guard relies on the
-      // CAPTURED pathname being accurate. If the router navigated to a non-V2
-      // route but the closure still holds an old V2 pathname, this fires
-      // incorrectly (false positive — routing skipped when it should run).
-      // If the router has NOT yet navigated to /verify-otp-v2 but the effect
-      // fires, this guard won't fire (false negative → L6 or L7 runs instead).
-      // ─────────────────────────────────────────────────────────────────────
-      console.log("[AUTH_STATE_L5] BRANCH pathname=V2-screen → no routing",
+      console.log(`[AUTH_V3][LAYOUT_EFFECT #${effectRc}] BRANCH → V3/V2-auth early-return: pathname=${pathname}`);
+      console.log("[AUTH_STATE_L5] BRANCH pathname=auth-screen → no routing",
         "| pathname:", pathname,
-        "| NOTE: isOtpVerifying was FALSE when this guard fired (L4 did not catch it)",
         "| ts:", Date.now(),
       );
       return;
@@ -200,53 +190,33 @@ function RootLayoutNav() {
         console.log("[RUNTIME_NAVIGATION_20260730] _layout.tsx | RootLayoutNav effect | destination: /background-setup");
         router.replace("/background-setup");
       } else {
-        console.log(`[FP_TRACE][LAYOUT_EFFECT #${effectRc}] BRANCH → /login-v2 (no driverUid, no_session) | firebaseUser=${firebaseAuth.currentUser?.uid ? "SET" : "null"}`);
-        console.log("[BOOT_ROUTE] chosenRoute = /login-v2 (no_session) [OTP-only bypass active]");
-        console.log("[RUNTIME_NAVIGATION_20260730] _layout.tsx | RootLayoutNav effect | destination: /login-v2 (no_session)");
-        // ─────────────────────────────────────────────────────────────────
-        // [AUTH_STATE_L6] !driverUid path → router.replace('/login-v2').
-        // THIS IS THE BOUNCE. If you see this during an OTP login attempt:
-        //   • isOtpVerifying was false (L4 didn't fire → flash guard missed)
-        //   • pathname was not /verify-otp-v2 (L5 didn't fire → stale closure)
-        //   • driverUid=null (onAuthStateChanged(null) fired and wasn't blocked)
-        // Any of those three conditions is the root cause.
-        // ─────────────────────────────────────────────────────────────────
-        console.log("[AUTH_STATE_L6] BRANCH !driverUid → router.replace('/login-v2') ← THIS IS THE BOUNCE",
+        console.log(`[AUTH_V3][LAYOUT_EFFECT #${effectRc}] BRANCH → /login-v3 (no driverUid, no_session)`);
+        console.log("[BOOT_ROUTE] chosenRoute = /login-v3 (no_session)");
+        console.log("[RUNTIME_NAVIGATION_20260730] _layout.tsx | RootLayoutNav effect | destination: /login-v3 (no_session)");
+        console.log("[AUTH_STATE_L6] BRANCH !driverUid → router.replace('/login-v3')",
           "| driverUid:", driverUid ?? "null",
           "| firebaseAuth.currentUser:", firebaseAuth.currentUser?.uid ?? "null",
           "| isOtpVerifying:", isOtpVerifying,
           "| pathname:", pathname,
           "| ts:", Date.now(),
         );
-        // TEMPORARILY DISABLED — OTP-only login during stabilization phase.
-        // Was: router.replace("/login");
-        // OTP-only login: route directly to V2 OTP login screen.
-        router.replace("/login-v2" as never);
+        router.replace("/login-v3" as never);
       }
       return;
     }
 
     if (!isOtpVerified) {
       console.log(`[FP_TRACE][LAYOUT_EFFECT #${effectRc}] BRANCH → /login (driverUid=SET but isOtpVerified=false, isOtpVerifying=false) ← THIS KILLS FORGOT-PIN IF IT FIRES`);
-      console.log("[GUARD] REDIRECT → /login | reason = otp_required (driverUid present but isOtpVerified=false) | from pathname =", pathname);
-      console.log("[BOOT_ROUTE] chosenRoute = /login (otp_required uid =", driverUid, ")");
-      console.log("[RUNTIME_NAVIGATION_20260730] _layout.tsx | RootLayoutNav effect | destination: /login (otp_required)");
-      // ─────────────────────────────────────────────────────────────────────
-      // [AUTH_STATE_L7] driverUid SET but isOtpVerified=false → router.replace('/login').
-      // This fires when onAuthStateChanged set driverUid (AUTH_STATE_09) but
-      // establishSession hasn't called setIsOtpVerified(true) yet (AUTH_STATE_14).
-      // If you see L7 instead of L4 during OTP flow: isOtpVerifying was false
-      // (the setIsOtpVerifying(true) call from AUTH_STATE_06 wasn't committed
-      // to React state before onAuthStateChanged fired AUTH_STATE_09).
-      // ─────────────────────────────────────────────────────────────────────
-      console.log("[AUTH_STATE_L7] BRANCH driverUid=SET + isOtpVerified=false → router.replace('/login') ← ALTERNATE BOUNCE",
+      console.log("[GUARD] REDIRECT → /login-v3 | reason = otp_required (driverUid present but isOtpVerified=false) | from pathname =", pathname);
+      console.log("[BOOT_ROUTE] chosenRoute = /login-v3 (otp_required uid =", driverUid, ")");
+      console.log("[RUNTIME_NAVIGATION_20260730] _layout.tsx | RootLayoutNav effect | destination: /login-v3 (otp_required)");
+      console.log("[AUTH_STATE_L7] BRANCH driverUid=SET + isOtpVerified=false → router.replace('/login-v3')",
         "| driverUid:", driverUid,
-        "| firebaseAuth.currentUser:", firebaseAuth.currentUser?.uid ?? "null",
         "| isOtpVerifying:", isOtpVerifying,
         "| pathname:", pathname,
         "| ts:", Date.now(),
       );
-      router.replace("/login");
+      router.replace("/login-v3" as never);
       return;
     }
 
@@ -277,10 +247,12 @@ function RootLayoutNav() {
   return (
     <>
       <Stack
-        initialRouteName="login"
+        initialRouteName="login-v3"
         screenOptions={{ headerShown: false, animation: "slide_from_right" }}
       >
         <Stack.Screen name="index" options={{ animation: "none" }} />
+        <Stack.Screen name="login-v3" />
+        <Stack.Screen name="verify-otp-v3" />
         <Stack.Screen name="login" />
         <Stack.Screen name="otp" />
         <Stack.Screen name="create-pin" />
@@ -358,9 +330,11 @@ export default function RootLayout() {
           <GestureHandlerRootView style={{ flex: 1 }}>
             <KeyboardProvider>
               <ThemeProvider>
-                <DriverProvider>
-                  <RootLayoutNav />
-                </DriverProvider>
+                <AuthV3Provider>
+                  <DriverProvider>
+                    <RootLayoutNav />
+                  </DriverProvider>
+                </AuthV3Provider>
               </ThemeProvider>
             </KeyboardProvider>
           </GestureHandlerRootView>

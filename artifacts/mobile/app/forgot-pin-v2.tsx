@@ -64,9 +64,11 @@ export default function ForgotPinV2() {
       setError(result.error);
       return;
     }
-    AuthV2Store.setOtpId(result.otpId);
-    console.log("[V2_FORGOT_PIN] OTP sent → verify-otp-v2?intent=forgot");
-    router.push("/verify-otp-v2?intent=forgot" as never);
+    AuthV2Store.setOtpId(result.otpId ?? "");
+    console.log("[V2_FORGOT_PIN] OTP sent → verify-otp-v3?intent=forgot");
+    // V3: verify-otp-v3 handles intent=forgot by storing token/session in
+    // AuthV2Store then navigating to /create-pin-v2 (no full session established).
+    router.push(`/verify-otp-v3?phone=${encodeURIComponent(phone)}&intent=forgot` as never);
   }
 
   return (

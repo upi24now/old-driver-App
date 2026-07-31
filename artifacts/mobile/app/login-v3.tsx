@@ -1,9 +1,10 @@
 /**
- * login-v2.tsx — V2 Login Screen
+ * login-v3.tsx — V3 Login Screen
  *
- * Enter 10-digit mobile number → sendOtp → /verify-otp-v2?intent=login
+ * Enter 10-digit mobile number → sendOtp → /verify-otp-v3?phone=+91XXXXXXXXXX
  *
- * [V2_LOGIN] logs only. No authentication logic changes.
+ * Authentication V3: uses auth-api.ts sendOtp directly (no AuthV2Store).
+ * Phone is passed to the next screen via URL search param.
  */
 
 import React, { useState } from "react";
@@ -22,8 +23,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 
-import { sendOtpV2 } from "@/utils/auth-v2-api";
-import { AuthV2Store } from "@/utils/auth-v2-store";
+import { sendOtp } from "@/utils/auth-api";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const D = {
@@ -38,42 +38,38 @@ const D = {
 } as const;
 
 // ── Screen ────────────────────────────────────────────────────────────────────
-export default function LoginV2() {
-  const router  = useRouter();
-  const insets  = useSafeAreaInsets();
+export default function LoginV3() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
 
-  const [phoneDigits, setPhoneDigits] = useState(
-    AuthV2Store.getPhone().replace(/^\+91/, ""),
-  );
+  const [phoneDigits, setPhoneDigits] = useState("");
   const [busy,  setBusy]  = useState(false);
   const [error, setError] = useState("");
 
-  // ── Phone phase ──────────────────────────────────────────────────────────────
   async function handleSendOtp() {
     if (busy || phoneDigits.length !== 10) return;
     Keyboard.dismiss();
     setError("");
     setBusy(true);
-    console.log("[V2_LOGIN] sendOtp — digits:", phoneDigits.length);
 
     const phone = `+91${phoneDigits}`;
-    AuthV2Store.setPhone(phone);
+    console.log("[V3_LOGIN] sendOtp — phone:", phone.slice(0, 6) + "…");
 
-    const result = await sendOtpV2(phone);
+    const result = await sendOtp(phone);
     setBusy(false);
 
     if (!result.ok) {
-      console.log("[V2_LOGIN] sendOtp failed:", result.error);
+      console.log("[V3_LOGIN] sendOtp failed:", result.error);
       setError(result.error);
       return;
     }
-    AuthV2Store.setOtpId(result.otpId);
-    console.log("[V2_LOGIN] OTP sent → verify-otp-v2?intent=login");
-    router.push("/verify-otp-v2?intent=login" as never);
+
+    console.log("[V3_LOGIN] OTP sent → /verify-otp-v3 phone =", phone.slice(0, 6) + "…");
+    // Pass phone as a URL-encoded search param so verify-otp-v3 can read it
+    // without relying on module-level state that could be stale across reloads.
+    router.push((`/verify-otp-v3?phone=${encodeURIComponent(phone)}`) as never);
   }
 
-
-  // ── Phone phase UI ────────────────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView
       style={ss.flex}

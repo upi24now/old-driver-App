@@ -50,6 +50,8 @@ import { verifyOtpApi, verifyPinApi } from "@/utils/auth-api";
 import { loadSessionId, setSessionId, clearSessionId } from "@/utils/session";
 import { installSessionFetchInterceptor, setSessionReplacedHandler } from "@/utils/api-client";
 import { patchDriverStatus, postDriverLocation } from "@/utils/driver-api";
+import { useAuthV3 } from "@/contexts/AuthV3Context";
+import { registerV3SessionRestoreHandler } from "@/utils/auth-v3-bridge";
 import {
   cancelIncomingOrderNotification,
   checkNotificationPermissions,
@@ -450,16 +452,16 @@ function isOrderTerminal(status: OrderStatus | null): boolean {
 }
 
 export function DriverProvider({ children }: { children: ReactNode }) {
-  const [driverUid,     setDriverUid]     = useState<string | null>(null);
-  const [authLoading,   setAuthLoading]   = useState(true);
-  // isOtpVerified: only set true by confirmOtp(); never by onAuthStateChanged.
-  // Resets to false on signOut() and on every cold start (React state default).
-  const [isOtpVerified,  setIsOtpVerified]  = useState(false);
-  // isOtpVerifying: true while confirmOtp() is in flight (between signInWithCustomToken
-  // and the final setIsOtpVerified call). Prevents _layout.tsx from routing to /login
-  // when onAuthStateChanged fires driverUid before isOtpVerified is ready.
-  const [isOtpVerifying, setIsOtpVerifying] = useState(false);
-  const [phone,         setPhoneState]    = useState<string | null>(null);
+  // ── V3: Auth state delegated to AuthV3Context ─────────────────────────────
+  // AuthV3Context owns the auth state machine with both bug fixes:
+  //   BUG FIX #1: fresh AsyncStorage.getItem per onAuthStateChanged call
+  //   BUG FIX #2: isVerifyingRef (synchronous useRef) as the flash guard
+  const authV3         = useAuthV3();
+  const driverUid      = authV3.driverUid;
+  const phone          = authV3.phone;
+  const authLoading    = authV3.authLoading;
+  const isOtpVerified  = authV3.isOtpVerified;
+  const isOtpVerifying = authV3.isOtpVerifying;
   const [profile,     setProfileState]= useState<Profile | null>(null);
   const [vehicle,     setVehicleState]= useState<Vehicle | null>(null);
   const [verificationStatus, setVerifStatus]      = useState<string | null>(null);
@@ -545,13 +547,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   // ONCE per session regardless of how many times onAuthStateChanged or the
   // subscribeDriverDoc listener fires. Prevents remount blinks on reconnect.
   const hasNavigatedToBlockedRef = useRef(false);
-  // True ONLY during the OTP → set-PIN window (signInForSession → confirmPin).
-  // A ref (not state) because the onAuthStateChanged listener below is registered
-  // once at mount and its closure cannot observe state updates. While true, the
-  // auth listener must NOT fetch /drivers/me or navigate — OTP merely authorizes
-  // PIN setup; the full session (profile + routing) is established only AFTER
-  // set-pin succeeds (pin_hash true), inside establishSession (via confirmPin).
-  const pinSetupInProgressRef = useRef(false);
+  // V3: pinSetupInProgressRef removed — AuthV3Context's isVerifyingRef
+  // (a synchronous useRef) serves as the unified guard for all auth flows.
   const profileRef      = useRef<Profile | null>(null);
   const driverRatingRef = useRef<number | string>("5.0");
   const driverTripsRef  = useRef<number>(0);
@@ -562,10 +559,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   useEffect(() => { driverRatingRef.current  = driverRating;   }, [driverRating]);
   useEffect(() => { driverTripsRef.current   = driverTrips;    }, [driverTrips]);
 
-  // Pre-started AsyncStorage promises — kicked off before onAuthStateChanged fires
-  // so both reads are resolved (or near-resolved) before the auth callback runs.
-  // Default resolved values are replaced inside the mount effect milliseconds later.
-  const sessionKeyRef   = useRef<Promise<string | null>>(Promise.resolve(null));
+  // localPermVerRef: kicked off before the session restore handler fires so the
+  // permission version check can use the persisted value without extra awaits.
   const localPermVerRef = useRef<Promise<number>>(Promise.resolve(0));
 
   // ─── Firebase Auth listener — restores session on app restart ──────────────
@@ -592,7 +587,6 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     // start) and certainly before the 8 s safety timeout. Assigning to the
     // refs here (inside the effect) guarantees React strict-mode doesn't start
     // duplicate reads on a second mount.
-    sessionKeyRef.current   = AsyncStorage.getItem(SESSION_VERIFIED_KEY);
     localPermVerRef.current = AsyncStorage.getItem(LOCAL_PERMISSION_KEY).then((v) => {
       const n = v !== null ? parseInt(v, 10) : 0;
       setLocalPermissionVersion(n);
@@ -627,8 +621,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       );
       void signOut().finally(() => {
         try {
-          console.log("[RUNTIME_NAVIGATION_20260730] DriverContext.tsx | SESSION_REPLACED | destination: /login");
-          router.replace("/login");
+          console.log("[RUNTIME_NAVIGATION_20260730] DriverContext.tsx | SESSION_REPLACED | destination: /login-v3");
+          router.replace("/login-v3" as never);
         } catch {
           // Navigation may fail if the router is not mounted yet — _layout.tsx
           // already routes to /login once signOut resets the auth flags.
@@ -639,587 +633,213 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     // Cold-start diagnostics — logged once when DriverProvider mounts.
     console.log("[BOOT_ROUTE] app opened");
     console.log("[BOOT_ROUTE] firebase currentUser immediate =", firebaseAuth.currentUser?.uid ?? null);
-    void sessionKeyRef.current.then((uid) =>
-      console.log("[SESSION_STATE] storedVerifiedUid =", uid ?? "(none)"),
-    );
+    // ── V3: Register session restore callback ─────────────────────────────
+    // AuthV3Context calls this when it detects sessionValid=true on cold start.
+    // All profile hydration + navigation happen here so DriverContext state is
+    // populated before AuthV3Context releases authLoading (in its finally block).
+    registerV3SessionRestoreHandler(async (uid: string, _restorePhone: string) => {
+      // ── Profile hydration ────────────────────────────────────────────────
+      let pgProfile: PgDriverProfile | null = null;
+      try {
+        console.log("[PERF] get_driver_profile_start ts=" + Date.now());
+        const profileFetch = getDriverProfile();
+        pgProfile = await Promise.race([
+          profileFetch,
+          new Promise<null>((r) => setTimeout(() => r(null), 3500)),
+        ]);
+        console.log("[PERF] get_driver_profile_end ts=" + Date.now() + " pgProfile=" + (pgProfile ? "ok" : "null"));
 
-    const unsub = onAuthStateChanged(firebaseAuth, (user) => {
-      // ── [FP_TRACE] Step 8: onAuthStateChanged entry ───────────────────────
-      console.log(`[FP_TRACE][ON_AUTH_STATE_CHANGED] ts=${Date.now()} uid=${user?.uid ?? "null"} pinSetupInProgress=${pinSetupInProgressRef.current}`);
-      console.log("[AUTH_STATE] onAuthStateChanged uid =", user?.uid ?? null);
-      console.log("[AUTH_STATE] no user =", !user);
-      // ── [AUTH_STATE_CHANGED] debug ────────────────────────────────────────
-      console.log("[AUTH_STATE_CHANGED] uid:", user?.uid ?? null, "| pinSetupInProgress:", pinSetupInProgressRef.current, "| isOtpVerified: (checked at next render)");
-
-      if (!user) {
-        console.log(`[FP_TRACE][ON_AUTH_STATE_CHANGED] no user — setDriverUid(null) + setAuthLoading(false)`);
-        // ─────────────────────────────────────────────────────────────────────
-        // [AUTH_STATE_08] onAuthStateChanged(null) — Firebase signed user OUT.
-        // This fires when: (a) explicit signOut, (b) Firebase signs out the OLD
-        // user before signing in the NEW user during signInWithCustomToken, or
-        // (c) the Firebase session was revoked externally.
-        // If isOtpVerifying=true is NOT yet committed to React, the _layout.tsx
-        // effect will fire after this with driverUid=null → routes to /login-v2.
-        // ─────────────────────────────────────────────────────────────────────
-        console.log("[AUTH_STATE_08] onAuthStateChanged(NULL USER)",
-          "| setDriverUid(null) + setAuthLoading(false) about to be called",
-          "| firebaseAuth.currentUser:", firebaseAuth.currentUser?.uid ?? "null",
-          "| ts:", Date.now(),
-        );
-        setDriverUid(null);
-        setAuthLoading(false);
-        return;
-      }
-
-      const phoneFromUid = user.uid.startsWith("91") ? user.uid.slice(2) : user.uid;
-
-      // ── 0. PIN-setup guard — MUST run before setDriverUid ────────────────
-      // signInForSession (forgot-PIN / first-time PIN setup) calls
-      // signInWithCustomToken, which fires this listener. We MUST NOT call
-      // setDriverUid here in that case.
-      //
-      // WHY: setDriverUid triggers a _layout.tsx re-render. If isOtpVerifying
-      // was queued before the await but hasn't committed yet (React hasn't
-      // flushed the batch), _layout.tsx sees:
-      //   driverUid=uid  isOtpVerified=false  isOtpVerifying=false
-      // and immediately routes to /login — wiping the pending
-      // router.replace("/create-pin?intent=reset") that handleVerify is about
-      // to call.
-      //
-      // signInForSession calls setDriverUid directly after signInWithCustomToken
-      // resolves (at that point isOtpVerifying=true is already committed), so
-      // driverUid is set correctly — just not here.
-      if (pinSetupInProgressRef.current) {
-        // ── [FP_TRACE] Step 8: guard fired — returning early ─────────────
-        console.log(`[FP_TRACE][ON_AUTH_STATE_CHANGED] GUARD HIT — pinSetupInProgress=true → returning WITHOUT setDriverUid ts=${Date.now()}`);
-        console.log("[RUNTIME_PROOF_20260730] DriverContext.tsx | onAuthStateChanged | pinSetupInProgress=true — skipping setDriverUid to prevent _layout.tsx race");
-        return;
-      }
-
-      // ── [FP_TRACE] Step 8: guard NOT fired — proceeding to setDriverUid ──
-      console.log(`[FP_TRACE][ON_AUTH_STATE_CHANGED] guard NOT hit — calling setDriverUid(${user.uid}) ts=${Date.now()}`);
-      // ─────────────────────────────────────────────────────────────────────
-      // [AUTH_STATE_09] onAuthStateChanged(USER) — Firebase signed user IN.
-      // setDriverUid is called synchronously in the listener callback.
-      // The isOtpVerifying flash guard must already be committed to React
-      // state, otherwise _layout.tsx will see driverUid=uid + isOtpVerified=false
-      // + isOtpVerifying=false simultaneously and route to /login.
-      // ─────────────────────────────────────────────────────────────────────
-      console.log("[AUTH_STATE_09] onAuthStateChanged(USER) — setDriverUid about to be called",
-        "| uid:", user.uid,
-        "| firebaseAuth.currentUser?.uid:", firebaseAuth.currentUser?.uid ?? "null",
-        "| ts:", Date.now(),
-      );
-      // Set auth identity synchronously (session restore + normal OTP only).
-      setDriverUid(user.uid);
-      console.log("AUTH UID =", firebaseAuth.currentUser?.uid);
-      console.log("DRIVER UID =", user.uid);
-      setPhoneState(phoneFromUid);
-
-      void (async () => {
-        // ── Belt-and-suspenders IIFE guard ───────────────────────────────────
-        // pinSetupInProgressRef is already checked above (before setDriverUid),
-        // so we should never reach here with it true. Guard kept for safety.
-        if (pinSetupInProgressRef.current) {
-          console.log("[AUTH_STATE] pin-setup in progress — skipping profile hydration + navigation (no premature /drivers/me)");
-          return;
-        }
-
-        // ── 1. Session restore check ─────────────────────────────────────────
-        // Determine whether this Firebase user has a previously OTP-verified
-        // session stored in AsyncStorage from a prior login.
-        let sessionValid = false;
-        try {
-          // Await the already-started promise (kicked off at mount time, not now).
-          // On a normal device this resolves in <50 ms — well before this code runs.
-          const storedUid = await sessionKeyRef.current;
-          console.log("[PERF] auth_state_ready ts=" + Date.now());
-          console.log("[AUTH_RESTORE] firebaseUid =", user.uid);
-          console.log("[AUTH_RESTORE] storedVerifiedUid =", storedUid);
-          sessionValid = storedUid === user.uid;
-          console.log("[SESSION_STATE] sessionValid =", sessionValid);
-          // ───────────────────────────────────────────────────────────────────
-          // [AUTH_STATE_10] sessionKeyRef resolved — shows whether this OTP login
-          // is being treated as a "session restore" (storedUid matches) or a
-          // fresh login.
-          // CRITICAL: sessionKeyRef.current is the AsyncStorage.getItem promise
-          // started at MOUNT TIME. If signOut() removed SESSION_VERIFIED_KEY but
-          // the app did NOT remount (DriverProvider still alive), this promise is
-          // already resolved and ALWAYS returns the uid from the PREVIOUS session.
-          // ───────────────────────────────────────────────────────────────────
-          console.log("[AUTH_STATE_10] onAuthStateChanged IIFE — sessionKeyRef resolved",
-            "| storedUid:", storedUid ?? "null",
-            "| user.uid:", user.uid,
-            "| sessionValid:", sessionValid,
-            "| NOTE: storedUid from MOUNT-TIME snapshot — may be STALE if signOut ran without remount",
-            "| ts:", Date.now(),
-          );
-          if (sessionValid) {
-            // ─────────────────────────────────────────────────────────────────
-            // [AUTH_STATE_10A] sessionValid=true → setIsOtpVerified(true) called
-            // from WITHIN onAuthStateChanged IIFE (NOT from establishSession).
-            // This RACES with establishSession's own setIsOtpVerified(true) call.
-            // ─────────────────────────────────────────────────────────────────
-            console.log("[AUTH_STATE_10A] sessionValid=TRUE → setIsOtpVerified(true) called FROM IIFE",
-              "| authLoading stays TRUE (not released here)",
-              "| ts:", Date.now(),
-            );
-            setIsOtpVerified(true);
+        if (pgProfile) {
+          console.log("[PG_PROFILE_RESTORE] v3 session restore uid=" + uid +
+            " name=" + (pgProfile.name ?? "(null)") +
+            " verificationStatus=" + (pgProfile.verificationStatus ?? "(null)"));
+          if (pgProfile.name) {
+            setProfileState({
+              name:          pgProfile.name          ?? "",
+              city:          pgProfile.city          ?? "",
+              gender:        pgProfile.gender        ?? "",
+              licenseNumber: pgProfile.licenseNumber ?? "",
+              vehicleNumber: pgProfile.vehicleNumber ?? "",
+            });
           }
-        } catch {
-          // AsyncStorage read failed — falls back to OTP gate (safe default).
-        }
+          if (pgProfile.vehicleId) {
+            setVehicleState({ id: pgProfile.vehicleId, name: pgProfile.vehicleName ?? "" });
+          }
+          setAccountStatus(pgProfile.accountStatus ?? null);
+          setSuspendReason(pgProfile.suspendReason ?? null);
+          setBlacklistReason(pgProfile.blacklistReason ?? null);
 
-        // ── 2. No-restore fast path ──────────────────────────────────────────
-        // No saved session: unblock the layout immediately so the login screen
-        // or permission gate appears.
-        if (!sessionValid) {
-          console.log("[ROUTE_DECISION] no valid session → handing off to _layout gate");
-          // ───────────────────────────────────────────────────────────────────
-          // [AUTH_STATE_10B] sessionValid=false → setAuthLoading(false) called.
-          // _layout.tsx effect will fire after this. isOtpVerifying flash guard
-          // MUST be committed to React state or _layout sees driverUid=uid +
-          // isOtpVerified=false + isOtpVerifying=false → routes to /login-v2.
-          // ───────────────────────────────────────────────────────────────────
-          console.log("[AUTH_STATE_10B] sessionValid=FALSE → setAuthLoading(false) called FROM IIFE",
-            "| isOtpVerified stays FALSE",
-            "| _layout.tsx effect will fire — flash guard must be committed",
-            "| ts:", Date.now(),
-          );
-          setAuthLoading(false);
-        }
-        // Session restore path: keep authLoading=true (spinner overlay stays up)
-        // while we fetch the driver doc and navigate to the correct screen. This
-        // prevents any flash of the login screen between auth restore and
-        // navigation. A 3.5 s doc-fetch timeout keeps us safely under the 5 s
-        // safety timeout so the overlay never hangs indefinitely.
-
-        // ── 3. Profile hydration ─────────────────────────────────────────────
-        // Primary source: PostgreSQL (profile, KYC, verification, onboarding, account status).
-        // Remaining Firestore reads (background): subscription + daily stats (not yet in PG).
-        let pgProfile: PgDriverProfile | null = null;
-        try {
-          console.log("[PERF] get_driver_profile_start ts=" + Date.now());
-          const profileFetch = getDriverProfile();
-          pgProfile = sessionValid
-            ? await Promise.race([
-                profileFetch,
-                new Promise<null>((r) => setTimeout(() => r(null), 3500)),
-              ])
-            : await profileFetch;
-          console.log("[PERF] get_driver_profile_end ts=" + Date.now() + " pgProfile=" + (pgProfile ? "ok" : "null"));
-
-          if (pgProfile) {
-            console.log("[PG_PROFILE_RESTORE] onAuthStateChanged uid=" + user.uid + " name=" + (pgProfile.name ?? "(null)") + " vehicleId=" + (pgProfile.vehicleId ?? "(null)") + " verificationStatus=" + (pgProfile.verificationStatus ?? "(null)"));
-            if (pgProfile.name) {
-              setProfileState({
-                name:          pgProfile.name          ?? "",
-                city:          pgProfile.city          ?? "",
-                gender:        pgProfile.gender        ?? "",
-                licenseNumber: pgProfile.licenseNumber ?? "",
-                vehicleNumber: pgProfile.vehicleNumber ?? "",
-              });
-            }
-            if (pgProfile.vehicleId) {
-              setVehicleState({ id: pgProfile.vehicleId, name: pgProfile.vehicleName ?? "" });
-            }
-            setAccountStatus(pgProfile.accountStatus ?? null);
-            setSuspendReason(pgProfile.suspendReason ?? null);
-            setBlacklistReason(pgProfile.blacklistReason ?? null);
-            if (pgProfile.suspendReason)   console.log("[ACCOUNT_SUSPEND_REASON] session restore:", pgProfile.suspendReason);
-            if (pgProfile.blacklistReason) console.log("[ACCOUNT_BLACKLIST_REASON] session restore:", pgProfile.blacklistReason);
-            {
-              const isSuspended =
-                pgProfile.accountStatus === "suspended" ||
-                pgProfile.accountStatus === "blacklisted" ||
-                pgProfile.accountStatus === "blocked";
-              // ── Duty restore ──────────────────────────────────────────────
-              // Gate: only attempt restore for a fully valid OTP session so
-              // we never apply stale local state during account transitions.
-              // Subscription expiry is intentionally NOT checked here — the
-              // planExpiredNoOrders effect handles forced-offline when the plan
-              // lapses; gating here would silently block restore whenever the
-              // subscription cache is absent or stale.
-              const uidForRestore = user.uid;
-              const dutyKey = getDutyKey(uidForRestore);
-              const dutyRaw = sessionValid
-                ? await AsyncStorage.getItem(dutyKey).catch(() => null)
-                : null;
-              console.log("[DUTY_PERSIST_READ]", JSON.stringify({
-                uid:          uidForRestore,
-                key:          dutyKey,
-                value:        dutyRaw,
-                sessionValid,
-              }));
-              // Log every condition so failures are diagnosable from logs alone.
-              console.log("[DUTY_RESTORE_DECISION]", JSON.stringify({
-                dutyRaw,
-                sessionValid,
-                isSuspended,
-                accountStatus: pgProfile.accountStatus ?? null,
-                shouldRestore: dutyRaw === "true" && sessionValid && !isSuspended,
-              }));
-              if (dutyRaw === "true" && sessionValid && !isSuspended) {
-                // ── Load subscription cache FIRST, before setting online ───
-                // CRITICAL: setOnlineState(true) and setSubPlan/setSubExp must
-                // be called in the same synchronous block (no await between
-                // them) so React batches them into a single render. If the sub
-                // cache is not set first, the planExpiredNoOrders effect fires
-                // on the first render where isOnline=true but
-                // subscriptionActive=false, immediately calling
-                // setOnlineState(false) and blocking the DriverOfferListener.
-                const subCacheRaw = await AsyncStorage.getItem(LOCAL_SUBSCRIPTION_KEY).catch(() => null);
-                let restoredSubPlan: string | null = null;
-                let restoredSubExp: number | null = null;
-                if (subCacheRaw) {
-                  try {
-                    const sc = JSON.parse(subCacheRaw) as { plan?: string; expiresAt?: number };
-                    if (sc.plan)      restoredSubPlan = sc.plan;
-                    if (sc.expiresAt) restoredSubExp  = sc.expiresAt;
-                  } catch {}
+          // ── Duty restore ───────────────────────────────────────────────
+          {
+            const isSuspended = pgProfile.accountStatus === "suspended" ||
+              pgProfile.accountStatus === "blacklisted" || pgProfile.accountStatus === "blocked";
+            const dutyKey = getDutyKey(uid);
+            const dutyRaw = await AsyncStorage.getItem(dutyKey).catch(() => null);
+            console.log("[DUTY_PERSIST_READ]", JSON.stringify({ uid, key: dutyKey, value: dutyRaw, sessionValid: true }));
+            if (dutyRaw === "true" && !isSuspended) {
+              const subCacheRaw = await AsyncStorage.getItem(LOCAL_SUBSCRIPTION_KEY).catch(() => null);
+              let restoredSubPlan: string | null = null;
+              let restoredSubExp: number | null  = null;
+              if (subCacheRaw) {
+                try {
+                  const sc = JSON.parse(subCacheRaw) as { plan?: string; expiresAt?: number };
+                  if (sc.plan)      restoredSubPlan = sc.plan;
+                  if (sc.expiresAt) restoredSubExp  = sc.expiresAt;
+                } catch {}
+              }
+              if (restoredSubPlan) setSubPlan(restoredSubPlan as SubPlan);
+              if (restoredSubExp)  setSubExp(restoredSubExp);
+              isOnlineRef.current = true;
+              setOnlineState(true);
+              console.log("[DUTY_RESTORE_SUCCESS]", JSON.stringify({ uid, at: new Date().toISOString() }));
+              startLocationHeartbeatRef.current?.({ immediate: true });
+              const retryStatusSync = (retryUid: string, delays: number[]) => {
+                if (dutyRestoreRetryTimerRef.current !== null) {
+                  clearTimeout(dutyRestoreRetryTimerRef.current);
+                  dutyRestoreRetryTimerRef.current = null;
                 }
-                console.log("[DUTY_RESTORE_DECISION]", JSON.stringify({
-                  subCacheFound:   !!subCacheRaw,
-                  subPlan:         restoredSubPlan,
-                  subExpiresAt:    restoredSubExp,
-                  subStillActive:  restoredSubExp ? restoredSubExp > Date.now() : false,
-                  note: "sub state set synchronously with setOnlineState to prevent planExpiredEffect false-fire",
-                }));
-                // ── Set subscription state + online in ONE synchronous block ─
-                // No await between these calls — React batches them into a
-                // single render so subscriptionActive is true when the
-                // DriverOfferListener effect re-runs.
-                if (restoredSubPlan) setSubPlan(restoredSubPlan as SubPlan);
-                if (restoredSubExp)  setSubExp(restoredSubExp);
-                isOnlineRef.current = true;
-                setOnlineState(true);
-                console.log("[DUTY_RESTORE_SUCCESS]", JSON.stringify({
-                  uid: uidForRestore,
-                  at:  new Date().toISOString(),
-                }));
-                // ── Restart offer polling immediately ──────────────────────
-                // DriverOfferListener useEffect re-runs automatically because
-                // isOnline just changed to true (with subscriptionActive
-                // already true in the same batch). Log here so the timeline
-                // is traceable end-to-end.
-                console.log("[OFFER_POLLING_RESTORED_AFTER_RESUME]", JSON.stringify({
-                  uid:          uidForRestore,
-                  subPlan:      restoredSubPlan,
-                  subExpiresAt: restoredSubExp,
-                }));
-                // ── Start heartbeat immediately ────────────────────────────
-                // Do NOT wait for patchDriverStatus. GPS/location failures
-                // are already handled by the retain-online callback and must
-                // never revert duty state.
-                startLocationHeartbeatRef.current?.({ immediate: true });
-                // ── Backend sync in background ─────────────────────────────
-                // Notify backend of restored online status. Backend rejection
-                // (ok:false) AND network failures both retain local duty ON —
-                // only the driver tapping Duty OFF or logging out may clear it.
-                // Retries at 5 s → 30 s → 90 s; the running heartbeat also
-                // re-syncs isOnline on every 10 s location POST as a safety net.
-                const retryStatusSync = (uid: string, delays: number[]) => {
-                  // Cancel any previously-scheduled retry before scheduling the
-                  // next step. Guarantees only ONE timer is pending at any time,
-                  // preventing multiple simultaneous chains if this function is
-                  // ever called more than once per session.
-                  if (dutyRestoreRetryTimerRef.current !== null) {
-                    clearTimeout(dutyRestoreRetryTimerRef.current);
-                    dutyRestoreRetryTimerRef.current = null;
-                  }
-                  // All retries exhausted, or driver already went offline manually.
-                  if (delays.length === 0 || !isOnlineRef.current) return;
-                  const [nextDelay, ...remaining] = delays;
-                  // Store the timer ID so logout / manual-off can cancel it.
-                  dutyRestoreRetryTimerRef.current = setTimeout(() => {
-                    // Timer fired — clear the ref so it no longer looks "pending".
-                    dutyRestoreRetryTimerRef.current = null;
-                    // Guard: driver went offline (tap or logout) while timer was
-                    // pending — do not make any backend call.
-                    if (!isOnlineRef.current) return;
-                    void patchDriverStatus(uid, true)
-                      .then((r) => {
-                        if (r.ok) {
-                          // Success — chain ends here, no further retries needed.
-                          console.log("[DUTY_RESTORE_RETRY_OK]", JSON.stringify({ uid }));
-                        } else {
-                          console.log("[DUTY_RESTORE_RETRY_REJECTED]", JSON.stringify({ uid, dutyRetained: true, remainingRetries: remaining.length }));
-                          retryStatusSync(uid, remaining);
-                        }
-                      })
-                      .catch(() => {
-                        retryStatusSync(uid, remaining);
-                      });
-                  }, nextDelay);
-                };
-                void patchDriverStatus(uidForRestore, true)
-                  .then((r) => {
-                    if (!r.ok) {
-                      // Backend returned ok:false — log but KEEP duty ON.
-                      // Never clear the duty key or flip isOnlineRef here.
-                      console.log("[DUTY_RESTORE_BACKEND_REJECTED]", JSON.stringify({
-                        reason:       "backend_rejected_online_status_retained",
-                        backendOk:    false,
-                        dutyRetained: true,
-                        uid:          uidForRestore,
-                      }));
-                      retryStatusSync(uidForRestore, [5_000, 30_000, 90_000]);
-                    } else {
-                      console.log("[DUTY_RESTORE] backend confirmed restored online status");
-                    }
-                  })
-                  .catch((err) => {
-                    // Network error — duty is retained; retry + heartbeat will recover.
-                    console.log("[DUTY_RESTORE] backend sync failed (network) — duty retained, retrying:", err instanceof Error ? err.message : String(err));
-                    retryStatusSync(uidForRestore, [5_000, 30_000, 90_000]);
-                  });
-              } else {
-                const skipReason =
-                  !sessionValid   ? "session_not_valid" :
-                  isSuspended     ? "account_suspended_or_blocked" :
-                  dutyRaw !== "true" ? `duty_key_not_set (value=${JSON.stringify(dutyRaw)})` :
-                  "unknown";
-                console.log("[DUTY_RESTORE_SKIPPED]", JSON.stringify({
-                  reason: skipReason,
-                  uid:    uidForRestore,
-                }));
-                setOnlineState(false); // start offline — no persisted duty to restore
-              }
-            }
-            // Subscription: restore from AsyncStorage cache (subscriptionPlan not yet in PG).
-            try {
-              const subRaw = await AsyncStorage.getItem(LOCAL_SUBSCRIPTION_KEY).catch(() => null);
-              if (subRaw) {
-                const sub = JSON.parse(subRaw) as { plan?: string; expiresAt?: number };
-                if (sub.plan)      setSubPlan(sub.plan as SubPlan);
-                if (sub.expiresAt) setSubExp(sub.expiresAt);
-                console.log("[SESSION_RESTORE_SUB] plan restored from cache —", sub.plan, "exp", sub.expiresAt);
-              }
-            } catch {}
-            // Subscription is NOT carried by GET /api/drivers/me — read the
-            // authoritative status from GET /api/driver-plans/status. The cache
-            // restored above is the instant-display value until this resolves;
-            // on failure we keep the cache rather than clearing it to null.
-            void syncSubscriptionFromServer();
-            {
-              const today   = new Date().toISOString().slice(0, 10);
-              const sameDay = pgProfile.todayDate === today;
-              setTodayEarnings(sameDay ? (pgProfile.todayEarnings ?? 0) : 0);
-              setTripsToday   (sameDay ? (pgProfile.tripsToday    ?? 0) : 0);
-              setDriverRating(String(pgProfile.rating ?? 5.0));
-            }
-            // Wallet — fire-and-forget REST read (must NOT block navigation)
-            console.log("[PERF] wallet_fetch_start");
-            void getWallet(user.uid).then((walletDoc) => {
-              console.log("[PERF] wallet_fetch_end");
-              if (!walletDoc) return;
-              setBalance(walletDoc.balance ?? 0);
-              setLifetimeEarnings(walletDoc.totalEarnings ?? 0);
-              setTotalPaid(walletDoc.totalPaid ?? 0);
-              setDriverTrips(walletDoc.completedDeliveries ?? 0);
-            }).catch(() => {});
-            void loadDriverTransactions(user.uid);
-            setVerifStatus(pgProfile.verificationStatus ?? null);
-            if (pgProfile.verificationStatus) {
-              void AsyncStorage.setItem(LOCAL_VERIFICATION_KEY, pgProfile.verificationStatus).catch(() => {});
-            }
-            setDocsSubmitted(pgProfile.documentsSubmitted ?? false);
-            setKycRejectionReason(pgProfile.kycRejectionReason ?? null);
-            setKycDocuments(pgProfile.documents as unknown as NonNullable<DriverDoc["documents"]>);
-            setBackgroundSetupShown(pgProfile.backgroundSetupShown ?? false);
-            {
-              const pgPermVer = pgProfile.permissionSetupVersion ?? 0;
-              setPermissionSetupVersion(pgPermVer);
-              // Sync local AsyncStorage cache — PG is authoritative when reachable.
-              const localVer = await localPermVerRef.current;
-              if (pgPermVer > localVer) {
-                localPermVerRef.current = Promise.resolve(pgPermVer);
-                setLocalPermissionVersion(pgPermVer);
-                void AsyncStorage.setItem(LOCAL_PERMISSION_KEY, String(pgPermVer)).catch(() => {});
-                console.log("[PERMISSION_GATE] local cache updated from PG:", pgPermVer);
-              }
-            }
-            setOnboardingFeeApplies(pgProfile.onboardingFeeApplies ?? false);
-            setOnboardingFeeStatus(pgProfile.onboardingFeeStatus ?? null);
-            setOnboardingFeeAmount(pgProfile.onboardingFeeAmount ?? null);
-          }
-          // Restore active orders — fire-and-forget (must NOT block navigation)
-          console.log("[PERF] active_orders_restore_start");
-          void getActiveOrdersForDriver(user.uid, MAX_ACTIVE_ORDERS).then((activeOrderDocs) => {
-            console.log("[PERF] active_orders_restore_end count=" + activeOrderDocs.length);
-            if (activeOrderDocs.length > 0) {
-              const restoredRides: ActiveRide[] = activeOrderDocs.map((doc) => {
-                const ride = orderDocToRide(doc);
-                const acceptedAtMs =
-                  (doc.acceptedAt as { toMillis?: () => number })?.toMillis?.() ??
-                  Date.now();
-                return { ...ride, acceptedAt: acceptedAtMs, orderStatus: doc.status };
-              });
-              setActiveOrders(restoredRides);
-              setCurrentActiveOrderId(restoredRides[0]!.id);
+                if (delays.length === 0 || !isOnlineRef.current) return;
+                const [nextDelay, ...remaining] = delays;
+                dutyRestoreRetryTimerRef.current = setTimeout(() => {
+                  dutyRestoreRetryTimerRef.current = null;
+                  if (!isOnlineRef.current) return;
+                  void patchDriverStatus(retryUid, true)
+                    .then((r) => { if (!r.ok) retryStatusSync(retryUid, remaining); })
+                    .catch(() => retryStatusSync(retryUid, remaining));
+                }, nextDelay);
+              };
+              void patchDriverStatus(uid, true)
+                .then((r) => { if (!r.ok) retryStatusSync(uid, [5_000, 30_000, 90_000]); })
+                .catch(() => retryStatusSync(uid, [5_000, 30_000, 90_000]));
             } else {
-              // PG is authoritative (HTTP 200): an empty result means this driver
-              // has NO active order. Immediately clear any stale local/current
-              // active-order state so the active-ride screen disappears and the
-              // home screen returns to the available/online state. No Firestore.
-              setActiveOrders([]);
-              setCurrentActiveOrderId(null);
+              console.log("[DUTY_RESTORE_SKIPPED]", JSON.stringify({
+                reason: isSuspended ? "account_suspended_or_blocked" : ("duty_key_not_set (value=" + JSON.stringify(dutyRaw) + ")"),
+                uid,
+              }));
+              setOnlineState(false);
             }
-          }).catch(() => {
-            // Server unreachable / non-200 — NOT authoritative. Leave existing
-            // state untouched (never resurrect stale data from Firestore).
-          });
-        } catch (err) {
-          console.error("[Auth] background profile hydration failed:", err);
+          }
+
+          // ── Subscription restore ────────────────────────────────────────
+          try {
+            const subRaw = await AsyncStorage.getItem(LOCAL_SUBSCRIPTION_KEY).catch(() => null);
+            if (subRaw) {
+              const sub = JSON.parse(subRaw) as { plan?: string; expiresAt?: number };
+              if (sub.plan)      setSubPlan(sub.plan as SubPlan);
+              if (sub.expiresAt) setSubExp(sub.expiresAt);
+              console.log("[SESSION_RESTORE_SUB] plan restored from cache —", sub.plan, "exp", sub.expiresAt);
+            }
+          } catch {}
+          void syncSubscriptionFromServer();
+
+          // ── Stats ──────────────────────────────────────────────────────
+          {
+            const today   = new Date().toISOString().slice(0, 10);
+            const sameDay = pgProfile.todayDate === today;
+            setTodayEarnings(sameDay ? (pgProfile.todayEarnings ?? 0) : 0);
+            setTripsToday   (sameDay ? (pgProfile.tripsToday    ?? 0) : 0);
+            setDriverRating(String(pgProfile.rating ?? 5.0));
+          }
+
+          // ── Wallet ─────────────────────────────────────────────────────
+          void getWallet(uid).then((walletDoc) => {
+            if (!walletDoc) return;
+            setBalance(walletDoc.balance ?? 0);
+            setLifetimeEarnings(walletDoc.totalEarnings ?? 0);
+            setTotalPaid(walletDoc.totalPaid ?? 0);
+            setDriverTrips(walletDoc.completedDeliveries ?? 0);
+          }).catch(() => {});
+          void loadDriverTransactions(uid);
+
+          // ── Verification / KYC ────────────────────────────────────────
+          setVerifStatus(pgProfile.verificationStatus ?? null);
+          if (pgProfile.verificationStatus) {
+            void AsyncStorage.setItem(LOCAL_VERIFICATION_KEY, pgProfile.verificationStatus).catch(() => {});
+          }
+          setDocsSubmitted(pgProfile.documentsSubmitted ?? false);
+          setKycRejectionReason(pgProfile.kycRejectionReason ?? null);
+          setKycDocuments(pgProfile.documents as unknown as NonNullable<DriverDoc["documents"]>);
+          setBackgroundSetupShown(pgProfile.backgroundSetupShown ?? false);
+
+          // ── Permission version ───────────────────────────────────────────
+          {
+            const pgPermVer = pgProfile.permissionSetupVersion ?? 0;
+            setPermissionSetupVersion(pgPermVer);
+            const localVer0 = await localPermVerRef.current;
+            if (pgPermVer > localVer0) {
+              localPermVerRef.current = Promise.resolve(pgPermVer);
+              setLocalPermissionVersion(pgPermVer);
+              void AsyncStorage.setItem(LOCAL_PERMISSION_KEY, String(pgPermVer)).catch(() => {});
+              console.log("[PERMISSION_GATE] local cache updated from PG:", pgPermVer);
+            }
+          }
+
+          // ── Onboarding fee ───────────────────────────────────────────────
+          setOnboardingFeeApplies(pgProfile.onboardingFeeApplies ?? false);
+          setOnboardingFeeStatus(pgProfile.onboardingFeeStatus ?? null);
+          setOnboardingFeeAmount(pgProfile.onboardingFeeAmount ?? null);
         }
 
-        // ── 4. Session restore navigation ────────────────────────────────────
-        // Navigate to the correct screen BEFORE calling setAuthLoading(false).
-        // This ensures the auth overlay disappears onto the dashboard (or the
-        // correct onboarding step), never onto the login screen.
-        if (sessionValid) {
-          const localVer = await localPermVerRef.current;
-          let nextRoute: OnboardingRoute;
-          if (pgProfile) {
-            // PG responded in time — use authoritative pgProfile.
-            console.log("[SESSION_RESTORE_DOC] PG success —", JSON.stringify({
-              verificationStatus:     pgProfile.verificationStatus     ?? null,
-              vehicleId:              pgProfile.vehicleId              ?? null,
-              name:                   pgProfile.name                   ?? null,
-              documentsSubmitted:     pgProfile.documentsSubmitted     ?? false,
-              permissionSetupVersion: pgProfile.permissionSetupVersion ?? 0,
-            }));
-            console.log("[KYC_GATE] PG success — running deriveNextRoute");
-            const serverRoute = pgProfile.nextRoute as string | undefined;
-            nextRoute = serverRoute
-              ? mapServerNextRoute(serverRoute)
-              : await deriveNextRoute(pgProfile);
-            {
-              const profileComplete = !!(pgProfile.name && pgProfile.city);
-              const vehicleComplete = !!pgProfile.vehicleId;
-              const docsComplete    = pgProfile.documentsSubmitted ?? false;
-              const feePaid         = !pgProfile.onboardingFeeApplies || pgProfile.onboardingFeeStatus === "paid";
-              console.log(
-                "[ROUTE_DECISION]",
-                "uid=" + user.uid,
-                "profileComplete=" + profileComplete,
-                "vehicleComplete=" + vehicleComplete,
-                "docsComplete="    + docsComplete,
-                "feePaid="         + feePaid,
-                "verificationStatus=" + (pgProfile.verificationStatus ?? "null"),
-                "nextRoute="       + nextRoute,
-              );
-            }
+        // ── Active orders restore ──────────────────────────────────────────
+        void getActiveOrdersForDriver(uid, MAX_ACTIVE_ORDERS).then((activeOrderDocs) => {
+          if (activeOrderDocs.length > 0) {
+            const restoredRides: ActiveRide[] = activeOrderDocs.map((doc) => {
+              const ride        = orderDocToRide(doc);
+              const acceptedAtMs = (doc.acceptedAt as { toMillis?: () => number })?.toMillis?.() ?? Date.now();
+              return { ...ride, acceptedAt: acceptedAtMs, orderStatus: doc.status };
+            });
+            setActiveOrders(restoredRides);
+            setCurrentActiveOrderId(restoredRides[0]!.id);
           } else {
-            // Fix B: Firestore timed out (>3.5 s) — verificationStatus unknown from
-            // live doc.  Read the local AsyncStorage cache written on the last
-            // successful Firestore fetch.  Approved/verified drivers go straight to
-            // /(tabs) instead of being blocked at /verification-pending.
-            const cachedVerifStatus = await AsyncStorage.getItem(LOCAL_VERIFICATION_KEY).catch(() => null);
-            const cachedApproved =
-              cachedVerifStatus === "approved" || cachedVerifStatus === "verified";
-            console.log("[SESSION_RESTORE_DOC] Firestore timeout — driverDoc null; cachedVerifStatus =", cachedVerifStatus ?? "(none)");
-
-            // Write the cached status into context state NOW so that any screen
-            // we route to (e.g. /verification-pending) sees the real value.
-            // Without this, verificationStatus stays null and the rejected branch
-            // never fires even though the route is correct.
-            if (cachedVerifStatus) {
-              setVerifStatus(cachedVerifStatus);
-            }
-
-            // Restore subscription from AsyncStorage cache so the dashboard
-            // immediately shows the driver's active plan even when Firestore
-            // timed out (the live listener may take several more seconds).
-            try {
-              const subRaw = await AsyncStorage.getItem(LOCAL_SUBSCRIPTION_KEY).catch(() => null);
-              if (subRaw) {
-                const sub = JSON.parse(subRaw) as { plan?: string; expiresAt?: number };
-                if (sub.plan)      setSubPlan(sub.plan as SubPlan);
-                if (sub.expiresAt) setSubExp(sub.expiresAt);
-                console.log("[SESSION_RESTORE_SUB] plan restored from cache —", sub.plan, "exp", sub.expiresAt);
-              }
-            } catch {
-              // Non-fatal — live listener will hydrate plan once Firestore responds
-            }
-
-            if (cachedApproved) {
-              console.log("[APPROVED_DRIVER_CACHE_HIT] local cache confirms", cachedVerifStatus, "— bypassing /verification-pending");
-              nextRoute = "/(tabs)";
-              console.log("[APPROVED_DRIVER_ROUTE] approved (cached) → /(tabs)");
-            } else {
-              // Cannot confirm onboarding state without a live server response.
-              // /registration is the safe default: it never bypasses a required step,
-              // and a genuinely-pending driver (docs submitted) will be correctly
-              // routed by the next successful session restore once the server responds.
-              // NEVER route to /verification-pending here — that requires server-confirmed
-              // state (documentsSubmitted + feePaid + !rejected), which local cache
-              // cannot reliably provide (cache may contain "unsubmitted" written at signup).
-              console.log("[DOC_TIMEOUT_APPROVED_UNKNOWN] cachedVerifStatus =", cachedVerifStatus ?? "(none)", "— using safe default /registration (server did not respond in time)");
-              nextRoute = "/registration";
-              console.log("[SAFE_FALLBACK_ROUTE] → /registration (onboarding state unconfirmed; must not assume verification-pending from cache)");
-            }
-            console.log("[ROUTE_DECISION] session restore chosenRoute =", nextRoute, "(PG timeout fallback)");
+            setActiveOrders([]);
+            setCurrentActiveOrderId(null);
           }
-          // Guard: only navigate to /account-blocked once per session.
-          // If onAuthStateChanged re-fires (e.g. Firebase reconnect), skip the
-          // router.replace so the already-mounted blocked screen does not remount.
-          if (nextRoute === "/account-blocked" && hasNavigatedToBlockedRef.current) {
-            console.log("[ACCOUNT_ENFORCEMENT_REFRESH] session restore re-fired — blocked screen already mounted, suppressing router.replace");
-          } else {
-            if (nextRoute === "/account-blocked") {
-              hasNavigatedToBlockedRef.current = true;
-            }
-            console.log("[RUNTIME_NAVIGATION_20260730] DriverContext.tsx | onAuthStateChanged session-restore | destination:", nextRoute);
-            // ─────────────────────────────────────────────────────────────────
-            // [AUTH_STATE_10E] IIFE sessionValid=true path — router.replace fired
-            // FROM INSIDE onAuthStateChanged. This happens CONCURRENTLY with
-            // establishSession's own router.replace (from verify-otp-v2.tsx).
-            // Both may call router.replace(nextRoute) — last one wins.
-            // ─────────────────────────────────────────────────────────────────
-            console.log("[AUTH_STATE_10E] IIFE (sessionValid=true) router.replace →", nextRoute,
-              "| ts:", Date.now(),
-            );
-            router.replace(nextRoute as never);
-          }
-          console.log("[AUTH_RESTORE] setAuthLoading false (session restore complete)");
-          // ─────────────────────────────────────────────────────────────────
-          // [AUTH_STATE_10F] IIFE sessionValid=true path — setAuthLoading(false)
-          // called AFTER navigation. _layout.tsx effect fires again here.
-          // ─────────────────────────────────────────────────────────────────
-          console.log("[AUTH_STATE_10F] IIFE (sessionValid=true) setAuthLoading(false) called",
-            "| ts:", Date.now(),
-          );
-          setAuthLoading(false);
-        }
+        }).catch(() => {});
+      } catch (err) {
+        console.error("[Auth] background profile hydration failed:", err);
+      }
 
-        // Register FCM push token — fire-and-forget.
-        registerDriverPushToken(user.uid).catch(console.error);
-      })();
+      // ── Navigation ──────────────────────────────────────────────────────
+      let nextRoute: OnboardingRoute;
+      if (pgProfile) {
+        console.log("[SESSION_RESTORE_DOC] PG success — verificationStatus=" +
+          (pgProfile.verificationStatus ?? "null") + " uid=" + uid);
+        const serverRoute = pgProfile.nextRoute as string | undefined;
+        nextRoute = serverRoute ? mapServerNextRoute(serverRoute) : await deriveNextRoute(pgProfile);
+        console.log("[ROUTE_DECISION] session restore uid=" + uid + " nextRoute=" + nextRoute);
+      } else {
+        const cachedVerifStatus = await AsyncStorage.getItem(LOCAL_VERIFICATION_KEY).catch(() => null);
+        const cachedApproved = cachedVerifStatus === "approved" || cachedVerifStatus === "verified";
+        console.log("[SESSION_RESTORE_DOC] PG timeout — cachedVerifStatus=" + (cachedVerifStatus ?? "(none)"));
+        if (cachedVerifStatus) setVerifStatus(cachedVerifStatus);
+        try {
+          const subRaw = await AsyncStorage.getItem(LOCAL_SUBSCRIPTION_KEY).catch(() => null);
+          if (subRaw) {
+            const sub = JSON.parse(subRaw) as { plan?: string; expiresAt?: number };
+            if (sub.plan)      setSubPlan(sub.plan as SubPlan);
+            if (sub.expiresAt) setSubExp(sub.expiresAt);
+          }
+        } catch {}
+        nextRoute = cachedApproved ? "/(tabs)" : "/registration";
+        console.log("[ROUTE_DECISION] session restore (PG timeout) uid=" + uid + " nextRoute=" + nextRoute);
+      }
+
+      // Guard: only navigate to /account-blocked once per session
+      if (nextRoute === "/account-blocked" && hasNavigatedToBlockedRef.current) {
+        console.log("[ACCOUNT_ENFORCEMENT_REFRESH] session restore re-fired — suppressing /account-blocked duplicate");
+      } else {
+        if (nextRoute === "/account-blocked") hasNavigatedToBlockedRef.current = true;
+        console.log("[RUNTIME_NAVIGATION_20260730] DriverContext.tsx | V3 session-restore | destination:", nextRoute);
+        router.replace(nextRoute as never);
+      }
+      console.log("[AUTH_V3] session restore complete — AuthV3Context will release authLoading");
+
+      // FCM token registration — fire-and-forget
+      registerDriverPushToken(uid).catch(console.error);
     });
-    return unsub;
   }, []);
 
-  // ─── Auth-loading safety timeout ──────────────────────────────────────────
-  // Hard guarantee: if onAuthStateChanged does not fire within 5 seconds
-  // (cold Firebase init, network down, Expo Go quirks on real device),
-  // force authLoading=false so the login screen always appears.
-  // setAuthLoading functional form lets us log ONLY when the timeout
-  // actually fires (i.e. auth state had not already resolved).
-  useEffect(() => {
-    // 8 s gives the pre-started AsyncStorage reads (~50 ms) + onAuthStateChanged
-    // (~500 ms cold start) + session-key await + Firestore 3.5 s timeout plenty
-    // of headroom before the safety net fires. 5 s was too tight on slow Android.
-    const tid = setTimeout(() => {
-      setAuthLoading((prev) => {
-        if (prev) {
-          console.log("[AUTH_RESTORE] safety timeout fired — forcing authLoading=false after 8s");
-        }
-        return false;
-      });
-    }, 8000);
-    return () => clearTimeout(tid);
-  }, []);
+  // Auth-loading safety timeout moved to AuthV3Context (owns authLoading state).
 
   // ─── FCM token refresh on foreground ──────────────────────────────────────
   // Re-registers the FCM token whenever the app returns to the foreground.
@@ -1252,6 +872,16 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     });
     return () => sub.remove();
   }, []);
+
+  // ─── FCM token registration on driverUid change ───────────────────────────
+  // In V3, AuthV3Context's onAuthStateChanged skips itself during active login
+  // (isVerifyingRef=true). This effect ensures FCM registration fires on fresh
+  // login (driverUid: null → uid) even when the auth listener was suppressed.
+  useEffect(() => {
+    if (driverUid) {
+      registerDriverPushToken(driverUid).catch(console.error);
+    }
+  }, [driverUid]);
 
   // ─── Subscription heartbeat ────────────────────────────────────────────────
   useEffect(() => {
@@ -1478,7 +1108,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   }, [isOnline, driverUid, isAtCapacity, subscriptionActive]);
 
   // ─── Auth actions ─────────────────────────────────────────────────────────
-  const setPhone = (p: string) => setPhoneState(p);
+  const setPhone = (p: string) => authV3.setPhone(p);
 
   /**
    * Derive the correct next screen based on the driver's onboarding state.
@@ -1631,12 +1261,11 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     // synchronously during signInWithCustomToken and React hasn't flushed this
     // batch yet, _layout.tsx sees isOtpVerifying=false → flash guard fails.
     // ─────────────────────────────────────────────────────────────────────────
-    console.log("[AUTH_STATE_06] establishSession: setIsOtpVerifying(true) called",
-      "| driverUid BEFORE:", firebaseAuth.currentUser?.uid ?? "null",
-      "| isOtpVerified current (stale closure, not real-time):", "(see [AUTH_STATE_L] logs)",
-      "| ts:", Date.now(),
-    );
-    setIsOtpVerifying(true);
+    // V3 Bug Fix #2: beginVerify() sets isVerifyingRef.current=true SYNCHRONOUSLY
+    // before signInWithCustomToken, so AuthV3Context's onAuthStateChanged callback
+    // is guaranteed to see the guard even before React flushes isOtpVerifying=true.
+    console.log("[AUTH_V3] establishSession: authV3.beginVerify() ts =", Date.now());
+    authV3.beginVerify();
 
     // ─────────────────────────────────────────────────────────────────────────
     // [AUTH_STATE_07] signInWithCustomToken about to be called.
@@ -1661,9 +1290,8 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         "| firebaseAuth.currentUser?.uid:", firebaseAuth.currentUser?.uid ?? "null (SDK race — should be uid)",
         "| ts:", Date.now(),
       );
-      setDriverUid(uid);
-      console.log("[FLOW] establishSession — setDriverUid called");
-      setPhoneState(phone);
+      // V3: driverUid + phone are set atomically in endVerifySuccess at the end.
+      // isVerifyingRef=true prevents AuthV3Context's onAuthStateChanged from racing.
 
       // ── Get a fresh ID token directly from the credential user ────────────
       // On React Native, firebaseAuth.currentUser may not be synchronised yet
@@ -1734,8 +1362,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
             : "no fetch debug";
           console.error("[OTP_PROFILE_GATE] source ≠ 404 — skipping ensureDriverSignup:", errDetail);
           console.error("[OTP_PROFILE_GATE] body sample:", retryFetchDbg?.rawBody?.slice(0, 200));
-          pinSetupInProgressRef.current = false;
-          setIsOtpVerifying(false);
+          authV3.endVerifyFailure();
           return {
             ok:              false,
             profileComplete: false,
@@ -1938,37 +1565,15 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       // as setIsOtpVerified(true). This guarantees _layout.tsx never sees a state
       // where isOtpVerifying=false AND isOtpVerified=false simultaneously, which
       // would cause it to route back to /login.
-      console.log("[OTP_FINAL_ROUTE] releasing layout guard — isOtpVerified=true, isOtpVerifying=false, nextRoute =", nextRoute);
-      // Full session is now established (post-set-pin for the PIN flow). Re-enable
-      // the onAuthStateChanged hydration path for any future auth events.
-      pinSetupInProgressRef.current = false;
-      // ─────────────────────────────────────────────────────────────────────
-      // [AUTH_STATE_14] setIsOtpVerified(true) + setIsOtpVerifying(false)
-      // called in the SAME synchronous block → same React render batch.
-      // After this commits, _layout.tsx sees isOtpVerified=true and becomes
-      // a no-op for all future effect firings.
-      // ─────────────────────────────────────────────────────────────────────
-      console.log("[AUTH_STATE_14] setIsOtpVerified(true) + setIsOtpVerifying(false) called (SAME batch)",
-        "| uid:", uid,
-        "| nextRoute:", nextRoute,
-        "| ts:", Date.now(),
-      );
-      setIsOtpVerified(true);
-      setIsOtpVerifying(false);
+      console.log("[AUTH_V3] establishSession: endVerifySuccess uid =", uid, "nextRoute =", nextRoute, "ts =", Date.now());
+      // V3: endVerifySuccess atomically: isOtpVerified=true + isOtpVerifying=false +
+      // driverUid=uid + phone=phone + clears isVerifyingRef (synchronous ref guard).
+      authV3.endVerifySuccess(uid, phone);
       // Persist the verified uid so session survives app backgrounding / cold start.
+      // AuthV3Context reads this FRESH on every onAuthStateChanged call (V3 Bug Fix #1).
       try {
         await AsyncStorage.setItem(SESSION_VERIFIED_KEY, uid);
-        // ───────────────────────────────────────────────────────────────────
-        // [AUTH_STATE_15] SESSION_VERIFIED_KEY written to AsyncStorage.
-        // NOTE: sessionKeyRef.current (the mount-time promise) does NOT
-        // update. Any future onAuthStateChanged IIFE call still sees the
-        // OLD resolved value from mount time.
-        // ───────────────────────────────────────────────────────────────────
-        console.log("[AUTH_STATE_15] SESSION_VERIFIED_KEY written",
-          "| uid:", uid,
-          "| WARNING: sessionKeyRef.current is immutable (mount-time snapshot)",
-          "| ts:", Date.now(),
-        );
+        console.log("[AUTH_V3] SESSION_VERIFIED_KEY written — uid:", uid, "ts:", Date.now());
         console.log("[OTP_SESSION] saved uid =", uid);
       } catch {
         // Non-fatal — next cold start will require re-OTP.
@@ -2018,18 +1623,12 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       return { ok: true, profileComplete, nextRoute, debugLog };
     } catch (err) {
       // Release the layout route-guard on any failure so normal auth routing resumes.
-      pinSetupInProgressRef.current = false;
-      // ─────────────────────────────────────────────────────────────────────
-      // [AUTH_STATE_EC] establishSession CATCH — setIsOtpVerifying(false)
-      // WITHOUT setIsOtpVerified(true). _layout.tsx will fire with
-      // isOtpVerified=false. pathname=/verify-otp-v2 → V2 guard blocks routing.
-      // ─────────────────────────────────────────────────────────────────────
-      console.log("[AUTH_STATE_EC] establishSession CATCH block",
+      // V3: endVerifyFailure resets isVerifyingRef + isOtpVerifying.
+      console.log("[AUTH_V3] establishSession CATCH — authV3.endVerifyFailure()",
         "| err:", err instanceof Error ? err.message : String(err),
-        "| setIsOtpVerifying(false) called WITHOUT setIsOtpVerified",
         "| ts:", Date.now(),
       );
-      setIsOtpVerifying(false);
+      authV3.endVerifyFailure();
       const msg = err instanceof Error ? err.message : "Sign-in failed.";
       return { ok: false, profileComplete: false, error: msg };
     }
@@ -2051,18 +1650,11 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   ): Promise<{ ok: boolean; error?: string }> => {
     console.log("[OTP_VERIFY_START] (pin-setup) blocking layout route-guard; signInWithCustomToken only — NO profile fetch, isOtpVerified stays false");
 
-    // ── [FP_TRACE] Step 6: signInForSession entry ─────────────────────────────
-    console.log(`[FP_TRACE][SIGN_IN_FOR_SESSION] ENTRY ts=${Date.now()} — about to setIsOtpVerifying(true) then pinSetupInProgressRef=true`);
-
-    setIsOtpVerifying(true);
-    // ── [FP_TRACE] Step 15: isOtpVerifying change ────────────────────────────
-    console.log(`[FP_TRACE][SIGN_IN_FOR_SESSION] setIsOtpVerifying(true) CALLED ts=${Date.now()} — React state queued, NOT yet committed`);
-
-    // Suppress the onAuthStateChanged hydration/navigation triggered by the
-    // sign-in below until set-pin completes (cleared inside establishSession).
-    pinSetupInProgressRef.current = true;
-    // ── [FP_TRACE] Step 18: pinSetupInProgressRef change ────────────────────
-    console.log(`[FP_TRACE][SIGN_IN_FOR_SESSION] pinSetupInProgressRef.current = true DONE (synchronous ref) ts=${Date.now()}`);
+    // V3 Bug Fix #2: beginVerify() sets isVerifyingRef.current=true SYNCHRONOUSLY
+    // and queues isOtpVerifying=true for React. AuthV3Context's onAuthStateChanged
+    // will return early for all Firebase events until endVerify* is called.
+    console.log(`[AUTH_V3][SIGN_IN_FOR_SESSION] authV3.beginVerify() ts=${Date.now()}`);
+    authV3.beginVerify();
 
     try {
       // ── [FP_TRACE] Step 7: signInWithCustomToken entry ───────────────────
@@ -2073,20 +1665,18 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       console.log(`[FP_TRACE][SIGN_IN_FOR_SESSION] signInWithCustomToken RESOLVED uid=${uid} ts=${Date.now()} — about to call setDriverUid`);
       console.log("[FLOW] signInForSession — signInWithCustomToken SUCCESS, uid:", uid);
 
-      // ── [FP_TRACE] Step 17: driverUid change ─────────────────────────────
-      console.log(`[FP_TRACE][SIGN_IN_FOR_SESSION] setDriverUid(${uid}) CALLED ts=${Date.now()} — React state queued, NOT yet committed`);
-      setDriverUid(uid);
-      console.log(`[FP_TRACE][SIGN_IN_FOR_SESSION] setDriverUid DONE, setPhoneState next ts=${Date.now()}`);
-      setPhoneState(phone);
-      console.log(`[FP_TRACE][SIGN_IN_FOR_SESSION] returning {ok:true} ts=${Date.now()} — control returns to confirmOtp → handleVerify → router.replace will be called next`);
+      // V3: setPinSetupIdentity sets driverUid + phone WITHOUT releasing isVerifyingRef.
+      // isOtpVerifying stays true until confirmPin → establishSession → endVerifySuccess.
+      console.log(`[AUTH_V3][SIGN_IN_FOR_SESSION] setPinSetupIdentity uid=${uid} ts=${Date.now()}`);
+      authV3.setPinSetupIdentity(uid, phone);
+      console.log(`[AUTH_V3][SIGN_IN_FOR_SESSION] returning {ok:true} ts=${Date.now()}`);
       return { ok: true };
     } catch (err) {
       // Release the guard so normal auth routing resumes on a sign-in failure.
-      pinSetupInProgressRef.current = false;
-      setIsOtpVerifying(false);
+      authV3.endVerifyFailure();
       const msg = err instanceof Error ? err.message : "Sign-in failed.";
       console.error("[FLOW] signInForSession — sign-in failed:", msg);
-      console.log(`[FP_TRACE][SIGN_IN_FOR_SESSION] ERROR — pinSetupInProgressRef=false, setIsOtpVerifying(false), returning {ok:false} ts=${Date.now()}`);
+      console.log(`[AUTH_V3][SIGN_IN_FOR_SESSION] ERROR — endVerifyFailure() ts=${Date.now()}`);
       return { ok: false, error: msg };
     }
   };
@@ -2319,10 +1909,9 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     }
     activeOrderListenersRef.current.clear();
 
-    setDriverUid(null);
-    setIsOtpVerified(false);   // ← reset OTP gate so next cold start forces /login
-    pinSetupInProgressRef.current = false;  // defensive: never leave the PIN-setup guard wedged on
-    setPhoneState(null);
+    // V3: clearAuth resets all auth state (driverUid, phone, isOtpVerified,
+    // isOtpVerifying) and clears isVerifyingRef synchronously.
+    authV3.clearAuth();
     setProfileState(null);
     setVehicleState(null);
     isOnlineRef.current = false;

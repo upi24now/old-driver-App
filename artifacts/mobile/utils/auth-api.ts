@@ -408,6 +408,60 @@ export async function checkPinStatus(): Promise<CheckPinStatusResult> {
 
 /**
  * POST /auth/set-pin — store the driver's 6-digit PIN (server hashes it).
+ * Accepts an explicit idToken + sessionId so callers that have the credentials
+ * in hand (e.g. immediately after signInWithCustomToken, before currentUser is
+ * guaranteed to be synchronised) can pass them directly instead of relying on
+ * the module-level cache.
+ *
+ * Falls back to the same logic as `setPin` when idToken is omitted.
+ */
+export async function setPinWithToken(
+  pin: string,
+  explicitIdToken: string,
+  explicitSessionId?: string | null,
+): Promise<SetPinResult> {
+  // Prime the module-level session cache so subsequent requests carry the
+  // OTP-issued session even if the global interceptor hasn't caught up yet.
+  const sessionId = explicitSessionId ?? getSessionIdSync();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${explicitIdToken}`,
+  };
+  if (sessionId) headers["x-session-id"] = sessionId;
+
+  console.log("[setPinWithToken] POST /v2/auth/set-pin — explicit token | x-session-id:",
+    sessionId ? "present (" + sessionId.slice(0, 8) + "…)" : "ABSENT");
+
+  try {
+    const res = await fetch(`${BASE_URL_V2}/auth/set-pin`, {
+      method:  "POST",
+      headers,
+      body:    JSON.stringify({ pin }),
+    });
+    const json = (await res.json()) as {
+      ok?: boolean;
+      sessionId?: string;
+      customSessionId?: string;
+      error?: unknown;
+    };
+    const newSessionId = json.sessionId ?? json.customSessionId;
+    console.log("[setPinWithToken] response status:", res.status, "| sessionId:", newSessionId ? "present" : "ABSENT");
+
+    if (!res.ok || json.ok === false) {
+      const errMsg = normalizeError(json.error, `Server error (${res.status}).`);
+      console.error("[setPinWithToken] server returned error:", res.status, errMsg);
+      return { ok: false, error: errMsg };
+    }
+    return { ok: true, sessionId: newSessionId };
+  } catch (err) {
+    const e = err as Error;
+    console.error("[setPinWithToken] fetch THREW:", e?.message);
+    return { ok: false, error: `Could not save PIN (${e?.message ?? String(err)}).` };
+  }
+}
+
+/**
+ * POST /auth/set-pin — store the driver's 6-digit PIN (server hashes it).
  * Requires a valid Firebase session from the just-completed OTP login.
  */
 export async function setPin(pin: string): Promise<SetPinResult> {
