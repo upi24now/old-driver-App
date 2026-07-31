@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { eq, lt, and, gte } from "drizzle-orm";
 import { adminAuth } from "../lib/firebase-admin";
 import { db, authOtpsTable, driversTable, otpSendEventsTable } from "@workspace/db";
@@ -322,8 +322,12 @@ router.get("/auth/pin-status", async (req, res) => {
   }
 });
 
-router.post("/auth/verify-pin", async (req, res) => {
-  const { phone, pin } = req.body as { phone?: string; pin?: string };
+// ── Shared handler — POST /auth/verify-pin  AND  POST /v2/auth/verify-pin ──────
+// The mobile client (utils/auth-api.ts) calls BASE_URL + "/v2/auth/verify-pin".
+// Both paths delegate to this identical function so there is no logic duplication.
+// The v2 body optionally includes `user_type` (ignored — route is driver-only).
+async function handleVerifyPin(req: Request, res: Response): Promise<void> {
+  const { phone, pin } = req.body as { phone?: string; pin?: string; user_type?: string };
 
   // Normalize phone the same way the OTP flow does: strip to 10 digits.
   const digits = (phone ?? "").replace(/\D/g, "");
@@ -421,7 +425,12 @@ router.post("/auth/verify-pin", async (req, res) => {
     req.log.error({ err }, "verify-pin custom token failed");
     res.status(500).json({ error: "Verification failed. Check Firebase Admin configuration." });
   }
-});
+}
+
+// Register both the v1 path and the v2 path (used by the mobile client).
+// The v2 body may include `user_type`; the handler ignores it — route is driver-only.
+router.post("/auth/verify-pin",    handleVerifyPin);
+router.post("/v2/auth/verify-pin", handleVerifyPin);
 
 // ─── Periodic cleanup ─────────────────────────────────────────────────────────
 //
