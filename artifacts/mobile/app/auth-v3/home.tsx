@@ -1,18 +1,15 @@
 /**
- * home.tsx — V3 Phase 15: Authenticated Home (Placeholder)
+ * COMPARTMENT 8 — UI Layer: Home Screen (V3 Placeholder)
  *
- * Responsibility (ONE):
- *   Confirm successful authentication and provide a logout mechanism.
+ * Single responsibility: confirm successful authentication, show session info,
+ * and provide a logout mechanism.
  *
- * This is a V3-phase placeholder. During the B2 migration phase, successful
- * authentication will navigate to the real driver home (/(tabs)) instead.
- *
- * Reads: saved V3 session (uid + phone)
- * On logout: clears session, clears flow context, navigates to welcome
- *
- * Unmount-safe: mountedRef prevents state updates after navigation.
- *
- * No B2 dependencies.
+ * Imports only from:
+ *   C2  Engine      — engineLogout, V3Session (type)
+ *   C3  Session     — sessionLoad (read-only display)
+ *   C8  FlowContext — clearFlow
+ *   C1  Navigation  — navToWelcome
+ *   C10 Config      — COLORS
  */
 
 import React, { useEffect, useRef, useState } from "react";
@@ -25,11 +22,12 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { signOut } from "firebase/auth";
 
-import { useV3Flow }                    from "@/contexts/auth-v3/FlowContext";
-import { getV3Session, clearV3Session } from "@/utils/auth-v3-session";
-import { firebaseAuth }                 from "@/utils/firebase";
+import { engineLogout }    from "@/modules/auth-v3/engine";
+import { sessionLoad }     from "@/modules/auth-v3/session";
+import { useV3Flow }       from "@/modules/auth-v3/ui/context/FlowContext";
+import { navToWelcome }    from "@/modules/auth-v3/navigation";
+import { COLORS }          from "@/modules/auth-v3/config";
 
 export default function V3HomeScreen() {
   const router      = useRouter();
@@ -43,7 +41,7 @@ export default function V3HomeScreen() {
 
   useEffect(() => {
     mountedRef.current = true;
-    getV3Session().then((s) => {
+    sessionLoad().then((s) => {
       if (!mountedRef.current) return;
       if (s) { setPhone(s.phone); setUid(s.uid); }
     });
@@ -53,18 +51,16 @@ export default function V3HomeScreen() {
   const handleLogout = async () => {
     if (busy) return;
     setBusy(true);
-    try { await signOut(firebaseAuth); } catch { /* ignore — clear anyway */ }
+    await engineLogout();
     if (!mountedRef.current) return;
-    await clearV3Session();
     clearFlow();
-    router.replace("/auth-v3/welcome");
+    navToWelcome(router);
   };
 
   return (
     <View
       style={[
-        ss.flex,
-        ss.bg,
+        ss.flex, ss.bg,
         { paddingTop: insets.top + 24, paddingBottom: Math.max(insets.bottom, 24) },
       ]}
     >
@@ -92,7 +88,6 @@ export default function V3HomeScreen() {
         </Text>
       </View>
 
-      {/* Spacer */}
       <View style={{ flex: 1 }} />
 
       {/* Logout */}
@@ -102,16 +97,14 @@ export default function V3HomeScreen() {
         disabled={busy}
       >
         {busy
-          ? <ActivityIndicator color={C.primary} />
+          ? <ActivityIndicator color={COLORS.primary} />
           : <Text style={ss.logoutLabel}>Log Out</Text>}
       </Pressable>
     </View>
   );
 }
 
-function InfoRow({
-  label, value, mono = false,
-}: {
+function InfoRow({ label, value, mono = false }: {
   label: string; value: string; mono?: boolean;
 }) {
   return (
@@ -122,48 +115,39 @@ function InfoRow({
   );
 }
 
-const C = {
-  primary: "#FF6B00",
-  bg:      "#F5F4F2",
-  text:    "#111111",
-  muted:   "#6B7280",
-  border:  "#E5E7EB",
-  success: "#059669",
-} as const;
-
 const ss = StyleSheet.create({
   flex:         { flex: 1 },
-  bg:           { backgroundColor: C.bg },
+  bg:           { backgroundColor: COLORS.bgAlt },
   badgeSection: { alignItems: "center", marginBottom: 28, paddingHorizontal: 24 },
   badge:        {
     width: 72, height: 72, borderRadius: 36,
-    backgroundColor: C.success, alignItems: "center", justifyContent: "center",
+    backgroundColor: COLORS.success, alignItems: "center", justifyContent: "center",
     marginBottom: 16,
   },
   badgeIcon:    { fontSize: 32, color: "#fff", fontWeight: "700" },
-  badgeTitle:   { fontSize: 20, fontWeight: "800", color: C.text, marginBottom: 4 },
-  badgeSub:     { fontSize: 14, color: C.muted },
+  badgeTitle:   { fontSize: 20, fontWeight: "800", color: COLORS.text, marginBottom: 4 },
+  badgeSub:     { fontSize: 14, color: COLORS.muted },
   card:         {
     marginHorizontal: 24, backgroundColor: "#fff",
     borderRadius: 16, padding: 20, marginBottom: 16,
   },
-  divider:      { height: 1, backgroundColor: C.border, marginVertical: 8 },
+  divider:      { height: 1, backgroundColor: COLORS.border, marginVertical: 8 },
   notice:       {
     marginHorizontal: 24, backgroundColor: "#FFFBEB",
-    borderRadius: 12, padding: 16, borderWidth: 1, borderColor: "#FDE68A",
+    borderRadius: 12, padding: 16, borderWidth: 1, borderColor: COLORS.tintBorder,
   },
   noticeText:   { fontSize: 13, color: "#92400E", lineHeight: 20 },
   logoutBtn:    {
-    borderWidth: 1.5, borderColor: C.primary, borderRadius: 14, height: 54,
+    borderWidth: 1.5, borderColor: COLORS.primary, borderRadius: 14, height: 54,
     alignItems: "center", justifyContent: "center",
   },
   btnDisabled:  { opacity: 0.4 },
-  logoutLabel:  { color: C.primary, fontSize: 16, fontWeight: "700" },
+  logoutLabel:  { color: COLORS.primary, fontSize: 16, fontWeight: "700" },
 });
 
 const ir = StyleSheet.create({
   row:   { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 4 },
-  label: { fontSize: 13, color: C.muted, fontWeight: "500" },
-  value: { fontSize: 13, color: C.text, fontWeight: "600", maxWidth: "60%", textAlign: "right" },
+  label: { fontSize: 13, color: COLORS.muted, fontWeight: "500" },
+  value: { fontSize: 13, color: COLORS.text, fontWeight: "600", maxWidth: "60%", textAlign: "right" },
   mono:  { fontFamily: "monospace", fontSize: 11 },
 });

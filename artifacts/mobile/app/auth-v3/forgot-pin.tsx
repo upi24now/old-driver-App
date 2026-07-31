@@ -1,16 +1,14 @@
 /**
- * forgot-pin.tsx — V3 Phase 14: Forgot PIN — Phone Entry
+ * COMPARTMENT 8 — UI Layer: Forgot PIN Screen
  *
- * Responsibility (ONE):
- *   Accept the driver's mobile number, send an OTP, store the phone in
- *   the flow context, and navigate to OTP verification with intent=forgot.
+ * Single responsibility: accept the driver's mobile number, send an OTP,
+ * store the phone in FlowContext, navigate to OTP screen with intent=forgot.
  *
- * Pre-fills the phone field from the flow context if the driver arrived
- * here from the PIN screen (phone was already entered on login.tsx).
- *
- * Unmount-safe: mountedRef prevents state updates after navigation.
- *
- * No B2 dependencies.
+ * Imports only from:
+ *   C2  Engine      — engineSendOtp
+ *   C8  FlowContext — flow.phone, setPhone
+ *   C1  Navigation  — navToOtp, navBack
+ *   C10 Config      — COLORS, PHONE_DIGITS, PHONE_PREFIX
  */
 
 import React, { useRef, useState } from "react";
@@ -28,8 +26,10 @@ import {
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useV3Flow }  from "@/contexts/auth-v3/FlowContext";
-import { v3SendOtp }  from "@/utils/auth-v3-api";
+import { engineSendOtp }         from "@/modules/auth-v3/engine";
+import { useV3Flow }             from "@/modules/auth-v3/ui/context/FlowContext";
+import { navToOtp, navBack }     from "@/modules/auth-v3/navigation";
+import { COLORS, PHONE_DIGITS, PHONE_PREFIX } from "@/modules/auth-v3/config";
 
 export default function ForgotPinScreen() {
   const router     = useRouter();
@@ -39,8 +39,10 @@ export default function ForgotPinScreen() {
 
   const { flow, setPhone } = useV3Flow();
 
-  // Pre-fill with the phone already in the flow context (from login.tsx).
-  const existingDigits = flow.phone.startsWith("+91") ? flow.phone.slice(3) : "";
+  // Pre-fill from flow context if driver arrived from the PIN screen.
+  const existingDigits = flow.phone.startsWith(PHONE_PREFIX)
+    ? flow.phone.slice(PHONE_PREFIX.length)
+    : "";
   const [digits, setDigits] = useState(existingDigits);
   const [error,  setError]  = useState("");
   const [busy,   setBusy]   = useState(false);
@@ -50,26 +52,26 @@ export default function ForgotPinScreen() {
     return () => { mountedRef.current = false; };
   }, []);
 
-  const canContinue = digits.length === 10;
+  const canContinue = digits.length === PHONE_DIGITS;
 
   const handleContinue = async () => {
     if (!canContinue || busy) return;
     setBusy(true);
     setError("");
 
-    const fullPhone = `+91${digits}`;
-    const result = await v3SendOtp(fullPhone);
+    const fullPhone = `${PHONE_PREFIX}${digits}`;
+    const result = await engineSendOtp(fullPhone);
 
     if (!mountedRef.current) return;
     setBusy(false);
 
     if (!result.ok) {
-      setError(result.error);
+      setError(result.error.userMessage);
       return;
     }
 
     setPhone(fullPhone);
-    router.push("/auth-v3/otp?intent=forgot");
+    navToOtp(router, "forgot");
   };
 
   return (
@@ -86,7 +88,7 @@ export default function ForgotPinScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Pressable style={ss.backBtn} onPress={() => router.back()} disabled={busy}>
+        <Pressable style={ss.backBtn} onPress={() => navBack(router)} disabled={busy}>
           <Text style={ss.backLabel}>← Back</Text>
         </Pressable>
 
@@ -98,7 +100,7 @@ export default function ForgotPinScreen() {
         <Text style={ss.label}>Mobile Number</Text>
         <Pressable style={ss.phoneRow} onPress={() => inputRef.current?.focus()}>
           <View style={ss.prefix}>
-            <Text style={ss.prefixText}>+91</Text>
+            <Text style={ss.prefixText}>{PHONE_PREFIX}</Text>
           </View>
           <TextInput
             ref={inputRef}
@@ -106,12 +108,12 @@ export default function ForgotPinScreen() {
             value={digits}
             onChangeText={(v) => {
               setError("");
-              setDigits(v.replace(/\D/g, "").slice(0, 10));
+              setDigits(v.replace(/\D/g, "").slice(0, PHONE_DIGITS));
             }}
-            placeholder="10-digit number"
-            placeholderTextColor={C.placeholder}
+            placeholder={`${PHONE_DIGITS}-digit number`}
+            placeholderTextColor={COLORS.placeholder}
             keyboardType="number-pad"
-            maxLength={10}
+            maxLength={PHONE_DIGITS}
             returnKeyType="done"
             onSubmitEditing={() => void handleContinue()}
             autoFocus={!existingDigits}
@@ -134,39 +136,28 @@ export default function ForgotPinScreen() {
   );
 }
 
-const C = {
-  primary:     "#FF6B00",
-  bg:          "#FFFFFF",
-  text:        "#111111",
-  sub:         "#374151",
-  muted:       "#6B7280",
-  placeholder: "#9CA3AF",
-  border:      "#E5E7EB",
-  error:       "#DC2626",
-} as const;
-
 const ss = StyleSheet.create({
-  flex:            { flex: 1 },
-  bg:              { flex: 1, backgroundColor: C.bg },
-  scroll:          { paddingHorizontal: 24 },
-  backBtn:         { marginBottom: 24 },
-  backLabel:       { fontSize: 15, color: C.muted },
-  heading:         { fontSize: 26, fontWeight: "800", color: C.text, marginBottom: 8 },
-  sub:             { fontSize: 14, color: C.sub, marginBottom: 32, lineHeight: 20 },
-  label:           { fontSize: 13, fontWeight: "600", color: C.text, marginBottom: 8 },
-  phoneRow:        {
-    flexDirection: "row", borderWidth: 1.5, borderColor: C.border,
+  flex:         { flex: 1 },
+  bg:           { flex: 1, backgroundColor: COLORS.bg },
+  scroll:       { paddingHorizontal: 24 },
+  backBtn:      { marginBottom: 24 },
+  backLabel:    { fontSize: 15, color: COLORS.muted },
+  heading:      { fontSize: 26, fontWeight: "800", color: COLORS.text, marginBottom: 8 },
+  sub:          { fontSize: 14, color: COLORS.sub, marginBottom: 32, lineHeight: 20 },
+  label:        { fontSize: 13, fontWeight: "600", color: COLORS.text, marginBottom: 8 },
+  phoneRow:     {
+    flexDirection: "row", borderWidth: 1.5, borderColor: COLORS.border,
     borderRadius: 12, overflow: "hidden", marginBottom: 24, height: 52,
   },
-  prefix:          {
+  prefix:       {
     paddingHorizontal: 14, alignItems: "center", justifyContent: "center",
-    backgroundColor: "#F9FAFB", borderRightWidth: 1, borderRightColor: C.border,
+    backgroundColor: COLORS.inputBg, borderRightWidth: 1, borderRightColor: COLORS.border,
   },
-  prefixText:      { fontSize: 15, fontWeight: "600", color: C.text },
-  phoneInput:      { flex: 1, paddingHorizontal: 14, fontSize: 16, color: C.text },
-  errorText:       { fontSize: 13, color: C.error, marginBottom: 12 },
-  primaryBtn:      {
-    backgroundColor: C.primary, borderRadius: 14, height: 54,
+  prefixText:   { fontSize: 15, fontWeight: "600", color: COLORS.text },
+  phoneInput:   { flex: 1, paddingHorizontal: 14, fontSize: 16, color: COLORS.text },
+  errorText:    { fontSize: 13, color: COLORS.error, marginBottom: 12 },
+  primaryBtn:   {
+    backgroundColor: COLORS.primary, borderRadius: 14, height: 54,
     alignItems: "center", justifyContent: "center",
   },
   btnDisabled:     { opacity: 0.4 },

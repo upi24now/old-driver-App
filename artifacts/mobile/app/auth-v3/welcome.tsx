@@ -1,18 +1,15 @@
 /**
- * welcome.tsx — V3 Phase 7: Welcome Screen
+ * COMPARTMENT 8 — UI Layer: Welcome Screen
  *
- * Responsibility (ONE):
- *   Check for a valid V3 session on mount. If found, skip to home.
- *   Otherwise present Login and Create Account entry points.
+ * Single responsibility: check for a valid session on mount; navigate home if
+ * found, otherwise present Login and Create Account entry points.
  *
- * Session restore uses firebaseAuth.authStateReady() to avoid the Firebase
- * cold-start timing race where currentUser is null immediately after an
- * app kill even when a valid session exists.
+ * Imports only from:
+ *   C2  Engine      — session restore
+ *   C1  Navigation  — route actions
+ *   C10 Config      — colours
  *
- * Unmount-safe: async effects are cancelled if the component unmounts before
- * they complete.
- *
- * No B2 dependencies.
+ * No direct API, Firebase, or storage imports.
  */
 
 import React, { useEffect, useRef, useState } from "react";
@@ -26,11 +23,13 @@ import {
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { checkV3Session } from "@/utils/auth-v3-session";
+import { engineRestoreSession } from "@/modules/auth-v3/engine";
+import { navToHome, navToLogin, navToSignupForm } from "@/modules/auth-v3/navigation";
+import { COLORS } from "@/modules/auth-v3/config";
 
 export default function WelcomeScreen() {
-  const router    = useRouter();
-  const insets    = useSafeAreaInsets();
+  const router     = useRouter();
+  const insets     = useSafeAreaInsets();
   const mountedRef = useRef(true);
 
   const [checking, setChecking] = useState(true);
@@ -39,26 +38,20 @@ export default function WelcomeScreen() {
     mountedRef.current = true;
 
     async function restore() {
-      const session = await checkV3Session();
-      if (!mountedRef.current) return; // unmounted before async completed
-
+      const session = await engineRestoreSession();
+      if (!mountedRef.current) return;
       setChecking(false);
-      if (session) {
-        router.replace("/auth-v3/home");
-      }
+      if (session) navToHome(router);
     }
 
     void restore();
-
-    return () => {
-      mountedRef.current = false;
-    };
+    return () => { mountedRef.current = false; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (checking) {
     return (
       <View style={[ss.flex, ss.center, ss.bg]}>
-        <ActivityIndicator size="large" color={C.primary} />
+        <ActivityIndicator size="large" color={COLORS.primary} />
       </View>
     );
   }
@@ -66,8 +59,7 @@ export default function WelcomeScreen() {
   return (
     <View
       style={[
-        ss.flex,
-        ss.bg,
+        ss.flex, ss.bg,
         { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 16) },
       ]}
     >
@@ -84,7 +76,7 @@ export default function WelcomeScreen() {
       <View style={[ss.actions, { paddingHorizontal: 24 }]}>
         <Pressable
           style={({ pressed }) => [ss.primaryBtn, pressed && ss.primaryBtnActive]}
-          onPress={() => router.push("/auth-v3/login")}
+          onPress={() => navToLogin(router)}
           accessibilityRole="button"
           accessibilityLabel="Login to existing account"
         >
@@ -93,7 +85,7 @@ export default function WelcomeScreen() {
 
         <Pressable
           style={({ pressed }) => [ss.outlineBtn, pressed && ss.outlineBtnActive]}
-          onPress={() => router.push("/auth-v3/signup-form")}
+          onPress={() => navToSignupForm(router)}
           accessibilityRole="button"
           accessibilityLabel="Create a new driver account"
         >
@@ -108,42 +100,33 @@ export default function WelcomeScreen() {
   );
 }
 
-const C = {
-  primary: "#FF6B00",
-  pressed: "#E55A00",
-  bg:      "#FFFFFF",
-  text:    "#111111",
-  muted:   "#6B7280",
-} as const;
-
 const ss = StyleSheet.create({
   flex:             { flex: 1 },
-  bg:               { backgroundColor: C.bg },
+  bg:               { backgroundColor: COLORS.bg },
   center:           { alignItems: "center", justifyContent: "center" },
 
   hero:             { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32 },
   logoRing:         {
     width: 88, height: 88, borderRadius: 44,
-    backgroundColor: C.primary + "22",
-    alignItems: "center", justifyContent: "center",
-    marginBottom: 24,
+    backgroundColor: COLORS.primary + "22",
+    alignItems: "center", justifyContent: "center", marginBottom: 24,
   },
-  logoDot:          { width: 44, height: 44, borderRadius: 22, backgroundColor: C.primary },
-  appName:          { fontSize: 32, fontWeight: "800", color: C.text, marginBottom: 8 },
-  tagline:          { fontSize: 16, color: C.muted, textAlign: "center" },
+  logoDot:          { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary },
+  appName:          { fontSize: 32, fontWeight: "800", color: COLORS.text, marginBottom: 8 },
+  tagline:          { fontSize: 16, color: COLORS.muted, textAlign: "center" },
 
   actions:          { gap: 12, paddingBottom: 8 },
   primaryBtn:       {
-    backgroundColor: C.primary, borderRadius: 14, height: 54,
+    backgroundColor: COLORS.primary, borderRadius: 14, height: 54,
     alignItems: "center", justifyContent: "center",
   },
-  primaryBtnActive: { backgroundColor: C.pressed },
+  primaryBtnActive: { backgroundColor: COLORS.primaryPress },
   primaryBtnLabel:  { color: "#fff", fontSize: 17, fontWeight: "700" },
   outlineBtn:       {
-    borderWidth: 1.5, borderColor: C.primary, borderRadius: 14, height: 54,
+    borderWidth: 1.5, borderColor: COLORS.primary, borderRadius: 14, height: 54,
     alignItems: "center", justifyContent: "center",
   },
-  outlineBtnActive: { backgroundColor: "#FFF3EC" },
-  outlineBtnLabel:  { color: C.primary, fontSize: 17, fontWeight: "600" },
-  legal:            { textAlign: "center", fontSize: 12, color: C.muted, lineHeight: 18, marginTop: 4 },
+  outlineBtnActive: { backgroundColor: COLORS.tint },
+  outlineBtnLabel:  { color: COLORS.primary, fontSize: 17, fontWeight: "600" },
+  legal:            { textAlign: "center", fontSize: 12, color: COLORS.muted, lineHeight: 18, marginTop: 4 },
 });

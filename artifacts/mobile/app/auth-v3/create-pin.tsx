@@ -1,31 +1,29 @@
 /**
- * create-pin.tsx — V3 Phase 12: Create New PIN
+ * COMPARTMENT 8 — UI Layer: Create PIN Screen
  *
- * Responsibility (ONE):
- *   Let the driver choose a 6-digit PIN, store it in the flow context,
- *   and navigate to Confirm PIN.
+ * Single responsibility: let the driver choose a 6-digit PIN, store it in
+ * FlowContext, and navigate to Confirm PIN.
  *
- * Auto-submit: navigates immediately when the 6th digit is entered.
- * No async operations. No API calls. No session management.
+ * No async operations. No auth logic. No API calls.
  *
- * No B2 dependencies.
+ * Imports only from:
+ *   C8  FlowContext — setCreatedPin
+ *   C8  NumPad, PinDots
+ *   C1  Navigation  — navToConfirmPin, navBack
+ *   C10 Config      — PIN_LENGTH, COLORS
  */
 
 import React, { useState } from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { NumPad }       from "@/components/auth-v3/NumPad";
-import { PinDots }      from "@/components/auth-v3/PinDots";
-import { useV3Flow }    from "@/contexts/auth-v3/FlowContext";
+import { useV3Flow }            from "@/modules/auth-v3/ui/context/FlowContext";
+import { NumPad }               from "@/modules/auth-v3/ui/components/NumPad";
+import { PinDots }              from "@/modules/auth-v3/ui/components/PinDots";
+import { navToConfirmPin, navBack } from "@/modules/auth-v3/navigation";
+import { COLORS, PIN_LENGTH }   from "@/modules/auth-v3/config";
 
-const PIN_LENGTH = 6;
 type Intent = "signup" | "forgot";
 
 export default function CreatePinScreen() {
@@ -40,7 +38,7 @@ export default function CreatePinScreen() {
 
   const proceed = (completedPin: string) => {
     setCreatedPin(completedPin);
-    router.push(`/auth-v3/confirm-pin?intent=${intent}`);
+    navToConfirmPin(router, intent);
   };
 
   const onDigit = (d: string) => {
@@ -55,7 +53,7 @@ export default function CreatePinScreen() {
   return (
     <View style={[ss.flex, ss.bg, { paddingTop: insets.top }]}>
       <View style={ss.header}>
-        <Pressable style={ss.backBtn} onPress={() => router.back()}>
+        <Pressable style={ss.backBtn} onPress={() => navBack(router)}>
           <Text style={ss.backLabel}>← Back</Text>
         </Pressable>
         <Text style={ss.heading}>Create PIN</Text>
@@ -85,26 +83,18 @@ export default function CreatePinScreen() {
   );
 }
 
-const C = {
-  primary: "#FF6B00",
-  bg:      "#FFFFFF",
-  text:    "#111111",
-  sub:     "#374151",
-  muted:   "#6B7280",
-} as const;
-
 const ss = StyleSheet.create({
   flex:            { flex: 1 },
-  bg:              { backgroundColor: C.bg },
+  bg:              { backgroundColor: COLORS.bg },
   header:          { paddingHorizontal: 24, paddingBottom: 8 },
   backBtn:         { marginBottom: 20 },
-  backLabel:       { fontSize: 15, color: C.muted },
-  heading:         { fontSize: 26, fontWeight: "800", color: C.text, marginBottom: 4 },
-  sub:             { fontSize: 14, color: C.sub, lineHeight: 20 },
+  backLabel:       { fontSize: 15, color: COLORS.muted },
+  heading:         { fontSize: 26, fontWeight: "800", color: COLORS.text, marginBottom: 4 },
+  sub:             { fontSize: 14, color: COLORS.sub, lineHeight: 20 },
   padWrap:         { flex: 1, justifyContent: "center", paddingVertical: 8 },
   footer:          { paddingHorizontal: 24 },
   primaryBtn:      {
-    backgroundColor: C.primary, borderRadius: 14, height: 54,
+    backgroundColor: COLORS.primary, borderRadius: 14, height: 54,
     alignItems: "center", justifyContent: "center",
   },
   btnDisabled:     { opacity: 0.4 },

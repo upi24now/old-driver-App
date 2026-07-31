@@ -1,13 +1,14 @@
 /**
- * signup-form.tsx — V3 Phase 10: New Driver Signup Form
+ * COMPARTMENT 8 — UI Layer: Signup Form Screen
  *
- * Responsibility (ONE):
- *   Collect new-driver profile data (name, phone, city, gender, vehicle),
- *   send an OTP, store the data in flow context, and navigate to OTP screen.
+ * Single responsibility: collect new-driver profile data, send OTP, store
+ * data in FlowContext, navigate to OTP screen.
  *
- * Unmount-safe: mountedRef guards state updates after async sendOTP call.
- *
- * No B2 dependencies.
+ * Imports only from:
+ *   C2  Engine      — engineSendOtp
+ *   C8  FlowContext — setPhone, setSignup
+ *   C1  Navigation  — navToOtp, navBack
+ *   C10 Config      — VEHICLES, COLORS, PHONE_DIGITS, PHONE_PREFIX
  */
 
 import React, { useRef, useState } from "react";
@@ -25,8 +26,10 @@ import {
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useV3Flow }  from "@/contexts/auth-v3/FlowContext";
-import { v3SendOtp, V3_VEHICLES } from "@/utils/auth-v3-api";
+import { engineSendOtp }            from "@/modules/auth-v3/engine";
+import { useV3Flow }                from "@/modules/auth-v3/ui/context/FlowContext";
+import { navToOtp, navBack }        from "@/modules/auth-v3/navigation";
+import { COLORS, VEHICLES, PHONE_DIGITS, PHONE_PREFIX } from "@/modules/auth-v3/config";
 
 const GENDERS = ["Male", "Female", "Other"] as const;
 
@@ -55,7 +58,7 @@ export default function SignupFormScreen() {
   const canSubmit =
     name.trim().length > 0 &&
     city.trim().length > 0 &&
-    digits.length === 10 &&
+    digits.length === PHONE_DIGITS &&
     gender.length > 0 &&
     vehicleId.length > 0;
 
@@ -64,14 +67,14 @@ export default function SignupFormScreen() {
     setBusy(true);
     setError("");
 
-    const fullPhone = `+91${digits}`;
-    const result = await v3SendOtp(fullPhone);
+    const fullPhone = `${PHONE_PREFIX}${digits}`;
+    const result = await engineSendOtp(fullPhone);
 
     if (!mountedRef.current) return;
     setBusy(false);
 
     if (!result.ok) {
-      setError(result.error);
+      setError(result.error.userMessage);
       return;
     }
 
@@ -86,7 +89,7 @@ export default function SignupFormScreen() {
       vehicleNumber: vehicleNumber.trim(),
     });
 
-    router.push("/auth-v3/otp?intent=signup");
+    navToOtp(router, "signup");
   };
 
   return (
@@ -103,7 +106,7 @@ export default function SignupFormScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Pressable style={ss.backBtn} onPress={() => router.back()} disabled={busy}>
+        <Pressable style={ss.backBtn} onPress={() => navBack(router)} disabled={busy}>
           <Text style={ss.backLabel}>← Back</Text>
         </Pressable>
 
@@ -116,7 +119,7 @@ export default function SignupFormScreen() {
           value={name}
           onChangeText={(v) => { setError(""); setName(v); }}
           placeholder="Your full name"
-          placeholderTextColor={C.placeholder}
+          placeholderTextColor={COLORS.placeholder}
           autoCapitalize="words"
           editable={!busy}
         />
@@ -127,7 +130,7 @@ export default function SignupFormScreen() {
           value={city}
           onChangeText={(v) => { setError(""); setCity(v); }}
           placeholder="Your city"
-          placeholderTextColor={C.placeholder}
+          placeholderTextColor={COLORS.placeholder}
           autoCapitalize="words"
           editable={!busy}
         />
@@ -135,19 +138,19 @@ export default function SignupFormScreen() {
         <Text style={ss.label}>Mobile Number</Text>
         <View style={ss.phoneRow}>
           <View style={ss.prefix}>
-            <Text style={ss.prefixText}>+91</Text>
+            <Text style={ss.prefixText}>{PHONE_PREFIX}</Text>
           </View>
           <TextInput
             style={ss.phoneInput}
             value={digits}
             onChangeText={(v) => {
               setError("");
-              setDigits(v.replace(/\D/g, "").slice(0, 10));
+              setDigits(v.replace(/\D/g, "").slice(0, PHONE_DIGITS));
             }}
-            placeholder="10-digit number"
-            placeholderTextColor={C.placeholder}
+            placeholder={`${PHONE_DIGITS}-digit number`}
+            placeholderTextColor={COLORS.placeholder}
             keyboardType="number-pad"
-            maxLength={10}
+            maxLength={PHONE_DIGITS}
             editable={!busy}
           />
         </View>
@@ -173,7 +176,7 @@ export default function SignupFormScreen() {
           style={ss.vehicleScroll}
           contentContainerStyle={{ gap: 8, paddingRight: 24 }}
         >
-          {V3_VEHICLES.map((v) => (
+          {VEHICLES.map((v) => (
             <Pressable
               key={v.id}
               style={[ss.chip, vehicleId === v.id && ss.chipSelected]}
@@ -199,7 +202,7 @@ export default function SignupFormScreen() {
           value={licenseNumber}
           onChangeText={(v) => setLicenseNumber(v.toUpperCase())}
           placeholder="e.g. KA01 20230012345"
-          placeholderTextColor={C.placeholder}
+          placeholderTextColor={COLORS.placeholder}
           autoCapitalize="characters"
           editable={!busy}
         />
@@ -212,7 +215,7 @@ export default function SignupFormScreen() {
           value={vehicleNumber}
           onChangeText={(v) => setVehicleNumber(v.toUpperCase())}
           placeholder="e.g. KA01AB1234"
-          placeholderTextColor={C.placeholder}
+          placeholderTextColor={COLORS.placeholder}
           autoCapitalize="characters"
           editable={!busy}
         />
@@ -233,53 +236,42 @@ export default function SignupFormScreen() {
   );
 }
 
-const C = {
-  primary:     "#FF6B00",
-  bg:          "#FFFFFF",
-  text:        "#111111",
-  sub:         "#374151",
-  muted:       "#6B7280",
-  placeholder: "#9CA3AF",
-  border:      "#E5E7EB",
-  error:       "#DC2626",
-} as const;
-
 const ss = StyleSheet.create({
   flex:            { flex: 1 },
-  bg:              { flex: 1, backgroundColor: C.bg },
+  bg:              { flex: 1, backgroundColor: COLORS.bg },
   scroll:          { paddingHorizontal: 24 },
   backBtn:         { marginBottom: 24 },
-  backLabel:       { fontSize: 15, color: C.muted },
-  heading:         { fontSize: 26, fontWeight: "800", color: C.text, marginBottom: 8 },
-  sub:             { fontSize: 14, color: C.sub, marginBottom: 28, lineHeight: 20 },
-  label:           { fontSize: 13, fontWeight: "600", color: C.text, marginBottom: 8, marginTop: 16 },
-  optional:        { fontWeight: "400", color: C.muted },
+  backLabel:       { fontSize: 15, color: COLORS.muted },
+  heading:         { fontSize: 26, fontWeight: "800", color: COLORS.text, marginBottom: 8 },
+  sub:             { fontSize: 14, color: COLORS.sub, marginBottom: 28, lineHeight: 20 },
+  label:           { fontSize: 13, fontWeight: "600", color: COLORS.text, marginBottom: 8, marginTop: 16 },
+  optional:        { fontWeight: "400", color: COLORS.muted },
   input:           {
-    borderWidth: 1.5, borderColor: C.border, borderRadius: 12,
-    paddingHorizontal: 14, height: 52, fontSize: 15, color: C.text,
+    borderWidth: 1.5, borderColor: COLORS.border, borderRadius: 12,
+    paddingHorizontal: 14, height: 52, fontSize: 15, color: COLORS.text,
   },
   phoneRow:        {
-    flexDirection: "row", borderWidth: 1.5, borderColor: C.border,
+    flexDirection: "row", borderWidth: 1.5, borderColor: COLORS.border,
     borderRadius: 12, overflow: "hidden", height: 52,
   },
   prefix:          {
     paddingHorizontal: 14, alignItems: "center", justifyContent: "center",
-    backgroundColor: "#F9FAFB", borderRightWidth: 1, borderRightColor: C.border,
+    backgroundColor: COLORS.inputBg, borderRightWidth: 1, borderRightColor: COLORS.border,
   },
-  prefixText:      { fontSize: 15, fontWeight: "600", color: C.text },
-  phoneInput:      { flex: 1, paddingHorizontal: 14, fontSize: 15, color: C.text },
+  prefixText:      { fontSize: 15, fontWeight: "600", color: COLORS.text },
+  phoneInput:      { flex: 1, paddingHorizontal: 14, fontSize: 15, color: COLORS.text },
   chipRow:         { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
   vehicleScroll:   { marginTop: 4 },
   chip:            {
     paddingHorizontal: 16, paddingVertical: 9, borderRadius: 20,
-    borderWidth: 1.5, borderColor: C.border, backgroundColor: "#F9FAFB",
+    borderWidth: 1.5, borderColor: COLORS.border, backgroundColor: COLORS.inputBg,
   },
-  chipSelected:    { borderColor: C.primary, backgroundColor: "#FFF3EC" },
-  chipLabel:       { fontSize: 13, fontWeight: "500", color: C.sub },
-  chipLabelOn:     { color: C.primary, fontWeight: "700" },
-  errorText:       { color: C.error, fontSize: 13, marginTop: 16, marginBottom: 4 },
+  chipSelected:    { borderColor: COLORS.primary, backgroundColor: COLORS.tint },
+  chipLabel:       { fontSize: 13, fontWeight: "500", color: COLORS.sub },
+  chipLabelOn:     { color: COLORS.primary, fontWeight: "700" },
+  errorText:       { color: COLORS.error, fontSize: 13, marginTop: 16, marginBottom: 4 },
   primaryBtn:      {
-    backgroundColor: C.primary, borderRadius: 14, height: 54,
+    backgroundColor: COLORS.primary, borderRadius: 14, height: 54,
     alignItems: "center", justifyContent: "center", marginTop: 24,
   },
   btnDisabled:     { opacity: 0.4 },

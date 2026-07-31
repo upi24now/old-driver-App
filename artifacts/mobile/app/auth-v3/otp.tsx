@@ -1,18 +1,14 @@
 /**
- * otp.tsx — V3 Phase 11: OTP Verification
+ * COMPARTMENT 8 — UI Layer: OTP Screen
  *
- * Responsibility (ONE):
- *   Accept the 6-digit OTP, verify it, store the resulting custom-auth
- *   token in the flow context, and navigate to Create PIN.
+ * Single responsibility: verify the OTP, store result in FlowContext,
+ * navigate to Create PIN.
  *
- * Receives: intent=signup|forgot (URL param)
- * Reads from flow context: phone
- * Writes to flow context: verifyToken + verifySessionId
- *
- * Auto-submit triggers immediately when the 6th digit is typed.
- * Unmount-safe: mountedRef prevents state updates after navigation.
- *
- * No B2 dependencies.
+ * Imports only from:
+ *   C2  Engine      — engineVerifyOtp, engineSendOtp
+ *   C8  FlowContext — flow.phone, setVerifyResult
+ *   C1  Navigation  — navToCreatePin, navBack
+ *   C10 Config      — OTP_LENGTH, COLORS
  */
 
 import React, { useRef, useState } from "react";
@@ -30,10 +26,11 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useV3Flow }               from "@/contexts/auth-v3/FlowContext";
-import { v3VerifyOtp, v3SendOtp }  from "@/utils/auth-v3-api";
+import { engineVerifyOtp, engineSendOtp } from "@/modules/auth-v3/engine";
+import { useV3Flow }                       from "@/modules/auth-v3/ui/context/FlowContext";
+import { navToCreatePin, navBack }         from "@/modules/auth-v3/navigation";
+import { COLORS, OTP_LENGTH }              from "@/modules/auth-v3/config";
 
-const OTP_LENGTH = 6;
 type Intent = "signup" | "forgot";
 
 export default function OtpScreen() {
@@ -43,7 +40,7 @@ export default function OtpScreen() {
   const mountedRef = useRef(true);
 
   const { flow, setVerifyResult } = useV3Flow();
-  const params = useLocalSearchParams<{ intent?: string }>();
+  const params  = useLocalSearchParams<{ intent?: string }>();
   const intent: Intent = params.intent === "forgot" ? "forgot" : "signup";
 
   const [otp,   setOtp]   = useState("");
@@ -60,18 +57,18 @@ export default function OtpScreen() {
     setBusy(true);
     setError("");
 
-    const result = await v3VerifyOtp(flow.phone, code);
+    const result = await engineVerifyOtp(flow.phone, code);
     if (!mountedRef.current) return;
     setBusy(false);
 
     if (!result.ok) {
-      setError(result.error);
+      setError(result.error.userMessage);
       setOtp("");
       return;
     }
 
     setVerifyResult(result.token, result.sessionId);
-    router.push(`/auth-v3/create-pin?intent=${intent}`);
+    navToCreatePin(router, intent);
   };
 
   const onChangeOtp = (text: string) => {
@@ -86,10 +83,10 @@ export default function OtpScreen() {
     setBusy(true);
     setError("");
     setOtp("");
-    const result = await v3SendOtp(flow.phone);
+    const result = await engineSendOtp(flow.phone);
     if (!mountedRef.current) return;
     setBusy(false);
-    if (!result.ok) setError(result.error);
+    if (!result.ok) setError(result.error.userMessage);
   };
 
   return (
@@ -106,7 +103,7 @@ export default function OtpScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Pressable style={ss.backBtn} onPress={() => router.back()} disabled={busy}>
+        <Pressable style={ss.backBtn} onPress={() => navBack(router)} disabled={busy}>
           <Text style={ss.backLabel}>← Back</Text>
         </Pressable>
 
@@ -160,44 +157,34 @@ export default function OtpScreen() {
   );
 }
 
-const C = {
-  primary: "#FF6B00",
-  bg:      "#FFFFFF",
-  text:    "#111111",
-  sub:     "#374151",
-  muted:   "#6B7280",
-  border:  "#E5E7EB",
-  error:   "#DC2626",
-} as const;
-
 const ss = StyleSheet.create({
-  flex:            { flex: 1 },
-  bg:              { flex: 1, backgroundColor: C.bg },
-  scroll:          { paddingHorizontal: 24 },
-  backBtn:         { marginBottom: 24 },
-  backLabel:       { fontSize: 15, color: C.muted },
-  heading:         { fontSize: 26, fontWeight: "800", color: C.text, marginBottom: 8 },
-  sub:             { fontSize: 14, color: C.sub, marginBottom: 32, lineHeight: 22 },
-  phoneBold:       { fontWeight: "700", color: C.text },
-  otpWrap:         { marginBottom: 24 },
-  otpHidden:       { position: "absolute", opacity: 0, width: "100%", height: 56 },
-  boxRow:          { flexDirection: "row", justifyContent: "space-between", gap: 8 },
-  box:             {
+  flex:         { flex: 1 },
+  bg:           { flex: 1, backgroundColor: COLORS.bg },
+  scroll:       { paddingHorizontal: 24 },
+  backBtn:      { marginBottom: 24 },
+  backLabel:    { fontSize: 15, color: COLORS.muted },
+  heading:      { fontSize: 26, fontWeight: "800", color: COLORS.text, marginBottom: 8 },
+  sub:          { fontSize: 14, color: COLORS.sub, marginBottom: 32, lineHeight: 22 },
+  phoneBold:    { fontWeight: "700", color: COLORS.text },
+  otpWrap:      { marginBottom: 24 },
+  otpHidden:    { position: "absolute", opacity: 0, width: "100%", height: 56 },
+  boxRow:       { flexDirection: "row", justifyContent: "space-between", gap: 8 },
+  box:          {
     flex: 1, height: 56, borderRadius: 12,
-    borderWidth: 1.5, borderColor: C.border,
+    borderWidth: 1.5, borderColor: COLORS.border,
     alignItems: "center", justifyContent: "center",
-    backgroundColor: "#F9FAFB",
+    backgroundColor: COLORS.inputBg,
   },
-  boxFilled:       { borderColor: C.primary, backgroundColor: "#FFF3EC" },
-  boxDigit:        { fontSize: 22, fontWeight: "700", color: C.text },
-  errorText:       { color: C.error, fontSize: 13, marginBottom: 12 },
-  primaryBtn:      {
-    backgroundColor: C.primary, borderRadius: 14, height: 54,
+  boxFilled:    { borderColor: COLORS.primary, backgroundColor: COLORS.tint },
+  boxDigit:     { fontSize: 22, fontWeight: "700", color: COLORS.text },
+  errorText:    { color: COLORS.error, fontSize: 13, marginBottom: 12 },
+  primaryBtn:   {
+    backgroundColor: COLORS.primary, borderRadius: 14, height: 54,
     alignItems: "center", justifyContent: "center",
   },
   btnDisabled:     { opacity: 0.4 },
   primaryBtnLabel: { color: "#fff", fontSize: 17, fontWeight: "700" },
-  resendRow:       { flexDirection: "row", justifyContent: "center", marginTop: 20, alignItems: "center" },
-  resendLabel:     { fontSize: 14, color: C.muted },
-  resendLink:      { fontSize: 14, color: C.primary, fontWeight: "600" },
+  resendRow:    { flexDirection: "row", justifyContent: "center", marginTop: 20, alignItems: "center" },
+  resendLabel:  { fontSize: 14, color: COLORS.muted },
+  resendLink:   { fontSize: 14, color: COLORS.primary, fontWeight: "600" },
 });

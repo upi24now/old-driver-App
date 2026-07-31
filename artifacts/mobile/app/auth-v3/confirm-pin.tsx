@@ -1,20 +1,16 @@
 /**
- * confirm-pin.tsx — V3 Phase 13: Confirm PIN
+ * COMPARTMENT 8 — UI Layer: Confirm PIN Screen
  *
- * Responsibility (ONE):
- *   Verify the re-entered PIN matches the one stored in flow context,
- *   then complete the auth flow:
+ * Single responsibility: verify the re-entered PIN matches the one stored in
+ * FlowContext, then call the Engine to complete authentication.
  *
- *   signup path  → signInWithCustomToken + v3SetPin + v3CreateDriverAccount
- *                  → saveV3Session → /auth-v3/home
- *
- *   forgot path  → signInWithCustomToken + v3SetPin
- *                  → saveV3Session → /auth-v3/home
- *
- * Auto-submit: triggers immediately when 6th digit is entered and PINs match.
- * Unmount-safe: mountedRef prevents state updates after navigation.
- *
- * No B2 dependencies.
+ * Imports only from:
+ *   C2  Engine      — engineFinishAuth
+ *   C8  FlowContext — flow, clearFlow
+ *   C8  NumPad, PinDots
+ *   C7  Validation  — pinsMatch
+ *   C1  Navigation  — navToHome, navBack
+ *   C10 Config      — PIN_LENGTH, COLORS
  */
 
 import React, { useRef, useState } from "react";
@@ -27,16 +23,15 @@ import {
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { signInWithCustomToken } from "firebase/auth";
 
-import { NumPad }        from "@/components/auth-v3/NumPad";
-import { PinDots }       from "@/components/auth-v3/PinDots";
-import { useV3Flow }     from "@/contexts/auth-v3/FlowContext";
-import { v3SetPin, v3CreateDriverAccount } from "@/utils/auth-v3-api";
-import { saveV3Session } from "@/utils/auth-v3-session";
-import { firebaseAuth }  from "@/utils/firebase";
+import { engineFinishAuth }       from "@/modules/auth-v3/engine";
+import { useV3Flow }              from "@/modules/auth-v3/ui/context/FlowContext";
+import { NumPad }                 from "@/modules/auth-v3/ui/components/NumPad";
+import { PinDots }                from "@/modules/auth-v3/ui/components/PinDots";
+import { pinsMatch }              from "@/modules/auth-v3/validation";
+import { navToHome, navBack }     from "@/modules/auth-v3/navigation";
+import { COLORS, PIN_LENGTH }     from "@/modules/auth-v3/config";
 
-const PIN_LENGTH = 6;
 type Intent = "signup" | "forgot";
 
 export default function ConfirmPinScreen() {
@@ -60,8 +55,10 @@ export default function ConfirmPinScreen() {
   const doSubmit = async (confirmPin: string) => {
     if (busy || confirmPin.length !== PIN_LENGTH) return;
 
-    if (confirmPin !== flow.createdPin) {
-      setError("PINs don't match. Please try again.");
+    // Validation is UI-only (no async) — handled here before calling the Engine.
+    const matchResult = pinsMatch(flow.createdPin, confirmPin);
+    if (!matchResult.valid) {
+      setError(matchResult.message);
       setConfirm("");
       return;
     }
@@ -69,52 +66,35 @@ export default function ConfirmPinScreen() {
     setBusy(true);
     setError("");
 
-    try {
-      const cred    = await signInWithCustomToken(firebaseAuth, flow.verifyToken);
-      if (!mountedRef.current) return;
-      const idToken = await cred.user.getIdToken();
+    const result = await engineFinishAuth({
+      verifyToken:     flow.verifyToken,
+      verifySessionId: flow.verifySessionId,
+      pin:             flow.createdPin,
+      phone:           flow.phone,
+      signupData: intent === "signup" && flow.signup
+        ? {
+            name:          flow.signup.name,
+            city:          flow.signup.city,
+            gender:        flow.signup.gender,
+            vehicleId:     flow.signup.vehicleId,
+            vehicleName:   flow.signup.vehicleName,
+            licenseNumber: flow.signup.licenseNumber || undefined,
+            vehicleNumber: flow.signup.vehicleNumber || undefined,
+          }
+        : undefined,
+    });
 
-      const pinResult = await v3SetPin(flow.createdPin, idToken, flow.verifySessionId);
-      if (!mountedRef.current) return;
-      if (!pinResult.ok) {
-        setBusy(false);
-        setError(pinResult.error);
-        return;
-      }
+    if (!mountedRef.current) return;
 
-      if (intent === "signup") {
-        if (!flow.signup) {
-          setBusy(false);
-          setError("Signup data missing. Please start again.");
-          return;
-        }
-        const signupResult = await v3CreateDriverAccount({
-          phone:         flow.phone,
-          name:          flow.signup.name,
-          city:          flow.signup.city,
-          gender:        flow.signup.gender,
-          vehicleId:     flow.signup.vehicleId,
-          vehicleName:   flow.signup.vehicleName,
-          licenseNumber: flow.signup.licenseNumber || undefined,
-          vehicleNumber: flow.signup.vehicleNumber || undefined,
-        });
-        if (!mountedRef.current) return;
-        if (!signupResult.ok) {
-          setBusy(false);
-          setError(signupResult.error);
-          return;
-        }
-      }
-
-      await saveV3Session(cred.user.uid, flow.phone);
-      clearFlow();
-      router.replace("/auth-v3/home");
-    } catch {
-      if (!mountedRef.current) return;
+    if (!result.ok) {
       setBusy(false);
-      setError("Something went wrong. Please try again.");
+      setError(result.error.userMessage);
       setConfirm("");
+      return;
     }
+
+    clearFlow();
+    navToHome(router);
   };
 
   const onDigit = (d: string) => {
@@ -134,7 +114,7 @@ export default function ConfirmPinScreen() {
   return (
     <View style={[ss.flex, ss.bg, { paddingTop: insets.top }]}>
       <View style={ss.header}>
-        <Pressable style={ss.backBtn} onPress={() => router.back()} disabled={busy}>
+        <Pressable style={ss.backBtn} onPress={() => navBack(router)} disabled={busy}>
           <Text style={ss.backLabel}>← Back</Text>
         </Pressable>
         <Text style={ss.heading}>Confirm PIN</Text>
@@ -170,28 +150,19 @@ export default function ConfirmPinScreen() {
   );
 }
 
-const C = {
-  primary: "#FF6B00",
-  bg:      "#FFFFFF",
-  text:    "#111111",
-  sub:     "#374151",
-  muted:   "#6B7280",
-  error:   "#DC2626",
-} as const;
-
 const ss = StyleSheet.create({
   flex:            { flex: 1 },
-  bg:              { backgroundColor: C.bg },
+  bg:              { backgroundColor: COLORS.bg },
   header:          { paddingHorizontal: 24, paddingBottom: 8 },
   backBtn:         { marginBottom: 20 },
-  backLabel:       { fontSize: 15, color: C.muted },
-  heading:         { fontSize: 26, fontWeight: "800", color: C.text, marginBottom: 4 },
-  sub:             { fontSize: 14, color: C.sub, lineHeight: 20 },
-  errorText:       { textAlign: "center", color: C.error, fontSize: 13, marginVertical: 4 },
+  backLabel:       { fontSize: 15, color: COLORS.muted },
+  heading:         { fontSize: 26, fontWeight: "800", color: COLORS.text, marginBottom: 4 },
+  sub:             { fontSize: 14, color: COLORS.sub, lineHeight: 20 },
+  errorText:       { textAlign: "center", color: COLORS.error, fontSize: 13, marginVertical: 4 },
   padWrap:         { flex: 1, justifyContent: "center", paddingVertical: 8 },
   footer:          { paddingHorizontal: 24 },
   primaryBtn:      {
-    backgroundColor: C.primary, borderRadius: 14, height: 54,
+    backgroundColor: COLORS.primary, borderRadius: 14, height: 54,
     alignItems: "center", justifyContent: "center",
   },
   btnDisabled:     { opacity: 0.4 },

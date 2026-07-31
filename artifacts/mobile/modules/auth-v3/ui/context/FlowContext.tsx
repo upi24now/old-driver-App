@@ -1,14 +1,19 @@
 /**
- * FlowContext.tsx — V3 Auth Flow State
+ * COMPARTMENT 8 (UI sub-layer) — Flow Context
  *
- * Provides the transient state that needs to cross screen boundaries within
- * the V3 auth stack (phone, OTP verify token, created PIN, signup data).
+ * Single responsibility: share transient inter-screen state within the V3
+ * auth stack (phone, OTP verify token, created PIN, signup form data).
  *
- * Scoped to app/auth-v3/_layout.tsx — automatically cleared when the user
- * exits the V3 stack entirely. This eliminates module-level mutable singletons
- * and the stale-value bugs they cause between sessions.
+ * This is pure UI-layer state transport — it has no business logic.
+ * Screens write into it; the Engine reads from it via screen-mediated calls.
+ * The context clears automatically when the V3 stack unmounts.
  *
- * No B2 dependencies.
+ * Rules:
+ *   ✓ Pure React state + context — no async operations
+ *   ✗ No API calls, no Firebase, no storage, no navigation
+ *
+ * Debugging scope: if state disappears between screens or persists across
+ *   sessions unexpectedly → this file.
  */
 
 import React, {
@@ -31,15 +36,15 @@ export type V3SignupData = {
 };
 
 type V3FlowState = {
-  /** Full E.164 phone number (+91XXXXXXXXXX). Set by login, signup-form, forgot-pin. */
+  /** Full E.164 phone (+91XXXXXXXXXX). Written by login, signup-form, forgot-pin. */
   phone:           string;
   /** Firebase custom-auth token returned after OTP verification. */
   verifyToken:     string;
   /** Optional session ID returned alongside the verify token. */
   verifySessionId: string | null;
-  /** 6-digit PIN chosen by the driver on the create-pin screen. */
+  /** 6-digit PIN chosen on the create-pin screen. */
   createdPin:      string;
-  /** Signup form data — only present during new-driver signup flow. */
+  /** Signup form data — present only during new-driver signup flow. */
   signup:          V3SignupData | null;
 };
 

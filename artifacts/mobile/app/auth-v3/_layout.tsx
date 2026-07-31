@@ -1,17 +1,19 @@
 /**
  * Authentication V3 — Stack Navigator + Flow State Provider
  *
- * Provides the V3FlowContext to every screen in the auth stack so that
- * transient flow state (phone, tokens, PIN, signup data) is shared cleanly
- * without module-level singletons.
+ * Mounts V3FlowProvider so transient flow state (phone, tokens, PIN, signup
+ * data) is shared cleanly between all auth-v3 screens without singletons.
+ * Context is automatically cleared when the user exits the V3 stack.
  *
- * The context is automatically cleared when the user exits the V3 stack.
+ * Compartment ownership:
+ *   V3FlowProvider → C8 UI Layer (context)
+ *   Stack          → Expo Router (routing)
  *
  * No B2 dependencies.
  */
 
 import { Stack } from "expo-router";
-import { V3FlowProvider } from "@/contexts/auth-v3/FlowContext";
+import { V3FlowProvider } from "@/modules/auth-v3/ui/context/FlowContext";
 
 export default function AuthV3Layout() {
   return (
