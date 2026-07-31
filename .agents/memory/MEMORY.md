@@ -1,4 +1,4 @@
-- [Authentication V3 architecture](auth-v3-arch.md) — PIN-first auth; 10-compartment module at modules/auth-v3/; AuthV3Result<T>/AuthV3VoidResult; GATES.md: 3/3 gates pass; migration = 1 line in navigation/index.ts ROUTES.HOME → "/(tabs)".
+- [Authentication V3 architecture](auth-v3-arch.md) — PIN-first auth; 10-compartment module at modules/auth-v3/; MIGRATION COMPLETE (commit d2606d1 + 1 line); observation period active; B2 retained; home.tsx stub unreachable.
 - [Firebase client email quoting bug](firebase-client-email-quoting.md) — FIREBASE_CLIENT_EMAIL stored with surrounding quotes → INVALID_CUSTOM_TOKEN on signInWithCustomToken; re-enter without quotes.
 - [expo-audio vs expo-av](expo-audio-sdk54.md) — SDK 54 removed expo-av; use expo-audio@1.1.1 with useAudioPlayer hook.
 - [Expo Go Android image picker](expo-go-android.md) — allowsEditing: true causes UCrop silent drop on Android; always use false.

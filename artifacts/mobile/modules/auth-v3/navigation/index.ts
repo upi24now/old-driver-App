@@ -28,7 +28,7 @@ export const ROUTES = {
   CREATE_PIN:   "/auth-v3/create-pin",
   CONFIRM_PIN:  "/auth-v3/confirm-pin",
   FORGOT_PIN:   "/auth-v3/forgot-pin",
-  HOME:         "/auth-v3/home",
+  HOME:         "/(tabs)",
 } as const;
 
 export type OtpIntent    = "signup" | "forgot";
