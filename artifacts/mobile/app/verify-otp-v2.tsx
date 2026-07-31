@@ -82,46 +82,65 @@ export default function VerifyOtpV2() {
     Keyboard.dismiss();
     setBusy(true);
     setError("");
-    console.log("[V2_VERIFY_OTP] verifyOtp — intent:", intent, "| phone:", phone.slice(0, 5) + "…");
+    console.log("[AUTH_TRACE_01] handleVerify — intent:", intent, "| phone:", phone.slice(0, 5) + "…");
 
+    // ── Step 1: verify OTP with backend ──────────────────────────────────────
     const result = await verifyOtpV2(phone, code);
+    console.log("[AUTH_TRACE_02] verifyOtpV2 returned — ok:", result.ok);
 
     if (!result.ok) {
       setBusy(false);
-      console.log("[V2_VERIFY_OTP] failed:", result.error);
+      console.log("[AUTH_TRACE_02_FAIL] verifyOtpV2 failed:", result.error);
       setError(result.error);
       setOtp("");
       inputRef.current?.focus();
       return;
     }
 
-    // Store token + sessionId (kept so create-pin-v2 / set-pin paths can be re-enabled later)
+    // ── Step 2: store token + sessionId for potential future PIN re-enable ───
     AuthV2Store.setPendingToken(result.token);
     AuthV2Store.setPendingSessionId(result.sessionId ?? null);
-    console.log("[V2_VERIFY_OTP] success — token:", result.token ? "present" : "MISSING",
+    console.log("[AUTH_TRACE_03] OTP verified — token:", result.token ? "present" : "MISSING",
       "| sessionId:", result.sessionId ? "present" : "absent",
       "| intent:", intent);
 
     // TEMPORARILY DISABLED — OTP-only login during stabilization phase.
     // Original PIN routing (restore when PIN is re-enabled):
     //   if (intent === "forgot") {
-    //     console.log("[V2_VERIFY_OTP] intent=forgot → create-pin-v2?intent=reset");
     //     router.replace("/create-pin-v2?intent=reset" as never);
     //   } else {
-    //     console.log("[V2_VERIFY_OTP] intent=login → login-v2?phase=pin");
     //     router.replace("/login-v2?phase=pin" as never);
     //   }
 
-    // OTP-only login: establish full session directly from the OTP token.
-    // confirmOtpV2Direct calls establishSession → fetches profile → navigates to home/onboarding.
-    console.log("[OTP_ONLY] OTP verified — establishing session directly (PIN bypass active), intent:", intent);
+    // ── Step 3: establish full session directly from the OTP token ───────────
+    // confirmOtpV2Direct → setSessionId → establishSession:
+    //   • setIsOtpVerifying(true)   ← blocks _layout.tsx flash guard
+    //   • signInWithCustomToken     ← fires onAuthStateChanged
+    //   • fetches driver profile    ← GET /api/v2/driver/profile
+    //   • deriveNextRoute           ← determines home / onboarding step
+    //   • setIsOtpVerified(true)    ← batched with next line
+    //   • setIsOtpVerifying(false)  ← released in same React render
+    //   • returns { ok, nextRoute } ← caller MUST navigate (same contract as otp.tsx)
+    console.log("[AUTH_TRACE_04] calling confirmOtpV2Direct — about to setIsOtpVerifying + signInWithCustomToken");
     const sessionResult = await confirmOtpV2Direct(result.token, phone, result.sessionId ?? null);
+    console.log("[AUTH_TRACE_09] confirmOtpV2Direct returned — ok:", sessionResult.ok, "| nextRoute:", sessionResult.nextRoute ?? "(none)");
+
     setBusy(false);
+
     if (!sessionResult.ok) {
-      console.error("[OTP_ONLY] confirmOtpV2Direct failed:", sessionResult.error);
+      console.error("[AUTH_TRACE_09_FAIL] confirmOtpV2Direct failed:", sessionResult.error);
       setError(sessionResult.error ?? "Login failed. Please try again.");
+      return;
     }
-    // On success, confirmOtpV2Direct → establishSession calls router.replace internally.
+
+    // ── Step 4: navigate to driver's next screen ──────────────────────────────
+    // establishSession does NOT call router.replace for fresh OTP logins —
+    // it only navigates inside onAuthStateChanged when sessionValid=true (session
+    // restore on cold start).  The caller is always responsible for navigation
+    // after a fresh OTP login.  This matches the contract in otp.tsx (V1 flow).
+    const nextRoute = sessionResult.nextRoute ?? "/(tabs)";
+    console.log("[AUTH_TRACE_10] navigating to:", nextRoute);
+    router.replace(nextRoute as never);
   }
 
   function handleOtpChange(v: string) {
