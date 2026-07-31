@@ -1,50 +1,60 @@
 ---
 name: Authentication V3 architecture
-description: Auth V3 context split, bug fixes, bridge pattern, and V3 screen routing decisions
+description: PIN-first auth design, single-screen multi-step approach, stale-closure fix pattern
 ---
 
 # Authentication V3 — Durable Architecture Notes
 
-## What Changed
-Auth state machine moved out of DriverContext into a new `contexts/AuthV3Context.tsx`.
-DriverContext delegates via `useAuthV3()` and exposes identical interface through `useDriver()`.
+## Core Rule
+Daily login = Mobile Number + PIN. OTP is ONLY for: (1) New signup, (2) Forgot PIN. OTP is NEVER used for normal/returning driver login.
 
-## Bug Fix #1 — Stale sessionKeyRef
-**Rule:** In V3, `onAuthStateChanged` calls `AsyncStorage.getItem(SESSION_VERIFIED_KEY)` FRESH on every invocation.  
-**Why:** The old code stored a mount-time promise in `sessionKeyRef.current`. After `signOut()` removes the key, the stale promise resolved to the old UID → false `sessionValid=true` on re-login in the same session.  
-**How to apply:** Never snapshot AsyncStorage reads into a useRef at mount time for auth state validation.
+## Single-Screen Multi-Step Pattern
+**Why:** `_layout.tsx` exempts only `/login-v3` from the global auth guard. Adding new screens (e.g. `/enter-pin-v3`) would require touching `_layout.tsx` (B2 file, off-limits). Solution: all auth steps live inside `app/login-v3.tsx` as a step-based state machine with sub-view components. No new routes needed.
 
-## Bug Fix #2 — React-state flash guard race
-**Rule:** The OTP/login in-flight guard is a synchronous `useRef` (`isVerifyingRef`), NOT a useState. It is set BEFORE `signInWithCustomToken` as the first operation in `beginVerify()`.  
-**Why:** Firebase fires `onAuthStateChanged(null → user)` synchronously during `signInWithCustomToken`. If the guard is only a React state (`isOtpVerifying`), React may not have flushed it before the callback fires → _layout.tsx routes to /login mid-login.  
-**How to apply:** Any future guard that must block an async Firebase callback must use a useRef, not a useState.
+**How:** `step: AuthStep` state drives a `switch` that renders different sub-components. `flow: FlowState` carries cross-step data (phone, pin, otp, signup fields, verify token).
 
-## Session Restore Bridge
-`utils/auth-v3-bridge.ts` holds a module-level `_handler` pointer.
-- AuthV3Context calls `callV3SessionRestoreHandler(uid, phone)` when sessionValid=true.
-- DriverContext registers the profile-hydration + navigation callback via `registerV3SessionRestoreHandler(fn)` in its mount effect.
-- This avoids circular context dependency: AuthV3Provider wraps DriverProvider.
+## B2 Isolation Rule
+Do NOT touch: `DriverContext.tsx`, `_layout.tsx`, `auth-api.ts`, session architecture. These are B2 files. Integration only after V3 is fully tested and approved.
 
-## Auth State Methods (AuthV3Context)
-- `beginVerify()` — sync ref + queues isOtpVerifying=true; called BEFORE signInWithCustomToken
-- `endVerifySuccess(uid, phone)` — atomically sets isOtpVerified=true + clears guard + sets uid/phone
-- `endVerifyFailure()` — clears guard + isOtpVerifying
-- `setPinSetupIdentity(uid, phone)` — sets uid/phone without releasing guard (PIN setup path)
-- `clearAuth()` — full reset including isVerifyingRef; called from signOut
+## Files
+- `app/login-v3.tsx` — complete multi-step auth flow (Phases 1–10)
+- `utils/auth-v3-api.ts` — API layer: v3SendOtp, v3VerifyOtp, v3VerifyPin, v3SetPin, v3CreateDriverAccount
+- `contexts/AuthV3Context.tsx` — auth state machine (unchanged from Task #5 merge)
+- `utils/auth-v3-bridge.ts` — promise-buffered session restore bridge (unchanged)
 
-## Screen Routing (V3)
-- Login: `/login-v3` — phone entry, pushes to `/verify-otp-v3?phone=+91XXXXXXXXXX`
-- OTP verify: `/verify-otp-v3` — reads phone from URL param, calls `confirmOtpV2Direct(token, phone, sessionId)`
-- `_layout.tsx` initialRouteName = "login-v3"
-- Unauthenticated routes to `/login-v3` (not `/login` or `/login-v2`)
-- SESSION_REPLACED handler → `/login-v3`
+## Auth Flows
 
-## V2 Compat Shims Kept
-- `utils/auth-v2-api.ts` — re-exports sendOtpV2/setPinV2; used by create-pin-v2.tsx, forgot-pin-v2.tsx
-- `utils/auth-v2-store.ts` — module-level store for phone/token/sessionId; used by V2 forgot/create-pin screens
+### Existing Driver (daily login)
+`PHONE_ENTRY` → `PIN_ENTRY` → `verifyPinApi` → `signInWithCustomToken` → `finishAuth`
 
-## Safety Timeout
-Moved to AuthV3Context (8s `setTimeout(() => setAuthLoading(false), 8000)`). DriverContext no longer has its own auth-loading timeout.
+### New Driver (signup)
+`PHONE_ENTRY` → `SIGNUP_FORM` → `SIGNUP_OTP` (sendOtp) → `SIGNUP_NEW_PIN` → `SIGNUP_CONFIRM` → `signInWithCustomToken` + `setPinWithToken` + `ensureDriverSignup` → `finishAuth`
 
-## FCM Registration
-DriverContext has a `useEffect(() => { if (driverUid) registerDriverPushToken(driverUid) }, [driverUid])` to catch fresh logins where the AuthV3Context onAuthStateChanged was suppressed by isVerifyingRef.
+### Forgot PIN
+`PIN_ENTRY` → `FORGOT_PHONE` → `FORGOT_OTP` (sendOtp) → `FORGOT_NEW_PIN` → `FORGOT_CONFIRM` → `signInWithCustomToken` + `setPinWithToken` → `finishAuth`
+
+## finishAuth sequence (shared by all flows)
+1. `setSessionId(sessionId)` — prime module-level cache
+2. `AsyncStorage.setItem(SESSION_KEY, uid)` — persist session
+3. `authV3.endVerifySuccess(uid, phone)` — sets isOtpVerified=true (marks sessionAlreadyRestoredRef=true, prevents duplicate onAuthStateChanged restore)
+4. `callV3SessionRestoreHandler(uid, phone)` — bridge to DriverContext for profile hydration + navigation
+5. Fallback: `router.replace("/(tabs)")` if bridge throws
+
+## Stale-Closure Fix for Auto-Submit
+**Rule:** When auto-submitting on 6th digit in onDigit callback, NEVER call `handler()` with no args — the closure captures old `flow.pin`. Always compute next value locally and pass it as a parameter.
+
+**Pattern:**
+```typescript
+onDigit={(d) => {
+  const next = (flow.pin + d).slice(0, PIN_LENGTH);
+  setFlow((f) => ({ ...f, pin: next }));
+  if (next.length === PIN_LENGTH) setTimeout(() => handlePinLogin(next), 80);
+}}
+```
+Handler signature: `handlePinLogin(pinOverride?: string)` — uses `pinOverride ?? flow.pin`.
+
+## Vehicles
+From vehicle-selection.tsx: two_wheeler, loader_three_wheeler, tata_ace, mini_truck, mahindra_pickup, tata_407, canter. Referenced in auth-v3-api.ts as V3_VEHICLES.
+
+## AuthV3Context interface (must maintain for DriverContext compat)
+`beginVerify()`, `endVerifySuccess(uid, phone)`, `endVerifyFailure()`, `setPinSetupIdentity(uid, phone)`, `clearAuth()`, `setPhone(p)`. These are called by DriverContext via the bridge.
