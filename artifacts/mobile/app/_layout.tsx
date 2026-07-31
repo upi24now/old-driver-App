@@ -168,10 +168,11 @@ function RootLayoutNav() {
 
     // ── V3 auth screens manage their own routing — skip global guard ──────────
     if (
-      pathname === "/login-v3"      ||
-      pathname === "/verify-otp-v3" ||
-      pathname === "/forgot-pin-v2" ||
-      pathname === "/create-pin-v2"
+      pathname === "/login-v3"           ||
+      pathname === "/verify-otp-v3"      ||
+      pathname === "/forgot-pin-v2"      ||
+      pathname === "/create-pin-v2"      ||
+      pathname.startsWith("/auth-v3")    // V3 multi-screen auth stack
     ) {
       console.log(`[AUTH_V3][LAYOUT_EFFECT #${effectRc}] BRANCH → V3/V2-auth early-return: pathname=${pathname}`);
       console.log("[AUTH_STATE_L5] BRANCH pathname=auth-screen → no routing",
