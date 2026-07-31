@@ -22,7 +22,7 @@ export default function AuthV3Layout() {
         screenOptions={{
           headerShown:    false,
           animation:      "slide_from_right",
-          gestureEnabled: true,
+          gestureEnabled: false,
         }}
       />
     </V3FlowProvider>

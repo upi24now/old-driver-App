@@ -32,7 +32,11 @@ export async function engineLogin(
   const fbResult = await firebaseSignIn(pinResult.data.token);
   if (!fbResult.success) return fbResult;
 
-  await sessionSave(fbResult.data.uid, phone);
+  const saveResult = await sessionSave(fbResult.data.uid, phone);
+  if (!saveResult.success) {
+    logOp("engine", "login", "error", saveResult.error);
+    return saveResult;
+  }
   logOp("engine", "login", "success");
   return ok({ uid: fbResult.data.uid, phone });
 }

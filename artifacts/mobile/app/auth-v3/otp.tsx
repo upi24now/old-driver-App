@@ -29,7 +29,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { engineVerifyOtp, engineSendOtp } from "@/modules/auth-v3/engine";
 import { useV3Flow }                       from "@/modules/auth-v3/ui";
 import { navToCreatePin, navBack }         from "@/modules/auth-v3/navigation";
-import { COLORS, OTP_LENGTH }              from "@/modules/auth-v3/config";
+import { COLORS, OTP_LENGTH, OTP_RESEND_COOLDOWN_MS } from "@/modules/auth-v3/config";
 
 type Intent = "signup" | "forgot";
 
@@ -37,7 +37,8 @@ export default function OtpScreen() {
   const router     = useRouter();
   const insets     = useSafeAreaInsets();
   const inputRef   = useRef<TextInput>(null);
-  const mountedRef = useRef(true);
+  const mountedRef    = useRef(true);
+  const lastResendAt  = useRef<number>(0);
 
   const { flow, setVerifyResult } = useV3Flow();
   const params  = useLocalSearchParams<{ intent?: string }>();
@@ -79,7 +80,9 @@ export default function OtpScreen() {
   };
 
   const handleResend = async () => {
-    if (busy) return;
+    const now = Date.now();
+    if (busy || now - lastResendAt.current < OTP_RESEND_COOLDOWN_MS) return;
+    lastResendAt.current = now;
     setBusy(true);
     setError("");
     setOtp("");

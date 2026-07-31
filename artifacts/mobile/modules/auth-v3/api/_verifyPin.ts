@@ -16,7 +16,8 @@ export async function apiVerifyPin(
   try {
     const r = await verifyPinApi(phone, pin);
     if (!r.ok) {
-      const error: AuthV3Error = { ...mapApiError(r.error, "api.verifyPin"), code: ERR.INVALID_PIN };
+      const mapped = mapApiError(r.error, "api.verifyPin");
+      const error: AuthV3Error = { ...mapped, code: mapped.code === "UNKNOWN" ? ERR.INVALID_PIN : mapped.code };
       logOp("api", "verifyPin", "error", error);
       return fail(error);
     }

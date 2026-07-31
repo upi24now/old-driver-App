@@ -16,7 +16,8 @@ export async function apiVerifyOtp(
   try {
     const r = await verifyOtpApi(phone, otp);
     if (!r.ok) {
-      const error: AuthV3Error = { ...mapApiError(r.error, "api.verifyOtp"), code: ERR.INVALID_OTP };
+      const mapped = mapApiError(r.error, "api.verifyOtp");
+      const error: AuthV3Error = { ...mapped, code: mapped.code === "UNKNOWN" ? ERR.INVALID_OTP : mapped.code };
       logOp("api", "verifyOtp", "error", error);
       return fail(error);
     }

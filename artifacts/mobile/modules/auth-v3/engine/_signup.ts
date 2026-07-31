@@ -10,8 +10,8 @@
  */
 
 import { apiSetPin, apiCreateAccount, type CreateAccountParams } from "../api";
-import { firebaseSignIn }           from "../firebase";
-import { sessionSave, V3Session }   from "../session";
+import { firebaseSignIn, firebaseSignOut } from "../firebase";
+import { sessionSave, V3Session }          from "../session";
 import { logOp }                    from "../errors";
 import { ok, fail, AuthV3Result }   from "../types";
 
@@ -40,11 +40,20 @@ export async function engineFinishAuth(
   // Step 3 — Create account (signup path only)
   if (signupData) {
     const accountResult = await apiCreateAccount({ phone, ...signupData });
-    if (!accountResult.success) return accountResult;
+    if (!accountResult.success) {
+      // Firebase is signed in (step 1 complete) but account creation failed.
+      // Sign out locally so the driver can retry signup from a clean state.
+      await firebaseSignOut();
+      return accountResult;
+    }
   }
 
   // Step 4 — Persist session
-  await sessionSave(fbResult.data.uid, phone);
+  const saveResult = await sessionSave(fbResult.data.uid, phone);
+  if (!saveResult.success) {
+    logOp("engine", "finishAuth", "error", saveResult.error);
+    return saveResult;
+  }
   logOp("engine", "finishAuth", "success");
   return ok({ uid: fbResult.data.uid, phone });
 }
