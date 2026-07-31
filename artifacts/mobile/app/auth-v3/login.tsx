@@ -26,7 +26,7 @@ import {
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useV3Flow }        from "@/modules/auth-v3/ui/context/FlowContext";
+import { useV3Flow }        from "@/modules/auth-v3/ui";
 import { navToPin, navBack } from "@/modules/auth-v3/navigation";
 import { COLORS, PHONE_DIGITS, PHONE_PREFIX } from "@/modules/auth-v3/config";
 

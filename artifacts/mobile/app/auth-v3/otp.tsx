@@ -27,7 +27,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { engineVerifyOtp, engineSendOtp } from "@/modules/auth-v3/engine";
-import { useV3Flow }                       from "@/modules/auth-v3/ui/context/FlowContext";
+import { useV3Flow }                       from "@/modules/auth-v3/ui";
 import { navToCreatePin, navBack }         from "@/modules/auth-v3/navigation";
 import { COLORS, OTP_LENGTH }              from "@/modules/auth-v3/config";
 

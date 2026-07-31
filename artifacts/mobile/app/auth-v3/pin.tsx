@@ -24,9 +24,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { engineLogin }              from "@/modules/auth-v3/engine";
-import { useV3Flow }                from "@/modules/auth-v3/ui/context/FlowContext";
-import { NumPad }                   from "@/modules/auth-v3/ui/components/NumPad";
-import { PinDots }                  from "@/modules/auth-v3/ui/components/PinDots";
+import { useV3Flow, NumPad, PinDots } from "@/modules/auth-v3/ui";
 import { navToHome, navToForgotPin, navBack } from "@/modules/auth-v3/navigation";
 import { COLORS, PIN_LENGTH }       from "@/modules/auth-v3/config";
 

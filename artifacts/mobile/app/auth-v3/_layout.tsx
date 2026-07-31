@@ -13,7 +13,7 @@
  */
 
 import { Stack } from "expo-router";
-import { V3FlowProvider } from "@/modules/auth-v3/ui/context/FlowContext";
+import { V3FlowProvider } from "@/modules/auth-v3/ui";
 
 export default function AuthV3Layout() {
   return (

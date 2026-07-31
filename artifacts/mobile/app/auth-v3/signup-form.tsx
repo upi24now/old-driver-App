@@ -27,7 +27,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { engineSendOtp }            from "@/modules/auth-v3/engine";
-import { useV3Flow }                from "@/modules/auth-v3/ui/context/FlowContext";
+import { useV3Flow }                from "@/modules/auth-v3/ui";
 import { navToOtp, navBack }        from "@/modules/auth-v3/navigation";
 import { COLORS, VEHICLES, PHONE_DIGITS, PHONE_PREFIX } from "@/modules/auth-v3/config";
 

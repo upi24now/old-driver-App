@@ -16,7 +16,7 @@
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { mapError, logOp, ERR, makeError } from "../errors";
+import { mapError, logOp, ERR } from "../errors";
 import { ok, okVoid, fail, AuthV3Result, AuthV3VoidResult } from "../types";
 
 // ─── Public interface ─────────────────────────────────────────────────────────

@@ -25,7 +25,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { engineLogout }    from "@/modules/auth-v3/engine";
 import { sessionLoad }     from "@/modules/auth-v3/session";
-import { useV3Flow }       from "@/modules/auth-v3/ui/context/FlowContext";
+import { useV3Flow }       from "@/modules/auth-v3/ui";
 import { navToWelcome }    from "@/modules/auth-v3/navigation";
 import { COLORS }          from "@/modules/auth-v3/config";
 
