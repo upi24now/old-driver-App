@@ -1,18 +1,23 @@
 /**
- * confirm-pin.tsx — V3 Phase 9: Confirm New PIN
+ * confirm-pin.tsx — V3 Phase 13: Confirm PIN
  *
  * Responsibility (ONE):
- *   Verify the confirmation PIN matches the one set in create-pin.tsx,
- *   then complete the flow:
- *     • signup  → sign in via Firebase + set PIN + create account → Home
- *     • forgot  → sign in via Firebase + set PIN → Home
+ *   Verify the re-entered PIN matches the one stored in flow context,
+ *   then complete the auth flow:
  *
- * Reads from store: createdPin, verifyToken, verifySessionId, phone, signup
+ *   signup path  → signInWithCustomToken + v3SetPin + v3CreateDriverAccount
+ *                  → saveV3Session → /auth-v3/home
+ *
+ *   forgot path  → signInWithCustomToken + v3SetPin
+ *                  → saveV3Session → /auth-v3/home
+ *
+ * Auto-submit: triggers immediately when 6th digit is entered and PINs match.
+ * Unmount-safe: mountedRef prevents state updates after navigation.
  *
  * No B2 dependencies.
  */
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -24,49 +29,38 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { signInWithCustomToken } from "firebase/auth";
 
-import { NumPad }          from "@/components/auth-v3/NumPad";
-import { PinDots }         from "@/components/auth-v3/PinDots";
-import { v3Store }         from "@/utils/auth-v3-store";
+import { NumPad }        from "@/components/auth-v3/NumPad";
+import { PinDots }       from "@/components/auth-v3/PinDots";
+import { useV3Flow }     from "@/contexts/auth-v3/FlowContext";
 import { v3SetPin, v3CreateDriverAccount } from "@/utils/auth-v3-api";
-import { saveV3Session }   from "@/utils/auth-v3-session";
-import { firebaseAuth }    from "@/utils/firebase";
+import { saveV3Session } from "@/utils/auth-v3-session";
+import { firebaseAuth }  from "@/utils/firebase";
 
 const PIN_LENGTH = 6;
 type Intent = "signup" | "forgot";
 
 export default function ConfirmPinScreen() {
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const router     = useRouter();
+  const insets     = useSafeAreaInsets();
+  const mountedRef = useRef(true);
 
-  const params = useLocalSearchParams<{ intent?: string }>();
+  const { flow, clearFlow } = useV3Flow();
+  const params  = useLocalSearchParams<{ intent?: string }>();
   const intent: Intent = params.intent === "forgot" ? "forgot" : "signup";
 
   const [confirm, setConfirm] = useState("");
   const [error,   setError]   = useState("");
   const [busy,    setBusy]    = useState(false);
 
-  const onDigit = (d: string) => {
-    if (busy || confirm.length >= PIN_LENGTH) return;
-    setError("");
-    const next = confirm + d;
-    setConfirm(next);
-    if (next.length === PIN_LENGTH) {
-      setTimeout(() => handleSubmit(next), 80);
-    }
-  };
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
-  const onDelete = () => {
-    if (busy) return;
-    setError("");
-    setConfirm((p) => p.slice(0, -1));
-  };
-
-  const handleSubmit = async (confirmPin: string) => {
+  const doSubmit = async (confirmPin: string) => {
     if (busy || confirmPin.length !== PIN_LENGTH) return;
 
-    const store = v3Store.get();
-
-    if (confirmPin !== store.createdPin) {
+    if (confirmPin !== flow.createdPin) {
       setError("PINs don't match. Please try again.");
       setConfirm("");
       return;
@@ -76,11 +70,12 @@ export default function ConfirmPinScreen() {
     setError("");
 
     try {
-      const cred    = await signInWithCustomToken(firebaseAuth, store.verifyToken);
+      const cred    = await signInWithCustomToken(firebaseAuth, flow.verifyToken);
+      if (!mountedRef.current) return;
       const idToken = await cred.user.getIdToken();
 
-      // Save PIN via backend
-      const pinResult = await v3SetPin(store.createdPin, idToken, store.verifySessionId);
+      const pinResult = await v3SetPin(flow.createdPin, idToken, flow.verifySessionId);
+      if (!mountedRef.current) return;
       if (!pinResult.ok) {
         setBusy(false);
         setError(pinResult.error);
@@ -88,22 +83,22 @@ export default function ConfirmPinScreen() {
       }
 
       if (intent === "signup") {
-        // Create the driver account
-        if (!store.signup) {
+        if (!flow.signup) {
           setBusy(false);
           setError("Signup data missing. Please start again.");
           return;
         }
         const signupResult = await v3CreateDriverAccount({
-          phone:         store.phone,
-          name:          store.signup.name,
-          city:          store.signup.city,
-          gender:        store.signup.gender,
-          vehicleId:     store.signup.vehicleId,
-          vehicleName:   store.signup.vehicleName,
-          licenseNumber: store.signup.licenseNumber || undefined,
-          vehicleNumber: store.signup.vehicleNumber || undefined,
+          phone:         flow.phone,
+          name:          flow.signup.name,
+          city:          flow.signup.city,
+          gender:        flow.signup.gender,
+          vehicleId:     flow.signup.vehicleId,
+          vehicleName:   flow.signup.vehicleName,
+          licenseNumber: flow.signup.licenseNumber || undefined,
+          vehicleNumber: flow.signup.vehicleNumber || undefined,
         });
+        if (!mountedRef.current) return;
         if (!signupResult.ok) {
           setBusy(false);
           setError(signupResult.error);
@@ -111,19 +106,33 @@ export default function ConfirmPinScreen() {
         }
       }
 
-      await saveV3Session(cred.user.uid, store.phone);
-      v3Store.clear();
+      await saveV3Session(cred.user.uid, flow.phone);
+      clearFlow();
       router.replace("/auth-v3/home");
-    } catch (err) {
+    } catch {
+      if (!mountedRef.current) return;
       setBusy(false);
       setError("Something went wrong. Please try again.");
       setConfirm("");
     }
   };
 
+  const onDigit = (d: string) => {
+    if (busy || confirm.length >= PIN_LENGTH) return;
+    setError("");
+    const next = confirm + d;
+    setConfirm(next);
+    if (next.length === PIN_LENGTH) void doSubmit(next);
+  };
+
+  const onDelete = () => {
+    if (busy) return;
+    setError("");
+    setConfirm((p) => p.slice(0, -1));
+  };
+
   return (
     <View style={[ss.flex, ss.bg, { paddingTop: insets.top }]}>
-      {/* Header */}
       <View style={ss.header}>
         <Pressable style={ss.backBtn} onPress={() => router.back()} disabled={busy}>
           <Text style={ss.backLabel}>← Back</Text>
@@ -132,12 +141,10 @@ export default function ConfirmPinScreen() {
         <Text style={ss.sub}>Re-enter your 6-digit PIN to confirm.</Text>
       </View>
 
-      {/* PIN dots */}
       <PinDots length={PIN_LENGTH} filled={confirm.length} error={!!error} />
 
       {!!error && <Text style={ss.errorText}>{error}</Text>}
 
-      {/* Numpad */}
       <View style={ss.padWrap}>
         <NumPad
           onDigit={onDigit}
@@ -146,11 +153,10 @@ export default function ConfirmPinScreen() {
         />
       </View>
 
-      {/* Submit */}
       <View style={[ss.footer, { paddingBottom: Math.max(insets.bottom, 24) }]}>
         <Pressable
           style={[ss.primaryBtn, (busy || confirm.length !== PIN_LENGTH) && ss.btnDisabled]}
-          onPress={() => handleSubmit(confirm)}
+          onPress={() => void doSubmit(confirm)}
           disabled={busy || confirm.length !== PIN_LENGTH}
         >
           {busy
@@ -174,20 +180,20 @@ const C = {
 } as const;
 
 const ss = StyleSheet.create({
-  flex:           { flex: 1 },
-  bg:             { backgroundColor: C.bg },
-  header:         { paddingHorizontal: 24, paddingBottom: 8 },
-  backBtn:        { marginBottom: 20 },
-  backLabel:      { fontSize: 15, color: C.muted },
-  heading:        { fontSize: 26, fontWeight: "800", color: C.text, marginBottom: 4 },
-  sub:            { fontSize: 14, color: C.sub, lineHeight: 20 },
-  errorText:      { textAlign: "center", color: C.error, fontSize: 13, marginTop: -8 },
-  padWrap:        { flex: 1, justifyContent: "center", paddingVertical: 8 },
-  footer:         { paddingHorizontal: 24 },
-  primaryBtn:     {
+  flex:            { flex: 1 },
+  bg:              { backgroundColor: C.bg },
+  header:          { paddingHorizontal: 24, paddingBottom: 8 },
+  backBtn:         { marginBottom: 20 },
+  backLabel:       { fontSize: 15, color: C.muted },
+  heading:         { fontSize: 26, fontWeight: "800", color: C.text, marginBottom: 4 },
+  sub:             { fontSize: 14, color: C.sub, lineHeight: 20 },
+  errorText:       { textAlign: "center", color: C.error, fontSize: 13, marginVertical: 4 },
+  padWrap:         { flex: 1, justifyContent: "center", paddingVertical: 8 },
+  footer:          { paddingHorizontal: 24 },
+  primaryBtn:      {
     backgroundColor: C.primary, borderRadius: 14, height: 54,
     alignItems: "center", justifyContent: "center",
   },
-  btnDisabled:    { opacity: 0.4 },
+  btnDisabled:     { opacity: 0.4 },
   primaryBtnLabel: { color: "#fff", fontSize: 17, fontWeight: "700" },
 });

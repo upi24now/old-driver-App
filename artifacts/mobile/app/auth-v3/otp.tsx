@@ -1,12 +1,16 @@
 /**
- * otp.tsx — V3 Phase 7: OTP Verification Screen
+ * otp.tsx — V3 Phase 11: OTP Verification
  *
  * Responsibility (ONE):
- *   Accept the 6-digit OTP, verify it with the backend, store the resulting
- *   custom-auth token, and navigate to the Create PIN screen.
+ *   Accept the 6-digit OTP, verify it, store the resulting custom-auth
+ *   token in the flow context, and navigate to Create PIN.
  *
  * Receives: intent=signup|forgot (URL param)
- * Reads from store: phone
+ * Reads from flow context: phone
+ * Writes to flow context: verifyToken + verifySessionId
+ *
+ * Auto-submit triggers immediately when the 6th digit is typed.
+ * Unmount-safe: mountedRef prevents state updates after navigation.
  *
  * No B2 dependencies.
  */
@@ -26,32 +30,38 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { v3Store }    from "@/utils/auth-v3-store";
-import { v3VerifyOtp, v3SendOtp } from "@/utils/auth-v3-api";
+import { useV3Flow }               from "@/contexts/auth-v3/FlowContext";
+import { v3VerifyOtp, v3SendOtp }  from "@/utils/auth-v3-api";
 
 const OTP_LENGTH = 6;
 type Intent = "signup" | "forgot";
 
 export default function OtpScreen() {
-  const router  = useRouter();
-  const insets  = useSafeAreaInsets();
-  const inputRef = useRef<TextInput>(null);
+  const router     = useRouter();
+  const insets     = useSafeAreaInsets();
+  const inputRef   = useRef<TextInput>(null);
+  const mountedRef = useRef(true);
 
+  const { flow, setVerifyResult } = useV3Flow();
   const params = useLocalSearchParams<{ intent?: string }>();
   const intent: Intent = params.intent === "forgot" ? "forgot" : "signup";
-
-  const phone = v3Store.get().phone;
 
   const [otp,   setOtp]   = useState("");
   const [error, setError] = useState("");
   const [busy,  setBusy]  = useState(false);
 
-  const handleVerify = async (code: string) => {
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  const doVerify = async (code: string) => {
     if (busy || code.length !== OTP_LENGTH) return;
     setBusy(true);
     setError("");
 
-    const result = await v3VerifyOtp(phone, code);
+    const result = await v3VerifyOtp(flow.phone, code);
+    if (!mountedRef.current) return;
     setBusy(false);
 
     if (!result.ok) {
@@ -60,8 +70,15 @@ export default function OtpScreen() {
       return;
     }
 
-    v3Store.setVerifyToken(result.token, result.sessionId);
+    setVerifyResult(result.token, result.sessionId);
     router.push(`/auth-v3/create-pin?intent=${intent}`);
+  };
+
+  const onChangeOtp = (text: string) => {
+    const digits = text.replace(/\D/g, "").slice(0, OTP_LENGTH);
+    setError("");
+    setOtp(digits);
+    if (digits.length === OTP_LENGTH) void doVerify(digits);
   };
 
   const handleResend = async () => {
@@ -69,22 +86,10 @@ export default function OtpScreen() {
     setBusy(true);
     setError("");
     setOtp("");
-    const result = await v3SendOtp(phone);
+    const result = await v3SendOtp(flow.phone);
+    if (!mountedRef.current) return;
     setBusy(false);
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
-    v3Store.setOtpId(result.otpId);
-  };
-
-  const onChangeOtp = (text: string) => {
-    const digits = text.replace(/\D/g, "").slice(0, OTP_LENGTH);
-    setError("");
-    setOtp(digits);
-    if (digits.length === OTP_LENGTH) {
-      setTimeout(() => handleVerify(digits), 80);
-    }
+    if (!result.ok) setError(result.error);
   };
 
   return (
@@ -101,21 +106,21 @@ export default function OtpScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Pressable style={ss.backBtn} onPress={() => router.back()}>
+        <Pressable style={ss.backBtn} onPress={() => router.back()} disabled={busy}>
           <Text style={ss.backLabel}>← Back</Text>
         </Pressable>
 
         <Text style={ss.heading}>Enter OTP</Text>
         <Text style={ss.sub}>
           We sent a 6-digit code to{"\n"}
-          <Text style={ss.phoneHighlight}>{phone}</Text>
+          <Text style={ss.phoneBold}>{flow.phone}</Text>
         </Text>
 
-        {/* OTP input */}
-        <Pressable style={ss.otpInputWrap} onPress={() => inputRef.current?.focus()}>
+        {/* Hidden real input + visible box overlay */}
+        <Pressable style={ss.otpWrap} onPress={() => inputRef.current?.focus()}>
           <TextInput
             ref={inputRef}
-            style={ss.otpInput}
+            style={ss.otpHidden}
             value={otp}
             onChangeText={onChangeOtp}
             keyboardType="number-pad"
@@ -123,7 +128,6 @@ export default function OtpScreen() {
             editable={!busy}
             autoFocus
           />
-          {/* Visual OTP boxes */}
           <View style={ss.boxRow} pointerEvents="none">
             {Array.from({ length: OTP_LENGTH }).map((_, i) => (
               <View key={i} style={[ss.box, otp[i] != null && ss.boxFilled]}>
@@ -137,7 +141,7 @@ export default function OtpScreen() {
 
         <Pressable
           style={[ss.primaryBtn, (busy || otp.length !== OTP_LENGTH) && ss.btnDisabled]}
-          onPress={() => handleVerify(otp)}
+          onPress={() => void doVerify(otp)}
           disabled={busy || otp.length !== OTP_LENGTH}
         >
           {busy
@@ -146,8 +150,8 @@ export default function OtpScreen() {
         </Pressable>
 
         <View style={ss.resendRow}>
-          <Text style={ss.resendLabel}>Didn't receive the code? </Text>
-          <Pressable onPress={handleResend} disabled={busy}>
+          <Text style={ss.resendLabel}>Didn't receive it? </Text>
+          <Pressable onPress={() => void handleResend()} disabled={busy}>
             <Text style={[ss.resendLink, busy && { opacity: 0.4 }]}>Resend</Text>
           </Pressable>
         </View>
@@ -157,47 +161,43 @@ export default function OtpScreen() {
 }
 
 const C = {
-  primary:     "#FF6B00",
-  bg:          "#FFFFFF",
-  text:        "#111111",
-  sub:         "#374151",
-  muted:       "#6B7280",
-  border:      "#E5E7EB",
-  error:       "#DC2626",
+  primary: "#FF6B00",
+  bg:      "#FFFFFF",
+  text:    "#111111",
+  sub:     "#374151",
+  muted:   "#6B7280",
+  border:  "#E5E7EB",
+  error:   "#DC2626",
 } as const;
 
 const ss = StyleSheet.create({
-  flex:           { flex: 1 },
-  bg:             { flex: 1, backgroundColor: C.bg },
-  scroll:         { paddingHorizontal: 24 },
-  backBtn:        { marginBottom: 24 },
-  backLabel:      { fontSize: 15, color: C.muted },
-  heading:        { fontSize: 26, fontWeight: "800", color: C.text, marginBottom: 8 },
-  sub:            { fontSize: 14, color: C.sub, marginBottom: 32, lineHeight: 22 },
-  phoneHighlight: { fontWeight: "700", color: C.text },
-
-  // OTP input (hidden real input + visible boxes overlay)
-  otpInputWrap: { marginBottom: 24 },
-  otpInput:     { position: "absolute", opacity: 0, width: "100%", height: 56 },
-  boxRow:       { flexDirection: "row", justifyContent: "space-between", gap: 8 },
-  box:          {
+  flex:            { flex: 1 },
+  bg:              { flex: 1, backgroundColor: C.bg },
+  scroll:          { paddingHorizontal: 24 },
+  backBtn:         { marginBottom: 24 },
+  backLabel:       { fontSize: 15, color: C.muted },
+  heading:         { fontSize: 26, fontWeight: "800", color: C.text, marginBottom: 8 },
+  sub:             { fontSize: 14, color: C.sub, marginBottom: 32, lineHeight: 22 },
+  phoneBold:       { fontWeight: "700", color: C.text },
+  otpWrap:         { marginBottom: 24 },
+  otpHidden:       { position: "absolute", opacity: 0, width: "100%", height: 56 },
+  boxRow:          { flexDirection: "row", justifyContent: "space-between", gap: 8 },
+  box:             {
     flex: 1, height: 56, borderRadius: 12,
     borderWidth: 1.5, borderColor: C.border,
     alignItems: "center", justifyContent: "center",
     backgroundColor: "#F9FAFB",
   },
-  boxFilled:    { borderColor: C.primary, backgroundColor: "#FFF3EC" },
-  boxDigit:     { fontSize: 22, fontWeight: "700", color: C.text },
-
-  errorText:      { color: C.error, fontSize: 13, marginBottom: 12 },
-  primaryBtn:     {
+  boxFilled:       { borderColor: C.primary, backgroundColor: "#FFF3EC" },
+  boxDigit:        { fontSize: 22, fontWeight: "700", color: C.text },
+  errorText:       { color: C.error, fontSize: 13, marginBottom: 12 },
+  primaryBtn:      {
     backgroundColor: C.primary, borderRadius: 14, height: 54,
     alignItems: "center", justifyContent: "center",
   },
-  btnDisabled:    { opacity: 0.4 },
+  btnDisabled:     { opacity: 0.4 },
   primaryBtnLabel: { color: "#fff", fontSize: 17, fontWeight: "700" },
-
-  resendRow:   { flexDirection: "row", justifyContent: "center", marginTop: 20, alignItems: "center" },
-  resendLabel: { fontSize: 14, color: C.muted },
-  resendLink:  { fontSize: 14, color: C.primary, fontWeight: "600" },
+  resendRow:       { flexDirection: "row", justifyContent: "center", marginTop: 20, alignItems: "center" },
+  resendLabel:     { fontSize: 14, color: C.muted },
+  resendLink:      { fontSize: 14, color: C.primary, fontWeight: "600" },
 });

@@ -1,9 +1,14 @@
 /**
- * forgot-pin.tsx — V3 Phase 10: Forgot PIN — Mobile Number Entry
+ * forgot-pin.tsx — V3 Phase 14: Forgot PIN — Phone Entry
  *
  * Responsibility (ONE):
- *   Collect the driver's phone number, send an OTP, and navigate to
- *   the OTP verification screen with intent=forgot.
+ *   Accept the driver's mobile number, send an OTP, store the phone in
+ *   the flow context, and navigate to OTP verification with intent=forgot.
+ *
+ * Pre-fills the phone field from the flow context if the driver arrived
+ * here from the PIN screen (phone was already entered on login.tsx).
+ *
+ * Unmount-safe: mountedRef prevents state updates after navigation.
  *
  * No B2 dependencies.
  */
@@ -23,31 +28,39 @@ import {
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { v3Store }   from "@/utils/auth-v3-store";
-import { v3SendOtp } from "@/utils/auth-v3-api";
+import { useV3Flow }  from "@/contexts/auth-v3/FlowContext";
+import { v3SendOtp }  from "@/utils/auth-v3-api";
 
 export default function ForgotPinScreen() {
-  const router   = useRouter();
-  const insets   = useSafeAreaInsets();
-  const inputRef = useRef<TextInput>(null);
+  const router     = useRouter();
+  const insets     = useSafeAreaInsets();
+  const inputRef   = useRef<TextInput>(null);
+  const mountedRef = useRef(true);
 
-  // Pre-fill phone from store in case the driver came from the PIN screen
-  const storedPhone = v3Store.get().phone;
-  const storedDigits = storedPhone.startsWith("+91") ? storedPhone.slice(3) : storedPhone;
+  const { flow, setPhone } = useV3Flow();
 
-  const [phone, setPhone] = useState(storedDigits);
-  const [error, setError] = useState("");
-  const [busy,  setBusy]  = useState(false);
+  // Pre-fill with the phone already in the flow context (from login.tsx).
+  const existingDigits = flow.phone.startsWith("+91") ? flow.phone.slice(3) : "";
+  const [digits, setDigits] = useState(existingDigits);
+  const [error,  setError]  = useState("");
+  const [busy,   setBusy]   = useState(false);
 
-  const canContinue = phone.length === 10;
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  const canContinue = digits.length === 10;
 
   const handleContinue = async () => {
     if (!canContinue || busy) return;
     setBusy(true);
     setError("");
 
-    const fullPhone = `+91${phone}`;
+    const fullPhone = `+91${digits}`;
     const result = await v3SendOtp(fullPhone);
+
+    if (!mountedRef.current) return;
     setBusy(false);
 
     if (!result.ok) {
@@ -55,8 +68,7 @@ export default function ForgotPinScreen() {
       return;
     }
 
-    v3Store.setPhone(fullPhone);
-    v3Store.setOtpId(result.otpId);
+    setPhone(fullPhone);
     router.push("/auth-v3/otp?intent=forgot");
   };
 
@@ -74,7 +86,7 @@ export default function ForgotPinScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Pressable style={ss.backBtn} onPress={() => router.back()}>
+        <Pressable style={ss.backBtn} onPress={() => router.back()} disabled={busy}>
           <Text style={ss.backLabel}>← Back</Text>
         </Pressable>
 
@@ -83,7 +95,7 @@ export default function ForgotPinScreen() {
           Enter your registered mobile number. We'll send you an OTP to reset your PIN.
         </Text>
 
-        <Text style={ss.fieldLabel}>Mobile Number</Text>
+        <Text style={ss.label}>Mobile Number</Text>
         <Pressable style={ss.phoneRow} onPress={() => inputRef.current?.focus()}>
           <View style={ss.prefix}>
             <Text style={ss.prefixText}>+91</Text>
@@ -91,18 +103,18 @@ export default function ForgotPinScreen() {
           <TextInput
             ref={inputRef}
             style={ss.phoneInput}
-            value={phone}
+            value={digits}
             onChangeText={(v) => {
               setError("");
-              setPhone(v.replace(/\D/g, "").slice(0, 10));
+              setDigits(v.replace(/\D/g, "").slice(0, 10));
             }}
             placeholder="10-digit number"
             placeholderTextColor={C.placeholder}
             keyboardType="number-pad"
             maxLength={10}
             returnKeyType="done"
-            onSubmitEditing={handleContinue}
-            autoFocus
+            onSubmitEditing={() => void handleContinue()}
+            autoFocus={!existingDigits}
           />
         </Pressable>
 
@@ -110,7 +122,7 @@ export default function ForgotPinScreen() {
 
         <Pressable
           style={[ss.primaryBtn, (!canContinue || busy) && ss.btnDisabled]}
-          onPress={handleContinue}
+          onPress={() => void handleContinue()}
           disabled={!canContinue || busy}
         >
           {busy
@@ -134,29 +146,29 @@ const C = {
 } as const;
 
 const ss = StyleSheet.create({
-  flex:         { flex: 1 },
-  bg:           { flex: 1, backgroundColor: C.bg },
-  scroll:       { paddingHorizontal: 24 },
-  backBtn:      { marginBottom: 24 },
-  backLabel:    { fontSize: 15, color: C.muted },
-  heading:      { fontSize: 26, fontWeight: "800", color: C.text, marginBottom: 8 },
-  sub:          { fontSize: 14, color: C.sub, marginBottom: 32, lineHeight: 20 },
-  fieldLabel:   { fontSize: 13, fontWeight: "600", color: C.text, marginBottom: 8 },
-  phoneRow:     {
+  flex:            { flex: 1 },
+  bg:              { flex: 1, backgroundColor: C.bg },
+  scroll:          { paddingHorizontal: 24 },
+  backBtn:         { marginBottom: 24 },
+  backLabel:       { fontSize: 15, color: C.muted },
+  heading:         { fontSize: 26, fontWeight: "800", color: C.text, marginBottom: 8 },
+  sub:             { fontSize: 14, color: C.sub, marginBottom: 32, lineHeight: 20 },
+  label:           { fontSize: 13, fontWeight: "600", color: C.text, marginBottom: 8 },
+  phoneRow:        {
     flexDirection: "row", borderWidth: 1.5, borderColor: C.border,
     borderRadius: 12, overflow: "hidden", marginBottom: 24, height: 52,
   },
-  prefix:       {
+  prefix:          {
     paddingHorizontal: 14, alignItems: "center", justifyContent: "center",
     backgroundColor: "#F9FAFB", borderRightWidth: 1, borderRightColor: C.border,
   },
-  prefixText:   { fontSize: 15, fontWeight: "600", color: C.text },
-  phoneInput:   { flex: 1, paddingHorizontal: 14, fontSize: 16, color: C.text },
-  errorText:    { fontSize: 13, color: C.error, marginBottom: 12 },
-  primaryBtn:   {
+  prefixText:      { fontSize: 15, fontWeight: "600", color: C.text },
+  phoneInput:      { flex: 1, paddingHorizontal: 14, fontSize: 16, color: C.text },
+  errorText:       { fontSize: 13, color: C.error, marginBottom: 12 },
+  primaryBtn:      {
     backgroundColor: C.primary, borderRadius: 14, height: 54,
     alignItems: "center", justifyContent: "center",
   },
-  btnDisabled:  { opacity: 0.4 },
+  btnDisabled:     { opacity: 0.4 },
   primaryBtnLabel: { color: "#fff", fontSize: 17, fontWeight: "700" },
 });

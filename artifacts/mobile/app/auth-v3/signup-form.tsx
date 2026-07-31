@@ -1,14 +1,16 @@
 /**
- * signup-form.tsx — V3 Phase 6: New Driver Signup Form
+ * signup-form.tsx — V3 Phase 10: New Driver Signup Form
  *
  * Responsibility (ONE):
  *   Collect new-driver profile data (name, phone, city, gender, vehicle),
- *   then send an OTP and navigate to the OTP verification screen.
+ *   send an OTP, store the data in flow context, and navigate to OTP screen.
+ *
+ * Unmount-safe: mountedRef guards state updates after async sendOTP call.
  *
  * No B2 dependencies.
  */
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -23,32 +25,37 @@ import {
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { v3Store }   from "@/utils/auth-v3-store";
-import { v3SendOtp } from "@/utils/auth-v3-api";
-import { V3_VEHICLES } from "@/utils/auth-v3-api";
+import { useV3Flow }  from "@/contexts/auth-v3/FlowContext";
+import { v3SendOtp, V3_VEHICLES } from "@/utils/auth-v3-api";
 
 const GENDERS = ["Male", "Female", "Other"] as const;
 
 export default function SignupFormScreen() {
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const router      = useRouter();
+  const insets      = useSafeAreaInsets();
+  const { setPhone, setSignup } = useV3Flow();
+  const mountedRef  = useRef(true);
 
   const [name,          setName]          = useState("");
   const [city,          setCity]          = useState("");
-  const [phone,         setPhone]         = useState("");
-  const [gender,        setGender]        = useState<string>("");
+  const [digits,        setDigits]        = useState("");
+  const [gender,        setGender]        = useState("");
   const [vehicleId,     setVehicleId]     = useState("");
   const [vehicleName,   setVehicleName]   = useState("");
   const [licenseNumber, setLicenseNumber] = useState("");
   const [vehicleNumber, setVehicleNumber] = useState("");
+  const [error,         setError]         = useState("");
+  const [busy,          setBusy]          = useState(false);
 
-  const [error, setError] = useState("");
-  const [busy,  setBusy]  = useState(false);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const canSubmit =
     name.trim().length > 0 &&
     city.trim().length > 0 &&
-    phone.length === 10 &&
+    digits.length === 10 &&
     gender.length > 0 &&
     vehicleId.length > 0;
 
@@ -57,19 +64,19 @@ export default function SignupFormScreen() {
     setBusy(true);
     setError("");
 
-    const fullPhone = `+91${phone}`;
-
+    const fullPhone = `+91${digits}`;
     const result = await v3SendOtp(fullPhone);
+
+    if (!mountedRef.current) return;
     setBusy(false);
+
     if (!result.ok) {
       setError(result.error);
       return;
     }
 
-    // Save to store so downstream screens can access them
-    v3Store.setPhone(fullPhone);
-    v3Store.setOtpId(result.otpId);
-    v3Store.setSignup({
+    setPhone(fullPhone);
+    setSignup({
       name:          name.trim(),
       city:          city.trim(),
       gender,
@@ -96,14 +103,13 @@ export default function SignupFormScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Pressable style={ss.backBtn} onPress={() => router.back()}>
+        <Pressable style={ss.backBtn} onPress={() => router.back()} disabled={busy}>
           <Text style={ss.backLabel}>← Back</Text>
         </Pressable>
 
         <Text style={ss.heading}>Create Account</Text>
         <Text style={ss.sub}>Fill in your details to get started.</Text>
 
-        {/* Full Name */}
         <Text style={ss.label}>Full Name</Text>
         <TextInput
           style={ss.input}
@@ -115,7 +121,6 @@ export default function SignupFormScreen() {
           editable={!busy}
         />
 
-        {/* City */}
         <Text style={ss.label}>City</Text>
         <TextInput
           style={ss.input}
@@ -127,7 +132,6 @@ export default function SignupFormScreen() {
           editable={!busy}
         />
 
-        {/* Mobile */}
         <Text style={ss.label}>Mobile Number</Text>
         <View style={ss.phoneRow}>
           <View style={ss.prefix}>
@@ -135,10 +139,10 @@ export default function SignupFormScreen() {
           </View>
           <TextInput
             style={ss.phoneInput}
-            value={phone}
+            value={digits}
             onChangeText={(v) => {
               setError("");
-              setPhone(v.replace(/\D/g, "").slice(0, 10));
+              setDigits(v.replace(/\D/g, "").slice(0, 10));
             }}
             placeholder="10-digit number"
             placeholderTextColor={C.placeholder}
@@ -148,7 +152,6 @@ export default function SignupFormScreen() {
           />
         </View>
 
-        {/* Gender */}
         <Text style={ss.label}>Gender</Text>
         <View style={ss.chipRow}>
           {GENDERS.map((g) => (
@@ -158,18 +161,17 @@ export default function SignupFormScreen() {
               onPress={() => { setError(""); setGender(g); }}
               disabled={busy}
             >
-              <Text style={[ss.chipLabel, gender === g && ss.chipLabelSelected]}>{g}</Text>
+              <Text style={[ss.chipLabel, gender === g && ss.chipLabelOn]}>{g}</Text>
             </Pressable>
           ))}
         </View>
 
-        {/* Vehicle Type */}
         <Text style={ss.label}>Vehicle Type</Text>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           style={ss.vehicleScroll}
-          contentContainerStyle={{ gap: 8 }}
+          contentContainerStyle={{ gap: 8, paddingRight: 24 }}
         >
           {V3_VEHICLES.map((v) => (
             <Pressable
@@ -182,14 +184,13 @@ export default function SignupFormScreen() {
               }}
               disabled={busy}
             >
-              <Text style={[ss.chipLabel, vehicleId === v.id && ss.chipLabelSelected]}>
+              <Text style={[ss.chipLabel, vehicleId === v.id && ss.chipLabelOn]}>
                 {v.name}
               </Text>
             </Pressable>
           ))}
         </ScrollView>
 
-        {/* Optional */}
         <Text style={ss.label}>
           License Number <Text style={ss.optional}>(optional)</Text>
         </Text>
@@ -220,7 +221,7 @@ export default function SignupFormScreen() {
 
         <Pressable
           style={[ss.primaryBtn, (!canSubmit || busy) && ss.btnDisabled]}
-          onPress={handleContinue}
+          onPress={() => void handleContinue()}
           disabled={!canSubmit || busy}
         >
           {busy
@@ -268,15 +269,14 @@ const ss = StyleSheet.create({
   prefixText:      { fontSize: 15, fontWeight: "600", color: C.text },
   phoneInput:      { flex: 1, paddingHorizontal: 14, fontSize: 15, color: C.text },
   chipRow:         { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
-  vehicleScroll:   { marginTop: 4, marginBottom: 4 },
+  vehicleScroll:   { marginTop: 4 },
   chip:            {
-    paddingHorizontal: 16, paddingVertical: 9,
-    borderRadius: 20, borderWidth: 1.5, borderColor: C.border,
-    backgroundColor: "#F9FAFB",
+    paddingHorizontal: 16, paddingVertical: 9, borderRadius: 20,
+    borderWidth: 1.5, borderColor: C.border, backgroundColor: "#F9FAFB",
   },
   chipSelected:    { borderColor: C.primary, backgroundColor: "#FFF3EC" },
   chipLabel:       { fontSize: 13, fontWeight: "500", color: C.sub },
-  chipLabelSelected: { color: C.primary, fontWeight: "700" },
+  chipLabelOn:     { color: C.primary, fontWeight: "700" },
   errorText:       { color: C.error, fontSize: 13, marginTop: 16, marginBottom: 4 },
   primaryBtn:      {
     backgroundColor: C.primary, borderRadius: 14, height: 54,

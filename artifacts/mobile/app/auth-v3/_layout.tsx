@@ -1,23 +1,28 @@
 /**
- * Authentication V3 — Stack Navigator
+ * Authentication V3 — Stack Navigator + Flow State Provider
  *
- * This layout owns all V3 auth screens. It is completely independent from
- * the main app's navigation — it is a self-contained mini-application.
+ * Provides the V3FlowContext to every screen in the auth stack so that
+ * transient flow state (phone, tokens, PIN, signup data) is shared cleanly
+ * without module-level singletons.
  *
- * Screens under this layout are exempted from B2's root guard via the
- * pathname.startsWith("/auth-v3") check in app/_layout.tsx.
+ * The context is automatically cleared when the user exits the V3 stack.
+ *
+ * No B2 dependencies.
  */
 
 import { Stack } from "expo-router";
+import { V3FlowProvider } from "@/contexts/auth-v3/FlowContext";
 
 export default function AuthV3Layout() {
   return (
-    <Stack
-      screenOptions={{
-        headerShown:  false,
-        animation:    "slide_from_right",
-        gestureEnabled: true,
-      }}
-    />
+    <V3FlowProvider>
+      <Stack
+        screenOptions={{
+          headerShown:    false,
+          animation:      "slide_from_right",
+          gestureEnabled: true,
+        }}
+      />
+    </V3FlowProvider>
   );
 }

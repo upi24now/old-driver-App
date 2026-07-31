@@ -1,14 +1,21 @@
 /**
- * pin.tsx — V3 Phase 5: PIN Entry Screen
+ * pin.tsx — V3 Phase 9: PIN Entry Screen
  *
  * Responsibility (ONE):
- *   Accept the driver's 6-digit PIN, verify it against the backend,
- *   sign in with Firebase, save the V3 session, and navigate to Home.
+ *   Accept the 6-digit PIN, verify it against the backend, sign in with
+ *   Firebase, save the V3 session, and navigate to Home.
+ *
+ * Auto-submit: when the 6th digit is entered, doLogin() is called immediately
+ * with the completed PIN passed as a direct argument (no stale-closure risk,
+ * no arbitrary setTimeout).
+ *
+ * Unmount-safe: the busy flag prevents double-submission; the mountedRef
+ * prevents state updates after the component has unmounted.
  *
  * No B2 dependencies.
  */
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -20,33 +27,35 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { signInWithCustomToken } from "firebase/auth";
 
-import { NumPad }       from "@/components/auth-v3/NumPad";
-import { PinDots }      from "@/components/auth-v3/PinDots";
-import { v3Store }      from "@/utils/auth-v3-store";
-import { v3VerifyPin }  from "@/utils/auth-v3-api";
+import { NumPad }        from "@/components/auth-v3/NumPad";
+import { PinDots }       from "@/components/auth-v3/PinDots";
+import { useV3Flow }     from "@/contexts/auth-v3/FlowContext";
+import { v3VerifyPin }   from "@/utils/auth-v3-api";
 import { saveV3Session } from "@/utils/auth-v3-session";
-import { firebaseAuth } from "@/utils/firebase";
+import { firebaseAuth }  from "@/utils/firebase";
 
 const PIN_LENGTH = 6;
 
 export default function PinScreen() {
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const router      = useRouter();
+  const insets      = useSafeAreaInsets();
+  const { flow }    = useV3Flow();
+  const mountedRef  = useRef(true);
 
   const [pin,   setPin]   = useState("");
   const [error, setError] = useState("");
   const [busy,  setBusy]  = useState(false);
 
-  const phone = v3Store.get().phone; // set by login.tsx
-
-  // Auto-submit when PIN is complete. `nextPin` passed directly to avoid
-  // stale-closure on the state update.
-  const handleLogin = async (completedPin: string) => {
-    if (busy || completedPin.length !== PIN_LENGTH) return;
+  // Passed as a direct argument from onDigit so we never read stale `pin` state.
+  const doLogin = async (completedPin: string) => {
+    if (busy) return;
     setBusy(true);
     setError("");
 
-    const result = await v3VerifyPin(phone, completedPin);
+    const result = await v3VerifyPin(flow.phone, completedPin);
+
+    if (!mountedRef.current) return;
+
     if (!result.ok) {
       setBusy(false);
       setError(result.error);
@@ -56,10 +65,11 @@ export default function PinScreen() {
 
     try {
       const cred = await signInWithCustomToken(firebaseAuth, result.token);
-      await saveV3Session(cred.user.uid, phone);
-      v3Store.clear();
+      if (!mountedRef.current) return;
+      await saveV3Session(cred.user.uid, flow.phone);
       router.replace("/auth-v3/home");
     } catch {
+      if (!mountedRef.current) return;
       setBusy(false);
       setError("Sign-in failed. Please try again.");
       setPin("");
@@ -68,12 +78,11 @@ export default function PinScreen() {
 
   const onDigit = (d: string) => {
     if (busy || pin.length >= PIN_LENGTH) return;
-    const next = pin + d;
     setError("");
+    const next = pin + d;
     setPin(next);
-    if (next.length === PIN_LENGTH) {
-      setTimeout(() => handleLogin(next), 80);
-    }
+    // Call directly with the computed value — no setTimeout, no stale closure.
+    if (next.length === PIN_LENGTH) void doLogin(next);
   };
 
   const onDelete = () => {
@@ -82,24 +91,26 @@ export default function PinScreen() {
     setPin((p) => p.slice(0, -1));
   };
 
+  // Cleanup on unmount
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   return (
     <View style={[ss.flex, ss.bg, { paddingTop: insets.top }]}>
-      {/* Header */}
       <View style={ss.header}>
-        <Pressable style={ss.backBtn} onPress={() => router.back()}>
+        <Pressable style={ss.backBtn} onPress={() => router.back()} disabled={busy}>
           <Text style={ss.backLabel}>← Back</Text>
         </Pressable>
         <Text style={ss.heading}>Enter PIN</Text>
-        <Text style={ss.sub}>{phone}</Text>
+        <Text style={ss.sub}>{flow.phone}</Text>
       </View>
 
-      {/* PIN dots */}
       <PinDots length={PIN_LENGTH} filled={pin.length} error={!!error} />
 
-      {/* Error */}
       {!!error && <Text style={ss.errorText}>{error}</Text>}
 
-      {/* Numpad */}
       <View style={ss.padWrap}>
         <NumPad
           onDigit={onDigit}
@@ -108,21 +119,18 @@ export default function PinScreen() {
         />
       </View>
 
-      {/* Submit + Forgot PIN */}
       <View style={[ss.footer, { paddingBottom: Math.max(insets.bottom, 24) }]}>
         <Pressable
           style={ss.forgotLink}
-          onPress={() => {
-            v3Store.setPhone(phone); // ensure phone is in store
-            router.push("/auth-v3/forgot-pin");
-          }}
+          onPress={() => router.push("/auth-v3/forgot-pin")}
+          disabled={busy}
         >
           <Text style={ss.forgotLabel}>Forgot PIN?</Text>
         </Pressable>
 
         <Pressable
           style={[ss.primaryBtn, (busy || pin.length !== PIN_LENGTH) && ss.btnDisabled]}
-          onPress={() => handleLogin(pin)}
+          onPress={() => void doLogin(pin)}
           disabled={busy || pin.length !== PIN_LENGTH}
         >
           {busy
@@ -144,22 +152,22 @@ const C = {
 } as const;
 
 const ss = StyleSheet.create({
-  flex:           { flex: 1 },
-  bg:             { backgroundColor: C.bg },
-  header:         { paddingHorizontal: 24, paddingBottom: 8 },
-  backBtn:        { marginBottom: 20 },
-  backLabel:      { fontSize: 15, color: C.muted },
-  heading:        { fontSize: 26, fontWeight: "800", color: C.text, marginBottom: 4 },
-  sub:            { fontSize: 14, color: C.sub },
-  errorText:      { textAlign: "center", color: C.error, fontSize: 13, marginTop: -8, marginBottom: 8 },
-  padWrap:        { flex: 1, justifyContent: "center", paddingVertical: 8 },
-  footer:         { paddingHorizontal: 24, gap: 12 },
-  forgotLink:     { alignSelf: "center", paddingVertical: 4 },
-  forgotLabel:    { color: C.primary, fontSize: 14, fontWeight: "600" },
-  primaryBtn:     {
+  flex:            { flex: 1 },
+  bg:              { backgroundColor: C.bg },
+  header:          { paddingHorizontal: 24, paddingBottom: 8 },
+  backBtn:         { marginBottom: 20 },
+  backLabel:       { fontSize: 15, color: C.muted },
+  heading:         { fontSize: 26, fontWeight: "800", color: C.text, marginBottom: 4 },
+  sub:             { fontSize: 14, color: C.sub },
+  errorText:       { textAlign: "center", color: C.error, fontSize: 13, marginVertical: 4 },
+  padWrap:         { flex: 1, justifyContent: "center", paddingVertical: 8 },
+  footer:          { paddingHorizontal: 24, gap: 12 },
+  forgotLink:      { alignSelf: "center", paddingVertical: 4 },
+  forgotLabel:     { color: C.primary, fontSize: 14, fontWeight: "600" },
+  primaryBtn:      {
     backgroundColor: C.primary, borderRadius: 14, height: 54,
     alignItems: "center", justifyContent: "center",
   },
-  btnDisabled:    { opacity: 0.4 },
+  btnDisabled:     { opacity: 0.4 },
   primaryBtnLabel: { color: "#fff", fontSize: 17, fontWeight: "700" },
 });
