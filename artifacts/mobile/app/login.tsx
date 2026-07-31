@@ -503,46 +503,38 @@ export default function LoginScreen() {
     transitionTo("login");
   }
 
-  // ── Verify PIN (daily login) ──────────────────────────────────────────────
-  async function handleConfirmPin(code: string) {
-    if (verifyingPin || code.length !== PIN_LENGTH || !isValid) return;
-    console.log("[FLOW] login: PIN submitted — phone digits:", digits.length);
-    setVerifyingPin(true);
-    setPinErr("");
-
-    const result = await confirmPin(digits, code);
-    console.log("[FLOW] login: verify-pin result — ok:", result.ok, "| pinNotFound:", result.pinNotFound ?? false, "| error:", result.error ?? "none");
-
-    setVerifyingPin(false);
-
-    if (!result.ok) {
-      setPin("");
-      // No PIN set for this number yet → surface a small dialog instead of
-      // silently bouncing back to login. "Set PIN" starts the first-time
-      // OTP → Create PIN flow; "Cancel" leaves the driver on the login screen.
-      // The verify-pin 404 response alone drives this branch (no anonymous
-      // "does a PIN exist?" lookup is made).
-      if (result.pinNotFound) {
-        console.log("[FLOW] login: pinNotFound branch → show 'No PIN found' dialog");
-        Alert.alert(
-          "No PIN found",
-          "This mobile number is not registered for PIN login yet.",
-          [
-            { text: "Cancel", style: "cancel" },
-            { text: "Set PIN", onPress: () => startOtpFlow("setup") },
-          ],
-        );
-        return;
-      }
-      setPinErr(result.error ?? "Incorrect PIN. Please try again.");
-      setTimeout(() => pinRef.current?.focus(), 100);
-      return;
-    }
-
-    const nextRoute = result.nextRoute ?? (result.profileComplete ? "/(tabs)" : "/registration");
-    console.log("[RUNTIME_NAVIGATION_20260730] login.tsx | handleConfirmPin | destination:", nextRoute);
-    router.replace(nextRoute as never);
-  }
+  // TEMPORARILY DISABLED — OTP-only login during stabilization phase.
+  // handleConfirmPin called verify-pin API (POST /api/v2/auth/verify-pin).
+  // This screen is no longer the daily login entry point (_layout.tsx now routes
+  // unauthenticated drivers to /login-v2 which uses OTP-only flow).
+  // Kept for reference; restore by un-commenting and re-routing /login in _layout.tsx.
+  //
+  // async function handleConfirmPin(code: string) {
+  //   if (verifyingPin || code.length !== PIN_LENGTH || !isValid) return;
+  //   console.log("[FLOW] login: PIN submitted — phone digits:", digits.length);
+  //   setVerifyingPin(true);
+  //   setPinErr("");
+  //   const result = await confirmPin(digits, code);
+  //   console.log("[FLOW] login: verify-pin result — ok:", result.ok, "| pinNotFound:", result.pinNotFound ?? false, "| error:", result.error ?? "none");
+  //   setVerifyingPin(false);
+  //   if (!result.ok) {
+  //     setPin("");
+  //     if (result.pinNotFound) {
+  //       console.log("[FLOW] login: pinNotFound branch → show 'No PIN found' dialog");
+  //       Alert.alert("No PIN found", "This mobile number is not registered for PIN login yet.", [
+  //         { text: "Cancel", style: "cancel" },
+  //         { text: "Set PIN", onPress: () => startOtpFlow("setup") },
+  //       ]);
+  //       return;
+  //     }
+  //     setPinErr(result.error ?? "Incorrect PIN. Please try again.");
+  //     setTimeout(() => pinRef.current?.focus(), 100);
+  //     return;
+  //   }
+  //   const nextRoute = result.nextRoute ?? (result.profileComplete ? "/(tabs)" : "/registration");
+  //   console.log("[RUNTIME_NAVIGATION_20260730] login.tsx | handleConfirmPin | destination:", nextRoute);
+  //   router.replace(nextRoute as never);
+  // }
 
   // ── Send OTP ──────────────────────────────────────────────────────────────
   async function handleSendOtp() {
@@ -597,11 +589,11 @@ export default function LoginScreen() {
     setVerifying(true);
     setOtpErr("");
 
-    // "forgot" → Firebase-only sign-in (pinSetupOnly=true), full session deferred
-    //            until after the new PIN is saved on /create-pin.
-    // "setup"  → full session (pinSetupOnly=false): profile fetch + routing
-    //            goes directly to Home / onboarding (no PIN creation step).
-    const isForgotFlow = otpIntent === "forgot";
+    // TEMPORARILY DISABLED — OTP-only login during stabilization phase.
+    // isForgotFlow is forced to false so all OTP verifications use the full
+    // session path (pinSetupOnly=false → establishSession → home/onboarding).
+    // Original: const isForgotFlow = otpIntent === "forgot";
+    const isForgotFlow = false; // OTP-only login: always use full session
     console.log("[OTP_VERIFY_SUCCESS] calling confirmOtp — isForgotFlow:", isForgotFlow, "| otpIntent:", otpIntent);
     // ── [FP_TRACE] Step 5: about to call confirmOtp ───────────────────────────
     console.log(`[FP_TRACE][HANDLE_VERIFY] calling confirmOtp ts=${Date.now()} isForgotFlow=${isForgotFlow}`);
@@ -624,18 +616,17 @@ export default function LoginScreen() {
 
     setVerifying(false);
 
+    // TEMPORARILY DISABLED — OTP-only login during stabilization phase.
+    // Forgot-PIN path routed to /create-pin?intent=reset (PIN reset screen).
+    // With OTP-only login active, isForgotFlow is always false (see line below),
+    // so this branch never executes. Kept for future re-enable.
     if (isForgotFlow) {
-      // ── Forgot-PIN path ────────────────────────────────────────────────────
-      // OTP authorized the PIN reset. No full session exists yet — the driver
-      // must set a new PIN on /create-pin before /drivers/me is called.
-      // ── [PIN_FLOW_DECISION] ───────────────────────────────────────────────
-      console.log("[PIN_FLOW_DECISION] otpIntent:", otpIntent, "| hasPin: unknown (no status check) | pinSetupInProgress: true | targetRoute: /create-pin?intent=reset | reason: forgot-PIN requires PIN reset before session");
-      console.log("[RUNTIME_NAVIGATION_20260730] login.tsx | handleVerify | forgot branch | destination: /create-pin?intent=reset");
-      // ── [FP_TRACE] Step 10/11: router.replace for forgot-PIN ──────────────
-      console.log(`[FP_TRACE][HANDLE_VERIFY] FORGOT BRANCH — calling router.replace("/create-pin?intent=reset") ts=${Date.now()}`);
-      router.replace("/create-pin?intent=reset" as never);
-      console.log(`[FP_TRACE][HANDLE_VERIFY] router.replace CALLED (synchronous call complete) ts=${Date.now()} — if create-pin does NOT appear, _layout.tsx effect redirected AFTER this point`);
-    } else {
+      // OTP-only login: isForgotFlow is always false — this block is unreachable.
+      // Original forgot-PIN routing (restore when PIN is re-enabled):
+      // router.replace("/create-pin?intent=reset" as never);
+      console.log("[OTP_ONLY] forgot-PIN path reached unexpectedly — falling through to normal login");
+    }
+    if (!isForgotFlow) {
       // ── Normal OTP login path ──────────────────────────────────────────────
       // Full session already established by confirmOtp (establishSession called).
       // Route to the profile-derived destination — Home or next onboarding step.
@@ -744,97 +735,19 @@ export default function LoginScreen() {
               </Pressable>
             </View>
 
-            {/* ── PIN card ── */}
+            {/* ── TEMPORARILY DISABLED — OTP-only login during stabilization phase. ── */}
+            {/* PIN card, Log In button, and Forgot PIN link are hidden.             */}
+            {/* Restore by uncommenting this block and restoring _layout.tsx routing */}
+            {/* to "/login" and un-commenting handleConfirmPin above.                */}
+            {/*
             <View style={ss.floatCard}>
               <Text style={ss.cardLabelText}>6-digit PIN</Text>
-
-              <Pressable onPress={() => pinRef.current?.focus()} style={ss.pinCellsRow}>
-                {pinDigits.map((d, i) => {
-                  const isFilled = i < pin.length;
-                  const isActive = i === pin.length && !verifyingPin && isValid;
-                  const hasError = !!pinErr;
-                  return (
-                    <View
-                      key={i}
-                      style={[
-                        ss.pinCellShell,
-                        {
-                          borderColor:     hasError ? D.error : isActive ? D.primary : D.inputBorder,
-                          borderWidth:     isActive || hasError ? 2 : 1,
-                          backgroundColor: isActive ? D.primarySoft : D.white,
-                        },
-                        isActive && ss.pinCellActiveGlow,
-                      ]}
-                    >
-                      {isFilled ? (
-                        <Text style={[ss.pinDot, { color: D.navy }]}>●</Text>
-                      ) : isActive ? (
-                        <Text style={ss.pinCursor}>|</Text>
-                      ) : null}
-                    </View>
-                  );
-                })}
-              </Pressable>
-
-              {/* Hidden PIN input */}
-              <TextInput
-                ref={pinRef}
-                value={pin}
-                onChangeText={(t) => {
-                  if (verifyingPin) return;
-                  setPinErr("");
-                  const cleaned = t.replace(/\D/g, "").slice(0, PIN_LENGTH);
-                  setPin(cleaned);
-                  if (cleaned.length === PIN_LENGTH && isValid) void handleConfirmPin(cleaned);
-                }}
-                keyboardType="number-pad"
-                maxLength={PIN_LENGTH}
-                secureTextEntry
-                style={ss.hiddenInput}
-                caretHidden
-                selectionColor="transparent"
-                underlineColorAndroid="transparent"
-                autoComplete="off"
-                textContentType="none"
-                importantForAutofill="no"
-                autoCorrect={false}
-              />
-
-              {!!pinErr && (
-                <View style={ss.errorRow}>
-                  <Feather name="alert-circle" size={13} color={D.error} />
-                  <Text style={ss.errorText}>{pinErr}</Text>
-                </View>
-              )}
+              ... PIN card contents ...
             </View>
+            <TouchableOpacity ... Log In button ... />
+            */}
 
-            {/* ── Log In button ── */}
-            <TouchableOpacity
-              style={ss.loginBtnWrap}
-              onPress={() => void handleConfirmPin(pin)}
-              activeOpacity={0.9}
-              disabled={!isValid || pin.length < PIN_LENGTH || verifyingPin}
-            >
-              <LinearGradient
-                colors={((!isValid || pin.length < PIN_LENGTH) ? ["#E7E9EE", "#E7E9EE"] : ["#FF8A00", "#FF6A00"]) as readonly [string, string]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0, y: 1 }}
-                style={ss.loginBtn}
-              >
-                {verifyingPin ? (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                    <ActivityIndicator size="small" color={D.white} />
-                    <Text style={ss.loginBtnText}>Logging in...</Text>
-                  </View>
-                ) : (
-                  <Text style={[ss.loginBtnText, (!isValid || pin.length < PIN_LENGTH) && ss.loginBtnTextDisabled]}>
-                    Log In
-                  </Text>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-
-            {/* ── New User Sign Up (left) / Forgot PIN (right) — two small tabs ── */}
+            {/* ── New User Sign Up — OTP-only login ── */}
             <View style={ss.bottomBlock}>
               <View style={ss.authLinksRow}>
                 <TouchableOpacity
@@ -842,15 +755,13 @@ export default function LoginScreen() {
                   activeOpacity={0.7}
                   hitSlop={8}
                 >
-                  <Text style={ss.authLink}>New User Sign Up</Text>
+                  <Text style={ss.authLink}>Log In with OTP</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => startOtpFlow("forgot")}
-                  activeOpacity={0.7}
-                  hitSlop={8}
-                >
+                {/* TEMPORARILY DISABLED — OTP-only login during stabilization phase.
+                <TouchableOpacity onPress={() => startOtpFlow("forgot")} activeOpacity={0.7} hitSlop={8}>
                   <Text style={ss.authLink}>Forgot PIN</Text>
                 </TouchableOpacity>
+                */}
               </View>
 
               {/* ── [DEV] Try V2 login — __DEV__ only, never shown in production ── */}

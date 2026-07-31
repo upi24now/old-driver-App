@@ -28,7 +28,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { sendOtpV2 } from "@/utils/auth-v2-api";
 import { AuthV2Store } from "@/utils/auth-v2-store";
-import { useDriver } from "@/contexts/DriverContext";
+// TEMPORARILY DISABLED — OTP-only login during stabilization phase.
+// confirmPin removed from useDriver import; PIN phase bypassed entirely.
+// import { useDriver } from "@/contexts/DriverContext";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const D = {
@@ -49,28 +51,37 @@ export default function LoginV2() {
   const router  = useRouter();
   const insets  = useSafeAreaInsets();
   const { phase: phaseParam } = useLocalSearchParams<{ phase?: string }>();
-  const { confirmPin } = useDriver();
 
-  // Initialise phase from URL param so screen works when navigated to with ?phase=pin
-  const [phase, setPhase] = useState<"phone" | "pin">(
-    phaseParam === "pin" ? "pin" : "phone",
-  );
+  // TEMPORARILY DISABLED — OTP-only login during stabilization phase.
+  // confirmPin is unused while PIN phase is bypassed.
+  // const { confirmPin } = useDriver();
+
+  // phase is always "phone" — "pin" phase is unreachable while PIN bypass is active.
+  // Kept for future re-enable; phaseParam is still read so the screen gracefully
+  // ignores any stale ?phase=pin URL that might arrive.
+  const [phase, setPhase] = useState<"phone" | "pin">("phone");
   const [phoneDigits, setPhoneDigits] = useState(
     AuthV2Store.getPhone().replace(/^\+91/, ""),
   );
+  // TEMPORARILY DISABLED — OTP-only login during stabilization phase.
+  // PIN state kept for future re-enable.
   const [pin,   setPin]   = useState("");
   const [busy,  setBusy]  = useState(false);
   const [error, setError] = useState("");
 
   const pinRef = useRef<TextInput>(null);
 
-  // Handle navigate-back to same screen with ?phase=pin (URL param change without remount)
+  // TEMPORARILY DISABLED — OTP-only login during stabilization phase.
+  // ?phase=pin navigation is commented out in verify-otp-v2.tsx; this effect
+  // is kept but will never fire while PIN bypass is active.
   useEffect(() => {
     if (phaseParam === "pin") {
-      setPhase("pin");
-      setPin("");
-      setError("");
-      setTimeout(() => pinRef.current?.focus(), 250);
+      // OTP-only login: ignore ?phase=pin — PIN phase is disabled.
+      // setPhase("pin");
+      // setPin("");
+      // setError("");
+      // setTimeout(() => pinRef.current?.focus(), 250);
+      console.log("[OTP_ONLY] login-v2: ?phase=pin received but PIN phase is disabled (OTP-only mode)");
     }
   }, [phaseParam]);
 
@@ -98,95 +109,76 @@ export default function LoginV2() {
     router.push("/verify-otp-v2?intent=login" as never);
   }
 
-  // ── PIN phase ────────────────────────────────────────────────────────────────
-  async function handleVerifyPin(value: string) {
-    if (value.length !== PIN_LEN || busy) return;
-    Keyboard.dismiss();
-    setBusy(true);
-    setError("");
-    console.log("[V2_LOGIN] verifying PIN for phone:", AuthV2Store.getPhone().slice(0, 5) + "…");
-
-    const result = await confirmPin(AuthV2Store.getPhone(), value);
-    setBusy(false);
-
-    if (!result.ok) {
-      setPin("");
-      if (result.pinNotFound) {
-        console.log("[V2_LOGIN] pinNotFound → create-pin-v2?intent=setup");
-        router.replace("/create-pin-v2?intent=setup" as never);
-        return;
-      }
-      console.log("[V2_LOGIN] PIN verify failed:", result.error);
-      setError(result.error ?? "Invalid PIN. Please try again.");
-      return;
-    }
-    // DriverContext.confirmPin navigates automatically on success
-    console.log("[V2_LOGIN_SUCCESS] confirmPin OK — DriverContext navigating");
-  }
-
-  function handlePinChange(v: string) {
-    const digits = v.replace(/\D/g, "").slice(0, PIN_LEN);
-    setPin(digits);
-    setError("");
-    if (digits.length === PIN_LEN) handleVerifyPin(digits);
-  }
-
-  // ── PIN phase UI ─────────────────────────────────────────────────────────────
-  if (phase === "pin") {
-    const phone    = AuthV2Store.getPhone();
-    const display  = phone.length >= 12
-      ? `+91 ${phone.slice(3, 8)} ${phone.slice(8)}`
-      : phone;
-
-    return (
-      <KeyboardAvoidingView
-        style={ss.flex}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-      >
-        <View style={[ss.root, { paddingTop: insets.top + 32, paddingBottom: insets.bottom + 24 }]}>
-          <View style={ss.content}>
-            <Text style={ss.title}>Enter Your PIN</Text>
-            <Text style={ss.sub}>{display}</Text>
-
-            <View style={ss.pinRow}>
-              {Array.from({ length: PIN_LEN }, (_, i) => (
-                <View key={i} style={[ss.pinCell, pin[i] ? ss.pinFilled : null]}>
-                  <Text style={ss.pinDot}>{pin[i] ? "●" : ""}</Text>
-                </View>
-              ))}
-            </View>
-
-            {/* Hidden input captures keypad */}
-            <TextInput
-              ref={pinRef}
-              value={pin}
-              onChangeText={handlePinChange}
-              keyboardType="number-pad"
-              secureTextEntry
-              maxLength={PIN_LEN}
-              style={ss.hidden}
-              autoFocus
-              editable={!busy}
-            />
-
-            {busy && <ActivityIndicator color={D.primary} style={ss.loader} />}
-            {!!error && <Text style={ss.errText}>{error}</Text>}
-
-            <Pressable style={ss.forgotBtn} onPress={() => router.push("/forgot-pin-v2" as never)}>
-              <Text style={ss.forgotText}>Forgot PIN?</Text>
-            </Pressable>
-
-            <Pressable
-              style={ss.linkBtn}
-              onPress={() => { setPhase("phone"); setPin(""); setError(""); }}
-            >
-              <Text style={ss.linkText}>← Change Number</Text>
-            </Pressable>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    );
-  }
+  // TEMPORARILY DISABLED — OTP-only login during stabilization phase.
+  // PIN verify API (POST /api/v2/auth/verify-pin) is not called while PIN bypass is active.
+  // Restore by uncommenting handleVerifyPin, handlePinChange, and the phase === "pin" UI block,
+  // and by restoring the verify-otp-v2.tsx PIN routing and the confirmPin import above.
+  //
+  // async function handleVerifyPin(value: string) {
+  //   if (value.length !== PIN_LEN || busy) return;
+  //   Keyboard.dismiss();
+  //   setBusy(true);
+  //   setError("");
+  //   console.log("[V2_LOGIN] verifying PIN for phone:", AuthV2Store.getPhone().slice(0, 5) + "…");
+  //   const result = await confirmPin(AuthV2Store.getPhone(), value);
+  //   setBusy(false);
+  //   if (!result.ok) {
+  //     setPin("");
+  //     if (result.pinNotFound) {
+  //       console.log("[V2_LOGIN] pinNotFound → create-pin-v2?intent=setup");
+  //       router.replace("/create-pin-v2?intent=setup" as never);
+  //       return;
+  //     }
+  //     console.log("[V2_LOGIN] PIN verify failed:", result.error);
+  //     setError(result.error ?? "Invalid PIN. Please try again.");
+  //     return;
+  //   }
+  //   console.log("[V2_LOGIN_SUCCESS] confirmPin OK — DriverContext navigating");
+  // }
+  //
+  // function handlePinChange(v: string) {
+  //   const digits = v.replace(/\D/g, "").slice(0, PIN_LEN);
+  //   setPin(digits);
+  //   setError("");
+  //   if (digits.length === PIN_LEN) handleVerifyPin(digits);
+  // }
+  //
+  // ── PIN phase UI (TEMPORARILY DISABLED) ──────────────────────────────────────
+  // OTP-only login: phase is always "phone"; this block never renders.
+  // if (phase === "pin") {
+  //   const phone    = AuthV2Store.getPhone();
+  //   const display  = phone.length >= 12
+  //     ? `+91 ${phone.slice(3, 8)} ${phone.slice(8)}`
+  //     : phone;
+  //   return (
+  //     <KeyboardAvoidingView style={ss.flex} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+  //       <View style={[ss.root, { paddingTop: insets.top + 32, paddingBottom: insets.bottom + 24 }]}>
+  //         <View style={ss.content}>
+  //           <Text style={ss.title}>Enter Your PIN</Text>
+  //           <Text style={ss.sub}>{display}</Text>
+  //           <View style={ss.pinRow}>
+  //             {Array.from({ length: PIN_LEN }, (_, i) => (
+  //               <View key={i} style={[ss.pinCell, pin[i] ? ss.pinFilled : null]}>
+  //                 <Text style={ss.pinDot}>{pin[i] ? "●" : ""}</Text>
+  //               </View>
+  //             ))}
+  //           </View>
+  //           <TextInput ref={pinRef} value={pin} onChangeText={handlePinChange}
+  //             keyboardType="number-pad" secureTextEntry maxLength={PIN_LEN}
+  //             style={ss.hidden} autoFocus editable={!busy} />
+  //           {busy && <ActivityIndicator color={D.primary} style={ss.loader} />}
+  //           {!!error && <Text style={ss.errText}>{error}</Text>}
+  //           <Pressable style={ss.forgotBtn} onPress={() => router.push("/forgot-pin-v2" as never)}>
+  //             <Text style={ss.forgotText}>Forgot PIN?</Text>
+  //           </Pressable>
+  //           <Pressable style={ss.linkBtn} onPress={() => { setPhase("phone"); setPin(""); setError(""); }}>
+  //             <Text style={ss.linkText}>← Change Number</Text>
+  //           </Pressable>
+  //         </View>
+  //       </View>
+  //     </KeyboardAvoidingView>
+  //   );
+  // }
 
   // ── Phone phase UI ────────────────────────────────────────────────────────────
   return (

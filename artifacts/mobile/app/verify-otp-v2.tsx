@@ -3,8 +3,15 @@
  *
  * Reads ?intent=login | forgot from URL params.
  *
- * intent=login  → verifyOtp → store token → /login-v2?phase=pin
- * intent=forgot → verifyOtp → store token → /create-pin-v2?intent=reset
+ * TEMPORARILY DISABLED — OTP-only login during stabilization phase.
+ * Both intents now establish a full session directly after OTP (no PIN screen).
+ *
+ * Original routing (re-enable when PIN is restored):
+ *   intent=login  → verifyOtp → store token → /login-v2?phase=pin
+ *   intent=forgot → verifyOtp → store token → /create-pin-v2?intent=reset
+ *
+ * Current routing:
+ *   intent=login | forgot → verifyOtp → confirmOtpV2Direct → home/onboarding
  *
  * [V2_VERIFY_OTP] logs only. No authentication logic changes.
  */
@@ -24,6 +31,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { verifyOtpV2, sendOtpV2 } from "@/utils/auth-v2-api";
 import { AuthV2Store } from "@/utils/auth-v2-store";
+import { useDriver } from "@/contexts/DriverContext";
 
 const D = {
   bg:      "#FFFFFF",
@@ -40,9 +48,13 @@ const OTP_LEN       = 6;
 const RESEND_SEC    = 30;
 
 export default function VerifyOtpV2() {
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const router  = useRouter();
+  const insets  = useSafeAreaInsets();
   const { intent } = useLocalSearchParams<{ intent?: string }>();
+
+  // TEMPORARILY DISABLED — OTP-only login during stabilization phase.
+  // confirmOtpV2Direct establishes a full session from the OTP token (no PIN).
+  const { confirmOtpV2Direct } = useDriver();
 
   const [otp,    setOtp]    = useState("");
   const [busy,   setBusy]   = useState(false);
@@ -73,9 +85,9 @@ export default function VerifyOtpV2() {
     console.log("[V2_VERIFY_OTP] verifyOtp — intent:", intent, "| phone:", phone.slice(0, 5) + "…");
 
     const result = await verifyOtpV2(phone, code);
-    setBusy(false);
 
     if (!result.ok) {
+      setBusy(false);
       console.log("[V2_VERIFY_OTP] failed:", result.error);
       setError(result.error);
       setOtp("");
@@ -83,21 +95,33 @@ export default function VerifyOtpV2() {
       return;
     }
 
-    // Store token + sessionId for create-pin-v2 to use
+    // Store token + sessionId (kept so create-pin-v2 / set-pin paths can be re-enabled later)
     AuthV2Store.setPendingToken(result.token);
     AuthV2Store.setPendingSessionId(result.sessionId ?? null);
     console.log("[V2_VERIFY_OTP] success — token:", result.token ? "present" : "MISSING",
       "| sessionId:", result.sessionId ? "present" : "absent",
       "| intent:", intent);
 
-    if (intent === "forgot") {
-      console.log("[V2_VERIFY_OTP] intent=forgot → create-pin-v2?intent=reset");
-      router.replace("/create-pin-v2?intent=reset" as never);
-    } else {
-      // intent=login (default)
-      console.log("[V2_VERIFY_OTP] intent=login → login-v2?phase=pin");
-      router.replace("/login-v2?phase=pin" as never);
+    // TEMPORARILY DISABLED — OTP-only login during stabilization phase.
+    // Original PIN routing (restore when PIN is re-enabled):
+    //   if (intent === "forgot") {
+    //     console.log("[V2_VERIFY_OTP] intent=forgot → create-pin-v2?intent=reset");
+    //     router.replace("/create-pin-v2?intent=reset" as never);
+    //   } else {
+    //     console.log("[V2_VERIFY_OTP] intent=login → login-v2?phase=pin");
+    //     router.replace("/login-v2?phase=pin" as never);
+    //   }
+
+    // OTP-only login: establish full session directly from the OTP token.
+    // confirmOtpV2Direct calls establishSession → fetches profile → navigates to home/onboarding.
+    console.log("[OTP_ONLY] OTP verified — establishing session directly (PIN bypass active), intent:", intent);
+    const sessionResult = await confirmOtpV2Direct(result.token, phone, result.sessionId ?? null);
+    setBusy(false);
+    if (!sessionResult.ok) {
+      console.error("[OTP_ONLY] confirmOtpV2Direct failed:", sessionResult.error);
+      setError(sessionResult.error ?? "Login failed. Please try again.");
     }
+    // On success, confirmOtpV2Direct → establishSession calls router.replace internally.
   }
 
   function handleOtpChange(v: string) {

@@ -150,10 +150,13 @@ function RootLayoutNav() {
         console.log("[RUNTIME_NAVIGATION_20260730] _layout.tsx | RootLayoutNav effect | destination: /background-setup");
         router.replace("/background-setup");
       } else {
-        console.log(`[FP_TRACE][LAYOUT_EFFECT #${effectRc}] BRANCH → /login (no driverUid, no_session) | firebaseUser=${firebaseAuth.currentUser?.uid ? "SET" : "null"}`);
-        console.log("[BOOT_ROUTE] chosenRoute = /login (no_session)");
-        console.log("[RUNTIME_NAVIGATION_20260730] _layout.tsx | RootLayoutNav effect | destination: /login (no_session)");
-        router.replace("/login");
+        console.log(`[FP_TRACE][LAYOUT_EFFECT #${effectRc}] BRANCH → /login-v2 (no driverUid, no_session) | firebaseUser=${firebaseAuth.currentUser?.uid ? "SET" : "null"}`);
+        console.log("[BOOT_ROUTE] chosenRoute = /login-v2 (no_session) [OTP-only bypass active]");
+        console.log("[RUNTIME_NAVIGATION_20260730] _layout.tsx | RootLayoutNav effect | destination: /login-v2 (no_session)");
+        // TEMPORARILY DISABLED — OTP-only login during stabilization phase.
+        // Was: router.replace("/login");
+        // OTP-only login: route directly to V2 OTP login screen.
+        router.replace("/login-v2" as never);
       }
       return;
     }
