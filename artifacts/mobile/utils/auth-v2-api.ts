@@ -18,7 +18,8 @@ const _cleanDomain = _rawDomain
   .replace(/^https?:\/\//i, "")
   .replace(/\/api\/?$/, "")
   .replace(/\/$/, "");
-const BASE_URL = _cleanDomain ? `https://${_cleanDomain}/api` : "/api";
+// V2 base — set-pin lives at POST /api/v2/auth/set-pin.
+const BASE_URL_V2 = _cleanDomain ? `https://${_cleanDomain}/api/v2` : "/api/v2";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export type SetPinV2Result =
@@ -27,7 +28,7 @@ export type SetPinV2Result =
 
 // ── setPinV2 ──────────────────────────────────────────────────────────────────
 /**
- * POST /api/auth/set-pin using an explicitly provided Firebase ID token.
+ * POST /api/v2/auth/set-pin using an explicitly provided Firebase ID token.
  * Does NOT read from firebaseAuth.currentUser — caller supplies the token
  * obtained immediately after signInWithCustomToken.
  */
@@ -42,9 +43,9 @@ export async function setPinV2(
   };
   if (sessionId) headers["x-session-id"] = sessionId;
 
-  console.log("[V2_SAVE_PIN] POST /auth/set-pin | sessionId:", sessionId ? "present" : "ABSENT");
+  console.log("[V2_SAVE_PIN] POST /v2/auth/set-pin | sessionId:", sessionId ? "present" : "ABSENT");
   try {
-    const res  = await fetch(`${BASE_URL}/auth/set-pin`, {
+    const res  = await fetch(`${BASE_URL_V2}/auth/set-pin`, {
       method: "POST",
       headers,
       body:   JSON.stringify({ pin }),

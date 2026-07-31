@@ -9,9 +9,9 @@ const _cleanDomain = _rawDomain
   .replace(/\/api\/?$/, "")        // remove trailing /api
   .replace(/\/$/, "");             // remove trailing slash
 
-// V1 base — used by set-pin (unchanged path) and verifyPinApi (graceful 404 fallback).
+// V1 base — kept for endpoints not yet migrated to V2 (e.g. pin-status).
 const BASE_URL    = _cleanDomain ? `https://${_cleanDomain}/api`    : "/api";
-// V2 base — used by all new auth endpoints (send-otp → otp/send, verify-otp → otp/verify).
+// V2 base — used by all auth endpoints: otp/send, otp/verify, verify-pin, set-pin.
 const BASE_URL_V2 = _cleanDomain ? `https://${_cleanDomain}/api/v2` : "/api/v2";
 
 // Log both the raw env var and the constructed URLs on module load
@@ -269,7 +269,7 @@ export async function verifyOtpApi(phone: string, otp: string): Promise<VerifyOt
  * Server enforces a 3-attempt / 24h lockout.
  */
 export async function verifyPinApi(phone: string, pin: string): Promise<VerifyPinResult> {
-  const url  = `${BASE_URL}/v2/auth/verify-pin`;
+  const url  = `${BASE_URL_V2}/auth/verify-pin`;
   // user_type is required by the V2 VerifyPinSchema.
   // Omitting it causes HTTP 422 Validation Error.
   const body = JSON.stringify({ phone, user_type: "driver", pin });
@@ -427,10 +427,10 @@ export async function setPin(pin: string): Promise<SetPinResult> {
   };
   if (sessionId) headers["x-session-id"] = sessionId;
 
-  console.log("[setPin] POST /auth/set-pin — Authorization:", "present", "| x-session-id:", sessionId ? "present (" + sessionId.slice(0, 8) + "…)" : "ABSENT");
+  console.log("[setPin] POST /v2/auth/set-pin — Authorization:", "present", "| x-session-id:", sessionId ? "present (" + sessionId.slice(0, 8) + "…)" : "ABSENT");
 
   try {
-    const res = await fetch(`${BASE_URL}/auth/set-pin`, {
+    const res = await fetch(`${BASE_URL_V2}/auth/set-pin`, {
       method:  "POST",
       headers,
       body:    JSON.stringify({ pin }),

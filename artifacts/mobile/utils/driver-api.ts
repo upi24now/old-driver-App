@@ -1,7 +1,9 @@
 import { firebaseAuth } from "@/utils/firebase";
 
-const DOMAIN   = process.env["EXPO_PUBLIC_DOMAIN"] ?? "";
-const BASE_URL = DOMAIN ? `https://${DOMAIN}/api` : "/api";
+const DOMAIN       = process.env["EXPO_PUBLIC_DOMAIN"] ?? "";
+const BASE_URL     = DOMAIN ? `https://${DOMAIN}/api`    : "/api";
+// V2 base — used by device/FCM token endpoints.
+const BASE_URL_V2  = DOMAIN ? `https://${DOMAIN}/api/v2` : "/api/v2";
 
 async function getIdToken(): Promise<string | null> {
   const user = firebaseAuth.currentUser;
@@ -103,8 +105,8 @@ export async function postDriverLocation(
 }
 
 /**
- * PATCH /api/drivers/me/fcm-token
- * Phase 4A — saves the driver's Expo/FCM push token to PostgreSQL. The uid is
+ * PUT /api/v2/devices/fcm-token
+ * Saves the driver's Expo/FCM push token to the backend. The uid is
  * derived server-side from the Firebase ID token, so none is passed here.
  * Fire-and-forget safe — returns { ok: false } on any error so the caller can
  * fall back to the Firestore shadow write.
@@ -115,8 +117,8 @@ export async function saveDriverFcmToken(
   const idToken = await getIdToken();
   if (!idToken) return { ok: false, saved: false };
   try {
-    const res  = await fetch(`${BASE_URL}/drivers/me/fcm-token`, {
-      method:  "PATCH",
+    const res  = await fetch(`${BASE_URL_V2}/devices/fcm-token`, {
+      method:  "PUT",
       headers: {
         "Content-Type":  "application/json",
         "Authorization": `Bearer ${idToken}`,

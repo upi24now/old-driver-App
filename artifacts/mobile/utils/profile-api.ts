@@ -25,12 +25,15 @@
 import { firebaseAuth } from "@/utils/firebase";
 import type { Profile, Vehicle } from "@/contexts/DriverContext";
 
-const DOMAIN   = process.env["EXPO_PUBLIC_DOMAIN"] ?? "";
-const BASE_URL = DOMAIN ? `https://${DOMAIN}/api` : "/api";
+const DOMAIN      = process.env["EXPO_PUBLIC_DOMAIN"] ?? "";
+const BASE_URL    = DOMAIN ? `https://${DOMAIN}/api`    : "/api";
+// V2 base — used by driver profile and device endpoints.
+const BASE_URL_V2 = DOMAIN ? `https://${DOMAIN}/api/v2` : "/api/v2";
 
 // Log at bundle-eval time so Expo Metro logs always show the resolved URL.
 console.log("[profile-api] EXPO_PUBLIC_DOMAIN =", DOMAIN || "(not set)");
 console.log("[profile-api] BASE_URL           =", BASE_URL);
+console.log("[profile-api] BASE_URL_V2        =", BASE_URL_V2);
 
 async function getIdToken(): Promise<string | null> {
   const user = firebaseAuth.currentUser;
@@ -125,10 +128,10 @@ let _lastProfileFetch: {
 
 export function getLastProfileFetchDebug() { return _lastProfileFetch; }
 
-// ─── GET /api/drivers/me ──────────────────────────────────────────────────────
+// ─── GET /api/v2/driver/profile ───────────────────────────────────────────────
 
 /**
- * Fetches the authenticated driver's full profile from PostgreSQL.
+ * Fetches the authenticated driver's full profile from the backend.
  *
  * @param idTokenOverride - Pass a freshly-obtained ID token directly (e.g. from
  *   `credential.user.getIdToken()` immediately after `signInWithCustomToken`).
@@ -136,7 +139,7 @@ export function getLastProfileFetchDebug() { return _lastProfileFetch; }
  *   the SDK may not have synchronised `currentUser` by the time this is called.
  *   When omitted, falls back to `firebaseAuth.currentUser.getIdToken()`.
  *
- * Returns null when the driver has no PG row yet (new signup in migration window)
+ * Returns null when the driver has no row yet (new signup in migration window)
  * or when network/auth is unavailable.
  */
 export async function getDriverProfile(idTokenOverride?: string): Promise<PgDriverProfile | null> {
@@ -144,18 +147,18 @@ export async function getDriverProfile(idTokenOverride?: string): Promise<PgDriv
   console.log("[profile-api] getDriverProfile — idToken:", idToken ? `${idToken.slice(0, 12)}...` : "NULL");
   if (!idToken) {
     console.warn("[profile-api] getDriverProfile: no idToken — firebaseAuth.currentUser =", firebaseAuth.currentUser?.uid ?? "null");
-    _lastProfileFetch = { url: `${BASE_URL}/drivers/me`, status: null, rawBody: "no id token", source: "no_token" };
+    _lastProfileFetch = { url: `${BASE_URL_V2}/driver/profile`, status: null, rawBody: "no id token", source: "no_token" };
     return null;
   }
 
-  const url = `${BASE_URL}/drivers/me`;
+  const url = `${BASE_URL_V2}/driver/profile`;
   console.log("[profile-api] GET", url);
   try {
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${idToken}` },
     });
 
-    console.log("[profile-api] GET /drivers/me →", res.status);
+    console.log("[profile-api] GET /v2/driver/profile →", res.status);
 
     // Clone before consuming so both the error path and json() path can read body.
     let _dbgBody = "";
@@ -168,23 +171,23 @@ export async function getDriverProfile(idTokenOverride?: string): Promise<PgDriv
 
     if (!res.ok) {
       _lastProfileFetch = { url, status: res.status, rawBody: _dbgBody.slice(0, 300), source: "error" };
-      console.error("[profile-api] GET /drivers/me status:", res.status, _dbgBody.slice(0, 200));
+      console.error("[profile-api] GET /v2/driver/profile status:", res.status, _dbgBody.slice(0, 200));
       return null;
     }
 
     const json = (await res.json()) as { ok?: boolean; driver?: PgDriverProfile; onboardingStep?: string; nextRoute?: string };
     if (!json.driver) {
       _lastProfileFetch = { url, status: res.status, rawBody: _dbgBody.slice(0, 300), source: "error" };
-      console.warn("[profile-api] GET /drivers/me: ok but no driver field — json.ok =", json.ok);
+      console.warn("[profile-api] GET /v2/driver/profile: ok but no driver field — json.ok =", json.ok);
       return null;
     }
     _lastProfileFetch = { url, status: res.status, rawBody: _dbgBody.slice(0, 300), source: "success" };
-    console.log("[profile-api] GET /drivers/me success — nextRoute:", json.nextRoute ?? "(none)", "verificationStatus:", json.driver.verificationStatus ?? "(none)");
+    console.log("[profile-api] GET /v2/driver/profile success — nextRoute:", json.nextRoute ?? "(none)", "verificationStatus:", json.driver.verificationStatus ?? "(none)");
     return { ...json.driver, onboardingStep: json.onboardingStep, nextRoute: json.nextRoute };
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     _lastProfileFetch = { url, status: null, rawBody: errMsg, source: "error" };
-    console.error("[profile-api] GET /drivers/me network error:", errMsg);
+    console.error("[profile-api] GET /v2/driver/profile network error:", errMsg);
     return null;
   }
 }
@@ -284,10 +287,10 @@ export async function getDriverPlanStatus(): Promise<PgDriverPlanStatus | null> 
   return (await fetchPath("/driver-plans/status")) ?? (await fetchPath("/driver-plans/current"));
 }
 
-// ─── PATCH /api/drivers/profile ───────────────────────────────────────────────
+// ─── PATCH /api/v2/driver/profile ─────────────────────────────────────────────
 
 /**
- * Updates the driver's core profile fields in PostgreSQL.
+ * Updates the driver's core profile fields on the backend.
  * Replaces Firestore updateDriverProfile().
  */
 export async function patchDriverProfile(p: Profile): Promise<{ ok: boolean }> {
@@ -295,7 +298,7 @@ export async function patchDriverProfile(p: Profile): Promise<{ ok: boolean }> {
   if (!idToken) return { ok: false };
 
   try {
-    const res = await fetch(`${BASE_URL}/drivers/profile`, {
+    const res = await fetch(`${BASE_URL_V2}/driver/profile`, {
       method:  "PATCH",
       headers: {
         "Content-Type": "application/json",
