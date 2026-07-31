@@ -252,14 +252,6 @@ type DriverState = {
   setPhone:   (p: string) => void;
   confirmOtp: (phone: string, otp: string, options?: { pinSetupOnly?: boolean }) => Promise<ConfirmOtpResult>;
   confirmPin: (phone: string, pin: string) => Promise<ConfirmOtpResult>;
-  /**
-   * TEMPORARY — OTP-only login (PIN bypass active).
-   * Establishes a full driver session directly from a V2 OTP firebase_custom_token,
-   * skipping the PIN verification step entirely.  Call after verifyOtpV2 succeeds.
-   * Token storage, profile fetch, routing, and isOtpVerified=true are all handled
-   * inside establishSession — identical contract to the normal confirmOtp path.
-   */
-  confirmOtpV2Direct: (token: string, phone: string, sessionId?: string | null) => Promise<ConfirmOtpResult>;
   setProfile: (p: Profile) => void;
   setVehicle: (v: Vehicle) => void;
   signOut:    () => Promise<void>;
@@ -1720,49 +1712,6 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // ── TEMPORARY — OTP-only login bypass ──────────────────────────────────────
-  // confirmOtpV2Direct: establishes a full session directly from the V2 OTP
-  // firebase_custom_token, bypassing the PIN verify step.  The PIN flow will be
-  // re-enabled by removing this function and restoring the PIN routing in
-  // verify-otp-v2.tsx once the platform is stable.
-  const confirmOtpV2Direct = async (
-    token:     string,
-    phone:     string,
-    sessionId?: string | null,
-  ): Promise<ConfirmOtpResult> => {
-    // ─────────────────────────────────────────────────────────────────────────
-    // [AUTH_STATE_04] confirmOtpV2Direct entry.
-    // This is the bridge between verify-otp-v2.tsx and establishSession.
-    // Execution order: setSessionId → establishSession(setIsOtpVerifying → signInWithCustomToken → getDriverProfile → setIsOtpVerified)
-    // ─────────────────────────────────────────────────────────────────────────
-    console.log("[AUTH_STATE_04] confirmOtpV2Direct ENTRY",
-      "| sessionId:", sessionId ? "PRESENT" : "null/absent",
-      "| firebaseAuth.currentUser BEFORE:", firebaseAuth.currentUser?.uid ?? "null",
-      "| ts:", Date.now(),
-    );
-    console.log("[OTP_ONLY] confirmOtpV2Direct — establishing full session from V2 OTP token (PIN bypass active)");
-    // TEMPORARILY DISABLED — OTP-only login during stabilization phase.
-    // OTP-only login: store session id (same contract as confirmOtp) then go
-    // directly to establishSession without calling verifyPinApi.
-    if (sessionId) {
-      await setSessionId(sessionId);
-      // ───────────────────────────────────────────────────────────────────────
-      // [AUTH_STATE_05] setSessionId completed (writes to AsyncStorage + memory).
-      // ───────────────────────────────────────────────────────────────────────
-      console.log("[AUTH_STATE_05] setSessionId called and awaited",
-        "| sessionId:", sessionId,
-        "| ts:", Date.now(),
-      );
-      console.log("[OTP_ONLY] setSessionId called with V2 sessionId");
-    } else {
-      console.warn("[OTP_ONLY] no sessionId from V2 OTP response — keeping existing session");
-      console.log("[AUTH_STATE_05] setSessionId SKIPPED — no sessionId provided",
-        "| ts:", Date.now(),
-      );
-    }
-    return establishSession(token, phone);
-  };
-
   // PIN path — the daily login factor (phone + 6-digit PIN). Same single-device
   // session + routing contract as confirmOtp; the server enforces the 3-attempt
   // / 24h lockout.
@@ -2887,7 +2836,6 @@ export function DriverProvider({ children }: { children: ReactNode }) {
         applyWalletUpdate,
         setPhone,
         confirmOtp,
-        confirmOtpV2Direct,
         confirmPin,
         setProfile,
         setVehicle,
